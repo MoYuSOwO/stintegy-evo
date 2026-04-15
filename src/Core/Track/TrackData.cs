@@ -19,25 +19,105 @@ public struct TrackGridConfig
     public const float GridWidth = 2.4f;
 }
 
+public readonly struct TrackPoint
+{
+    private readonly TrackNode _node;
+    public readonly int Index;
+    public readonly Vector2 Center => _node.Center;
+    public readonly Vector2 Tangent => _node.Tangent;
+    public readonly float Width => _node.Width;
+    public readonly float LeftBufferWidth => _node.LeftBufferWidth;
+    public readonly float RightBufferWidth => _node.RightBufferWidth;
+    public readonly float HalfWidth => _node.HalfWidth;
+    public readonly Vector2 Normal => _node.Normal;
+    public readonly Vector2 LeftEdge => _node.LeftEdge;
+    public readonly Vector2 RightEdge => _node.RightEdge;
+    public readonly Vector2 LeftBufferEdge => Center + Normal * (HalfWidth + LeftBufferWidth);
+    public readonly Vector2 RightBufferEdge => Center + Normal * (HalfWidth + RightBufferWidth);
+    public readonly float OptimalOffset;
+    public readonly Vector2 Optimal => _node.GetOffsetPos(OptimalOffset);
+    public readonly float Friction;
+
+    public Vector2 GetOffsetPos(float offset)
+    {
+        return Center + Normal * offset;
+    }
+
+    internal TrackPoint(int index, TrackNode node, float optimalOffset, float friction)
+    {
+        _node = node;
+        Index = index;
+        OptimalOffset = optimalOffset;
+        Friction = friction;
+    }
+}
+
+public readonly struct Grid
+{
+    public readonly int GridPos;
+    public readonly Vector2 Position;
+    public readonly int Index;
+
+    internal Grid(int gridPos, Vector2 position, int index)
+    {
+        GridPos = gridPos;
+        Position = position;
+        Index = index;
+    }
+}
+
+public readonly struct StartingGridAccessor(TrackData data)
+{
+    public Grid this[int gridPos] => new(gridPos, GetPosition(gridPos), GetNodeIndex(gridPos));
+
+    public Vector2 GetPosition(int gridPos)
+    {
+        var config = data.GridConfig;
+        bool left = config.IsFirstGridLeft ? gridPos % 2 == 1 : gridPos % 2 == 0;
+        float offset = left ? config.GridOffset : -config.GridOffset;
+        
+        int nodeIdx = config.FirstGridIdx - config.GridStepDist * (gridPos - 1);
+        return data[nodeIdx].GetOffsetPos(offset);
+    }
+
+    public int GetNodeIndex(int gridPos)
+    {
+        var config = data.GridConfig;
+        return (config.FirstGridIdx - (gridPos - 1) * config.GridStepDist) % data.Length;
+    }
+}
+
 public class TrackData
 {
+    public const float StepLength = 1.0f;
     public const float BaseFriction = 1.0f;
     public const float SafeMargin = 1.2f;
 
     private const float CellSize = 5.0f;
     private readonly Dictionary<long, List<int>> spatialBuckets = [];
 
-    public readonly ImmutableArray<TrackNode> Nodes;
-    public readonly ImmutableArray<float> OptimalLines;
+    private readonly ImmutableArray<TrackNode> Nodes;
+    private readonly ImmutableArray<float> OptimalLines;
+    public float FrictionMultiplier { get; set; } = 1.0f;
+    public float Friction => BaseFriction * FrictionMultiplier;
+
+    public int Length => Nodes.Length;
     public readonly TrackGridConfig GridConfig;
-    public float FrictionMultiplier { get; set; } = BaseFriction;
+    public TrackPoint this[int index] 
+    {
+        get
+        {
+            int safeIdx = (index % Length + Length) % Length;
+            return new TrackPoint(safeIdx, Nodes[safeIdx], OptimalLines[safeIdx], Friction);
+        }
+    }
+    public readonly StartingGridAccessor Grids;
 
-    public int NodeCounts => Nodes.Length;
-
-    public TrackData(IList<TrackNode> nodes, TrackGridConfig gridConfig)
+    internal TrackData(IList<TrackNode> nodes, TrackGridConfig gridConfig)
     {
         Nodes = [.. nodes];
-        OptimalLines = GenerateOptimalLines(nodes);
+        Grids = new(this);
+        OptimalLines = TrackLineSolver.GenerateOptimalLines(nodes, SafeMargin);
         GridConfig = gridConfig;
         BuildSpatialHash();
     }
@@ -62,7 +142,7 @@ public class TrackData
         return (x << 32) | (y & 0xFFFFFFFFL);
     }
 
-    public int Vector2ToIndex(Vector2 pos)
+    public int FindNearestIndex(Vector2 pos)
     {
         long key = GetKey(pos);
         float minDistSq = float.MaxValue;
@@ -90,166 +170,5 @@ public class TrackData
         }
         return bestIdx;
     }
-
-    public Vector2 GridPosToVector2(int gridPos)
-    {
-        bool left = GridConfig.IsFirstGridLeft ? gridPos % 2 == 1 : gridPos % 2 == 0;
-        float offset = GridConfig.GridOffset;
-        if (!left) offset = -offset;
-        Vector2 pos = Nodes.GetCircular(GridConfig.FirstGridIdx - GridConfig.GridStepDist * (gridPos - 1)).GetOffsetPos(offset);
-        return pos;
-    }
-
-    public int GridPosToIdx(int gridPos)
-    {
-        return (GridConfig.FirstGridIdx - (gridPos - 1) * GridConfig.GridStepDist) % NodeCounts;
-    }
-
-    public static ImmutableArray<float> GenerateOptimalLines(IList<TrackNode> nodes)
-    {
-        float[] optimalLines = new float[nodes.Count];
-        int N = nodes.Count;
-        
-        if (N < 3)
-        {
-            for (int i = 0; i < N; i++) optimalLines[i] = 0.0f;
-            return [.. optimalLines];
-        }
-
-        double[] lower = new double[N];
-        double[] upper = new double[N];
-        for (int i = 0; i < N; i++)
-        {
-            lower[i] = -(nodes[i].HalfWidth - SafeMargin);
-            upper[i] = nodes[i].HalfWidth - SafeMargin;
-        }
-
-        // 计算中心线投影曲率 K
-        double[] K = new double[N];
-
-        for (int i = 0; i < N; i++)
-        {
-            int im1 = (i - 1 + N) % N;
-            int ip1 = (i + 1) % N;
-
-            Vector2 D = nodes[im1].Center - 2.0f * nodes[i].Center + nodes[ip1].Center;
-            K[i] = D.Dot(nodes[i].Normal);
-        }
-
-        List<int> hRows = [];
-        List<int> hCols = [];
-        List<double> hVals = [];
-        double[] q = new double[N];
-
-        void AddH(int r, int c, double v)
-        {
-            if (Math.Abs(v) < 1e-12) return;
-            if (r > c) {
-                (c, r) = (r, c);
-            }
-            hRows.Add(r); hCols.Add(c); hVals.Add(v);
-        }
-
-        // 严格组装 q 和 H (只遍历合法的二阶差分区间)
-        for (int i = 0; i < N; i++)
-        {
-            int im1 = (i - 1 + N) % N;
-            int ip1 = (i + 1) % N;
-
-            double Ki = K[i];
-
-            // 线性项 q 分发
-            q[im1] += 2.0 * Ki;
-            q[i]   -= 4.0 * Ki;
-            q[ip1] += 2.0 * Ki;
-
-            // 二次项 H 五对角展开
-            AddH(im1, im1, 2.0);
-            AddH(i, i, 8.0);
-            AddH(ip1, ip1, 2.0);
-
-            AddH(im1, i, -4.0);
-            AddH(i, ip1, -4.0);
-            AddH(im1, ip1, 2.0);
-        }
-
-        // 正则化保证正定
-        for (int i = 0; i < N; i++)
-        {
-            AddH(i, i, 1e-6);
-        }
-
-        // ALGLIB 求解
-        alglib.sparsecreate(N, N, out alglib.sparsematrix hMatrix);
-        for (int idx = 0; idx < hRows.Count; idx++)
-        {
-            alglib.sparseadd(hMatrix, hRows[idx], hCols[idx], hVals[idx]);
-        }
-        alglib.sparseconverttocrs(hMatrix);
-        alglib.minqpcreate(N, out alglib.minqpstate state);
-        alglib.minqpsetquadratictermsparse(state, hMatrix, true);
-        alglib.minqpsetlinearterm(state, q);
-        alglib.minqpsetbc(state, lower, upper);
-        alglib.minqpsetscaleautodiag(state);
-        alglib.minqpsetalgoquickqp(state, 0.0, 0.0, 0.0, 0, true);
-        alglib.minqpoptimize(state);
-        alglib.minqpresults(state, out double[] resultAlpha, out alglib.minqpreport rep);
-
-        for (int i = 0; i < N; i++)
-        {
-            optimalLines[i] = (float)resultAlpha[i];
-        }
-
-        SmoothRacingLine(ref optimalLines);
-
-        if (optimalLines.Length != N)
-        {
-            GD.PrintErr($"Invalid number of optimal lines. Expected {N}, got {optimalLines.Length}.");
-        }
-
-        return [.. optimalLines];
-    }
-
-    private static void SmoothRacingLine(ref float[] lines, int passes = 3, int window = 2)
-    {
-        if (lines == null || lines.Length < 3) return;
-
-        int N = lines.Length;
-
-        float[] currentAlphas = new float[N];
-        for (int i = 0; i < N; i++) currentAlphas[i] = lines[i];
-
-        float[] tempAlphas = new float[N];
-
-        for (int p = 0; p < passes; p++)
-        {
-            for (int i = 0; i < N; i++)
-            {
-                float sum = 0;
-                float weightSum = 0;
-
-                // 收集窗口内的点
-                for (int j = -window; j <= window; j++)
-                {
-                    int idx;
-                    idx = (i + j + N) % N; // 环形取模，接缝完美融合
-
-                    // 简单的距离衰减权重 (中间高，两边低)
-                    float weight = 1.0f / (1.0f + Math.Abs(j)); 
-                    sum += currentAlphas[idx] * weight;
-                    weightSum += weight;
-                }
-                tempAlphas[i] = sum / weightSum;
-            }
-            
-            // 将本趟平滑结果覆写回去，准备下一趟
-            Array.Copy(tempAlphas, currentAlphas, N);
-        }
-
-        // 把平滑后的结果写回真实赛车线数据
-        for (int i = 0; i < N; i++)
-        {
-            lines[i] = currentAlphas[i];
-        }
-    }
+    
 }
