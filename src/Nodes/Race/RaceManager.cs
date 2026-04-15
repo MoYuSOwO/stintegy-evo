@@ -5,7 +5,8 @@ using PloyRacing.Nodes.Track;
 using PloyRacing.Nodes.Car;
 using System;
 using System.Collections.Generic;
-using PloyRacing.Nodes.Car.Controllers;
+using PloyRacing.Core.Car.Controllers;
+using PloyRacing.Core.Car;
 
 namespace PloyRacing.Nodes.Race;
 
@@ -31,11 +32,12 @@ public partial class RaceManager : Node2D
 			float startRotation = 0.0f;
 			if (config.IsGrid)
 			{
-				startPos = trackData.GridPosToVector2(config.CarGridOrPitIdx);
-				int idx = trackData.GridPosToIdx(config.CarGridOrPitIdx);
-				startRotation = trackData.Nodes[idx].Tangent.Angle();
+				var grid = trackData.Grids[config.CarGridOrPitIdx];
+				startPos = grid.Position;
+				int idx = grid.Index;
+				startRotation = trackData[idx].Tangent.Angle();
 			}
-			car.Init(config, trackData, DummyEnvironment.Instance, DummyController.Instance, startPos, startRotation);
+			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), DummyController.Instance, startPos, startRotation);
 			AddChild(car);
 		}
 	}
