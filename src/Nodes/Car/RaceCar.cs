@@ -1,73 +1,40 @@
 using Godot;
-using PloyRacing.Core.Car.Components;
+using PloyRacing.Core.Car;
 using PloyRacing.Core.Car.Configs;
-using PloyRacing.Core.Track;
-using PloyRacing.Nodes.Car.Controllers;
-using PloyRacing.Nodes.Race;
+using PloyRacing.Core.Car.Controllers;
 using System;
-using PowerComponent = PloyRacing.Core.Car.Components.PowerComponent;
 
 namespace PloyRacing.Nodes.Car;
 
 public partial class RaceCar : RigidBody2D
 {
-	private CarConfig? _config;
-	private PowerComponent? _power;
-    private FuelComponent? _fuel;
-    private AeroComponent? _aero;
-    private BrakeComponent? _brake;
-    private DifferentialComponent? _differential;
-    private SuspensionComponent? _suspension;
-	private TireComponent[]? _tires;
-    private BaseController? _driver;
-    private TrackData? _track;
-    private IEnvironment? _environment;
+	private CarLogic? _logic;
+
+    private IController? _controller;
 
 	private static T GetNotNull<T>(T? obj) where T : class 
 	{
         return obj ?? throw new ArgumentNullException(nameof(obj), "Car have not fully initialized!");
 	}
 
-	public CarConfig Config => GetNotNull(_config);
-	public PowerComponent Power => GetNotNull(_power);
-	public FuelComponent Fuel => GetNotNull(_fuel);
-	public AeroComponent Aero => GetNotNull(_aero);
-	public BrakeComponent Brake => GetNotNull(_brake);
-	public DifferentialComponent Differential => GetNotNull(_differential);
-	public SuspensionComponent Suspension => GetNotNull(_suspension);
-	public TireComponent TireFrontLeft => GetNotNull(_tires)[0];
-	public TireComponent TireFrontRight => GetNotNull(_tires)[1];
-	public TireComponent TireRearLeft => GetNotNull(_tires)[2];
-	public TireComponent TireRearRight => GetNotNull(_tires)[3];
-    public TrackData Track => GetNotNull(_track);
-    public BaseController Driver => GetNotNull(_driver);
-    public IEnvironment Environment => GetNotNull(_environment);
+	public CarLogic Logic => GetNotNull(_logic);
+    public CarConfig Config => Logic.Config;
+    public IController Controller => GetNotNull(_controller);
     public bool IsInit { get; private set; } = false;
 
-    public float VisualOffsetX => (0.5f - Config.Chassis.WeightDistFront) * Config.Chassis.WheelBase;
-    public float FrontAxleX => (1.0f - Config.Chassis.WeightDistFront) * Config.Chassis.WheelBase;
-    public float RearAxleX => -Config.Chassis.WeightDistFront * Config.Chassis.WheelBase;
-
     private Node2D bodyAnchor = new();
-    private Vector2 lastLocalVel = Vector2.Zero;
 
-    public void ChangeTire(TireType tireType, TireConfig tireConfig)
-    {
-        TireComponent[] tires = GetNotNull(_tires);
-        tires[(int)tireType] = new TireComponent(tireConfig, Environment.EnvTemp);
-    }
-    
+    public float VisualOffsetX => (0.5f - Config.Chassis.WeightDistFront) * Config.Chassis.WheelBase;
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
 	}
 
-	public void Init(CarConfig config, TrackData track, IEnvironment environment, BaseController controller, Vector2 startPos, float startRotation)
+	public void Init(CarLogic car, IController controller, Vector2 startPos, float startRotation)
     {
-        _config = config;
-        _track = track;
-        _environment = environment;
+        _logic = car;
+        _controller = controller;
 
         Vector2 globalVisualOffset = new Vector2(VisualOffsetX, 0).Rotated(startRotation);
 
@@ -79,30 +46,13 @@ public partial class RaceCar : RigidBody2D
         AngularVelocity = 0f;
 
         // 初始化刚体物理属性
-        Mass = config.Chassis.DryMass;
-        Inertia = config.Chassis.DryI; 
-
-        // 实例化所有物理逻辑组件
-        _power = new PowerComponent(config.Power);
-        _fuel = new FuelComponent(config.Fuel, config.InitFuelL);
-        _aero = new AeroComponent(config.Aero);
-        _brake = new BrakeComponent(config.Brake, environment.EnvTemp, config.InitBiasFront);
-        _differential = new DifferentialComponent(config.Differential);
-        _suspension = new SuspensionComponent(config.Suspension, config.InitLoad);
-
-        // 实例化轮胎
-		_tires = new TireComponent[4];
-        foreach (var tire in config.Tires)
-        {
-            _tires[(int)tire.Type] = new TireComponent(tire, environment.EnvTemp);
-        }
+        Mass = car.Config.Chassis.DryMass;
+        Inertia = car.Config.Chassis.DryI; 
 
         // 组装视觉效果与碰撞盒
         BuildCarVisuals();
 		BuildCollisionShape();
 
-        _driver = controller;
-        lastLocalVel = Transform.BasisXformInv(LinearVelocity);
         IsInit = true;
     }
 
@@ -184,10 +134,10 @@ public partial class RaceCar : RigidBody2D
         // --- 6. 绘制四个轮胎 (ZIndex = 15, 16) ---
         float trackWidthHalf = W / 2f - Config.Visual.TireWidth / 2f; 
 
-        DrawTire(FrontAxleX, -trackWidthHalf); // FL
-        DrawTire(FrontAxleX, trackWidthHalf);  // FR
-        DrawTire(RearAxleX, -trackWidthHalf);  // RL
-        DrawTire(RearAxleX, trackWidthHalf);   // RR
+        DrawTire(Logic.FrontAxleX, -trackWidthHalf); // FL
+        DrawTire(Logic.FrontAxleX, trackWidthHalf);  // FR
+        DrawTire(Logic.RearAxleX, -trackWidthHalf);  // RL
+        DrawTire(Logic.RearAxleX, trackWidthHalf);   // RR
     }
 
 	private void DrawTire(float cx, float cy)
@@ -251,125 +201,37 @@ public partial class RaceCar : RigidBody2D
     public override void _PhysicsProcess(double delta)
     {
         if (!IsInit) return;
+
         float dt = (float)delta;
 
-        Driver.Think(dt, this, Track); 
-        float throttle = Driver.Throttle;
-        float brake = Driver.Brake;
-        float steer = Driver.SteeringAngle;
-
-        Vector2 globalVel = LinearVelocity;
-        Vector2 localVel = Transform.BasisXformInv(globalVel);
-        float speed = localVel.Length();
-
-        Vector2 localAccel = (localVel - lastLocalVel) / dt;
-        lastLocalVel = localVel;
-
-        // 油量更新
-        Fuel.UpdateFuel(Power.RPMRatio, throttle, dt);
-        float currentDynamicMass = Config.Chassis.DryMass + Fuel.CurrentFuelMassKg;
-        Mass = currentDynamicMass;
-
-        // 空气动力学 (先假设没有脏空气)
-        AeroOutput aeroData = Aero.UpdateAero(speed, 0f);
-
-        // 悬挂系统
-        CarLoad currentLoad = Suspension.UpdateLoads(
-            currentDynamicMass,
-            Config.Chassis.WeightDistFront,
-            Config.Chassis.CgHeight,
-            Config.Chassis.WheelBase,
-            Config.Chassis.Width,
-            localAccel.X,
-            localAccel.Y,
-            aeroData.DownforceFront,
-            aeroData.DownforceRear,
-            dt
-        );
-
-        // 动力层提需求
-        float totalDriveForce = Power.CalculateDriveForce(throttle, speed, dt);
-        CarBrakeForce brakeDemand = Brake.GetBrakeDemand(brake);
-
-        DifferentialOutput differentialOutput;
-        float envTemp = Environment.EnvTemp;
-        TireOutput outFL, outFR, outRL, outRR;
-        if (Config.DriveType == CarDriveType.FrontDrive)
+        CarSensor carData = new()
         {
-            float gripLimitFL = currentLoad.FrontLeft * TireFrontLeft.Config.LongPeakFriction;
-            float gripLimitFR = currentLoad.FrontRight * TireFrontRight.Config.LongPeakFriction;
-            differentialOutput = Differential.DistributeForce(
-                totalDriveForce, gripLimitFL, gripLimitFR, AngularVelocity, Config.Chassis.Width, speed
-            );
-
-            outFL = TireFrontLeft.UpdatePhysics(
-                differentialOutput.ForceLeft - brakeDemand.FrontLeft, currentLoad.FrontLeft, localVel.X, localVel.Y, dt, envTemp, steer
-            );
-            outFR = TireFrontRight.UpdatePhysics(
-                differentialOutput.ForceRight - brakeDemand.FrontRight, currentLoad.FrontRight, localVel.X, localVel.Y, dt, envTemp, steer
-            );
-
-            outRL = TireRearLeft.UpdatePhysics(
-                -brakeDemand.RearLeft, currentLoad.RearLeft, localVel.X, localVel.Y, dt, envTemp, 0f
-            );
-            outRR = TireRearRight.UpdatePhysics(
-                -brakeDemand.RearRight, currentLoad.RearRight, localVel.X, localVel.Y, dt, envTemp, 0f
-            );
-        }
-        else if (Config.DriveType == CarDriveType.RearDrive)
-        {
-            float gripLimitRL = currentLoad.RearLeft * TireRearLeft.Config.LongPeakFriction;
-            float gripLimitRR = currentLoad.RearRight * TireRearRight.Config.LongPeakFriction;
-            differentialOutput = Differential.DistributeForce(
-                totalDriveForce, gripLimitRL, gripLimitRR, AngularVelocity, Config.Chassis.Width, speed
-            );
-
-            outFL = TireFrontLeft.UpdatePhysics(
-                -brakeDemand.FrontLeft, currentLoad.FrontLeft, localVel.X, localVel.Y, dt, envTemp, steer
-            );
-            outFR = TireFrontRight.UpdatePhysics(
-                -brakeDemand.FrontRight, currentLoad.FrontRight, localVel.X, localVel.Y, dt, envTemp, steer
-            );
-
-            outRL = TireRearLeft.UpdatePhysics(
-                differentialOutput.ForceLeft - brakeDemand.RearLeft, currentLoad.RearLeft, localVel.X, localVel.Y, dt, envTemp, 0f
-            );
-            outRR = TireRearRight.UpdatePhysics(
-                differentialOutput.ForceRight - brakeDemand.RearRight, currentLoad.RearRight, localVel.X, localVel.Y, dt, envTemp, 0f
-            );
-        }
-        else
-        {
-            throw new NotImplementedException("You should really check what drive type you add......");
-        }
-
-        CarBrakeForce actualBrakeForces = new()
-        {
-            FrontLeft = Mathf.Min(Mathf.Abs(outFL.Force.X), brakeDemand.FrontLeft),
-            FrontRight = Mathf.Min(Mathf.Abs(outFR.Force.X), brakeDemand.FrontRight),
-            RearLeft = Mathf.Min(Mathf.Abs(outRL.Force.X), brakeDemand.RearLeft),
-            RearRight = Mathf.Min(Mathf.Abs(outRR.Force.X), brakeDemand.RearRight)
+            LinearVelocity = LinearVelocity,
+            AngularVelocity = AngularVelocity,
+            Position = GlobalPosition,
+            Rotation = GlobalRotation
         };
-        Brake.UpdateThermodynamics(actualBrakeForces, envTemp, outFL.IsLockedUp, outFR.IsLockedUp, outRL.IsLockedUp, outRR.IsLockedUp, speed, dt);
 
-        float halfTrack = Config.Chassis.Width / 2f;
+        Controller.ThinkTick(dt, carData, Logic, Logic.Track);
+        float throttle = Controller.Throttle;
+        float brake = Controller.Brake;
+        float steer = Controller.SteeringAngle;
+
+        Vector2 localVel = Transform.BasisXformInv(LinearVelocity);
+
+        var output = Logic.Tick(dt, throttle, brake, steer, localVel, AngularVelocity, Mass);
 
         // 空气阻力
-        if (localVel.LengthSquared() > 0.1f) 
-        {
-            Vector2 dragDirection = -localVel.Normalized();
-            Vector2 localDrag = dragDirection * aeroData.DragForce; 
-            ApplyCentralForce(Transform.BasisXform(localDrag));
-        }
+        ApplyCentralForce(Transform.BasisXform(output.DragForce));
 
         // 四个轮胎的抓地力
-        ApplyTireForceToBody(outFL.Force, new Vector2(FrontAxleX, -halfTrack));
-        ApplyTireForceToBody(outFR.Force, new Vector2(FrontAxleX, halfTrack));
-        ApplyTireForceToBody(outRL.Force, new Vector2(RearAxleX, -halfTrack));
-        ApplyTireForceToBody(outRR.Force, new Vector2(RearAxleX, halfTrack));
+        ApplyTireForceToBody(output.FrontLeft.Force, output.FrontLeft.Pos);
+        ApplyTireForceToBody(output.FrontRight.Force, output.FrontRight.Pos);
+        ApplyTireForceToBody(output.RearLeft.Force, output.RearLeft.Pos);
+        ApplyTireForceToBody(output.RearRight.Force, output.RearRight.Pos);
 
         // 施加差速器惩罚力矩
-        ApplyTorque(differentialOutput.YawPenalty);
+        ApplyTorque(output.YawPenaltyTorque);
     }
 
     private void ApplyTireForceToBody(Vector2 localTireForce, Vector2 localPos)
