@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://cv83jpnvwp8l0"]
+
+[ext_resource type="Script" uid="uid://mk5mkp457if0" path="res://src/Nodes/Race/RaceManager.cs" id="1_k3rnf"]
+[ext_resource type="Script" uid="uid://boyvbyh4d4m1a" path="res://src/Nodes/Track/TrackRenderer.cs" id="1_nmwl7"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_nmwl7"]
+
+[sub_resource type="Sky" id="Sky_k3rnf"]
+sky_material = SubResource("ProceduralSkyMaterial_nmwl7")
+
+[sub_resource type="Environment" id="Environment_nhfen"]
+background_mode = 2
+sky = SubResource("Sky_k3rnf")
+ambient_light_source = 3
+reflected_light_source = 2
+tonemap_mode = 3
+glow_enabled = true
+fog_enabled = true
+
+[sub_resource type="CameraAttributesPhysical" id="CameraAttributesPhysical_nmwl7"]
+
+[sub_resource type="Compositor" id="Compositor_k3rnf"]
+
+[node name="Root" type="Node2D" unique_id=2108887542]
+
+[node name="World" type="Node2D" parent="." unique_id=720929528]
+
+[node name="Environment" type="Node2D" parent="World" unique_id=1516286776]
+
+[node name="CanvasModulate" type="CanvasModulate" parent="World/Environment" unique_id=787786527]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="World/Environment" unique_id=749154454]
+environment = SubResource("Environment_nhfen")
+camera_attributes = SubResource("CameraAttributesPhysical_nmwl7")
+compositor = SubResource("Compositor_k3rnf")
+
+[node name="Camera2D" type="Camera2D" parent="World" unique_id=171933594]
+zoom = Vector2(2, 2)
+
+[node name="RaceManager" type="Node2D" parent="World" unique_id=1881295525 node_paths=PackedStringArray("Renderer")]
+script = ExtResource("1_k3rnf")
+Renderer = NodePath("Track")
+
+[node name="Track" type="Node2D" parent="World/RaceManager" unique_id=1710661105]
+script = ExtResource("1_nmwl7")
