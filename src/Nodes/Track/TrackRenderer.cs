@@ -56,7 +56,7 @@ public partial class TrackRenderer : Node2D
             child.QueueFree();
         }
 
-        if (Track.Nodes == null || Track.NodeCounts < 2) return;
+        if (Track.Length < 2) return;
 
         // 1. 设置全屏背景（草地）
         CreateDynamicBackground();
@@ -92,15 +92,14 @@ public partial class TrackRenderer : Node2D
 
     private void DrawRoad(TrackData trackData)
     {
-        var nodes = trackData.Nodes;
-        int n = nodes.Length;
+        int n = trackData.Length;
         Vector2[] vertices = new Vector2[(n + 1) * 2];
 
         for (int i = 0; i <= n; i++)
         {
             int idx = i % n;
-            vertices[i * 2] = nodes[idx].LeftEdge;
-            vertices[i * 2 + 1] = nodes[idx].RightEdge;
+            vertices[i * 2] = trackData[idx].LeftEdge;
+            vertices[i * 2 + 1] = trackData[idx].RightEdge;
         }
 
         // 极简风不需要UV，只要顶点！
@@ -111,7 +110,7 @@ public partial class TrackRenderer : Node2D
     private void DrawStartingLine(TrackData trackData)
     {
         var config = trackData.GridConfig;
-        var node = trackData.Nodes[config.StartingLineIdx];
+        var node = trackData[config.StartingLineIdx];
         
         // 终点线通常由两排黑白交替方块组成
         int rows = 2;
@@ -156,13 +155,10 @@ public partial class TrackRenderer : Node2D
 
         for (int i = 1; i <= config.GridCount; i++)
         {
-            // 获取发车位中心点
-            Vector2 center = trackData.GridPosToVector2(i);
-            
-            // 为了确定朝向，我们需要找到对应的 Node 索引
-            int nodeIdx = config.FirstGridIdx - config.GridStepDist * (i - 1);
-            if (nodeIdx < 0) nodeIdx += trackData.NodeCounts;
-            var node = trackData.Nodes[nodeIdx];
+            // 获取发车位
+            var grid = trackData.Grids[i];
+            Vector2 center = grid.Position;
+            var node = trackData[grid.Index];
 
             // 框的实际尺寸 (稍微留白)
             float w = TrackGridConfig.GridWidth;
@@ -206,21 +202,20 @@ public partial class TrackRenderer : Node2D
 
     private void DrawBufferZones(TrackData trackData)
     {
-        var nodes = trackData.Nodes;
-        int n = nodes.Length;
+        int n = trackData.Length;
         Vector2[] leftVertices = new Vector2[(n + 1) * 2];
         Vector2[] rightVertices = new Vector2[(n + 1) * 2];
 
         for (int i = 0; i <= n; i++)
         {
             int idx = i % n;
-            TrackNode node = nodes[idx];
+            TrackPoint node = trackData[idx];
 
-            Vector2 leftWall = node.LeftEdge + node.Normal * node.LeftBuffer;
+            Vector2 leftWall = node.LeftEdge + node.Normal * node.LeftBufferWidth;
             leftVertices[i * 2] = leftWall;
             leftVertices[i * 2 + 1] = node.LeftEdge;
 
-            Vector2 rightWall = node.RightEdge - node.Normal * node.RightBuffer;
+            Vector2 rightWall = node.RightEdge - node.Normal * node.RightBufferWidth;
             rightVertices[i * 2] = node.RightEdge;
             rightVertices[i * 2 + 1] = rightWall;
         }
@@ -231,8 +226,7 @@ public partial class TrackRenderer : Node2D
 
     private void GenerateWalls(TrackData trackData)
     {
-        var nodes = trackData.Nodes;
-        int n = nodes.Length;
+        int n = trackData.Length;
         
         Vector2[] leftWallVertices = new Vector2[(n + 1) * 2];
         Vector2[] rightWallVertices = new Vector2[(n + 1) * 2];
@@ -241,11 +235,11 @@ public partial class TrackRenderer : Node2D
         for (int i = 0; i <= n; i++)
         {
             int idx = i % n;
-            TrackNode node = nodes[idx];
+            TrackPoint node = trackData[idx];
 
             // 墙内侧 (贴着缓冲区)
-            Vector2 leftWallInner = node.LeftEdge + node.Normal * node.LeftBuffer;
-            Vector2 rightWallInner = node.RightEdge - node.Normal * node.RightBuffer;
+            Vector2 leftWallInner = node.LeftEdge + node.Normal * node.LeftBufferWidth;
+            Vector2 rightWallInner = node.RightEdge - node.Normal * node.RightBufferWidth;
             
             // 墙外侧 (向外推展出一个厚度，形成Mesh)
             Vector2 leftWallOuter = leftWallInner + node.Normal * wallThickness;
@@ -263,9 +257,9 @@ public partial class TrackRenderer : Node2D
             if (i < n)
             {
                 int next = (i + 1) % n;
-                TrackNode nextNode = nodes[next];
-                Vector2 nextLeftInner = nextNode.LeftEdge + nextNode.Normal * nextNode.LeftBuffer;
-                Vector2 nextRightInner = nextNode.RightEdge - nextNode.Normal * nextNode.RightBuffer;
+                TrackPoint nextNode = trackData[next];
+                Vector2 nextLeftInner = nextNode.LeftEdge + nextNode.Normal * nextNode.LeftBufferWidth;
+                Vector2 nextRightInner = nextNode.RightEdge - nextNode.Normal * nextNode.RightBufferWidth;
 
                 physicsWalls.AddChild(new CollisionShape2D { Shape = new SegmentShape2D { A = leftWallInner, B = nextLeftInner } });
                 physicsWalls.AddChild(new CollisionShape2D { Shape = new SegmentShape2D { A = rightWallInner, B = nextRightInner } });
@@ -288,9 +282,9 @@ public partial class TrackRenderer : Node2D
             JointMode = Line2D.LineJointMode.Round,
             Closed = true
         };
-        for (int i = 0; i < trackData.NodeCounts; i++)
+        for (int i = 0; i < trackData.Length; i++)
         {
-            line.AddPoint(trackData.Nodes[i].GetOffsetPos(trackData.OptimalLines[i]));
+            line.AddPoint(trackData[i].Optimal);
         }
         AddChild(line);
     }

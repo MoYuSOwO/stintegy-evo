@@ -6,8 +6,6 @@ namespace PloyRacing.Core.Track;
 
 public class TrackBuilder
 {
-    public const float StepLength = 1.0f;
-
     private readonly struct BuilderNode(Vector2 center, float width, float leftBuffer, float rightBuffer)
     {
         public readonly Vector2 Center = center;
@@ -60,7 +58,7 @@ public class TrackBuilder
         float targetEndLeftBufferNotNull = targetEndLeftBuffer ?? currentLeftBuffer;
         float targetEndRightBufferNotNull = targetEndRightBuffer ?? currentRightBuffer;
 
-        int steps = (int) (length / StepLength);
+        int steps = (int) (length / TrackData.StepLength);
 
         float startWidth = currentWidth;
         float startLeftBuffer = currentLeftBuffer;
@@ -69,7 +67,7 @@ public class TrackBuilder
         for (int i = 1; i <= steps; i++)
         {
             Vector2 dir = new(Mathf.Cos(currentAngle), Mathf.Sin(currentAngle));
-            dir *= StepLength;
+            dir *= TrackData.StepLength;
             currentPos += dir;
 
             float t = i / (float)steps;
@@ -103,7 +101,7 @@ public class TrackBuilder
 
         float turnAngleRad = Mathf.DegToRad(turnAngleDeg);
         float arcLength = Mathf.Abs(turnAngleRad) * radius;
-        int steps = (int) (arcLength / StepLength);
+        int steps = (int) (arcLength / TrackData.StepLength);
 
         float startWidth = currentWidth;
         float startLeftBuffer = currentLeftBuffer;
@@ -114,7 +112,7 @@ public class TrackBuilder
         {
             currentAngle += stepAngle;
             Vector2 dir = new(Mathf.Cos(currentAngle), Mathf.Sin(currentAngle));
-            dir *= StepLength;
+            dir *= TrackData.StepLength;
             currentPos += dir;
 
             float t = (float) i / steps;
@@ -176,7 +174,7 @@ public class TrackBuilder
         }
 
         float distanceWalked = 0f;
-        float currentTargetDist = StepLength;
+        float currentTargetDist = TrackData.StepLength;
 
         for (int i = 0; i < highResPoints.Count - 1; i++)
         {
@@ -200,7 +198,7 @@ public class TrackBuilder
 
                 nodes.Add(new BuilderNode(exactPos, width, leftBuffer, rightBuffer));
 
-                currentTargetDist += StepLength; 
+                currentTargetDist += TrackData.StepLength; 
             }
             distanceWalked += segmentLength;
         }
