@@ -36,6 +36,7 @@ public readonly struct TrackPoint
     public readonly Vector2 RightBufferEdge => Center + Normal * (HalfWidth + RightBufferWidth);
     public readonly float OptimalOffset;
     public readonly Vector2 Optimal => _node.GetOffsetPos(OptimalOffset);
+    public readonly float TotalWidth => Width + LeftBufferWidth + RightBufferWidth;
     public readonly float Friction;
 
     public Vector2 GetOffsetPos(float offset)
@@ -93,7 +94,7 @@ public class TrackData
     public const float BaseFriction = 1.0f;
     public const float SafeMargin = 1.2f;
 
-    private const float CellSize = 5.0f;
+    private readonly float cellSize;
     private readonly Dictionary<long, List<int>> spatialBuckets = [];
 
     private readonly ImmutableArray<TrackNode> Nodes;
@@ -119,6 +120,13 @@ public class TrackData
         Grids = new(this);
         OptimalLines = TrackLineSolver.GenerateOptimalLines(nodes, SafeMargin);
         GridConfig = gridConfig;
+
+        float maxWidth = 0.0f;
+        for (int i = 0; i < Length; i++)
+        {
+            maxWidth = Mathf.Max(this[i].TotalWidth, maxWidth);
+        }
+        cellSize = maxWidth * 0.7f;
         BuildSpatialHash();
     }
 
@@ -134,17 +142,23 @@ public class TrackData
         }
     }
 
-    private static long GetKey(Vector2 pos)
+    private static long GetCellKey(long cellX, long cellY)
     {
-        long x = (long)Math.Floor(pos.X / CellSize);
-        long y = (long)Math.Floor(pos.Y / CellSize);
+        return (cellX << 32) | (cellY & 0xFFFFFFFFL);
+    }
 
-        return (x << 32) | (y & 0xFFFFFFFFL);
+    private long GetKey(Vector2 pos)
+    {
+        long x = (long)Math.Floor(pos.X / cellSize);
+        long y = (long)Math.Floor(pos.Y / cellSize);
+        return GetCellKey(x, y);
     }
 
     public int FindNearestIndex(Vector2 pos)
     {
-        long key = GetKey(pos);
+        long baseX = (long)Math.Floor(pos.X / cellSize);
+        long baseY = (long)Math.Floor(pos.Y / cellSize);
+
         float minDistSq = float.MaxValue;
         int bestIdx = 0;
 
@@ -152,7 +166,10 @@ public class TrackData
         {
             for (int y = -1; y <= 1; y++)
             {
-                long neighborKey = key + ((long)x << 32) + (y & 0xFFFFFFFFL);
+                long neighborX = baseX + x;
+                long neighborY = baseY + y;
+
+                long neighborKey = GetCellKey(neighborX, neighborY);
 
                 if (spatialBuckets.TryGetValue(neighborKey, out var nodeIndices))
                 {
