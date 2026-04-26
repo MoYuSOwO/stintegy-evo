@@ -14,7 +14,7 @@ public partial class PowerConfig : Resource
 {
     [ExportGroup("Engine Power (引擎动力)")]
     [Export] public float BaseForce { get; set; } = 1500f;
-    [Export] public Curve? RPMForceCurve { get; set; }
+    [Export] public Curve RPMForceCurve { get; set; } = GetDefualtCurve();
 
     [ExportGroup("RPM Settings (转速设定)")]
     [Export] public float IdleRPM { get; set; } = 1000f;
@@ -52,7 +52,7 @@ public partial class PowerConfig : Resource
 
     public float GetForceRatioAtRPMRatio(float rpmRatio)
     {
-        return RPMForceCurve == null ? 1.0f - rpmRatio : RPMForceCurve.Sample(rpmRatio);
+        return RPMForceCurve.Sample(rpmRatio);
     }
 
     public float InternalFinalDrive => 0.8f + (FinalDrive - 2.5f) / 3.0f * 0.45f;
@@ -67,5 +67,44 @@ public partial class PowerConfig : Resource
     public float GetMaxSpeedAtGear(int gear)
     {
         return GearboxConfig[gear - 1].MaxSpeed / InternalFinalDrive;
+    }
+
+    private static Curve? defaultCurve;
+
+    private static Curve GetDefualtCurve()
+    {
+        if (defaultCurve != null) return defaultCurve;
+        defaultCurve = new();
+        defaultCurve.AddPoint(
+            position: new Vector2(0.0f, 0.3f),
+            leftTangent: 0, 
+            rightTangent: 1.0f,
+            leftMode: Curve.TangentMode.Linear,
+            rightMode: Curve.TangentMode.Free
+        );
+        defaultCurve.AddPoint(
+            position: new Vector2(0.4f, 0.65f),
+            leftTangent: 1.0f,
+            rightTangent: 1.5f,
+            leftMode: Curve.TangentMode.Free,
+            rightMode: Curve.TangentMode.Free
+        );
+        defaultCurve.AddPoint(
+            position: new Vector2(0.8f, 1.0f),
+            leftTangent: 0.5f,
+            rightTangent: -2.0f,
+            leftMode: Curve.TangentMode.Free,
+            rightMode: Curve.TangentMode.Free
+        );
+        defaultCurve.AddPoint(
+            position: new Vector2(1.0f, 0.5f),
+            leftTangent: -2.0f,
+            rightTangent: 0,
+            leftMode: Curve.TangentMode.Free,
+            rightMode: Curve.TangentMode.Linear
+        );
+        defaultCurve.BakeResolution = 100;
+        defaultCurve.Bake();
+        return defaultCurve;
     }
 }
