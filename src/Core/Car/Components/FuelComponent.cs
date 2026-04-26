@@ -24,6 +24,11 @@ public class FuelComponent(FuelConfig config, float initialL)
         CurrentL = Math.Max(0f, CurrentL);
     }
 
+    public void Refuel()
+    {
+        CurrentL = Config.CapacityL;
+    }
+
     public void Refuel(float amountL)
     {
         CurrentL = Math.Min(Config.CapacityL, CurrentL + amountL);
