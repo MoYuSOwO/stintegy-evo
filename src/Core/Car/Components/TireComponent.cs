@@ -51,7 +51,7 @@ public class TireComponent(TireConfig config, float initEnvTemp)
     public float CurrLatPeakFriction => Config.LatPeakFriction * GripFactor;
     public float CurrLongPeakFriction => Config.LongPeakFriction * GripFactor;
 
-    public TireOutput UpdatePhysics(
+    public TireOutput UpdateAndGetTire(
         float demandFx, float fz, 
         Vector2 v, float dt, float envTemp
     )

@@ -13,7 +13,7 @@ public class PowerComponent(PowerConfig config)
     private float clutchKick = 0.0f;
     private float revLimiterTimer = 0.0f;
 
-    public float CalculateDriveForce(float throttle, float carSpeed, float dt)
+    public float UpdateAndGetDriveForce(float throttle, float carSpeed, float dt)
     {
         UpdateGearAndFakeRPM(throttle, carSpeed, dt);
 

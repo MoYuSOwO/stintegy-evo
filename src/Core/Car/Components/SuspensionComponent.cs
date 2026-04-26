@@ -7,11 +7,12 @@ namespace PloyRacing.Core.Car.Components;
 public class SuspensionComponent(SuspensionConfig config, CarLoad initialLoad)
 {
     public readonly SuspensionConfig Config = config;
-    private CarLoad load = initialLoad;
+    private CarLoad _load = initialLoad;
+    public CarLoad Load => _load;
 
-    public CarLoad UpdateLoads(
+    public CarLoad CalculateSteadyStateLoad(
         float mass, float staticWeightDistFront, float cgHeight, float wheelBase, float width,
-        float accelLong, float accelLat, float downforceFront, float downforceRear, float dt
+        float accelLong, float accelLat, float downforceFront, float downforceRear
     )
     {
         float totalWeight = mass * GeomUtil.g;
@@ -38,14 +39,33 @@ public class SuspensionComponent(SuspensionConfig config, CarLoad initialLoad)
         targetRL = Mathf.Max(0.1f, targetRL);
         targetRR = Mathf.Max(0.1f, targetRR);
 
+        return new CarLoad()
+        {
+            FrontLeft = targetFL,
+            FrontRight = targetFR,
+            RearLeft = targetRL,
+            RearRight = targetRR
+        };
+    }
+
+    public CarLoad UpdateAndGetLoad(
+        float mass, float staticWeightDistFront, float cgHeight, float wheelBase, float width,
+        float accelLong, float accelLat, float downforceFront, float downforceRear, float dt
+    )
+    {
+        CarLoad target = CalculateSteadyStateLoad(
+            mass, staticWeightDistFront, cgHeight, wheelBase, width,
+            accelLong, accelLat, downforceFront, downforceRear
+        );
+
         // 避震筒阻尼模拟 (Low-Pass Filter)
         // 让载荷平滑过渡，消除 Pacejka 因为载荷突变导致的数值震荡
         float alpha = 1.0f - (float) Mathf.Exp(-Config.DampingSpeed * dt);
-        load.FrontLeft += (targetFL - load.FrontLeft) * alpha;
-        load.FrontRight += (targetFR - load.FrontRight) * alpha;
-        load.RearLeft += (targetRL - load.RearLeft) * alpha;
-        load.RearRight += (targetRR - load.RearRight) * alpha;
+        _load.FrontLeft += (target.FrontLeft - _load.FrontLeft) * alpha;
+        _load.FrontRight += (target.FrontRight - _load.FrontRight) * alpha;
+        _load.RearLeft += (target.RearLeft - _load.RearLeft) * alpha;
+        _load.RearRight += (target.RearRight - _load.RearRight) * alpha;
 
-        return load;
+        return _load;
     }
 }
