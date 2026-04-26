@@ -47,10 +47,13 @@ public class TireComponent(TireConfig config, float initEnvTemp)
     }
     public float Wear { get; private set; } = 0.0f;
 
+    public float GripFactor => GetTempGripFactor() * GetWearGripFactor() * GetPressureGripFactor();
+    public float CurrLatPeakFriction => Config.LatPeakFriction * GripFactor;
+    public float CurrLongPeakFriction => Config.LongPeakFriction * GripFactor;
+
     public TireOutput UpdatePhysics(
         float demandFx, float fz, 
-        float vLong, float vLat, float dt, float envTemp,
-        float? steeringAngle = null
+        Vector2 v, float dt, float envTemp
     )
     {
         if (fz <= 0.1f)
@@ -64,27 +67,23 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         }
 
         // 1. 结算当前环境系数带来的抓地力惩罚
-        float gripFactor = GetTempGripFactor() * GetWearGripFactor() * GetPressureGripFactor();
-        float currLatPeakFriction = Config.LatPeakFriction * gripFactor;
-        float currLongPeakFriction = Config.LongPeakFriction * gripFactor;
-        float currLatMaxGrip = fz * currLatPeakFriction;
-        float currLongMaxGrip = fz * currLongPeakFriction;
+        float currLatMaxGrip = fz * CurrLatPeakFriction;
+        float currLongMaxGrip = fz * CurrLongPeakFriction;
 
         // 2. 纵向拟合 (无滑移率版本的 Peak & Sliding 模型)
         float frictionFx = CalculateLongitudinalForce(demandFx, currLongMaxGrip);
         float actualFx = frictionFx;
         float pressureRatio = Mathf.Clamp(Config.OptimalMinPressure / Mathf.Max(Pressure, 0.1f), 0.8f, 3.0f);
         float rollingResCoef = Config.DefaultRollingResCoef * pressureRatio;
-        if (Mathf.Abs(vLong) > 0.1f)
+        if (Mathf.Abs(v.X) > 0.1f)
         {
-            float rollingDragForce = Mathf.Sign(vLong) * fz * rollingResCoef;
+            float rollingDragForce = Mathf.Sign(v.X) * fz * rollingResCoef;
             actualFx -= rollingDragForce; 
         }
 
         // 3. 横向 Pacejka
-        float absVLong = Mathf.Abs(vLong);
-        float slipAngle = (absVLong < 0.1f) ? 0f : Mathf.Atan2(vLat, absVLong);
-        if (steeringAngle != null && Config.Type.IsFront()) slipAngle -= (float)steeringAngle;
+        float absVLong = Mathf.Abs(v.X);
+        float slipAngle = Mathf.Atan2(v.Y, absVLong + 0.01f);
 
         float latStiff = Config.LatStiffness * GetPressureStiffnessFactor();
         float rawFy = CalculatePacejkaLat(slipAngle, latStiff, currLatMaxGrip);
@@ -96,12 +95,12 @@ public class TireComponent(TireConfig config, float initEnvTemp)
 
         float wastedForce = Mathf.Max(0f, Mathf.Abs(demandFx) - Mathf.Abs(frictionFx));
 
-        bool isBraking = (demandFx * vLong) < -0.1f; 
+        bool isBraking = (demandFx * v.X) < -0.1f; 
         bool isLockedUp = isBraking && (wastedForce > 0f);
         
         bool isSliding = (wastedForce > 0f) || (Mathf.Abs(rawFy) > availableFy);
 
-        UpdateThermodynamics(fz, vLong, vLat, actualFy, wastedForce, isLockedUp, envTemp, dt);
+        UpdateThermodynamics(fz, v, actualFy, wastedForce, isLockedUp, envTemp, dt);
 
         return new TireOutput
         {
@@ -139,12 +138,12 @@ public class TireComponent(TireConfig config, float initEnvTemp)
     private float CalculatePacejkaLat(float alpha, float stiffness, float peakGrip)
     {
         float x = alpha * stiffness;
-        return peakGrip * Mathf.Sin(TireConfig.LatShape * Mathf.Atan(x - Config.LatDrop * (x - Mathf.Atan(x))));
+        return -peakGrip * Mathf.Sin(TireConfig.LatShape * Mathf.Atan(x - Config.LatDrop * (x - Mathf.Atan(x))));
     }
 
-    private void UpdateThermodynamics(float fz, float vLong, float vLat, float actualFy, float wastedForce, bool isLockedUp, float envTemp, float dt)
+    private void UpdateThermodynamics(float fz, Vector2 v, float actualFy, float wastedForce, bool isLockedUp, float envTemp, float dt)
     {
-        float speedMs = Mathf.Sqrt(vLong * vLong + vLat * vLat);
+        float speedMs = v.Length();
 
         // 更新胎压和滚阻影响
         float pressureRatio = Mathf.Clamp(Config.OptimalMinPressure / Math.Max(Pressure, 0.1f), 0.8f, 3.0f);
@@ -157,17 +156,17 @@ public class TireComponent(TireConfig config, float initEnvTemp)
             if (isLockedUp)
             {
                 // 刹车抱死：轮胎停转，以车身全速在地上死拖！
-                deltaVSlip = Mathf.Abs(vLong); 
+                deltaVSlip = Mathf.Abs(v.X); 
             }
             else
             {
                 // 引擎空转：车在走，轮子转得更快。滑移速度与多出的力成正比。
-                deltaVSlip = Mathf.Min(speedMs, wastedForce * TireConfig.WastedForceToSlipVCoef + (Mathf.Abs(vLong) < 0.5f ? TireConfig.StartingBurnoutBaseSlipV : 0f));
+                deltaVSlip = Mathf.Min(speedMs, wastedForce * TireConfig.WastedForceToSlipVCoef + (Mathf.Abs(v.X) < 0.5f ? TireConfig.StartingBurnoutBaseSlipV : 0f));
             }
         }
 
         float frictionPowerLong = wastedForce * deltaVSlip; // 纵向滑移生热
-        float frictionPowerLat = Mathf.Abs(actualFy) * Mathf.Abs(vLat); // 横向侧滑生热
+        float frictionPowerLat = Mathf.Abs(actualFy) * Mathf.Abs(v.Y); // 横向侧滑生热
 
         // 能量守恒
         float frictionEnergy = (frictionPowerLong + frictionPowerLat) * dt;
