@@ -13,4 +13,8 @@ public partial class ChassisConfig : Resource
     [Export] public float Width { get; set; } = 2.0f;
     [Export] public float Length { get; set; } = 4.4f;
     [Export(PropertyHint.Range, "0.3, 0.7")] public float WeightDistFront { get; set; } = 0.50f;
+
+    public float TrackWidth => Width;
+    public float HalfTrackWidth => TrackWidth / 2.0f;
+    public float HalfWheelBase => WheelBase / 2.0f;
 }
