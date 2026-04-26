@@ -7,7 +7,7 @@ public class AeroComponent(AeroConfig config)
 {
     public readonly AeroConfig Config = config;
 
-    public AeroOutput UpdateAero(float speed, float dirtyAirFactor = 0f)
+    public AeroOutput CalculateAero(float speed, float dirtyAirFactor = 0f)
     {
         // 动态压力： 0.5 * rho * v^2
         float dynamicPressure = 0.5f * AeroConfig.AirDensity * (speed * speed);

@@ -68,7 +68,7 @@ public class BrakeComponent(BrakeConfig config, float envTemp, float initBiasFro
         return Mathf.Min(Math.Max(envTemp, currentTemp + tempRise - heatLoss), BrakeConfig.AbsoluteMaxTemp + 0.5f);
     }
 
-    private float CalculateEfficiency(float tireTemp, float envTemp)
+    public float CalculateEfficiency(float tireTemp, float envTemp)
     {
         if (temp.IsFailure) return BrakeConfig.FatalFailureEfficiency;
         else if (tireTemp >= Config.OptimalMinTemp && tireTemp <= Config.OptimalMaxTemp) return 1.0f;

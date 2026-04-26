@@ -8,7 +8,7 @@ public class DifferentialComponent(DifferentialConfig config)
 {
     public readonly DifferentialConfig Config = config;
 
-    public DifferentialOutput DistributeForce(
+    public DifferentialOutput CalculateDistributeForce(
         float inputForce, float gripLeft, float gripRight,
         float carSpeed, float angularVelocity, float carWidth
     )
