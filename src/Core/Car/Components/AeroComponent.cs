@@ -1,7 +1,7 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
+using StintegyEVO.Core.Car.Configs;
 
-namespace PloyRacing.Core.Car.Components;
+namespace StintegyEVO.Core.Car.Components;
 
 public class AeroComponent(AeroConfig config)
 {
@@ -9,17 +9,16 @@ public class AeroComponent(AeroConfig config)
 
     public AeroOutput CalculateAero(float speed, float dirtyAirFactor = 0f)
     {
-        // 动态压力： 0.5 * rho * v^2
+        // Dynamic pressure： 0.5 * rho * v^2
         float dynamicPressure = 0.5f * AeroConfig.AirDensity * (speed * speed);
 
-        // 乱流影响：跟车时，阻力变小 (尾流效应)，下压力暴跌 (失去抓地力)
-        float dragMultiplier = 1.0f - (dirtyAirFactor * 0.2f); // 阻力最多减少 20%
-        float dfMultiplier = 1.0f - (dirtyAirFactor * 0.4f);   // 下压力最多暴跌 40%
+        // Turbulence effects: When following another vehicle, drag decreases (wake effect), downforce drops sharply (loss of grip).
+        float dragMultiplier = 1.0f - (dirtyAirFactor * 0.2f); // drag decreases at most 20%
+        float dfMultiplier = 1.0f - (dirtyAirFactor * 0.4f);   // downforce decreases at most 40%
 
-        // 计算阻力 Fd = 0.5 * rho * v^2 * Cd * A
+        // Calculate drag: Fd = 0.5 * rho * v^2 * Cd * A
         float drag = dynamicPressure * Config.BaseDragCoef * Config.FrontalArea * dragMultiplier;
 
-        // 计算总下压力
         float totalDownforce = dynamicPressure * Config.DownforceCoef * Config.FrontalArea * dfMultiplier;
 
         return new AeroOutput

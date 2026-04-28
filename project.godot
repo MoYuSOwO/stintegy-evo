@@ -10,10 +10,10 @@ config_version=5
 
 [application]
 
-config/name="PloyRacing"
+config/name="StintegyEVO"
 run/main_scene="uid://cv83jpnvwp8l0"
 config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
-config/icon="res://icon.svg"
+config/icon="uid://cbbaum5h1x08n"
 
 [display]
 
@@ -22,7 +22,7 @@ window/stretch/aspect="expand"
 
 [dotnet]
 
-project/assembly_name="PloyRacing"
+project/assembly_name="StintegyEVO"
 
 [physics]
 

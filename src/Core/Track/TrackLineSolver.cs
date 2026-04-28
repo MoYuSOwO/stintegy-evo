@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using Godot;
 
-namespace PloyRacing.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 public static class TrackLineSolver
 {
@@ -26,7 +26,7 @@ public static class TrackLineSolver
             upper[i] = nodes[i].HalfWidth - safeMargin;
         }
 
-        // 计算中心线投影曲率 K
+        // Calculate the curvature K of the centerline projection
         double[] K = new double[N];
 
         for (int i = 0; i < N; i++)
@@ -52,7 +52,7 @@ public static class TrackLineSolver
             hRows.Add(r); hCols.Add(c); hVals.Add(v);
         }
 
-        // 严格组装 q 和 H (只遍历合法的二阶差分区间)
+        // Strictly assemble q and H (only traverse valid second-order difference intervals)
         for (int i = 0; i < N; i++)
         {
             int im1 = (i - 1 + N) % N;
@@ -60,12 +60,12 @@ public static class TrackLineSolver
 
             double Ki = K[i];
 
-            // 线性项 q 分发
+            // Linear term q
             q[im1] += 2.0 * Ki;
             q[i]   -= 4.0 * Ki;
             q[ip1] += 2.0 * Ki;
 
-            // 二次项 H 五对角展开
+            // Five-diagonal expansion of the quadratic term H
             AddH(im1, im1, 2.0);
             AddH(i, i, 8.0);
             AddH(ip1, ip1, 2.0);
@@ -75,13 +75,13 @@ public static class TrackLineSolver
             AddH(im1, ip1, 2.0);
         }
 
-        // 正则化保证正定
+        // Regularization guarantees positive definiteness
         for (int i = 0; i < N; i++)
         {
             AddH(i, i, 1e-6);
         }
 
-        // ALGLIB 求解
+        // Solve by ALGLIB
         alglib.sparsecreate(N, N, out alglib.sparsematrix hMatrix);
         for (int idx = 0; idx < hRows.Count; idx++)
         {
@@ -95,7 +95,7 @@ public static class TrackLineSolver
         alglib.minqpsetscaleautodiag(state);
         alglib.minqpsetalgoquickqp(state, 0.0, 0.0, 0.0, 0, true);
         alglib.minqpoptimize(state);
-        alglib.minqpresults(state, out double[] resultAlpha, out alglib.minqpreport rep);
+        alglib.minqpresults(state, out double[] resultAlpha, out _);
 
         for (int i = 0; i < N; i++)
         {
@@ -130,13 +130,11 @@ public static class TrackLineSolver
                 float sum = 0;
                 float weightSum = 0;
 
-                // 收集窗口内的点
                 for (int j = -window; j <= window; j++)
                 {
                     int idx;
-                    idx = (i + j + N) % N; // 环形取模，接缝完美融合
+                    idx = (i + j + N) % N;
 
-                    // 简单的距离衰减权重 (中间高，两边低)
                     float weight = 1.0f / (1.0f + Math.Abs(j)); 
                     sum += currentAlphas[idx] * weight;
                     weightSum += weight;
@@ -144,11 +142,9 @@ public static class TrackLineSolver
                 tempAlphas[i] = sum / weightSum;
             }
             
-            // 将本趟平滑结果覆写回去，准备下一趟
             Array.Copy(tempAlphas, currentAlphas, N);
         }
 
-        // 把平滑后的结果写回真实赛车线数据
         for (int i = 0; i < N; i++)
         {
             lines[i] = currentAlphas[i];

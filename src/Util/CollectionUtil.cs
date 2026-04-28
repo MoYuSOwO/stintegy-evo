@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace PloyRacing.Util;
+namespace StintegyEVO.Util;
 
 public static class IListExtensions
 {

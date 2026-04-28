@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using Godot;
 
-namespace PloyRacing.Core.Car.Configs;
+namespace StintegyEVO.Core.Car.Configs;
 
 public struct DistributorOutput
 {
@@ -14,13 +14,13 @@ public struct DistributorOutput
 public partial class DistributorConfig : Resource
 {
     [Export(PropertyHint.Range, "0.0, 1.0")]
-    public float FrontBias { get; set; } = 0.5f; // 前轴驱动力占比 (0=纯后驱，1=纯前驱)
+    public float FrontBias { get; set; } = 0.5f; // Front axle drive force ratio (0 = pure rear-wheel drive, 1 = pure front-wheel drive)
 
     [Export(PropertyHint.Range, "0.0, 1.0")]
-    public float VectoringStrength { get; set; } = 0.35f; // 扭矩矢量强度 (0=无矢量，1=最大)
+    public float VectoringStrength { get; set; } = 0.35f; // Torque vector strength (0 = no vector, 1 = maximum)
 
     [Export(PropertyHint.Range, "0.0, 1.0")]
-    public float FrontVectoringScale { get; set; } = 0.3f; // 前轴矢量缩放 (通常比后轴弱)
+    public float FrontVectoringScale { get; set; } = 0.3f; // Front axle vector scaling
 
-    public const float VectoringLossFactor = 0.03f; // 矢量损耗系数 (每1N力差损耗的功率比例)
+    public const float VectoringLossFactor = 0.03f; // Vector loss factor (the proportion of power lost per 1N force difference)
 }

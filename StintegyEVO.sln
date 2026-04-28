@@ -1,6 +1,6 @@
 ﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PloyRacing", "PloyRacing.csproj", "{17422C1D-9D51-46C8-997F-BE0B560AC849}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO", "StintegyEVO.csproj", "{17422C1D-9D51-46C8-997F-BE0B560AC849}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -1,8 +1,8 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
+using StintegyEVO.Core.Car.Configs;
 using System;
 
-namespace PloyRacing.Core.Car.Components;
+namespace StintegyEVO.Core.Car.Components;
 
 public struct BasePressureCondition
 {
@@ -30,7 +30,6 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         TireConfig.AbsoluteMaxPressure
     );
 
-    // 实时状态
     public float SurfaceTemp { get; private set; } = initEnvTemp;
     public float CoreTemp { get; private set; } = initEnvTemp;
     public float Pressure 
@@ -73,14 +72,14 @@ public class TireComponent(TireConfig config, float initEnvTemp)
             };
         }
 
-        // 1. 轮速子步积分
+        // 1. Wheel speed substep integration
         float subDt = dt / SubSteps;
         float peakLongGrip = fz * CurrLongPeakFriction;
         for (int i = 0; i < SubSteps; i++)
         {
             float wheelSpeed = WheelAngularVel * radius;
 
-            // 防震荡
+            // Avoid wheel speed unstable when stop
             if (Mathf.Abs(carSpeedLong) < 0.5f && Mathf.Abs(powerTorque) < 5.0f)
             {
                 WheelAngularVel = carSpeedLong / radius;
@@ -90,37 +89,35 @@ public class TireComponent(TireConfig config, float initEnvTemp)
             float slipRatio = CalculateSlipRatio(wheelSpeed, carSpeedLong);
             float actualLongForce = CalculatePacejkaLong(slipRatio, Config.LongStiffness, peakLongGrip);
 
-            // 地面力对轮心的力矩（注意符号：若驱动，地面力向后推车，对轮子产生反向扭矩）
             float groundTorque = actualLongForce * radius;
-            // 驱动扭矩
             float netTorque = powerTorque - groundTorque;
             float angularAccel = netTorque / Config.Inertia;
             WheelAngularVel += angularAccel * subDt;
         }
 
-        // 2. 最终状态计算
+        // 2. Final longitudinal force
         float finalWheelSpeed = WheelAngularVel * radius;
         float finalSlipRatio = CalculateSlipRatio(finalWheelSpeed, carSpeedLong);
         float finalPeakLongGrip = fz * CurrLongPeakFriction;
         float finalLongForce = CalculatePacejkaLong(finalSlipRatio, Config.LongStiffness, finalPeakLongGrip);
 
-        // 3. 横向力（Pacejka）
+        // 3. Lateral force
         float peakLatGrip = fz * CurrLatPeakFriction;
         float slipAngle = Mathf.Atan2(v.Y, Mathf.Abs(carSpeedLong) + 0.01f);
         float latStiffness = Config.LatStiffness * GetPressureStiffnessFactor();
         float rawFy = CalculatePacejkaLat(slipAngle, latStiffness, peakLatGrip);
 
-        // 4. 摩擦椭圆约束
+        // 4. Friction Ellipse Constraint
         float longRatio = Mathf.Clamp(Mathf.Abs(finalLongForce) / peakLongGrip, 0f, 1f);
         float allowedLat = peakLatGrip * Mathf.Sqrt(1f - longRatio * longRatio);
         float actualFy = Mathf.Clamp(rawFy, -allowedLat, allowedLat);
 
-        // 5. 发热与磨损
+        // 5. Heat & Wear
         float slipPowerLong = Mathf.Abs(finalLongForce) * Mathf.Abs(finalWheelSpeed - carSpeedLong);
         float slipPowerLat = Mathf.Abs(actualFy) * Mathf.Abs(v.Y);
         UpdateHeatAndWear(fz, v.Length(), slipPowerLong, slipPowerLat, envTemp, dt);
 
-        // 6. 判定滑动状态
+        // 6. Judge
         bool isBraking = (finalLongForce * carSpeedLong) < -0.1f;
         bool isLockedUp = isBraking && (Mathf.Abs(finalWheelSpeed) < 0.2f);
         bool isSliding = Mathf.Abs(finalSlipRatio) > 0.05f || (Mathf.Abs(rawFy) > allowedLat + 0.1f);
@@ -136,12 +133,16 @@ public class TireComponent(TireConfig config, float initEnvTemp)
     private static float CalculateSlipRatio(float wheelSpeed, float carSpeed)
     {
         const float eps = 0.01f;
-        if (wheelSpeed > carSpeed) // 驱动打滑
+
+        // Drive slip
+        if (wheelSpeed > carSpeed)
         {
             float denom = Mathf.Max(Mathf.Abs(wheelSpeed), eps);
             return (wheelSpeed - carSpeed) / denom;
         }
-        else if (wheelSpeed < carSpeed) // 制动打滑
+
+        // Brake slip
+        else if (wheelSpeed < carSpeed)
         {
             float denom = Mathf.Max(Mathf.Abs(carSpeed), eps);
             return -(carSpeed - wheelSpeed) / denom;
@@ -165,7 +166,7 @@ public class TireComponent(TireConfig config, float initEnvTemp)
 
     private void UpdateHeatAndWear(float fz, float speedMs, float longSlipPower, float latSlipPower, float envTemp, float dt)
     {
-        // 摩擦能量注入表层
+        // Friction energy
         float longEnergy = longSlipPower * dt;
         float latEnergy = latSlipPower * dt;
         float totalFrictionEnergy = longEnergy + latEnergy;
@@ -174,33 +175,33 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         float surfaceMass = Config.Mass * TireConfig.SurfaceMassRatio;
         float coreMass = Config.Mass - surfaceMass;
 
-        // 表层升温
+        // Surface temp rise
         float tempRise = totalFrictionEnergy / (surfaceMass * TireConfig.SpecificHeat);
         SurfaceTemp += tempRise;
 
-        // 内核滚动摩擦升温
+        // Core temp rise
         CoreTemp += rollingEnergy / (coreMass * TireConfig.SpecificHeat);
 
-        // 内部热传导（表层->内核）
+        // Internal heat conduction (surface to core)
         float internalTransfer = (SurfaceTemp - CoreTemp) * TireConfig.InternalHeatTransCoef * dt;
         SurfaceTemp -= internalTransfer / (surfaceMass * TireConfig.SpecificHeat);
         CoreTemp += internalTransfer / (coreMass * TireConfig.SpecificHeat);
 
-        // 风冷散热
+        // Air cooling
         float coolingRate = TireConfig.BaseCoolingCoef + TireConfig.AirCoolingCoef * speedMs;
         float envTransfer = (SurfaceTemp - envTemp) * coolingRate * dt;
         SurfaceTemp -= envTransfer / (surfaceMass * TireConfig.SpecificHeat);
 
-        // 磨损计算（基于摩擦功）
+        // Wear calculation (based on friction work)
         float longWear = longEnergy * Config.BaseLongWearRate;
         float latWear = latEnergy * Config.BaseLatWearRate;
-        // 可增加温度惩罚
+        // Overheat penalty
         float thermalMult = 1.0f;
         if (SurfaceTemp > Config.OptimalMaxTemp)
             thermalMult += (SurfaceTemp - Config.OptimalMaxTemp) * Config.ThermalWearCoef;
         Wear = Mathf.Clamp(Wear + (longWear + latWear) * thermalMult, 0f, 1f);
 
-        // 胎压更新（理想气体方程）
+        // Tire pressure update (ideal gas equation)
         Pressure = condition.pressure * (CoreTemp + 273.15f) / (condition.temp + 273.15f);
     }
 

@@ -1,6 +1,6 @@
 using Godot;
 
-namespace PloyRacing.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 internal readonly struct TrackNode(
     Vector2 center, Vector2 tangent, float width, float leftBufferWidth, float rightBufferWidth
@@ -18,7 +18,7 @@ internal readonly struct TrackNode(
     public readonly Vector2 RightEdge => Center - Normal * HalfWidth;
 
 
-    // 左加右减
+    // left +, right -
     public Vector2 GetOffsetPos(float offset)
     {
         return Center + Normal * offset;

@@ -1,12 +1,11 @@
-using System;
 using System.Collections.Immutable;
 using Godot;
-using PloyRacing.Core.Car.Components;
-using PloyRacing.Core.Car.Configs;
-using PloyRacing.Core.Track;
-using PloyRacing.Nodes.Race;
+using StintegyEVO.Core.Car.Components;
+using StintegyEVO.Core.Car.Configs;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Nodes.Race;
 
-namespace PloyRacing.Core.Car;
+namespace StintegyEVO.Core.Car;
 
 public struct ForceGiver
 {
@@ -89,7 +88,7 @@ public class CarLogic
         Vector2 localVel, Vector2 localAccel, float angularVel, float currentMass
     )
     {
-        // 阿克曼转向几何换算
+        // Ackermann steering geometry
         float maxSteerAngle = Config.Chassis.MaxSteerAngle; 
         float deltaRef = steer * maxSteerAngle;
 
@@ -102,16 +101,18 @@ public class CarLogic
 
         if (tanDelta > 0.001f)
         {
-            float R = L / tanDelta; // 计算转弯半径
-            float deltaInner = Mathf.Atan(L / (R - W / 2f)); // 内侧轮转角更大
-            float deltaOuter = Mathf.Atan(L / (R + W / 2f)); // 外侧轮转角更小
+            float R = L / tanDelta; // Calculate the turning radius
+            float deltaInner = Mathf.Atan(L / (R - W / 2f)); // Inner wheel has a larger turning angle
+            float deltaOuter = Mathf.Atan(L / (R + W / 2f)); // Outter wheel has a smaller turning angle
 
-            if (deltaRef > 0) // 右转
+            // Turn right
+            if (deltaRef > 0)
             {
                 steerFR = deltaInner;
                 steerFL = deltaOuter;
             }
-            else // 左转
+            // Turn left
+            else
             {
                 steerFL = -deltaInner;
                 steerFR = -deltaOuter;
@@ -120,10 +121,10 @@ public class CarLogic
 
         float speed = localVel.Length();
 
-        // 空气动力学 (先假设没有脏空气)
+        // Aerodynamics (assuming no dirty air)
         AeroOutput aeroOutput = Aero.CalculateAero(speed, 0f);
 
-        // 悬挂系统
+        // Suspension system
         CarLoad currentLoad = Suspension.UpdateAndGetLoad(
             currentMass,
             Config.Chassis.WeightDistFront,
@@ -137,7 +138,7 @@ public class CarLogic
             dt
         );
 
-        // 动力层提需求
+        // Power
         PowerOutput powerOutput = Power.UpdateAndGetDriveForce(input, speed, Battery.SocPct);
 
         var driveDist = Distributor.CalculateDistributeForce(powerOutput.Drive, steer, speed);
@@ -150,13 +151,13 @@ public class CarLogic
         float axRL = RearAxleX, ayRL = -halfTrack;
         float axRR = RearAxleX, ayRR = halfTrack;
 
-        // 计算轮胎位置的车身坐标系速度
+        // Calculate the vehicle coordinate system velocity of the tire position
         Vector2 velFL_Chassis = localVel + new Vector2(-angularVel * ayFL, angularVel * axFL);
         Vector2 velFR_Chassis = localVel + new Vector2(-angularVel * ayFR, angularVel * axFR);
         Vector2 velRL_Chassis = localVel + new Vector2(-angularVel * ayRL, angularVel * axRL);
         Vector2 velRR_Chassis = localVel + new Vector2(-angularVel * ayRR, angularVel * axRR);
 
-        // 将前轮速度旋转到轮胎局部坐标系
+        // Rotate the front wheel speed to the tire's local coordinate system
         Vector2 velFL_Tire = velFL_Chassis.Rotated(-steerFL);
         Vector2 velFR_Tire = velFR_Chassis.Rotated(-steerFR);
         Vector2 velRL_Tire = velRL_Chassis;
@@ -191,7 +192,7 @@ public class CarLogic
 
         PhysicsOutput output = new();
 
-        // 空气阻力
+        // Air resistance
         if (localVel.LengthSquared() > 0.1f) 
         {
             Vector2 dragDirection = -localVel.Normalized();
@@ -199,8 +200,8 @@ public class CarLogic
             output.DragForce = localDrag;
         }
 
-        // 精确计算驱动消耗和回收充电（基于轮速）
-        // 纯驱动状态，电机输出正扭矩
+        // Calculate drive consumption and recharge recovery (based on wheel speed)
+        // Pure drive mode, the motor outputs positive torque
         if (powerOutput.Drive > 0)  
         {
             float totalDrivePower = 0f;
@@ -213,7 +214,7 @@ public class CarLogic
             Battery.Consume(totalDrivePower, dt);
         }
 
-        // 存在动能回收
+        // Regen exists
         if (powerOutput.Regen > 0)  
         {
             float totalRegenPower = 0f;
@@ -226,13 +227,13 @@ public class CarLogic
             Battery.Regen(totalRegenPower, dt);
         }
 
-        // 将前轮算出的力，旋转回车身坐标系
+        // Rotate the force calculated for the front wheels back into the vehicle's coordinate system
         Vector2 forceFL_Chassis = tireOutputs[0].Force.Rotated(steerFL);
         Vector2 forceFR_Chassis = tireOutputs[1].Force.Rotated(steerFR);
         Vector2 forceRL_Chassis = tireOutputs[2].Force;
         Vector2 forceRR_Chassis = tireOutputs[3].Force;
 
-        // 四个轮胎的抓地力
+        // Grip of four tires
         output.FrontLeft = new()
         {
             Force = forceFL_Chassis,

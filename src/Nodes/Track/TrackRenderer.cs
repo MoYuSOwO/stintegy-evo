@@ -1,13 +1,13 @@
 using System;
 using Godot;
-using PloyRacing.Core.Track;
+using StintegyEVO.Core.Track;
 
-namespace PloyRacing.Nodes.Track;
+namespace StintegyEVO.Nodes.Track;
 
 [Tool]
 public partial class TrackRenderer : Node2D
 {
-    [ExportGroup("Palette (配色)")]
+    [ExportGroup("Palette")]
     [Export] public Color BgColor = Color.FromHtml("#b8e994");
     [Export] public Color RoadColor = Color.FromHtml("#dfe4ea");
     [Export] public Color BufferColor = Color.FromHtml("#e8d3b9");
@@ -15,7 +15,7 @@ public partial class TrackRenderer : Node2D
     [Export] public Color RacingLineColor = Color.FromHtml("#91c788e4");
     [Export] public Color GridColor = Color.FromHtml("#fbfcf8cb");
 
-    [ExportGroup("Value (数值)")]
+    [ExportGroup("Value")]
     [Export] public float wallThickness = 2.4f;
     [Export] public float racingLineThickness = 1.0f;
     [Export] public float finishLineSquareSize = 0.5f;
@@ -50,7 +50,6 @@ public partial class TrackRenderer : Node2D
 
 	public void BuildTrackVisuals()
     {
-        // 每次重新生成前，清理旧的渲染节点
         foreach (Node child in GetChildren())
         {
             child.QueueFree();
@@ -58,21 +57,21 @@ public partial class TrackRenderer : Node2D
 
         if (Track.Length < 2) return;
 
-        // 1. 设置全屏背景（草地）
+        // Set full-screen background (grass)
         CreateDynamicBackground();
 
-        // 2. 绘制缓冲区 (层级 0)
+        // Draw buffer zones (z-index 0)
         DrawBufferZones(Track);
 
-        // 3. 绘制赛道主体 (层级 1, 2)
+        // Draw the main body of the track (z-index 1, 2)
         DrawRoad(Track);
         DrawStartingLine(Track);
         DrawStartingGrids(Track);
 
-        // 4. 绘制物理墙壁 (视觉描边 + 真实的 Collision) (层级 3)
+        // Draw physical walls (visual outline + physics Collision) (z-index 3)
         GenerateWalls(Track);
 
-        // 5. 绘制赛车线 (层级 4)
+        // Draw racing lines (z-index 4)
         DrawRacingLine(Track);
     }
 
@@ -102,7 +101,6 @@ public partial class TrackRenderer : Node2D
             vertices[i * 2 + 1] = trackData[idx].RightEdge;
         }
 
-        // 极简风不需要UV，只要顶点！
         MeshInstance2D roadMesh = CreateFlatMesh(vertices, RoadColor, 1);
         AddChild(roadMesh);
     }
@@ -112,7 +110,7 @@ public partial class TrackRenderer : Node2D
         var config = trackData.GridConfig;
         var node = trackData[config.StartingLineIdx];
         
-        // 终点线通常由两排黑白交替方块组成
+        // Two rows of alternating black and white squares
         int rows = 2;
         float totalWidth = node.HalfWidth * 2;
         int cols = Mathf.CeilToInt(totalWidth / finishLineSquareSize);
@@ -128,7 +126,6 @@ public partial class TrackRenderer : Node2D
                 bool isWhite = (r + c) % 2 == 0;
                 Color color = isWhite ? Colors.White : Colors.Black;
 
-                // 计算每个方格的四个顶点
                 float xOffsetStart = -node.HalfWidth + c * actualSqWidth;
                 float xOffsetEnd = xOffsetStart + actualSqWidth;
                 float yOffsetStart = r * finishLineSquareSize;
@@ -155,42 +152,35 @@ public partial class TrackRenderer : Node2D
 
         for (int i = 1; i <= config.GridCount; i++)
         {
-            // 获取发车位
             var grid = trackData.Grids[i];
             Vector2 center = grid.Position;
             var node = trackData[grid.Index];
 
-            // 框的实际尺寸 (稍微留白)
             float w = TrackGridConfig.GridWidth;
             float l = TrackGridConfig.GridLength;
 
-            // node.Tangent 是车头前方，node.Normal 是车身左侧
             Vector2 halfWidth = node.Normal * (w * 0.5f);
             Vector2 halfLength = node.Tangent * (l * 0.5f);
 
-            // 组装线段的 4 个顶点 (底边开口，不闭合)
-            // 顺序：左后 -> 左前 -> 右前 -> 右后
             Vector2[] linePoints =
             [
-                center - halfLength + halfWidth, // 1. 左后方起点
-                center + halfLength + halfWidth, // 2. 延伸到左前方
-                center + halfLength - halfWidth, // 3. 横跨到右前方 (车头那条线)
-                center - halfLength - halfWidth  // 4. 退回到右后方终点
+                center - halfLength + halfWidth,
+                center + halfLength + halfWidth,
+                center + halfLength - halfWidth,
+                center - halfLength - halfWidth
             ];
 
-            // 使用 Line2D 画出赛道上的“白线”
             Line2D gridLine = new()
             {
                 Width = startingLineThickness,
-                DefaultColor = GridColor, // 珍珠白
+                DefaultColor = GridColor,
                 ZIndex = 2,
                 Antialiased = true,
-                JointMode = Line2D.LineJointMode.Sharp, // 让框框的角是硬直角，而不是圆角
+                JointMode = Line2D.LineJointMode.Sharp,
                 BeginCapMode = Line2D.LineCapMode.Box,
                 EndCapMode = Line2D.LineCapMode.Box
             };
 
-            // 将顶点加入线段
             foreach (var pt in linePoints)
             {
                 gridLine.AddPoint(pt);
@@ -237,23 +227,18 @@ public partial class TrackRenderer : Node2D
             int idx = i % n;
             TrackPoint node = trackData[idx];
 
-            // 墙内侧 (贴着缓冲区)
             Vector2 leftWallInner = node.LeftEdge + node.Normal * node.LeftBufferWidth;
             Vector2 rightWallInner = node.RightEdge - node.Normal * node.RightBufferWidth;
             
-            // 墙外侧 (向外推展出一个厚度，形成Mesh)
             Vector2 leftWallOuter = leftWallInner + node.Normal * wallThickness;
             Vector2 rightWallOuter = rightWallInner - node.Normal * wallThickness;
 
-            // 填充左墙网格点
             leftWallVertices[i * 2] = leftWallOuter; 
             leftWallVertices[i * 2 + 1] = leftWallInner;
 
-            // 填充右墙网格点
             rightWallVertices[i * 2] = rightWallInner;
             rightWallVertices[i * 2 + 1] = rightWallOuter;
 
-            // 添加物理碰撞盒 (除最后一个闭合点外)
             if (i < n)
             {
                 int next = (i + 1) % n;

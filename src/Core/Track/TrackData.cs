@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Godot;
-using PloyRacing.Util;
+using StintegyEVO.Util;
 
-namespace PloyRacing.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 public struct TrackGridConfig
 {

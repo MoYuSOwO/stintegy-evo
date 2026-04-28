@@ -1,8 +1,8 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
-using PloyRacing.Util;
+using StintegyEVO.Core.Car.Configs;
+using StintegyEVO.Util;
 
-namespace PloyRacing.Core.Car.Components;
+namespace StintegyEVO.Core.Car.Components;
 
 public class SuspensionComponent(SuspensionConfig config, CarLoad initialLoad)
 {
@@ -19,21 +19,21 @@ public class SuspensionComponent(SuspensionConfig config, CarLoad initialLoad)
         float staticFront = totalWeight * staticWeightDistFront;
         float staticRear  = totalWeight * (1.0f - staticWeightDistFront);
 
-        // 理论总转移量
+        // Theoretical transfer
         float deltaWeightLong = (mass * accelLong * cgHeight) / wheelBase;
         float deltaWeightLat = (mass * accelLat * cgHeight) / width;
 
-        // Roll Balance 魔法分配
+        // Roll Balance
         float deltaLatFront = deltaWeightLat * Config.FrontRollBalance;
         float deltaLatRear  = deltaWeightLat * (1.0f - Config.FrontRollBalance);
 
-        // 计算稳态目标载荷
+        // Calculate steady-state target load
         float targetFL = (staticFront / 2f) - (deltaWeightLong / 2f) + deltaLatFront + (downforceFront / 2f);
         float targetFR = (staticFront / 2f) - (deltaWeightLong / 2f) - deltaLatFront + (downforceFront / 2f);
         float targetRL = (staticRear / 2f)  + (deltaWeightLong / 2f) + deltaLatRear  + (downforceRear / 2f);
         float targetRR = (staticRear / 2f)  + (deltaWeightLong / 2f) - deltaLatRear  + (downforceRear / 2f);
 
-        // 防止车辆腾空导致载荷变负
+        // Clamp
         targetFL = Mathf.Max(0.1f, targetFL);
         targetFR = Mathf.Max(0.1f, targetFR);
         targetRL = Mathf.Max(0.1f, targetRL);
@@ -58,8 +58,7 @@ public class SuspensionComponent(SuspensionConfig config, CarLoad initialLoad)
             accelLong, accelLat, downforceFront, downforceRear
         );
 
-        // 避震筒阻尼模拟 (Low-Pass Filter)
-        // 让载荷平滑过渡，消除 Pacejka 因为载荷突变导致的数值震荡
+        // damping simulation (Low-Pass Filter)
         float alpha = 1.0f - (float) Mathf.Exp(-Config.DampingSpeed * dt);
         _load.FrontLeft += (target.FrontLeft - _load.FrontLeft) * alpha;
         _load.FrontRight += (target.FrontRight - _load.FrontRight) * alpha;

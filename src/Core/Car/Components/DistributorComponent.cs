@@ -1,7 +1,7 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
+using StintegyEVO.Core.Car.Configs;
 
-namespace PloyRacing.Core.Car.Components;
+namespace StintegyEVO.Core.Car.Components;
 
 public class DistributorComponent(DistributorConfig config)
 {
@@ -10,23 +10,23 @@ public class DistributorComponent(DistributorConfig config)
     public DistributorOutput CalculateDistributeForce(float totalForce, float steerInput, float carSpeed)
     {
         DistributorOutput output = new();
-        // 1. 前后轴分配
+        // 1. Front and rear axle distribution
         float frontForce = totalForce * Config.FrontBias;
         float rearForce = totalForce * (1f - Config.FrontBias);
 
-        // 2. 扭矩矢量偏置量 (由方向盘角度和强度决定)
+        // 2. Torque vector offset (determined by steering wheel angle and strength in config)
         float vectoringOffset = Mathf.Clamp(steerInput, -1f, 1f) * Config.VectoringStrength;
 
-        // 后轴左右分配 (矢量主战场)
+        // Rear axle left and right distribution
         float rlBias = Mathf.Clamp(0.5f + vectoringOffset * 0.5f, 0f, 1f);
         float rrBias = 1f - rlBias;
 
-        // 前轴左右分配 (带缩放)
+        // Front axle left and right distribution (with scaling)
         float frontVectoringOffset = vectoringOffset * Config.FrontVectoringScale;
         float flBias = Mathf.Clamp(0.5f + frontVectoringOffset * 0.5f, 0f, 1f);
         float frBias = 1f - flBias;
 
-        // 3. 最终输出
+        // 3. Final output
         output.FrontLeft = frontForce * flBias;
         output.FrontRight = frontForce * frBias;
         output.RearLeft = rearForce * rlBias;

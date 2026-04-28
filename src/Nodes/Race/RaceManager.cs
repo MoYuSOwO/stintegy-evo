@@ -1,14 +1,14 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
-using PloyRacing.Core.Track;
-using PloyRacing.Nodes.Track;
-using PloyRacing.Nodes.Car;
+using StintegyEVO.Core.Car.Configs;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Nodes.Track;
+using StintegyEVO.Nodes.Car;
 using System;
 using System.Collections.Generic;
-using PloyRacing.Core.Car.Controllers;
-using PloyRacing.Core.Car;
+using StintegyEVO.Core.Car.Controllers;
+using StintegyEVO.Core.Car;
 
-namespace PloyRacing.Nodes.Race;
+namespace StintegyEVO.Nodes.Race;
 
 public partial class RaceManager : Node2D
 {
