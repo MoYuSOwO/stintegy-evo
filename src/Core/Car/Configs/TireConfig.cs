@@ -32,8 +32,8 @@ public partial class TireConfig(TireType tireType) : Resource
     [Export] public TireType Type { get; set; } = tireType;
     [Export] public bool IsSteer { get; set; } = tireType.IsFront();
     [Export] public float Radius { get; set; } = 0.33f;
-    [Export] public float Mass { get; set; } = 10.0f;
-    [Export] public float Inertia { get; set; } = 0.8f;
+    [Export] public float Mass { get; set; } = 12.0f;
+    [Export] public float Inertia { get; set; } = 1.0f;
     [Export] public float DefaultRollingResCoef { get; set; } = 0.015f;
 
     [ExportGroup("Lateral Pacejka")]
@@ -51,8 +51,8 @@ public partial class TireConfig(TireType tireType) : Resource
     [ExportGroup("Thermodynamics")]
     public const float SpecificHeat = 400.0f;
     public const float SurfaceMassRatio = 0.2f;
-    [Export] public float OptimalMinTemp { get; set; } = 70.0f;
-    [Export] public float OptimalMaxTemp { get; set; } = 100.0f;
+    [Export] public float OptimalMinTemp { get; set; } = 60.0f;
+    [Export] public float OptimalMaxTemp { get; set; } = 110.0f;
     [Export] public float ThermalWearCoef { get; set; } = 0.005f;
     public const float ColdSensitivity = 0.005f;
     public const float HotSensitivity = 0.0002f;
