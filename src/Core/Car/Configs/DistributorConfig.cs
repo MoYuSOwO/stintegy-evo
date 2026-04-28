@@ -14,10 +14,10 @@ public struct DistributorOutput
 public partial class DistributorConfig : Resource
 {
     [Export(PropertyHint.Range, "0.0, 1.0")]
-    public float FrontBias { get; set; } = 0.4f; // 前轴驱动力占比 (0=纯后驱，1=纯前驱)
+    public float FrontBias { get; set; } = 0.5f; // 前轴驱动力占比 (0=纯后驱，1=纯前驱)
 
     [Export(PropertyHint.Range, "0.0, 1.0")]
-    public float VectoringStrength { get; set; } = 0.5f; // 扭矩矢量强度 (0=无矢量，1=最大)
+    public float VectoringStrength { get; set; } = 0.35f; // 扭矩矢量强度 (0=无矢量，1=最大)
 
     [Export(PropertyHint.Range, "0.0, 1.0")]
     public float FrontVectoringScale { get; set; } = 0.3f; // 前轴矢量缩放 (通常比后轴弱)

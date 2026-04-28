@@ -15,7 +15,7 @@ public struct CarLoad
 [GlobalClass]
 public partial class SuspensionConfig : Resource
 {
-    [Export(PropertyHint.Range, "0.1, 0.9")] public float FrontRollBalance { get; set; } = 0.55f;
+    [Export(PropertyHint.Range, "0.1, 0.9")] public float FrontRollBalance { get; set; } = 0.60f;
 
     [Export] public float DampingSpeed { get; set; } = 10.0f;
 }
