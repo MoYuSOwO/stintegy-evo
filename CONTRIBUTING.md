@@ -1,9 +1,3 @@
-你这份贡献指南非常扎实，逻辑清晰，把开发者需要知道的所有关键信息都涵盖了。我很乐意帮你把它翻译成英文。
-
-以下是英文版：
-
----
-
 # Contributing Guide
 
 Thank you for your interest in **StintegyEVO**! This is a solo-initiated race strategy engineer simulator project currently in early development. We welcome all forms of contributions, including but not limited to code, documentation, art, UI, track data, vehicle tuning, and feedback.
