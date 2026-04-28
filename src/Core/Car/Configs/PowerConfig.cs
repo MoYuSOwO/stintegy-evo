@@ -11,13 +11,13 @@ public struct PowerOutput
 [GlobalClass]
 public partial class PowerConfig : Resource
 {
-    [Export] public float MaxDriveForce { get; set; } = 5000f;
+    [Export] public float MaxDriveForce { get; set; } = 7500f;
 
-    [Export] public float MaxPower { get; set; } = 200000f;
+    [Export] public float MaxPower { get; set; } = 250000f;
 
-    [Export] public float MaxRegenForce { get; set; } = 3000f;
+    [Export] public float MaxRegenForce { get; set; } = 4000f;
 
-    [Export] public float MaxBrakeForce { get; set; } = 12000f;
+    [Export] public float MaxBrakeForce { get; set; } = 15000f;
 
     [Export] public float BaseRegenForce { get; set; } = 200f;
 

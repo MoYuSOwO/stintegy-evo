@@ -5,9 +5,9 @@ namespace PloyRacing.Core.Car.Configs;
 [GlobalClass]
 public partial class BatteryConfig : Resource
 {
-    [Export] public float MaxChargePowerKW { get; set; } = 600f; // 最大充电功率 (千瓦)
+    [Export] public float MaxChargePowerKW { get; set; } = 150f; // 最大充电功率 (千瓦)
 
-    [Export] public float CapacityKWh { get; set; } = 100f; // 电池最大电量 (千瓦时)
+    [Export] public float CapacityKWh { get; set; } = 80f; // 电池最大电量 (千瓦时)
 
     [Export(PropertyHint.Range, "0.5,1.0")]
     public float DriveEfficiency { get; set; } = 0.92f; // 驱动时电能→机械能效率
