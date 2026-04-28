@@ -28,10 +28,10 @@ public class SuspensionComponent(SuspensionConfig config, CarLoad initialLoad)
         float deltaLatRear  = deltaWeightLat * (1.0f - Config.FrontRollBalance);
 
         // 计算稳态目标载荷
-        float targetFL = (staticFront / 2f) - (deltaWeightLong / 2f) - deltaLatFront + (downforceFront / 2f);
-        float targetFR = (staticFront / 2f) - (deltaWeightLong / 2f) + deltaLatFront + (downforceFront / 2f);
-        float targetRL = (staticRear / 2f)  + (deltaWeightLong / 2f) - deltaLatRear  + (downforceRear / 2f);
-        float targetRR = (staticRear / 2f)  + (deltaWeightLong / 2f) + deltaLatRear  + (downforceRear / 2f);
+        float targetFL = (staticFront / 2f) - (deltaWeightLong / 2f) + deltaLatFront + (downforceFront / 2f);
+        float targetFR = (staticFront / 2f) - (deltaWeightLong / 2f) - deltaLatFront + (downforceFront / 2f);
+        float targetRL = (staticRear / 2f)  + (deltaWeightLong / 2f) + deltaLatRear  + (downforceRear / 2f);
+        float targetRR = (staticRear / 2f)  + (deltaWeightLong / 2f) - deltaLatRear  + (downforceRear / 2f);
 
         // 防止车辆腾空导致载荷变负
         targetFL = Mathf.Max(0.1f, targetFL);

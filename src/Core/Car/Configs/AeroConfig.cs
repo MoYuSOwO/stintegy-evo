@@ -13,11 +13,11 @@ public struct AeroOutput
 public partial class AeroConfig : Resource
 {
     [ExportGroup("Drag (阻力)")]
-    [Export] public float BaseDragCoef { get; set; } = 0.8f; // 基础风阻
-    [Export] public float FrontalArea { get; set; } = 1.5f;  // 迎风面积
+    [Export] public float BaseDragCoef { get; set; } = 0.3f; // 基础风阻
+    [Export] public float FrontalArea { get; set; } = 2.0f;  // 迎风面积
 
     [ExportGroup("Downforce (下压力)")]
-    [Export] public float DownforceCoef { get; set; } = 2.5f; // 下压力系数 (蒙扎调小，摩纳哥调大)
+    [Export] public float DownforceCoef { get; set; } = 0.5f; // 下压力系数 (蒙扎调小，摩纳哥调大)
     [Export] public float AeroBalanceFront { get; set; } = 0.45f; // 45% 下压力给前轮，影响高速弯推头还是甩尾
     
     // 空气密度常数
