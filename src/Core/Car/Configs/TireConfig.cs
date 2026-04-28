@@ -1,12 +1,12 @@
 using Godot;
 
-namespace PloyRacing.Core.Car.Configs;
+namespace StintegyEVO.Core.Car.Configs;
 
 public struct TireOutput
 {
-    public Vector2 Force;       // 最终施加给地面的真实力
-    public bool IsSliding;      // 是否正在打滑（横向或纵向）
-    public bool IsLockedUp;     // 是否处于刹车抱死状态（用于触发 UI 报警或胎烟特效）
+    public Vector2 Force;
+    public bool IsSliding;
+    public bool IsLockedUp;
 }
 
 public enum TireType

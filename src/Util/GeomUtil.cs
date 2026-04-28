@@ -1,6 +1,6 @@
 using Godot;
 
-namespace PloyRacing.Util;
+namespace StintegyEVO.Util;
 
 public static class GeomUtil
 {

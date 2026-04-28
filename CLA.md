@@ -1,6 +1,6 @@
 # Contributor License Agreement
 
-**Project Name**: PloyRacing
+**Project Name**: StintegyEVO
 **Maintainer**: MoYuSOwO
 **Contact Email**: moyuowo@outlook.com
 

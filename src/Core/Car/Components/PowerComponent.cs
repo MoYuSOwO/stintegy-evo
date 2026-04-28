@@ -1,7 +1,7 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
+using StintegyEVO.Core.Car.Configs;
 
-namespace PloyRacing.Core.Car.Components;
+namespace StintegyEVO.Core.Car.Components;
 
 public class PowerComponent(PowerConfig config)
 {
@@ -9,12 +9,12 @@ public class PowerComponent(PowerConfig config)
 
     public PowerOutput UpdateAndGetDriveForce(float input, float carSpeed, float battery)
     {
-        // 动能回收 + 刹车
+        // Regen & Brake
         if (input < -PowerConfig.InputDeadZone)
         {
             float brake = -input;
 
-            // 满电不能回收
+            // No regen when battery fulls
             if (battery > 0.999f)
             {
                 return new()
@@ -24,10 +24,10 @@ public class PowerComponent(PowerConfig config)
                 };
             }
 
-            // 不满电
+            // Battery is not fulled
             else
             {
-                // 仅动能回收
+                // Regen only
                 if (Config.MaxBrakeForce * brake < Config.MaxRegenForce)
                 {
                     float regenForce = Config.MaxBrakeForce * brake;
@@ -39,7 +39,7 @@ public class PowerComponent(PowerConfig config)
                     };
                 }
                 
-                // 动能回收力不够
+                // Regen & Brake
                 else
                 {
                     float brakeForce = Config.MaxBrakeForce * brake;
@@ -54,7 +54,7 @@ public class PowerComponent(PowerConfig config)
             }
         }
 
-        // 驱动模式
+        // Drive
         else if (input > PowerConfig.InputDeadZone)
         {
             float throttle = input;
@@ -66,7 +66,7 @@ public class PowerComponent(PowerConfig config)
             };
         }
 
-        // 滑行
+        // Coasting
         else
         {
             if (battery > 0.999f)

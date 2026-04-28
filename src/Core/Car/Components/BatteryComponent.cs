@@ -1,8 +1,8 @@
 using Godot;
-using PloyRacing.Core.Car.Configs;
+using StintegyEVO.Core.Car.Configs;
 using System;
 
-namespace PloyRacing.Core.Car.Components;
+namespace StintegyEVO.Core.Car.Components;
 
 public class BatteryComponent(BatteryConfig config, float initialKWh)
 {

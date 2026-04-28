@@ -1,12 +1,12 @@
 using Godot;
-using PloyRacing.Core.Car;
-using PloyRacing.Core.Car.Configs;
-using PloyRacing.Core.Car.Controllers;
+using StintegyEVO.Core.Car;
+using StintegyEVO.Core.Car.Configs;
+using StintegyEVO.Core.Car.Controllers;
 using System;
 using System.Linq;
 using System.Text;
 
-namespace PloyRacing.Nodes.Car;
+namespace StintegyEVO.Nodes.Car;
 
 public partial class RaceCar : RigidBody2D
 {
@@ -26,7 +26,7 @@ public partial class RaceCar : RigidBody2D
 
     private Node2D bodyAnchor = new();
     private Vector2 lastGlobalVel = Vector2.Zero;
-    public Line2D line = new()
+    public Line2D _debug_line = new()
     { 
         Width = 1.0f,
         DefaultColor = Color.FromHtml("#65c4ff"),
@@ -46,24 +46,24 @@ public partial class RaceCar : RigidBody2D
 
 	public void Init(CarLogic car, IController controller, Vector2 startPos, float startRotation, Node2D node)
     {
-        node.AddChild(line);
+        node.AddChild(_debug_line);
         _logic = car;
         _controller = controller;
 
         Vector2 globalVisualOffset = new Vector2(VisualOffsetX, 0).Rotated(startRotation);
 
-		// 初始化世界状态
+		// Initialize world state
         GravityScale = 0f;
         Position = startPos - globalVisualOffset;
         Rotation = startRotation;
         LinearVelocity = Vector2.Zero;
         AngularVelocity = 0f;
 
-        // 初始化刚体物理属性
+        // Initialize rigid body physical properties
         Mass = car.Config.Chassis.DryMass;
         Inertia = car.Config.Chassis.DryI; 
 
-        // 组装视觉效果与碰撞盒
+        // Assemble visual effects and collision boxes
         BuildCarVisuals();
 		BuildCollisionShape();
 
@@ -74,7 +74,7 @@ public partial class RaceCar : RigidBody2D
 
 	public void BuildCarVisuals()
     {
-        // 清理旧节点 (支持在编辑器里实时刷新)
+        // Clean up old nodes
         foreach (Node child in GetChildren()) 
         {
             child.QueueFree();
@@ -86,49 +86,48 @@ public partial class RaceCar : RigidBody2D
         float L = Config.Chassis.Length;
         float W = Config.Chassis.Width;
 
-        // 前部坐标系 (从最前端的车鼻尖往回倒推)
+        // Front coordinate system (derived backwards from the frontmost tip of the vehicle's nose)
         float frontWingTip = L / 2f;
         float frontWingBase = frontWingTip - Config.Visual.FrontWingDepth;
         
         float frontStrutTip = frontWingBase;
-        float frontStrutBase = frontStrutTip - Config.Visual.StrutLength; // 车身肉体真正开始的地方
+        float frontStrutBase = frontStrutTip - Config.Visual.StrutLength; // Where car body truly begins
 
-        // 后部坐标系 (从最后端的尾翼末端往前倒推)
+        // Rear coordinate system (derived backwards from the very tip of the tail fin)
         float rearWingTip = -L / 2f;
         float rearWingBase = rearWingTip + Config.Visual.RearWingDepth;
         
         float rearStrutTip = rearWingBase;
-        float rearStrutBase = rearStrutTip + Config.Visual.StrutLength;   // 车身肉体真正结束的地方
+        float rearStrutBase = rearStrutTip + Config.Visual.StrutLength;   // Where car body truly ends
 
-        // --- 1. 绘制连接杆 (Struts) (ZIndex = 10, 在底盘下面) ---
-        // 前连接杆 (连接前翼和车鼻)
+        // Draw Struts (ZIndex = 10)
+        // Front
         Vector2[] frontStrutL = GetRectPoints(frontStrutBase - 0.2f, -Config.Visual.StrutWidth * 1.5f, frontStrutTip, -Config.Visual.StrutWidth * 0.5f);
         Vector2[] frontStrutR = GetRectPoints(frontStrutBase - 0.2f, Config.Visual.StrutWidth * 0.5f, frontStrutTip, Config.Visual.StrutWidth * 1.5f);
         bodyAnchor.AddChild(CreatePolygon(frontStrutL, Config.Visual.StrutColor, 10));
         bodyAnchor.AddChild(CreatePolygon(frontStrutR, Config.Visual.StrutColor, 10));
 
-        // 后连接杆 (连接尾翼和变速箱)
+        // Rear
         Vector2[] rearStrutL = GetRectPoints(rearWingTip, -Config.Visual.StrutWidth * 1.5f, rearStrutBase, -Config.Visual.StrutWidth * 0.5f);
         Vector2[] rearStrutR = GetRectPoints(rearWingTip, Config.Visual.StrutWidth * 0.5f, rearStrutBase, Config.Visual.StrutWidth * 1.5f);
         bodyAnchor.AddChild(CreatePolygon(rearStrutL, Config.Visual.StrutColor, 10));
         bodyAnchor.AddChild(CreatePolygon(rearStrutR, Config.Visual.StrutColor, 10));
 
-        // --- 2. 绘制底盘/车身 (ZIndex = 11) ---
+        // Draw the chassis/body (ZIndex = 11)
         float narrowW = W / 2f * Config.Visual.BodyNarrowFactor;
         Vector2[] bodyPoints = 
         [
-            new(frontStrutBase, 0),                          // 车头正中尖端
-            new(frontStrutBase - 0.5f, narrowW),             // 右前收缩点
-            new(rearStrutBase + 0.5f, narrowW),            // 右后收缩点
-            new(rearStrutBase, W / 2f * 0.4f),             // 尾部右侧
-            new(rearStrutBase, -W / 2f * 0.4f),            // 尾部左侧
-            new(rearStrutBase + 0.5f, -narrowW),           // 左后收缩点
-            new(frontStrutBase - 0.5f, -narrowW)             // 左前收缩点
+            new(frontStrutBase, 0),                         // The tip of the front of the car
+            new(frontStrutBase - 0.5f, narrowW),            // Right anterior contraction point
+            new(rearStrutBase + 0.5f, narrowW),             // Right posterior contraction point
+            new(rearStrutBase, W / 2f * 0.4f),              // Right side of the tail
+            new(rearStrutBase, -W / 2f * 0.4f),             // Left side of the tail
+            new(rearStrutBase + 0.5f, -narrowW),            // Left posterior contraction point
+            new(frontStrutBase - 0.5f, -narrowW)            // Left anterior contraction point
         ];
         bodyAnchor.AddChild(CreatePolygon(bodyPoints, Config.Visual.BodyColor, 11));
 
-        // --- 3. 绘制驾驶舱 (ZIndex = 12) ---
-        // 引入 CockpitOffset 允许调整驾驶室靠前还是靠后
+        // Draw the cockpit (ZIndex = 12)
         Vector2[] cockpitPoints = 
         [
             new(Config.Visual.CockpitOffset + 0.8f, 0),         
@@ -139,15 +138,15 @@ public partial class RaceCar : RigidBody2D
         ];
         bodyAnchor.AddChild(CreatePolygon(cockpitPoints, Config.Visual.CockpitColor, 12));
 
-        // --- 4. 绘制前翼 (ZIndex = 13) ---
+        // Draw the front wing (ZIndex = 13)
         Vector2[] fwPoints = GetRectPoints(frontWingBase, -Config.Visual.FrontWingWidth / 2f, frontWingTip, Config.Visual.FrontWingWidth / 2f);
         bodyAnchor.AddChild(CreatePolygon(fwPoints, Config.Visual.WingColor, 13));
 
-        // --- 5. 绘制尾翼 (ZIndex = 14) ---
+        // Draw the rear wing (ZIndex = 14)
         Vector2[] rwPoints = GetRectPoints(rearWingTip, -Config.Visual.RearWingWidth / 2f, rearWingBase, Config.Visual.RearWingWidth / 2f);
         bodyAnchor.AddChild(CreatePolygon(rwPoints, Config.Visual.WingColor, 14));
 
-        // --- 6. 绘制四个轮胎 (ZIndex = 15, 16) ---
+        // Draw four tires (ZIndex = 15, 16)
         float trackWidthHalf = W / 2f - Config.Visual.TireWidth / 2f; 
 
         DrawTire(Logic.FrontAxleX, -trackWidthHalf); // FL
@@ -165,7 +164,7 @@ public partial class RaceCar : RigidBody2D
         AddChild(CreatePolygon(rimPts, Config.Visual.RimColor, 16));
     }
 
-    // 生成碰撞盒 (完美贴合 ChassisConfig 的长宽)
+    // Generate a collision box
     private void BuildCollisionShape()
     {
         foreach (Node child in GetChildren())
@@ -212,7 +211,7 @@ public partial class RaceCar : RigidBody2D
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
     {
-        // line.Points = [.. ((AIController)Controller).path];
+        _debug_line.Points = [];
     }
 
     public override void _PhysicsProcess(double delta)
@@ -243,10 +242,8 @@ public partial class RaceCar : RigidBody2D
             Params = output.Params
         };
 
-        // 空气阻力
         ApplyCentralForce(Transform.BasisXform(output.DragForce));
 
-        // 四个轮胎的抓地力
         ApplyTireForceToBody(output.FrontLeft.Force, output.FrontLeft.Pos);
         ApplyTireForceToBody(output.FrontRight.Force, output.FrontRight.Pos);
         ApplyTireForceToBody(output.RearLeft.Force, output.RearLeft.Pos);
@@ -257,9 +254,7 @@ public partial class RaceCar : RigidBody2D
 
         Controller.ThinkTick(dt, carData, Logic, Logic.Track);
 
-        // GD.Print("target: ", ((AIController)Controller).TargetSpeed);
         GD.Print("speed: ", LinearVelocity.Length());
-        // GD.Print("minSpeed: ", ((AIController)Controller).vel.Min(v => v > 0 ? v : 9999f));
 
         float latMiu = float.MaxValue, longMiu = float.MaxValue;
         foreach (var tire in Logic.Tires)

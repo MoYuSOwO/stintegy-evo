@@ -1,6 +1,6 @@
 using Godot;
 
-namespace PloyRacing.Core.Car.Configs;
+namespace StintegyEVO.Core.Car.Configs;
 
 [GlobalClass]
 public partial class ChassisConfig : Resource

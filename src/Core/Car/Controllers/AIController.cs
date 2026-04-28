@@ -1,11 +1,11 @@
 // using Godot;
 // using System.Collections.Generic;
-// using PloyRacing.Core.Track;
-// using PloyRacing.Util;
-// using PloyRacing.Core.Car.Configs;
-// using PloyRacing.Core.Car.Components;
+// using StintegyEVO.Core.Track;
+// using StintegyEVO.Util;
+// using StintegyEVO.Core.Car.Configs;
+// using StintegyEVO.Core.Car.Components;
 
-// namespace PloyRacing.Core.Car.Controllers;
+// namespace StintegyEVO.Core.Car.Controllers;
 
 // public class AIController : IController
 // {

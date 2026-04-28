@@ -1,7 +1,7 @@
 using Godot;
-using PloyRacing.Core.Track;
+using StintegyEVO.Core.Track;
 
-namespace PloyRacing.Core.Car.Controllers;
+namespace StintegyEVO.Core.Car.Controllers;
 
 public struct CarSensor
 {

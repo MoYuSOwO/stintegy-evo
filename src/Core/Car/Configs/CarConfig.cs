@@ -1,7 +1,7 @@
 using Godot;
-using PloyRacing.Util;
+using StintegyEVO.Util;
 
-namespace PloyRacing.Core.Car.Configs;
+namespace StintegyEVO.Core.Car.Configs;
 
 [GlobalClass]
 public partial class CarConfig : Resource

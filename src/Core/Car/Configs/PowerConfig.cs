@@ -1,6 +1,6 @@
 using Godot;
 
-namespace PloyRacing.Core.Car.Configs;
+namespace StintegyEVO.Core.Car.Configs;
 
 public struct PowerOutput
 {

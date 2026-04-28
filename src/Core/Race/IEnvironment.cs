@@ -1,4 +1,4 @@
-namespace PloyRacing.Nodes.Race;
+namespace StintegyEVO.Nodes.Race;
 
 public interface IEnvironment
 {
