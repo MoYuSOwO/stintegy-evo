@@ -227,23 +227,18 @@ public partial class TrackRenderer : Node2D
             int idx = i % n;
             TrackPoint node = trackData[idx];
 
-            // 墙内侧 (贴着缓冲区)
             Vector2 leftWallInner = node.LeftEdge + node.Normal * node.LeftBufferWidth;
             Vector2 rightWallInner = node.RightEdge - node.Normal * node.RightBufferWidth;
             
-            // 墙外侧 (向外推展出一个厚度，形成Mesh)
             Vector2 leftWallOuter = leftWallInner + node.Normal * wallThickness;
             Vector2 rightWallOuter = rightWallInner - node.Normal * wallThickness;
 
-            // 填充左墙网格点
             leftWallVertices[i * 2] = leftWallOuter; 
             leftWallVertices[i * 2 + 1] = leftWallInner;
 
-            // 填充右墙网格点
             rightWallVertices[i * 2] = rightWallInner;
             rightWallVertices[i * 2 + 1] = rightWallOuter;
 
-            // 添加物理碰撞盒 (除最后一个闭合点外)
             if (i < n)
             {
                 int next = (i + 1) % n;
