@@ -3,17 +3,10 @@ using PloyRacing.Util;
 
 namespace PloyRacing.Core.Car.Configs;
 
-public enum CarDriveType
-{
-    RearDrive,
-    FrontDrive
-}
-
 [GlobalClass]
 public partial class CarConfig : Resource
 {
     [Export] public string CarName { get; set; } = "Formula 01";
-    [Export] public CarDriveType DriveType { get; set; } = CarDriveType.RearDrive;
 
     [Export] public ChassisConfig Chassis { get; set; } = new();
     [Export] public PowerConfig Power { get; set; } = new();
@@ -24,14 +17,13 @@ public partial class CarConfig : Resource
         new(TireType.RearLeft),
         new(TireType.RearRight)
     ];
-    [Export] public BrakeConfig Brake { get; set; } = new();
-    [Export] public DifferentialConfig Differential { get; set; } = new();
-    [Export] public FuelConfig Fuel { get; set; } = new();
+    [Export] public DistributorConfig Distributor { get; set; } = new();
+    [Export] public BatteryConfig Battery { get; set; } = new();
     [Export] public SuspensionConfig Suspension { get; set; } = new();
     [Export] public VisualConfig Visual { get; set; } = new();
 
     [Export(PropertyHint.Range, "0.3, 0.8")] public float InitBiasFront { get; set; } = 0.6f;
-    [Export] public float InitFuelL { get; set; } = 10f;
+    [Export] public float InitKWh { get; set; } = 100f;
     [Export] public bool IsGrid { get; set; } = true;
     [Export] public int CarGridOrPitIdx { get; set; } = 1;
 

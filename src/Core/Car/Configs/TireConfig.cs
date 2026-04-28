@@ -30,34 +30,35 @@ public partial class TireConfig(TireType tireType) : Resource
 {
     [ExportGroup("Base Properties")]
     [Export] public TireType Type { get; set; } = tireType;
+    [Export] public bool IsSteer { get; set; } = tireType.IsFront();
     [Export] public float Radius { get; set; } = 0.33f;
     [Export] public float Mass { get; set; } = 10.0f;
+    [Export] public float Inertia { get; set; } = 0.8f;
     [Export] public float DefaultRollingResCoef { get; set; } = 0.015f;
 
     [ExportGroup("Lateral Pacejka")]
     [Export] public float LatStiffness { get; set; } = 15.0f;
     public const float LatShape = 1.30f;
-    [Export] public float LatDrop { get; set; } = 0.5f;
-    [Export] public float LatPeakFriction { get; set; } = 1.0f;
+    [Export] public float LatDrop { get; set; } = 0.8f;
+    [Export] public float LatPeakFriction { get; set; } = 1.3f;
 
-    [ExportGroup("Longitudinal Fit Curve")]
-    public const float LongOptimalSlipRatio = 1.15f; 
-    [Export] public float LongPeakFriction { get; set; } = 1.1f;
-    public const float LongSlideMultiplier = 0.8f;
+    [ExportGroup("Longitudinal Pacejka")]
+    [Export] public float LongStiffness { get; set; } = 10.0f;
+    public const float LongShape = 1.65f;
+    [Export] public float LongDrop { get; set; } = 0.4f;
+    [Export] public float LongPeakFriction { get; set; } = 1.5f;
 
     [ExportGroup("Thermodynamics")]
     public const float SpecificHeat = 400.0f;
     public const float SurfaceMassRatio = 0.2f;
     [Export] public float OptimalMinTemp { get; set; } = 70.0f;
     [Export] public float OptimalMaxTemp { get; set; } = 100.0f;
+    [Export] public float ThermalWearCoef { get; set; } = 0.005f;
     public const float ColdSensitivity = 0.005f;
     public const float HotSensitivity = 0.0002f;
     public const float InternalHeatTransCoef = 0.5f;
     public const float BaseCoolingCoef = 10.0f;
     public const float AirCoolingCoef = 0.5f;
-    public const float MaxTempRiseRate = 50.0f;
-    public const float WastedForceToSlipVCoef = 0.005f;
-    public const float StartingBurnoutBaseSlipV = 5.0f;
 
     [ExportGroup("Pressure & Wear")]
     [Export(PropertyHint.Range, "1.0, 3.0")] public float OptimalMinPressure { get; set; } = 1.7f;
@@ -68,7 +69,6 @@ public partial class TireConfig(TireType tireType) : Resource
     public const float LowPressureSensitivity = 0.2f;
     public const float HighPressureSensitivity = 0.5f;
     public const float StiffnessSensitivity = 0.1f;
-    [Export] public float WearCoef { get; set; } = 0.000001f;
-    public const float AblationCoef = 5.0f;
-    public const float ThermalCoef = 0.01f;
+    [Export] public float BaseLongWearRate { get; set; } = 0.0000005f;
+    [Export] public float BaseLatWearRate { get; set; } = 0.0000012f;
 }

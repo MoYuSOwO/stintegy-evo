@@ -37,7 +37,7 @@ public partial class RaceManager : Node2D
 				int idx = grid.Index;
 				startRotation = trackData[idx].Tangent.Angle();
 			}
-			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), DummyController.Instance, startPos, startRotation);
+			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), DummyController.Instance, startPos, startRotation, this);
 			AddChild(car);
 		}
 	}

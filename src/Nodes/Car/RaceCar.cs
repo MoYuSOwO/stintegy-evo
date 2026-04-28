@@ -3,6 +3,8 @@ using PloyRacing.Core.Car;
 using PloyRacing.Core.Car.Configs;
 using PloyRacing.Core.Car.Controllers;
 using System;
+using System.Linq;
+using System.Text;
 
 namespace PloyRacing.Nodes.Car;
 
@@ -23,6 +25,17 @@ public partial class RaceCar : RigidBody2D
     public bool IsInit { get; private set; } = false;
 
     private Node2D bodyAnchor = new();
+    private Vector2 lastGlobalVel = Vector2.Zero;
+    public Line2D line = new()
+    { 
+        Width = 1.0f,
+        DefaultColor = Color.FromHtml("#65c4ff"),
+        ZIndex = 50,
+        Antialiased = true,
+        JointMode = Line2D.LineJointMode.Round,
+        Closed = false,
+        TopLevel = true
+    };
 
     public float VisualOffsetX => (0.5f - Config.Chassis.WeightDistFront) * Config.Chassis.WheelBase;
 
@@ -31,8 +44,9 @@ public partial class RaceCar : RigidBody2D
 	{
 	}
 
-	public void Init(CarLogic car, IController controller, Vector2 startPos, float startRotation)
+	public void Init(CarLogic car, IController controller, Vector2 startPos, float startRotation, Node2D node)
     {
+        node.AddChild(line);
         _logic = car;
         _controller = controller;
 
@@ -52,6 +66,8 @@ public partial class RaceCar : RigidBody2D
         // 组装视觉效果与碰撞盒
         BuildCarVisuals();
 		BuildCollisionShape();
+
+        lastGlobalVel = Vector2.Zero;
 
         IsInit = true;
     }
@@ -195,8 +211,9 @@ public partial class RaceCar : RigidBody2D
 
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
-	{
-	}
+    {
+        // line.Points = [.. ((AIController)Controller).path];
+    }
 
     public override void _PhysicsProcess(double delta)
     {
@@ -204,22 +221,27 @@ public partial class RaceCar : RigidBody2D
 
         float dt = (float)delta;
 
+        Vector2 globalAccel = (LinearVelocity - lastGlobalVel) / dt;
+        lastGlobalVel = LinearVelocity;
+
+        Vector2 localAccel = Transform.BasisXformInv(globalAccel);
+        Vector2 localVel = Transform.BasisXformInv(LinearVelocity);
+
+        float input = Controller.Input;
+        float steer = Controller.SteeringAngle;
+
+        var output = Logic.Tick(dt, input, steer, localVel, localAccel, AngularVelocity, Mass);
+
         CarSensor carData = new()
         {
+            Mass = Mass,
             LinearVelocity = LinearVelocity,
             AngularVelocity = AngularVelocity,
             Position = GlobalPosition,
-            Rotation = GlobalRotation
+            Rotation = GlobalRotation,
+            LocalAccel = localAccel,
+            Params = output.Params
         };
-
-        Controller.ThinkTick(dt, carData, Logic, Logic.Track);
-        float throttle = Controller.Throttle;
-        float brake = Controller.Brake;
-        float steer = Controller.SteeringAngle;
-
-        Vector2 localVel = Transform.BasisXformInv(LinearVelocity);
-
-        var output = Logic.Tick(dt, throttle, brake, steer, localVel, AngularVelocity, Mass);
 
         // 空气阻力
         ApplyCentralForce(Transform.BasisXform(output.DragForce));
@@ -230,8 +252,35 @@ public partial class RaceCar : RigidBody2D
         ApplyTireForceToBody(output.RearLeft.Force, output.RearLeft.Pos);
         ApplyTireForceToBody(output.RearRight.Force, output.RearRight.Pos);
 
-        // 施加差速器惩罚力矩
-        ApplyTorque(output.YawPenaltyTorque);
+        GD.Print("drag force: ", output.DragForce);
+        GD.Print("force: ", output.FrontLeft.Force, output.FrontRight.Force, output.RearLeft.Force, output.RearRight.Force);
+
+        Controller.ThinkTick(dt, carData, Logic, Logic.Track);
+
+        // GD.Print("target: ", ((AIController)Controller).TargetSpeed);
+        GD.Print("speed: ", LinearVelocity.Length());
+        // GD.Print("minSpeed: ", ((AIController)Controller).vel.Min(v => v > 0 ? v : 9999f));
+
+        float latMiu = float.MaxValue, longMiu = float.MaxValue;
+        foreach (var tire in Logic.Tires)
+        {
+            latMiu = Mathf.Min(latMiu, tire.CurrLatPeakFriction);
+            longMiu = Mathf.Min(longMiu, tire.CurrLongPeakFriction);
+        }
+        GD.Print("latMinGrid: ", latMiu, ", longMinGrid: ", longMiu);
+        string stemp = "surface temp: ", ctemp = "core temp: ", wear = "wear: ", wheelVel = "wheelVel: ";
+        foreach (var t in Logic.Tires)
+        {
+            stemp += $"{t.SurfaceTemp}, ";
+            ctemp += $"{t.CoreTemp}, ";
+            wear += $"{t.Wear}, ";
+            wheelVel += $"{t.WheelAngularVel}, ";
+        }
+        GD.Print(stemp);
+        GD.Print(ctemp);
+        GD.Print(wear);
+        GD.Print(wheelVel);
+        GD.Print();
     }
 
     private void ApplyTireForceToBody(Vector2 localTireForce, Vector2 localPos)
