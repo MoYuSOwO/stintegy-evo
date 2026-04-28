@@ -5,17 +5,22 @@ namespace PloyRacing.Core.Car.Controllers;
 
 public struct CarSensor
 {
+    public float Mass;
     public Vector2 LinearVelocity;
     public float AngularVelocity;
     public Vector2 Position;
     public float Rotation;
+    public Vector2 LocalAccel;
+    public IntermediateParams Params;
 }
 
 public interface IController
 {
-    public float Throttle { get; }
-    public float Brake { get; }
+    public float Input { get; }
     public float SteeringAngle { get; }
+
+    public float FuelSaveFactor { get; set; }
+    public float TireSaveFactor { get; set; }
 
     public abstract void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
     public abstract void ThinkTick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
@@ -27,9 +32,11 @@ public partial class DummyController : IController
 
     private DummyController() {}
 
-    public float Throttle => 0.0f;
-    public float Brake => 0.0f;
-    public float SteeringAngle => 0.0f;
+    public float Input => 0.5f;
+    public float SteeringAngle => 0.3f;
+
+    public float FuelSaveFactor { get; set; }
+    public float TireSaveFactor { get; set; }
 
     public void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track)
     {

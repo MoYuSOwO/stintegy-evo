@@ -5,9 +5,9 @@ namespace PloyRacing.Core.Car.Configs;
 [GlobalClass]
 public partial class ChassisConfig : Resource
 {
-    [Export] public float DryMass { get; set; } = 600.0f;
+    [Export] public float DryMass { get; set; } = 1400.0f;
     [Export] public float DryI { get; set; } = 1500.0f;
-    [Export] public float MaxSteerAngle { get; set; } = Mathf.DegToRad(35);
+    [Export] public float MaxSteerAngle { get; set; } = Mathf.DegToRad(25);
     [Export] public float CgHeight { get; set; } = 0.3f;
     [Export] public float WheelBase { get; set; } = 2.8f;
     [Export] public float Width { get; set; } = 2.0f;

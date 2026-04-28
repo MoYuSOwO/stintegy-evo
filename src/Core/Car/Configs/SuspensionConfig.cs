@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Godot;
 
 namespace PloyRacing.Core.Car.Configs;
@@ -8,6 +9,7 @@ public struct CarLoad
     public float FrontRight;
     public float RearLeft;
     public float RearRight;
+    public readonly ImmutableArray<float> Tires => [FrontLeft, FrontRight, RearLeft, RearRight];
 }
 
 [GlobalClass]
