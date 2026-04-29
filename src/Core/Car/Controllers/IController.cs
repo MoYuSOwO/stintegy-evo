@@ -17,7 +17,7 @@ public struct CarSensor
 public interface IController
 {
     public float Input { get; }
-    public float SteeringAngle { get; }
+    public float Steer { get; }
 
     public float FuelSaveFactor { get; set; }
     public float TireSaveFactor { get; set; }
@@ -33,7 +33,7 @@ public partial class DummyController : IController
     private DummyController() {}
 
     public float Input => 0.5f;
-    public float SteeringAngle => 0.3f;
+    public float Steer => 0.3f;
 
     public float FuelSaveFactor { get; set; }
     public float TireSaveFactor { get; set; }

@@ -226,8 +226,8 @@ public partial class RaceCar : RigidBody2D
         Vector2 localAccel = Transform.BasisXformInv(globalAccel);
         Vector2 localVel = Transform.BasisXformInv(LinearVelocity);
 
-        float input = Controller.Input;
-        float steer = Controller.SteeringAngle;
+        float input = Mathf.Clamp(Controller.Input, -1f, 1f);
+        float steer = Mathf.Clamp(Controller.Steer, 0f, 1f);
 
         var output = Logic.Tick(dt, input, steer, localVel, localAccel, AngularVelocity, Mass);
 
