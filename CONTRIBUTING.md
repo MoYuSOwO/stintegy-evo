@@ -14,7 +14,14 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
 
 ## How to Contribute
 
-### Reporting Bugs
+### 1. Choose a Task & Communicate First
+*   **Look at the roadmap**: Our [roadmap](README.md#-roadmap) lists numbered goals with dependencies and I/O. Pick one that fits your interest.
+*   **Discuss before coding**:
+    *   If you have a **concrete plan** (e.g., "I'll implement AI using MPPI"), open an **Issue** with the corresponding label (e.g., `ai-driving`) and describe your approach.
+    *   If your idea is **still shaping up**, start a **Discussion** in the appropriate category (e.g., `🧠 AI & Physics`).
+    *   **Why?** Because the main challenge is not "can you write code", but "does your plan fit the dynamic physics and path architecture?" Early communication prevents you from spending weeks on a solution that may conflict with others or the project's direction.
+
+### 2. Reporting Bugs & Suggestions
 
 If you find a bug or have a suggestion, please submit it via GitHub Issues with as much of the following information as possible:
 
@@ -24,7 +31,7 @@ If you find a bug or have a suggestion, please submit it via GitHub Issues with 
 - **Expected vs. Actual Behavior**: Clearly state what you expected to happen and what actually happened.
 - **Screenshots / Logs**: Attach console output or screenshots if available.
 
-### Submitting Code (Pull Requests)
+### 3. Submitting Code (Pull Requests)
 
 We follow a standard GitHub Flow workflow. Please adhere to the following steps:
 
@@ -41,7 +48,7 @@ We follow a standard GitHub Flow workflow. Please adhere to the following steps:
 - [ ] Your code has been tested locally and does not break existing functionality.
 - [ ] You have read and agree to the [Contributor License Agreement (CLA)](CLA.md). **Submitting a PR signifies your acceptance of and agreement to the terms of this agreement**, granting the project maintainer the rights to your contribution for potential future commercial licensing needs.
 
-### Improving Documentation & Art
+### 4. Improving Documentation & Art
 
 Contributions to documentation, README improvements, Low Poly models, UI design, and the like are equally valuable. These can also be submitted via Pull Request, following the same process as above.
 

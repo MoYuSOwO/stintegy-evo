@@ -13,7 +13,7 @@ config_version=5
 config/name="StintegyEVO"
 run/main_scene="uid://cv83jpnvwp8l0"
 config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
-config/icon="res://icon.svg"
+config/icon="uid://cbbaum5h1x08n"
 
 [display]
 

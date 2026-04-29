@@ -76,65 +76,110 @@ Racing games usually make you the driver. But in real racing, victory or defeat 
 
 ## 🗺️ Roadmap
 
-StintegyEVO is an independent solo-developed project, currently in the **core physics and AI validation phase**. The roadmap below shows completed work, ongoing tasks, and future plans. If you are interested in a specific direction, feel free to jump in and push it forward together—the AGPLv3 license and CLA ensure your contributions are properly protected while the project retains healthy commercial potential.
+StintegyEVO is an independent solo-developed project. Currently, **core physics are complete, and AI foundational driving is the primary focus.**
 
-### ✅ Completed (v0.1 – v0.5, Core Physics Era)
+### Versioning Philosophy
 
-- **Tire Physics Model**
-  - Pacejka lateral and longitudinal force curves.
-  - Friction circle joint limits, natural competition between longitudinal/lateral grip.
-  - Dual-layer temperatures (surface temperature, core temperature) and dynamic tire pressure changes.
-  - Wear calculation based on slip power, supporting independent longitudinal/lateral wear coefficients.
+Each completed module receives a version number, marking its transition from "unavailable" to "functional." Pending goals use logical numbering to indicate **suggested priority and dependencies**; they do not strictly lock the release order. You are welcome to complete a lower-priority task first if you feel confident in its implementation.
 
-- **EV Powertrain & Energy Management**
-  - Four-motor independent drive architecture, torque vectoring control (front/rear distribution, inner/outer cornering distribution).
-  - One-pedal logic: Fusion of driving, kinetic energy recovery, and mechanical brake backup.
-  - Battery SOC tracking, automatic cutoff of recovery when fully charged to prevent overcharging.
-  - Independently adjustable kinetic energy recovery strength.
+If you are interested in any of these goals, feel free to jump in—the **AGPLv3 license and CLA** ensure your contributions are properly protected while the project retains healthy commercial potential.
 
-- **Chassis & Aerodynamics**
-  - Dynamic load transfer (longitudinal/lateral acceleration), four-wheel independent load calculation.
-  - Front/rear downforce distribution, dirty air factor (downforce loss in slipstream).
-  - Suspension damping smoothing to prevent numerical oscillation caused by load spikes.
+### ✅ v0.1 Core Physics (Completed)
 
-- **Partial AI Groundwork**
-  - Dynamic path generation (cosine regression racing line).
-  - Speed planning based on track curvature (forward speed limits).
+* **Tire Physics Model**
+    * Pacejka lateral and longitudinal force curves.
+    * Friction ellipse joint limits; natural competition between longitudinal and lateral grip.
+    * Dual-layer thermodynamics (surface and core temperatures) and dynamic tire pressure.
+    * Wear calculation based on slip work, supporting independent longitudinal/lateral wear coefficients.
+    * Implementation of Ackermann geometry (independent steering angles for inner/outer wheels).
+* **EV Powertrain & Energy Management**
+    * Four-motor independent drive architecture with Torque Vectoring (front/rear and inner/outer distribution).
+    * One-pedal logic: Seamless fusion of drive, kinetic energy recovery, and mechanical brake backup.
+    * Battery SOC tracking; automatic recovery cutoff at full charge to prevent overcharging.
+    * Independently adjustable regenerative braking intensity.
+* **Chassis & Aerodynamics**
+    * Dynamic load transfer (longitudinal/lateral acceleration) with four-wheel independent load calculation.
+    * Front/rear downforce distribution and "Dirty Air" factor (downforce loss in wake).
+    * Suspension damping smoothing to prevent numerical oscillation from sudden load spikes.
 
-### 🚧 In Progress (v0.6, Stabilization & Deepening)
+### 🚧 Pending Implementation (Ordered by suggested priority)
 
-- **Motor Thermal Management** – Introduce motor temperature models, overheating limits power output; adds a strategic dimension.
-- **Steering System Revision** – Implement Ackermann geometry (independent steering angles for inner/outer wheels), combined with speed-sensitive steering ratio, to solve excessive wear and heating of inner tires.
-- **Load Transfer Direction Fix** – Fix the sign error in lateral load transfer to ensure outer/inner tire temperatures and wear align with physical intuition.
-- **Track Gradient & Camber Support** – Gradient affects longitudinal acceleration, camber affects cornering centripetal force; expansion of track data structure.
-- **AI Controller** – Optimize parameters or models so AI can complete a lap in the manner of a real race car driver, responding to the player's strategy parameters.
+#### 1. AI Foundational Driving (Current Focus)
+*Dependency: v0.1*
 
-### 📋 Short-Term Plan (v0.7 – v0.8, From "Physics Engine" to "Playable Race")
+**The Goal**: Enable the AI driver to consistently complete laps with reasonable pace without hitting walls.
 
-- **AI Offensive & Defensive Logic**
-  - Overtaking: Identify cars ahead, calculate pull-out timing, dynamic path offset.
-  - Defending: Inside/outside line selection, adjust aggressiveness based on remaining tires and battery power.
-  - Attack Mode / DRS simulation.
-- **Driver Style System**
-  - Perception noise (grip, speed, distance perception deviations).
-  - Decisiveness slider (early/late braking timing), affecting lap speed and consistency.
-- **Race Weekend Framework**
-  - Full flow of Practice, Qualifying, and Race (with fuel/power management).
-  - Simple tire selection and setup presets.
+* **Inputs**: Dynamic track path, real-time vehicle state (speed, slip ratio, load, etc., accessible via `StintegyEVO.Core.Car.Controllers.CarSensor`).
+* **Outputs**: Throttle/Brake pedal values, steering ratio (-1 to 1).
+* **Known Challenges**: 
+  * Paths are generated dynamically; speed planning cannot rely on offline baking.
+  * Due to the non-linear coupling of Pacejka tires and load transfer, traditional "Look-ahead + PID" methods resulted in severe speed estimation errors in previous attempts.
+* **Open Solutions**: No specific technical route is mandated. Whether it's End-to-End control, MPPI, MPC, Reinforcement Learning, State Machines, or your own hybrid method—if it stabilizes the car, it’s welcome.
+* **Performance Requirement**: Must support 20+ AI cars competing simultaneously on a standard processor (2018 or newer).
 
-### 🔭 Mid-Term Vision (v0.9 – v1.0, Polishing the Final Product)
+**Why is this the top priority?** Every subsequent feature (racecraft, styling, energy strategy) is built on the premise that the AI can actually drive. Without this, everything else is a "castle in the sky."
 
-- **Low Poly 3D Graphics** – Godot-based 3D rendering layer paired with 2D physics logic to create an *Art of Rally*-style low-polygon visual experience.
-- **Basic UI & Telemetry Panel** – Real-time display of core data such as tire temps, motor status, battery SOC, and lap time comparisons.
-- **Track Editor Prototype** – Players can create custom tracks; AI automatically calculates previews and speed limits without offline baking.
-- **Full Strategy Console** – Slider interfaces for real-time in-race adjustments to torque distribution, recovery strength, motor target temps, rear wing angles, etc.
+#### 2. Motor Thermal Management
+*Dependency: v0.1*
 
-### 🌟 Long-Term Outlook (v1.x+, Community Imagination)
+* Introduce a motor temperature model: heat generation via power output vs. air-cooled dissipation based on vehicle speed.
+* Automatic power derating during overheating to prevent "infinite pushing."
+* Provide "Target Motor Temperature" and "Power Ceiling" tuning for the strategy layer.
 
-- **Multiplayer Mode** – Multiple players simultaneously competing online, each commanding their own team.
-- **Advanced Race Simulation** – Safety Car, Virtual Safety Car, dynamic weather, track temperature, and standing water.
-- **Career Mode** – Complete team management, R&D tree, driver market.
-- **Hardware-in-the-Loop Interface** – Connect with real vehicle data acquisition systems, or output the engine to professional simulation software (leaving room for engineering applications).
+#### 3. Track Gradient & Camber
+*Dependency: v0.1*
+
+* Expand track data structures to support slopes (affecting longitudinal acceleration) and banking (affecting cornering centripetal force).
+* Physics layer support: AI should adapt to new physical constraints automatically without needing explicit perception.
+* Prepare for future real-world track imports.
+
+#### 4. Driver Style System
+*Dependency: Goal 1*
+
+* **Perception Noise**: Biases in perceiving grip, speed, and distance to simulate human imprecision.
+* **Decisiveness Slider**: Influences braking points, affecting both lap time and stability.
+* Paves the way for differentiated competition between AI drivers.
+
+#### 5. AI Racecraft (Offense & Defense)
+*Dependency: Goals 1 & 4*
+
+* **Overtaking**: Identifying the car ahead, dynamic path offsetting, and choosing the right moment to "pop out."
+* **Defending**: Inside/outside line selection; adjusting aggressiveness based on remaining tire life and battery.
+* Attack Mode / DRS simulation.
+
+#### 6. Full Strategy Console
+*Dependency: Goals 1-5*
+
+* A slider-based interface to adjust torque distribution, recovery strength, motor temperature targets, and wing angles in real-time.
+* The final form of the "Engineer Simulator": every strategic decision carries physical consequences.
+
+#### 7. Race Weekend Framework
+*Dependency: Goal 6*
+
+* Complete flow for Practice, Qualifying, and Race sessions.
+* Simple tire selection and setup presets.
+* Moving from "lapping" to "racing."
+
+#### 8. Low Poly 3D Visuals
+*Dependency: None (Pure presentation layer)*
+
+* Godot-based 3D rendering layer paired with 2D physics to create an *Art of Rally*-style aesthetic.
+* Basic UI and Telemetry: Real-time display of tire temps, motor status, SOC, and lap time deltas.
+
+#### 9. Track Editor Prototype
+*Dependency: Goal 3*
+
+* Allow players to create custom tracks that the AI can adapt to without offline baking.
+* Infrastructure for a community-driven content ecosystem.
+
+### 🌟 Long-Term Outlook
+
+* **Multiplayer**: Multiple players commanding their respective teams in real-time online competition.
+* **Advanced Simulation**: Safety Cars (SC/VSC), dynamic weather, track surface temperature, and standing water.
+* **Career Mode**: Full team management, R&D trees, and a driver market.
+* **Hardware-in-the-Loop**: Interfaces for real vehicle data acquisition or exporting the engine output to professional simulation software.
+
+> **This roadmap describes goals, but implementation remains entirely open. Alternative proposals—even those that overhaul existing plans—are welcome.**
 
 ---
 
@@ -152,15 +197,27 @@ Please open the project in the Godot 4.x .NET version. Ensure that .NET SDK 8.0+
 
 ## 🤝 Contributing
 
-StintegyEVO welcomes contributions in any form! You don't need to be proficient in all modules; as long as you are interested in a certain direction, you can find a suitable entry point:
+StintegyEVO welcomes contributions of all kinds! You don’t need to be a physics engine expert or a C# maestro. As long as you have an interest in a specific area, there is a place for you:
 
-- Physics Tuning: Help optimize tire parameters and motor characteristic curves.
-- AI Development: Improve offensive/defensive logic and driver style generation.
-- Track & Vehicle Data: Create new tracks, design vehicle configurations.
-- Art & UI: Low Poly models, UI interfaces, particle effects.
-- Documentation & Outreach: Improve README, write tutorials, record demo videos.
+* **AI Development**: Tackle AI-related goals from the roadmap.
+* **Physics Tuning**: Optimize tire parameters and motor characteristic curves.
+* **Track & Vehicle Data**: Create new tracks or design vehicle configurations.
+* **Art & UI**: Low Poly models, UI interfaces, and particle effects.
+* **Documentation & Outreach**: Improve the README, write tutorials, or record demo videos.
 
-Please read the [`CLA`](CLA.md), and then start directly from the Issue list or Discussions section! While respecting the copyright of every contributor, we will push this project together to become a true "Racing Strategy Engineer Simulator."
+### How to Get Involved
+
+1.  **Pick a Goal**: Choose a task ID that interests you from the [Roadmap](#-roadmap). Each entry lists dependencies and expected inputs/outputs, allowing you to quickly assess if it’s a good fit for you.
+
+2.  **Communicate First, Code Later**:
+    * If your **idea is already formed** (e.g., "I'm going to implement basic AI driving using MPPI"), head over to [Issues](https://github.com/MoYuSOwO/stintegy-evo/issues) to create a task post. Outline your proposed solution and technical approach, and be sure to attach the relevant Issue Label.
+    * If your **idea is still evolving** (e.g., "I want to work on AI but I'm not sure which method to use"), start a thread in [Discussions](https://github.com/MoYuSOwO/stintegy-evo/discussions) to get feedback from the community and maintainers.
+
+    **Why communicate first?** The main challenge of this project isn't "writing the code," but rather "navigating the uncertainty of the approach." Communicating beforehand prevents you from spending weeks on a solution that might conflict with someone else's work or be incompatible with the existing architecture. Think of Issues and Discussions as a **"handshake protocol"** to ensure every minute of your time provides maximum value.
+
+3.  **Start Contributing**: Once your proposal is confirmed, you're clear to start! Please make sure to read the [`CLA`](CLA.md) before you begin.
+
+We look forward to advancing this project together while fully respecting the copyright and intellectual property of every contributor.
 
 ---
 
