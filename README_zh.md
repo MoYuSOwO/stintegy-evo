@@ -167,14 +167,14 @@ StintegyEVO 欢迎任何形式的贡献！你不需要精通所有模块，只�
 ## 📜 许可证
 
 本项目采用 **GNU Affero General Public License v3.0 (AGPL-3.0)** 开源。  
-如需闭源商业使用，请联系 moyuowo@outlook.com 获取单独授权。
+如需闭源商业使用，请联系 stintegy-evo@proton.me 获取单独授权。
 
 ---
 
 ## 💬 联系
 
 *   维护者：MoYuSOwO
-*   邮箱：moyuowo@outlook.com
+*   邮箱：stintegy-evo@proton.me
 *   讨论区：[GitHub Discussions](https://github.com/MoYuSOwO/stintegy-evo/discussions)
 
 ---

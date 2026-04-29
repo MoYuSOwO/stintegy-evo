@@ -2,7 +2,7 @@
 
 **Project Name**: StintegyEVO
 **Maintainer**: MoYuSOwO
-**Contact Email**: moyuowo@outlook.com
+**Contact Email**: stintegy-evo@proton.me
 
 Thank you for your interest in contributing to this project. To clarify the intellectual property relationship between contributors and the project maintainer, please read and sign this agreement carefully.
 

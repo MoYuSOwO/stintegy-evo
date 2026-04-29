@@ -167,14 +167,14 @@ Please read the [`CLA`](CLA.md), and then start directly from the Issue list or 
 ## 📜 License
 
 This project is open-sourced under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.  
-For closed-source commercial use, please contact moyuowo@outlook.com to obtain a separate license.
+For closed-source commercial use, please contact stintegy-evo@proton.me to obtain a separate license.
 
 ---
 
 ## 💬 Contact
 
 * Maintainer: MoYuSOwO
-* Email: moyuowo@outlook.com
+* Email: stintegy-evo@proton.me
 * Discussions: [GitHub Discussions](https://github.com/MoYuSOwO/stintegy-evo/discussions)
 
 ---
