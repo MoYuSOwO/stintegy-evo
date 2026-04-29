@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" alt="StintegyEVO" width="200"/>
+</p>
+
 # StintegyEVO – 赛车策略工程师模拟器
 
 [English](README.md)

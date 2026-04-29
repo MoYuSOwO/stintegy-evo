@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" alt="StintegyEVO" width="200"/>
+</p>
+
 # StintegyEVO – Racing Strategy Engineer Simulator
 
 [中文](README_zh.md)
