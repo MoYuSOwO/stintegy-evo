@@ -6,6 +6,8 @@
 
 [中文](README_zh.md)
 
+_If there is any inconsistency between the English and Chinese versions of the README, the Chinese version shall prevail._
+
 **StintegyEVO** is a **physics-based racing strategy simulation game**. You play not as a driver, but as a **race engineer**. Your job is to command AI drivers to execute your tactics during races, qualifying sessions, and endurance races by making real-time adjustments to strategies such as **torque distribution, energy recovery, and tire thermal management**, and to verify the consequences of these decisions in a highly realistic physical environment.
 
 > **Note: You do not need a controller or steering wheel.** All driving operations are performed by AI drivers; you only need to issue strategic commands.
@@ -210,6 +212,8 @@ StintegyEVO welcomes contributions of all kinds! You don’t need to be a physic
 * **Documentation & Outreach**: Improve the README, write tutorials, or record demo videos.
 
 ### How to Get Involved
+
+> **Before you begin, please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for detailed information on development environment configuration, coding standards, CLA signing, and other related information.**
 
 1.  **Pick a Goal**: Choose a task ID that interests you from the [Roadmap](#-roadmap). Each entry lists dependencies and expected inputs/outputs, allowing you to quickly assess if it’s a good fit for you.
 
