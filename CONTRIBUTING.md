@@ -46,7 +46,7 @@ We follow a standard GitHub Flow workflow. Please adhere to the following steps:
 **Before opening a Pull Request, please confirm the following:**
 
 - [ ] Your code has been tested locally and does not break existing functionality.
-- [ ] You have read and agree to the [Contributor License Agreement (CLA)](CLA.md). **Submitting a PR signifies your acceptance of and agreement to the terms of this agreement**, granting the project maintainer the rights to your contribution for potential future commercial licensing needs.
+- [ ] You have read and agree to the [Contributor License Agreement (CLA)](CLA.md).
 
 ### 4. Improving Documentation & Art
 
@@ -84,7 +84,10 @@ If you are unsure, take a look at the existing code first, or ask directly in Is
 ## License & Legal Notice
 
 - **Project Code**: Licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
-- **Contributor Licensing**: All code contributions are subject to the [Contributor License Agreement (CLA)](CLA.md). **By submitting a Pull Request, you confirm that you have read and agree to this agreement, granting the project maintainer the right to use your contribution for commercial licensing and other purposes in the future.** If you do not agree to this agreement, please do not submit code.
+- **Your Copyright**: You keep ownership of your contribution. Once accepted into the public repository, it remains available under AGPL-3.0.
+- **Why the CLA exists**: StintegyEVO may eventually need official online services with ongoing server, moderation, and maintenance costs. The [CLA](CLA.md) gives the maintainer a limited additional license to reuse shared project code in that future official online version. It does not allow the standalone Community Edition to be turned into a proprietary product or individual contributions to be sold separately.
+
+The purpose of the CLA is not to take ownership of community work. It lets us build shared systems such as physics, AI, and UI together without requiring them to be rewritten solely for a possible official online service later.
 
 ---
 

@@ -43,7 +43,7 @@ You can make real-time adjustments during the race to:
 ### 4. Open Source & Extensible
 * Fully self-developed physics engine, with no third-party physics middleware.
 * Track data is defined based on curves, making it easy for the community to create new tracks.
-* **AGPLv3 + CLA** dual licensing, welcoming contributions while protecting future commercial licensing prospects.
+* The Community Edition is open source under **AGPL-3.0**. Contributors keep ownership of their work, and accepted contributions remain open.
 
 ---
 
@@ -88,7 +88,7 @@ StintegyEVO is an independent solo-developed project. Currently, **core physics 
 
 Each completed module receives a version number, marking its transition from "unavailable" to "functional." Pending goals use logical numbering to indicate **suggested priority and dependencies**; they do not strictly lock the release order. You are welcome to complete a lower-priority task first if you feel confident in its implementation.
 
-If you are interested in any of these goals, feel free to jump in—the **AGPLv3 license and CLA** ensure your contributions are properly protected while the project retains healthy commercial potential.
+If you are interested in any of these goals, feel free to jump in. Contributors keep ownership of their work, and accepted contributions remain available to the community under **AGPL-3.0**.
 
 ### ✅ v0.1 Core Physics (Completed)
 
@@ -232,7 +232,8 @@ We look forward to advancing this project together while fully respecting the co
 ## 📜 License
 
 This project is open-sourced under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.  
-For closed-source commercial use, please contact stintegy-evo@proton.me to obtain a separate license.
+
+The standalone Community Edition will remain open source. The [CLA](CLA.md) gives the maintainer a limited additional license for a possible future official online version, so shared systems such as physics, AI, and UI would not need to be rewritten. It does not permit converting the standalone Community Edition into a proprietary product or selling individual contributions separately.
 
 ---
 
