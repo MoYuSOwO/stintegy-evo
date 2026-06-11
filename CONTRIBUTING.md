@@ -1,5 +1,9 @@
 # Contributing Guide
 
+[中文正式版](CONTRIBUTING_zh.md)
+
+_The maintainer will make every reasonable effort to keep the English and Chinese versions consistent. If a difference cannot be resolved, the Chinese version prevails._
+
 Thank you for your interest in **StintegyEVO**! This is a solo-initiated race strategy engineer simulator project currently in early development. We welcome all forms of contributions, including but not limited to code, documentation, art, UI, track data, vehicle tuning, and feedback.
 
 To help us collaborate efficiently, please take a few minutes to read the following guidelines.
@@ -46,7 +50,7 @@ We follow a standard GitHub Flow workflow. Please adhere to the following steps:
 **Before opening a Pull Request, please confirm the following:**
 
 - [ ] Your code has been tested locally and does not break existing functionality.
-- [ ] You have read and agree to the [Contributor License Agreement (CLA)](CLA.md).
+- [ ] You have read and agree to the [English CLA](CLA.md) and the [governing Chinese CLA](CLA_zh.md).
 
 ### 4. Improving Documentation & Art
 
@@ -73,7 +77,7 @@ Contributions to documentation, README improvements, Low Poly models, UI design,
 To maintain consistency across the project, please keep the following in mind when contributing code:
 
 - **Language**: C#. English is recommended for code comments and commit messages.
-- **Namespaces**: Non-Godot-node classes should be placed under the `StintegyEvo.Core` namespace and its sub-namespaces. Godot-node classes should be placed under `StintegyEvo.Nodes` and its sub-namespaces.
+- **Namespaces**: Non-Godot-node classes should be placed under the `StintegyEVO.Core` namespace and its sub-namespaces. Godot-node classes should be placed under `StintegyEVO.Nodes` and its sub-namespaces.
 - **Formatting**: Try to maintain the formatting conventions of the existing code (brace style, indentation, etc.).
 - **Physics / Vehicle Terminology**: Use precise professional terminology when naming variables whenever possible, e.g., `WheelAngularVel`, `SlipRatio`, `DownforceFront`.
 
@@ -85,7 +89,7 @@ If you are unsure, take a look at the existing code first, or ask directly in Is
 
 - **Project Code**: Licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
 - **Your Copyright**: You keep ownership of your contribution. Once accepted into the public repository, it remains available under AGPL-3.0.
-- **Why the CLA exists**: StintegyEVO may eventually need official online services with ongoing server, moderation, and maintenance costs. The [CLA](CLA.md) gives the maintainer a limited additional license to reuse shared project code in that future official online version. It does not allow the standalone Community Edition to be turned into a proprietary product or individual contributions to be sold separately.
+- **Why the CLA exists**: StintegyEVO may eventually need official online services with ongoing server, moderation, and maintenance costs. The [CLA](CLA.md) gives the maintainer a limited additional license to reuse shared project code in that future official online version. It does not allow the standalone Community Edition to be turned into a proprietary product or individual contributions to be sold separately. The maintainer will make every reasonable effort to keep the [English](CLA.md) and [Chinese](CLA_zh.md) texts consistent; if a difference cannot be resolved, the Chinese text prevails.
 
 The purpose of the CLA is not to take ownership of community work. It lets us build shared systems such as physics, AI, and UI together without requiring them to be rewritten solely for a possible official online service later.
 

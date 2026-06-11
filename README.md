@@ -4,13 +4,30 @@
 
 # StintegyEVO – Racing Strategy Engineer Simulator
 
-[中文](README_zh.md)
+[中文正式版](README_zh.md)
 
-_If there is any inconsistency between the English and Chinese versions of the README, the Chinese version shall prevail._
+_The maintainer will make every reasonable effort to keep the English and Chinese versions consistent. If a difference cannot be resolved, the Chinese version prevails._
 
 **StintegyEVO** is a **physics-based racing strategy simulation game**. You play not as a driver, but as a **race engineer**. Your job is to command AI drivers to execute your tactics during races, qualifying sessions, and endurance races by making real-time adjustments to strategies such as **torque distribution, energy recovery, and tire thermal management**, and to verify the consequences of these decisions in a highly realistic physical environment.
 
 > **Note: You do not need a controller or steering wheel.** All driving operations are performed by AI drivers; you only need to issue strategic commands.
+
+---
+
+## 🤝 Looking for Collaborators
+
+StintegyEVO is still an early engineering project, not yet a playable game. The core vehicle physics is implemented; the current blocker is foundational AI driving: making an AI-controlled car complete laps reliably under the existing nonlinear tire model, load transfer, and dynamically generated paths.
+
+We are especially looking for people interested in:
+
+* **Vehicle control and AI**: MPPI, MPC, racing AI, dynamic path planning, and alternative control approaches.
+* **Vehicle dynamics**: Tire modelling, simulation validation, Formula Student, and motorsport engineering.
+* **Godot 4 / C# engineering**: Simulation architecture, profiling, testing, telemetry, and debugging tools.
+* **Art and interface design**: Low-poly vehicles, race-engineer UI, telemetry visualization, and technical presentation.
+
+You do not need to solve the entire system. Design reviews, reproducible experiments, benchmarks, partial implementations, and unsuccessful approaches with useful conclusions are all meaningful contributions.
+
+[Current AI task](https://github.com/MoYuSOwO/stintegy-evo/issues/9) · [Discussions](https://github.com/MoYuSOwO/stintegy-evo/discussions) · [Contributing guide](CONTRIBUTING.md)
 
 ---
 
@@ -213,7 +230,7 @@ StintegyEVO welcomes contributions of all kinds! You don’t need to be a physic
 
 ### How to Get Involved
 
-> **Before you begin, please read [`CONTRIBUTING.md`](CONTRIBUTING.md) for detailed information on development environment configuration, coding standards, CLA signing, and other related information.**
+> **Before you begin, please read the [English](CONTRIBUTING.md) or [Chinese](CONTRIBUTING_zh.md) contributing guide for development setup, coding conventions, the CLA, and other details.**
 
 1.  **Pick a Goal**: Choose a task ID that interests you from the [Roadmap](#-roadmap). Each entry lists dependencies and expected inputs/outputs, allowing you to quickly assess if it’s a good fit for you.
 
@@ -223,7 +240,7 @@ StintegyEVO welcomes contributions of all kinds! You don’t need to be a physic
 
     **Why communicate first?** The main challenge of this project isn't "writing the code," but rather "navigating the uncertainty of the approach." Communicating beforehand prevents you from spending weeks on a solution that might conflict with someone else's work or be incompatible with the existing architecture. Think of Issues and Discussions as a **"handshake protocol"** to ensure every minute of your time provides maximum value.
 
-3.  **Start Contributing**: Once your proposal is confirmed, you're clear to start! Please make sure to read the [`CLA`](CLA.md) before you begin.
+3.  **Start Contributing**: Communication is for coordination, not an approval gate. Once the scope is clear—or immediately for a small, self-contained improvement—you can begin. Please read the [English CLA](CLA.md) and the [governing Chinese CLA](CLA_zh.md) before submitting a contribution.
 
 We look forward to advancing this project together while fully respecting the copyright and intellectual property of every contributor.
 
@@ -233,7 +250,7 @@ We look forward to advancing this project together while fully respecting the co
 
 This project is open-sourced under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.  
 
-The standalone Community Edition will remain open source. The [CLA](CLA.md) gives the maintainer a limited additional license for a possible future official online version, so shared systems such as physics, AI, and UI would not need to be rewritten. It does not permit converting the standalone Community Edition into a proprietary product or selling individual contributions separately.
+The standalone Community Edition will remain open source. The [CLA](CLA.md) gives the maintainer a limited additional license for a possible future official online version, so shared systems such as physics, AI, and UI would not need to be rewritten. It does not permit converting the standalone Community Edition into a proprietary product or selling individual contributions separately. The maintainer will make every reasonable effort to keep the [English](CLA.md) and [Chinese](CLA_zh.md) texts consistent; if a difference cannot be resolved, the Chinese text prevails.
 
 ---
 
