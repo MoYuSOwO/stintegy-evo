@@ -1,10 +1,14 @@
 # Contributor License Agreement
 
-**Project**: StintegyEVO
-**Maintainer**: MoYuSOwO
-**Contact**: stintegy-evo@proton.me
-**Version**: 2.0
-**Effective date**: June 12, 2026
+[中文正式版](CLA_zh.md)
+
+_The maintainer will make every reasonable effort to keep the English and Chinese versions consistent. If a difference cannot be resolved, the Chinese version prevails._
+
+- **Project**: StintegyEVO
+- **Maintainer**: MoYuSOwO
+- **Contact**: stintegy-evo@proton.me
+- **Version**: 2.1
+- **Effective date**: June 12, 2026
 
 Thank you for helping build StintegyEVO.
 
