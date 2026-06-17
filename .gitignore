@@ -4,4 +4,5 @@
 /android/
 .vscode/
 .idea/
-.tmp/*
+.tmp/
+gdunit4_testadapter_v5/
