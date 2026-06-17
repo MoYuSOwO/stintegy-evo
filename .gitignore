@@ -2,5 +2,6 @@
 .godot/
 .godot/*
 /android/
-/.vscode
-/.idea
+.vscode/
+.idea/
+.tmp/*
