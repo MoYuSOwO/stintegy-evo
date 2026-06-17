@@ -5,6 +5,8 @@ namespace StintegyEVO.Core.Car.Configs;
 public struct TireOutput
 {
     public Vector2 Force;
+    public float SlipRatio;
+    public float SlipAngle;
     public bool IsSliding;
     public bool IsLockedUp;
 }
@@ -47,6 +49,20 @@ public partial class TireConfig(TireType tireType) : Resource
     public const float LongShape = 1.65f;
     [Export] public float LongDrop { get; set; } = 0.4f;
     [Export] public float LongPeakFriction { get; set; } = 1.5f;
+
+    // Low speed tire model
+    public const float MinStableSlipSpeed = 1.0f;
+    public const float FullPacejkaSpeed = 3.0f;
+    public const float LowSpeedLongSlipStiffness = 0.6f;
+    public const float LowSpeedLatDamping = 3.0f;
+
+    // Force relaxation
+    public const float LongRelaxationLength = 0.12f;
+    public const float LatRelaxationLength = 0.5f;
+
+    // Wheel stop guard
+    public const float BrakeLockAngularVel = 0.5f;
+    public const float WheelStopDeadbandAngularVel = 0.1f;
 
     [ExportGroup("Thermodynamics")]
     public const float SpecificHeat = 400.0f;

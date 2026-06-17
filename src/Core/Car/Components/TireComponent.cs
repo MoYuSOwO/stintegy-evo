@@ -1,13 +1,12 @@
 using Godot;
 using StintegyEVO.Core.Car.Configs;
-using System;
 
 namespace StintegyEVO.Core.Car.Components;
 
 public struct BasePressureCondition
 {
-    public float temp;
-    public float pressure;
+    public float Temp;
+    public float Pressure;
 }
 
 public class TireComponent(TireConfig config, float initEnvTemp)
@@ -17,8 +16,8 @@ public class TireComponent(TireConfig config, float initEnvTemp)
     public readonly TireConfig Config = config;
     private BasePressureCondition condition = new()
     {
-        temp = initEnvTemp,
-        pressure = Mathf.Clamp(
+        Temp = initEnvTemp,
+        Pressure = Mathf.Clamp(
             config.InitPressure,
             TireConfig.AbsoluteMinPressure,
             TireConfig.AbsoluteMaxPressure
@@ -37,8 +36,8 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         get => _pressure; 
         set
         {
-            condition.temp = CoreTemp;
-            condition.pressure = value;
+            condition.Temp = CoreTemp;
+            condition.Pressure = value;
             _pressure = Mathf.Clamp(
                 value,
                 TireConfig.AbsoluteMinPressure,
@@ -48,6 +47,8 @@ public class TireComponent(TireConfig config, float initEnvTemp)
     }
     public float Wear { get; private set; } = 0.0f;
     public float WheelAngularVel { get; private set; } = 0f;
+    private float _longForceState;
+    private float _latForceState;
 
     public float GripFactor => GetTempGripFactor() * GetWearGripFactor() * GetPressureGripFactor();
     public float CurrLatPeakFriction => Config.LatPeakFriction * GripFactor;
@@ -64,6 +65,8 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         if (fz <= 0.1f)
         {
             WheelAngularVel = carSpeedLong / radius;
+            _longForceState = 0f;
+            _latForceState = 0f;
             return new()
             { 
                 Force = Vector2.Zero,
@@ -77,40 +80,48 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         float peakLongGrip = fz * CurrLongPeakFriction;
         for (int i = 0; i < SubSteps; i++)
         {
+            float appliedTorque = GetAppliedWheelTorque(powerTorque, carSpeedLong, WheelAngularVel);
             float wheelSpeed = WheelAngularVel * radius;
-
-            // Avoid wheel speed unstable when stop
-            if (Mathf.Abs(carSpeedLong) < 0.5f && Mathf.Abs(powerTorque) < 5.0f)
-            {
-                WheelAngularVel = carSpeedLong / radius;
-                break;
-            }
-
             float slipRatio = CalculateSlipRatio(wheelSpeed, carSpeedLong);
-            float actualLongForce = CalculatePacejkaLong(slipRatio, Config.LongStiffness, peakLongGrip);
+            float targetLongForce = CalculateBlendedLongForce(appliedTorque, radius, slipRatio, carSpeedLong, peakLongGrip);
+            float actualLongForce = RelaxForce(
+                _longForceState,
+                targetLongForce,
+                TireConfig.LongRelaxationLength,
+                Mathf.Max(Mathf.Abs(wheelSpeed), Mathf.Abs(carSpeedLong)),
+                subDt
+            );
+            actualLongForce = Mathf.Clamp(actualLongForce, -peakLongGrip, peakLongGrip);
+            _longForceState = actualLongForce;
 
             float groundTorque = actualLongForce * radius;
-            float netTorque = powerTorque - groundTorque;
+            float netTorque = appliedTorque - groundTorque;
             float angularAccel = netTorque / Config.Inertia;
-            WheelAngularVel += angularAccel * subDt;
+            float nextAngularVel = WheelAngularVel + angularAccel * subDt;
+            WheelAngularVel = ClampWheelStopDeadband(nextAngularVel, powerTorque);
         }
 
         // 2. Final longitudinal force
         float finalWheelSpeed = WheelAngularVel * radius;
         float finalSlipRatio = CalculateSlipRatio(finalWheelSpeed, carSpeedLong);
-        float finalPeakLongGrip = fz * CurrLongPeakFriction;
-        float finalLongForce = CalculatePacejkaLong(finalSlipRatio, Config.LongStiffness, finalPeakLongGrip);
+        float finalLongForce = _longForceState;
 
         // 3. Lateral force
         float peakLatGrip = fz * CurrLatPeakFriction;
-        float slipAngle = Mathf.Atan2(v.Y, Mathf.Abs(carSpeedLong) + 0.01f);
+        float slipAngle = CalculateSlipAngle(v);
         float latStiffness = Config.LatStiffness * GetPressureStiffnessFactor();
-        float rawFy = CalculatePacejkaLat(slipAngle, latStiffness, peakLatGrip);
+        float pacejkaFy = CalculatePacejkaLat(slipAngle, latStiffness, peakLatGrip);
+        float lowSpeedFy = Mathf.Clamp(-v.Y * fz * TireConfig.LowSpeedLatDamping, -peakLatGrip, peakLatGrip);
+        float latBlend = CalculateSpeedBlend(Mathf.Abs(carSpeedLong));
+        float rawFy = Mathf.Lerp(lowSpeedFy, pacejkaFy, latBlend);
 
         // 4. Friction Ellipse Constraint
         float longRatio = Mathf.Clamp(Mathf.Abs(finalLongForce) / peakLongGrip, 0f, 1f);
         float allowedLat = peakLatGrip * Mathf.Sqrt(1f - longRatio * longRatio);
-        float actualFy = Mathf.Clamp(rawFy, -allowedLat, allowedLat);
+        float targetFy = Mathf.Clamp(rawFy, -allowedLat, allowedLat);
+        float actualFy = RelaxForce(_latForceState, targetFy, TireConfig.LatRelaxationLength, v.Length(), dt);
+        actualFy = Mathf.Clamp(actualFy, -allowedLat, allowedLat);
+        _latForceState = actualFy;
 
         // 5. Heat & Wear
         float slipPowerLong = Mathf.Abs(finalLongForce) * Mathf.Abs(finalWheelSpeed - carSpeedLong);
@@ -120,11 +131,13 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         // 6. Judge
         bool isBraking = (finalLongForce * carSpeedLong) < -0.1f;
         bool isLockedUp = isBraking && (Mathf.Abs(finalWheelSpeed) < 0.2f);
-        bool isSliding = Mathf.Abs(finalSlipRatio) > 0.05f || (Mathf.Abs(rawFy) > allowedLat + 0.1f);
+        bool isSliding = Mathf.Abs(finalSlipRatio) > 0.12f || (Mathf.Abs(rawFy) > allowedLat + 0.1f);
 
         return new TireOutput
         {
             Force = new Vector2(finalLongForce, actualFy),
+            SlipRatio = finalSlipRatio,
+            SlipAngle = slipAngle,
             IsSliding = isSliding,
             IsLockedUp = isLockedUp
         };
@@ -132,22 +145,37 @@ public class TireComponent(TireConfig config, float initEnvTemp)
 
     private static float CalculateSlipRatio(float wheelSpeed, float carSpeed)
     {
-        const float eps = 0.01f;
+        float denom = Mathf.Max(Mathf.Max(Mathf.Abs(wheelSpeed), Mathf.Abs(carSpeed)), TireConfig.MinStableSlipSpeed);
+        return (wheelSpeed - carSpeed) / denom;
+    }
 
-        // Drive slip
-        if (wheelSpeed > carSpeed)
+    private static float CalculateSlipAngle(Vector2 tireVelocity)
+    {
+        return Mathf.Atan2(tireVelocity.Y, Mathf.Max(Mathf.Abs(tireVelocity.X), TireConfig.MinStableSlipSpeed));
+    }
+
+    private static float GetAppliedWheelTorque(float requestedTorque, float carSpeedLong, float wheelAngularVel)
+    {
+        if (requestedTorque >= 0f) return requestedTorque;
+
+        float brakeMagnitude = -requestedTorque;
+        float direction = 0f;
+        if (Mathf.Abs(wheelAngularVel) > TireConfig.BrakeLockAngularVel)
         {
-            float denom = Mathf.Max(Mathf.Abs(wheelSpeed), eps);
-            return (wheelSpeed - carSpeed) / denom;
+            direction = Mathf.Sign(wheelAngularVel);
+        }
+        else if (Mathf.Abs(carSpeedLong) > TireConfig.MinStableSlipSpeed)
+        {
+            direction = Mathf.Sign(carSpeedLong);
         }
 
-        // Brake slip
-        else if (wheelSpeed < carSpeed)
-        {
-            float denom = Mathf.Max(Mathf.Abs(carSpeed), eps);
-            return -(carSpeed - wheelSpeed) / denom;
-        }
-        return 0f;
+        return direction == 0f ? 0f : -direction * brakeMagnitude;
+    }
+
+    private static float ClampWheelStopDeadband(float wheelAngularVel, float requestedTorque)
+    {
+        if (requestedTorque > 0f) return wheelAngularVel;
+        return wheelAngularVel < TireConfig.WheelStopDeadbandAngularVel ? 0f : wheelAngularVel;
     }
 
     private float CalculatePacejkaLong(float slipRatio, float stiffness, float peakGrip)
@@ -162,6 +190,34 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         float x = alpha * stiffness;
         float sinTerm = Mathf.Sin(TireConfig.LatShape * Mathf.Atan(x - Config.LatDrop * (x - Mathf.Atan(x))));
         return -peakGrip * sinTerm;
+    }
+
+    private float CalculateBlendedLongForce(float powerTorque, float radius, float slipRatio, float carSpeedLong, float peakGrip)
+    {
+        float torqueForce = powerTorque / radius;
+        float lowSpeedForce = Mathf.Clamp(
+            torqueForce + slipRatio * peakGrip * TireConfig.LowSpeedLongSlipStiffness,
+            -peakGrip,
+            peakGrip
+        );
+        float pacejkaForce = CalculatePacejkaLong(slipRatio, Config.LongStiffness, peakGrip);
+        float blendSpeed = Mathf.Abs(carSpeedLong);
+
+        return Mathf.Lerp(lowSpeedForce, pacejkaForce, CalculateSpeedBlend(blendSpeed));
+    }
+
+    private static float CalculateSpeedBlend(float speed)
+    {
+        float t = Mathf.InverseLerp(TireConfig.MinStableSlipSpeed, TireConfig.FullPacejkaSpeed, speed);
+        return Mathf.SmoothStep(0f, 1f, t);
+    }
+
+    private static float RelaxForce(float current, float target, float relaxationLength, float speed, float dt)
+    {
+        float effectiveSpeed = Mathf.Max(speed, TireConfig.MinStableSlipSpeed);
+        float tau = relaxationLength / effectiveSpeed;
+        float alpha = 1.0f - Mathf.Exp(-dt / tau);
+        return current + (target - current) * alpha;
     }
 
     private void UpdateHeatAndWear(float fz, float speedMs, float longSlipPower, float latSlipPower, float envTemp, float dt)
@@ -202,7 +258,7 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         Wear = Mathf.Clamp(Wear + (longWear + latWear) * thermalMult, 0f, 1f);
 
         // Tire pressure update (ideal gas equation)
-        Pressure = condition.pressure * (CoreTemp + 273.15f) / (condition.temp + 273.15f);
+        Pressure = condition.Pressure * (CoreTemp + 273.15f) / (condition.Temp + 273.15f);
     }
 
     private float GetPressureStiffnessFactor()

@@ -13,13 +13,14 @@ public class PowerComponent(PowerConfig config)
         if (input < -PowerConfig.InputDeadZone)
         {
             float brake = -input;
+            float brakeForce = Config.MaxBrakeForce * brake;
 
             // No regen when battery fulls
             if (battery > 0.999f)
             {
                 return new()
                 {
-                    Drive = -Config.MaxBrakeForce * brake,
+                    Drive = -brakeForce,
                     Regen = 0
                 };
             }
@@ -27,30 +28,13 @@ public class PowerComponent(PowerConfig config)
             // Battery is not fulled
             else
             {
-                // Regen only
-                if (Config.MaxBrakeForce * brake < Config.MaxRegenForce)
+                float regenForce = Mathf.Min(brakeForce, Config.MaxRegenForce);
+                float speedFactor = Mathf.Clamp(carSpeed / 2f, 0f, 1f);
+                return new()
                 {
-                    float regenForce = Config.MaxBrakeForce * brake;
-                    float speedFactor = Mathf.Clamp(carSpeed / 2f, 0f, 1f);
-                    return new()
-                    {
-                        Drive = -regenForce * speedFactor,
-                        Regen = regenForce * speedFactor
-                    };
-                }
-                
-                // Regen & Brake
-                else
-                {
-                    float brakeForce = Config.MaxBrakeForce * brake;
-                    float regenForce = Config.MaxRegenForce;
-                    float speedFactor = Mathf.Clamp(carSpeed / 2f, 0f, 1f);
-                    return new()
-                    {
-                        Drive = -brakeForce * speedFactor,
-                        Regen = regenForce * speedFactor
-                    };
-                } 
+                    Drive = -brakeForce,
+                    Regen = regenForce * speedFactor
+                };
             }
         }
 
