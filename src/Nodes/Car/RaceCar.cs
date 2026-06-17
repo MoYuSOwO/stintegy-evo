@@ -5,11 +5,14 @@ using StintegyEVO.Core.Car.Controllers;
 using System;
 using System.Linq;
 using System.Text;
+using FileAccess = Godot.FileAccess;
 
 namespace StintegyEVO.Nodes.Car;
 
 public partial class RaceCar : RigidBody2D
 {
+    public static bool EnableDebugPrints { get; set; }
+
 	private CarLogic? _logic;
 
     private IController? _controller;
@@ -26,6 +29,11 @@ public partial class RaceCar : RigidBody2D
 
     private Node2D bodyAnchor = new();
     private Vector2 lastGlobalVel = Vector2.Zero;
+    private float telemetryTime;
+    private FileAccess? telemetryFile;
+    private int telemetryFrame;
+    public string? TelemetryName { get; set; }
+    public int TelemetryFrameStride { get; set; } = 1;
     public Line2D _debug_line = new()
     { 
         Width = 1.0f,
@@ -65,9 +73,12 @@ public partial class RaceCar : RigidBody2D
 
         // Assemble visual effects and collision boxes
         BuildCarVisuals();
-		BuildCollisionShape();
+        BuildCollisionShape();
 
         lastGlobalVel = Vector2.Zero;
+        telemetryTime = 0f;
+        telemetryFrame = 0;
+        if (TelemetryName != null) InitTelemetry(TelemetryName);
 
         IsInit = true;
     }
@@ -219,6 +230,7 @@ public partial class RaceCar : RigidBody2D
         if (!IsInit) return;
 
         float dt = (float)delta;
+        telemetryTime += dt;
 
         Vector2 globalAccel = (LinearVelocity - lastGlobalVel) / dt;
         lastGlobalVel = LinearVelocity;
@@ -227,7 +239,7 @@ public partial class RaceCar : RigidBody2D
         Vector2 localVel = Transform.BasisXformInv(LinearVelocity);
 
         float input = Mathf.Clamp(Controller.Input, -1f, 1f);
-        float steer = Mathf.Clamp(Controller.Steer, 0f, 1f);
+        float steer = Mathf.Clamp(Controller.Steer, -1f, 1f);
 
         var output = Logic.Tick(dt, input, steer, localVel, localAccel, AngularVelocity, Mass);
 
@@ -249,33 +261,40 @@ public partial class RaceCar : RigidBody2D
         ApplyTireForceToBody(output.RearLeft.Force, output.RearLeft.Pos);
         ApplyTireForceToBody(output.RearRight.Force, output.RearRight.Pos);
 
-        GD.Print("drag force: ", output.DragForce);
-        GD.Print("force: ", output.FrontLeft.Force, output.FrontRight.Force, output.RearLeft.Force, output.RearRight.Force);
+        if (EnableDebugPrints)
+        {
+            GD.Print("drag force: ", output.DragForce);
+            GD.Print("force: ", output.FrontLeft.Force, output.FrontRight.Force, output.RearLeft.Force, output.RearRight.Force);
+        }
 
         Controller.ThinkTick(dt, carData, Logic, Logic.Track);
+        WriteTelemetry(input, steer, carData, output);
 
-        GD.Print("speed: ", LinearVelocity.Length());
+        if (EnableDebugPrints)
+        {
+            GD.Print("speed: ", LinearVelocity.Length());
 
-        float latMiu = float.MaxValue, longMiu = float.MaxValue;
-        foreach (var tire in Logic.Tires)
-        {
-            latMiu = Mathf.Min(latMiu, tire.CurrLatPeakFriction);
-            longMiu = Mathf.Min(longMiu, tire.CurrLongPeakFriction);
+            float latMiu = float.MaxValue, longMiu = float.MaxValue;
+            foreach (var tire in Logic.Tires)
+            {
+                latMiu = Mathf.Min(latMiu, tire.CurrLatPeakFriction);
+                longMiu = Mathf.Min(longMiu, tire.CurrLongPeakFriction);
+            }
+            GD.Print("latMinGrid: ", latMiu, ", longMinGrid: ", longMiu);
+            string stemp = "surface temp: ", ctemp = "core temp: ", wear = "wear: ", wheelVel = "wheelVel: ";
+            foreach (var t in Logic.Tires)
+            {
+                stemp += $"{t.SurfaceTemp}, ";
+                ctemp += $"{t.CoreTemp}, ";
+                wear += $"{t.Wear}, ";
+                wheelVel += $"{t.WheelAngularVel}, ";
+            }
+            GD.Print(stemp);
+            GD.Print(ctemp);
+            GD.Print(wear);
+            GD.Print(wheelVel);
+            GD.Print();
         }
-        GD.Print("latMinGrid: ", latMiu, ", longMinGrid: ", longMiu);
-        string stemp = "surface temp: ", ctemp = "core temp: ", wear = "wear: ", wheelVel = "wheelVel: ";
-        foreach (var t in Logic.Tires)
-        {
-            stemp += $"{t.SurfaceTemp}, ";
-            ctemp += $"{t.CoreTemp}, ";
-            wear += $"{t.Wear}, ";
-            wheelVel += $"{t.WheelAngularVel}, ";
-        }
-        GD.Print(stemp);
-        GD.Print(ctemp);
-        GD.Print(wear);
-        GD.Print(wheelVel);
-        GD.Print();
     }
 
     private void ApplyTireForceToBody(Vector2 localTireForce, Vector2 localPos)
@@ -284,6 +303,80 @@ public partial class RaceCar : RigidBody2D
         Vector2 globalOffset = Transform.BasisXform(localPos);
         
         ApplyForce(globalForce, globalOffset);
+    }
+
+    public void EnableTelemetry(string telemetryName)
+    {
+        TelemetryName = telemetryName;
+        if (IsInit) InitTelemetry(telemetryName);
+    }
+
+    private void InitTelemetry(string telemetryName)
+    {
+        telemetryFile?.Close();
+        string telemetryDir = ProjectSettings.GlobalizePath("res://.tmp");
+        DirAccess.MakeDirRecursiveAbsolute(telemetryDir);
+        telemetryFile = FileAccess.Open($"res://.tmp/{telemetryName}.csv", FileAccess.ModeFlags.Write);
+        telemetryFile?.StoreLine(
+            "time,input,steer,speed,angular_vel,pos_x,pos_y,rotation," +
+            "fl_slip,fr_slip,rl_slip,rr_slip,fl_angle,fr_angle,rl_angle,rr_angle," +
+            "fl_slide,fr_slide,rl_slide,rr_slide,fl_wear,fr_wear,rl_wear,rr_wear," +
+            "fl_surface,fr_surface,rl_surface,rr_surface,fl_wheel,fr_wheel,rl_wheel,rr_wheel"
+        );
+    }
+
+    private void WriteTelemetry(float input, float steer, CarSensor sensor, PhysicsOutput output)
+    {
+        if (telemetryFile == null) return;
+        telemetryFrame++;
+        if (telemetryFrame % Mathf.Max(TelemetryFrameStride, 1) != 0) return;
+
+        var p = output.Params;
+        telemetryFile.StoreLine(string.Join(",",
+            F(telemetryTime),
+            F(input),
+            F(steer),
+            F(sensor.LinearVelocity.Length()),
+            F(sensor.AngularVelocity),
+            F(sensor.Position.X),
+            F(sensor.Position.Y),
+            F(sensor.Rotation),
+            F(p.FrontLeft.SlipRatio),
+            F(p.FrontRight.SlipRatio),
+            F(p.RearLeft.SlipRatio),
+            F(p.RearRight.SlipRatio),
+            F(p.FrontLeft.SlipAngle),
+            F(p.FrontRight.SlipAngle),
+            F(p.RearLeft.SlipAngle),
+            F(p.RearRight.SlipAngle),
+            B(p.FrontLeft.IsSliding),
+            B(p.FrontRight.IsSliding),
+            B(p.RearLeft.IsSliding),
+            B(p.RearRight.IsSliding),
+            F(Logic.TireFrontLeft.Wear),
+            F(Logic.TireFrontRight.Wear),
+            F(Logic.TireRearLeft.Wear),
+            F(Logic.TireRearRight.Wear),
+            F(Logic.TireFrontLeft.SurfaceTemp),
+            F(Logic.TireFrontRight.SurfaceTemp),
+            F(Logic.TireRearLeft.SurfaceTemp),
+            F(Logic.TireRearRight.SurfaceTemp),
+            F(Logic.TireFrontLeft.WheelAngularVel),
+            F(Logic.TireFrontRight.WheelAngularVel),
+            F(Logic.TireRearLeft.WheelAngularVel),
+            F(Logic.TireRearRight.WheelAngularVel)
+        ));
+        telemetryFile.Flush();
+    }
+
+    private static string F(float value)
+    {
+        return value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string B(bool value)
+    {
+        return value ? "1" : "0";
     }
 
 }

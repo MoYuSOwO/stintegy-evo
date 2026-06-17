@@ -26,7 +26,7 @@ public interface IController
     public abstract void ThinkTick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
 }
 
-public partial class DummyController : IController
+public class DummyController : IController
 {
     public static readonly DummyController Instance = new();
 

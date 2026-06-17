@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using StintegyEVO.Core.Car.Controllers;
 using StintegyEVO.Core.Car;
+using System.Globalization;
 
 namespace StintegyEVO.Nodes.Race;
 
@@ -37,9 +38,25 @@ public partial class RaceManager : Node2D
 				int idx = grid.Index;
 				startRotation = trackData[idx].Tangent.Angle();
 			}
-			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), DummyController.Instance, startPos, startRotation, this);
+			ConfigureTelemetry(car);
+			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), new MppiController(), startPos, startRotation, this);
 			AddChild(car);
 		}
+	}
+
+	private static void ConfigureTelemetry(RaceCar car)
+	{
+		string? telemetryName = System.Environment.GetEnvironmentVariable("STINTEGY_TELEMETRY_NAME");
+		if (string.IsNullOrWhiteSpace(telemetryName)) return;
+
+		car.TelemetryName = telemetryName;
+		car.TelemetryFrameStride = ParseEnvInt("STINTEGY_TELEMETRY_STRIDE", 1);
+	}
+
+	private static int ParseEnvInt(string name, int fallback)
+	{
+		string? value = System.Environment.GetEnvironmentVariable(name);
+		return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) ? Mathf.Max(parsed, 1) : fallback;
 	}
 
 	// Called every frame. 'delta' is the elapsed time since the previous frame.

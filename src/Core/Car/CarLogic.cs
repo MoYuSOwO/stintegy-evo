@@ -35,6 +35,8 @@ public struct PhysicsOutput
 
 public class CarLogic
 {
+    public static bool EnableDebugPrints { get; set; }
+
     public readonly CarConfig Config;
 	public readonly PowerComponent Power;
 	public readonly BatteryComponent Battery;
@@ -179,16 +181,19 @@ public class CarLogic
             );
         }
 
-        GD.Print($"input: {input}, steer: {steer}, Drive: {powerOutput.Drive}, Time: {time} s");
+        if (EnableDebugPrints) GD.Print($"input: {input}, steer: {steer}, Drive: {powerOutput.Drive}, Time: {time} s");
         time += dt;
-        string torque = "powerTorque: ", force = "tireForce: ";
-        foreach (var t in Tires)
+        if (EnableDebugPrints)
         {
-            torque += $"{driveDist.Tires[(int)t.Config.Type] * t.Config.Radius}, ";
-            force += $"{tireOutputs[(int)t.Config.Type].Force.X}, ";
+            string torque = "powerTorque: ", force = "tireForce: ";
+            foreach (var t in Tires)
+            {
+                torque += $"{driveDist.Tires[(int)t.Config.Type] * t.Config.Radius}, ";
+                force += $"{tireOutputs[(int)t.Config.Type].Force.X}, ";
+            }
+            GD.Print(torque);
+            GD.Print(force);
         }
-        GD.Print(torque);
-        GD.Print(force);
 
         PhysicsOutput output = new();
 
