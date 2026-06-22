@@ -70,6 +70,12 @@ public partial class RaceCar : RigidBody2D
         // Initialize rigid body physical properties
         Mass = car.Config.Chassis.DryMass;
         Inertia = car.Config.Chassis.DryI; 
+        // All chassis drag and yaw damping come from CarLogic. Leaving Godot's
+        // default body damping enabled silently adds a second braking force.
+        LinearDampMode = DampMode.Replace;
+        AngularDampMode = DampMode.Replace;
+        LinearDamp = 0f;
+        AngularDamp = 0f;
 
         // Assemble visual effects and collision boxes
         BuildCarVisuals();
@@ -191,10 +197,10 @@ public partial class RaceCar : RigidBody2D
         CollisionShape2D collisionNode = new()
         {
             Shape = rectShape,
-            Position = Vector2.Zero
+            Position = bodyAnchor.Position
         };
-		
-        bodyAnchor.AddChild(collisionNode);
+
+        AddChild(collisionNode);
     }
 
     private static Vector2[] GetRectPoints(float minX, float minY, float maxX, float maxY)
@@ -321,7 +327,11 @@ public partial class RaceCar : RigidBody2D
             "time,input,steer,speed,angular_vel,pos_x,pos_y,rotation," +
             "fl_slip,fr_slip,rl_slip,rr_slip,fl_angle,fr_angle,rl_angle,rr_angle," +
             "fl_slide,fr_slide,rl_slide,rr_slide,fl_wear,fr_wear,rl_wear,rr_wear," +
-            "fl_surface,fr_surface,rl_surface,rr_surface,fl_wheel,fr_wheel,rl_wheel,rr_wheel"
+            "fl_surface,fr_surface,rl_surface,rr_surface,fl_core,fr_core,rl_core,rr_core," +
+            "fl_wheel,fr_wheel,rl_wheel,rr_wheel," +
+            "drive_request,tire_long_force,drag_force," +
+            "mppi_compute_ms,mppi_age_ms,mppi_ess,mppi_temp,mppi_min_cost,mppi_lag_steps,mppi_steer_offset," +
+            "mppi_outside,mppi_line_error,mppi_live_line_error,mppi_optimal_line_error,mppi_slip,mppi_angle,mppi_body_slip,mppi_yaw,mppi_backward_steps"
         );
     }
 
@@ -332,6 +342,7 @@ public partial class RaceCar : RigidBody2D
         if (telemetryFrame % Mathf.Max(TelemetryFrameStride, 1) != 0) return;
 
         var p = output.Params;
+        MppiController? mppi = Controller as MppiController;
         telemetryFile.StoreLine(string.Join(",",
             F(telemetryTime),
             F(input),
@@ -361,10 +372,33 @@ public partial class RaceCar : RigidBody2D
             F(Logic.TireFrontRight.SurfaceTemp),
             F(Logic.TireRearLeft.SurfaceTemp),
             F(Logic.TireRearRight.SurfaceTemp),
+            F(Logic.TireFrontLeft.CoreTemp),
+            F(Logic.TireFrontRight.CoreTemp),
+            F(Logic.TireRearLeft.CoreTemp),
+            F(Logic.TireRearRight.CoreTemp),
             F(Logic.TireFrontLeft.WheelAngularVel),
             F(Logic.TireFrontRight.WheelAngularVel),
             F(Logic.TireRearLeft.WheelAngularVel),
-            F(Logic.TireRearRight.WheelAngularVel)
+            F(Logic.TireRearRight.WheelAngularVel),
+            F(p.Power.Drive),
+            F(p.FrontLeft.Force.X + p.FrontRight.Force.X + p.RearLeft.Force.X + p.RearRight.Force.X),
+            F(output.DragForce.Length()),
+            F(mppi?.LastPlanComputeMs ?? 0f),
+            F(mppi?.LastPlanAgeMs ?? 0f),
+            F(mppi?.LastPlanEffectiveSampleSize ?? 0f),
+            F(mppi?.LastPlanTemperature ?? 0f),
+            F(mppi?.LastPlanMinCost ?? 0f),
+            mppi?.LastPlanLagSteps ?? 0,
+            F(mppi?.SteerOffset ?? 0f),
+            F(mppi?.LastPlanMaxOutside ?? 0f),
+            F(mppi?.LastPlanMaxTrackLineError ?? 0f),
+            F(mppi?.CurrentTrackLineError ?? 0f),
+            F(mppi?.CurrentOptimalLineError ?? 0f),
+            F(mppi?.LastPlanMaxSlipRatio ?? 0f),
+            F(mppi?.LastPlanMaxSlipAngle ?? 0f),
+            F(mppi?.LastPlanMaxBodySlip ?? 0f),
+            F(mppi?.LastPlanMaxYawRate ?? 0f),
+            mppi?.LastPlanBackwardIndexSteps ?? 0
         ));
         telemetryFile.Flush();
     }
