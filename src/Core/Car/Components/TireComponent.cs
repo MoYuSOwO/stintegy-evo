@@ -227,16 +227,19 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         float latEnergy = latSlipPower * dt;
         float totalFrictionEnergy = longEnergy + latEnergy;
         float rollingEnergy = fz * speedMs * Config.DefaultRollingResCoef * dt;
+        float surfaceFrictionEnergy = totalFrictionEnergy * TireConfig.SurfaceFrictionHeatFraction;
+        float coreFrictionEnergy = totalFrictionEnergy * TireConfig.CoreFrictionHeatFraction;
 
         float surfaceMass = Config.Mass * TireConfig.SurfaceMassRatio;
         float coreMass = Config.Mass - surfaceMass;
 
         // Surface temp rise
-        float tempRise = totalFrictionEnergy / (surfaceMass * TireConfig.SpecificHeat);
+        float tempRise = surfaceFrictionEnergy / (surfaceMass * TireConfig.SpecificHeat);
         SurfaceTemp += tempRise;
 
-        // Core temp rise
-        CoreTemp += rollingEnergy / (coreMass * TireConfig.SpecificHeat);
+        // Friction heat also reaches the tire body. The remaining energy is
+        // dissipated into the road surface, wear debris and rubber damage.
+        CoreTemp += (rollingEnergy + coreFrictionEnergy) / (coreMass * TireConfig.SpecificHeat);
 
         // Internal heat conduction (surface to core)
         float internalTransfer = (SurfaceTemp - CoreTemp) * TireConfig.InternalHeatTransCoef * dt;

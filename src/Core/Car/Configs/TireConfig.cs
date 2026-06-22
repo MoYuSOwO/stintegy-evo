@@ -67,6 +67,8 @@ public partial class TireConfig(TireType tireType) : Resource
     [ExportGroup("Thermodynamics")]
     public const float SpecificHeat = 400.0f;
     public const float SurfaceMassRatio = 0.2f;
+    public const float SurfaceFrictionHeatFraction = 0.35f;
+    public const float CoreFrictionHeatFraction = 0.15f;
     [Export] public float OptimalMinTemp { get; set; } = 60.0f;
     [Export] public float OptimalMaxTemp { get; set; } = 110.0f;
     [Export] public float ThermalWearCoef { get; set; } = 0.005f;
