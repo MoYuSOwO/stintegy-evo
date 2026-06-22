@@ -185,6 +185,7 @@ public class TrackData
                 }
             }
         }
+
         return bestIdx;
     }
     
