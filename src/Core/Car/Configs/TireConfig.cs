@@ -87,6 +87,10 @@ public partial class TireConfig(TireType tireType) : Resource
     public const float LowPressureSensitivity = 0.2f;
     public const float HighPressureSensitivity = 0.5f;
     public const float StiffnessSensitivity = 0.1f;
-    [Export] public float BaseLongWearRate { get; set; } = 0.0000005f;
-    [Export] public float BaseLatWearRate { get; set; } = 0.0000012f;
+    // Default medium-compound calibration: under a clean fast lap on the
+    // simple test track, the limiting rear tire reaches heavy wear in about
+    // fifteen laps. All rates remain energy-based.
+    [Export] public float BaseLongWearRate { get; set; } = 0.00000007142857f;
+    [Export] public float BaseLatWearRate { get; set; } = 0.00000017142857f;
+    [Export] public float RollingWearEnergyRate { get; set; } = 0.000000075f;
 }

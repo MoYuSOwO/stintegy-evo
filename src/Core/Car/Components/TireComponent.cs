@@ -254,11 +254,12 @@ public class TireComponent(TireConfig config, float initEnvTemp)
         // Wear calculation (based on friction work)
         float longWear = longEnergy * Config.BaseLongWearRate;
         float latWear = latEnergy * Config.BaseLatWearRate;
+        float rollingWear = rollingEnergy * Config.RollingWearEnergyRate;
         // Overheat penalty
         float thermalMult = 1.0f;
         if (SurfaceTemp > Config.OptimalMaxTemp)
             thermalMult += (SurfaceTemp - Config.OptimalMaxTemp) * Config.ThermalWearCoef;
-        Wear = Mathf.Clamp(Wear + (longWear + latWear) * thermalMult, 0f, 1f);
+        Wear = Mathf.Clamp(Wear + (longWear + latWear + rollingWear) * thermalMult, 0f, 1f);
 
         // Tire pressure update (ideal gas equation)
         Pressure = condition.Pressure * (CoreTemp + 273.15f) / (condition.Temp + 273.15f);
