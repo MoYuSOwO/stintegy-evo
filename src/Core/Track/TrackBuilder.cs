@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 using StintegyEVO.Util;
@@ -140,7 +141,7 @@ public class TrackBuilder
 
     public TrackBuilder CloseLoop()
     {
-        if (nodes == null || nodes.Count == 0) return this;
+        if (nodes.Count == 0) return this;
 
         BuilderNode startNode = nodes[0];
         BuilderNode endNode = nodes[^1];
@@ -208,6 +209,11 @@ public class TrackBuilder
 
     public TrackData Build(TrackGridConfig startingConfig)
     {
+        return Build(startingConfig, TrackLineSolvers.Default);
+    }
+
+    public TrackData Build(TrackGridConfig startingConfig, ITrackLineSolver lineSolver)
+    {
         List<TrackNode> resNodes = [];
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -226,7 +232,7 @@ public class TrackBuilder
                 )
             );
         }
-        return new TrackData(resNodes, startingConfig);
+        return new TrackData(resNodes, startingConfig, lineSolver);
     }
 
 }

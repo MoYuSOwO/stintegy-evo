@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Godot;
-using StintegyEVO.Util;
 
 namespace StintegyEVO.Core.Track;
 
@@ -114,11 +113,16 @@ public class TrackData
     }
     public readonly StartingGridAccessor Grids;
 
-    internal TrackData(IList<TrackNode> nodes, TrackGridConfig gridConfig)
+    internal TrackData(IReadOnlyList<TrackNode> nodes, TrackGridConfig gridConfig) : this(nodes, gridConfig, TrackLineSolvers.Default)
+    {
+        
+    }
+
+    internal TrackData(IReadOnlyList<TrackNode> nodes, TrackGridConfig gridConfig, ITrackLineSolver lineSolver)
     {
         Nodes = [.. nodes];
         Grids = new(this);
-        OptimalLines = TrackLineSolver.GenerateOptimalLines(nodes, SafeMargin);
+        OptimalLines = (lineSolver ?? TrackLineSolvers.Default).GenerateOptimalLines(nodes, SafeMargin);
         GridConfig = gridConfig;
 
         float maxWidth = 0.0f;

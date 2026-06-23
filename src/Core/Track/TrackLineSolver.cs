@@ -5,9 +5,31 @@ using Godot;
 
 namespace StintegyEVO.Core.Track;
 
-public static class TrackLineSolver
+public interface ITrackLineSolver
 {
-    internal static ImmutableArray<float> GenerateOptimalLines(IList<TrackNode> nodes, float safeMargin)
+    ImmutableArray<float> GenerateOptimalLines(IReadOnlyList<TrackNode> nodes, float safeMargin);
+}
+
+public static class TrackLineSolvers
+{
+    public static readonly ITrackLineSolver MinimumCurvature = new MinimumCurvatureTrackLineSolver();
+    public static readonly ITrackLineSolver CenterLine = new CenterLineTrackLineSolver();
+
+    public static ITrackLineSolver Default => MinimumCurvature;
+}
+
+public class CenterLineTrackLineSolver : ITrackLineSolver
+{
+    public ImmutableArray<float> GenerateOptimalLines(IReadOnlyList<TrackNode> nodes, float safeMargin)
+    {
+        float[] optimalLines = new float[nodes.Count];
+        return [.. optimalLines];
+    }
+}
+
+public class MinimumCurvatureTrackLineSolver : ITrackLineSolver
+{
+    public ImmutableArray<float> GenerateOptimalLines(IReadOnlyList<TrackNode> nodes, float safeMargin)
     {
         float[] optimalLines = new float[nodes.Count];
         int N = nodes.Count;
