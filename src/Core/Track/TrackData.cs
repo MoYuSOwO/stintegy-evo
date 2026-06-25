@@ -33,8 +33,6 @@ public readonly struct TrackPoint
     public readonly Vector2 RightEdge => _node.RightEdge;
     public readonly Vector2 LeftBufferEdge => Center + Normal * (HalfWidth + LeftBufferWidth);
     public readonly Vector2 RightBufferEdge => Center + Normal * (HalfWidth + RightBufferWidth);
-    public readonly float OptimalOffset;
-    public readonly Vector2 Optimal => _node.GetOffsetPos(OptimalOffset);
     public readonly float TotalWidth => Width + LeftBufferWidth + RightBufferWidth;
     public readonly float Friction;
 
@@ -43,11 +41,10 @@ public readonly struct TrackPoint
         return Center + Normal * offset;
     }
 
-    internal TrackPoint(int index, TrackNode node, float optimalOffset, float friction)
+    internal TrackPoint(int index, TrackNode node, float friction)
     {
         _node = node;
         Index = index;
-        OptimalOffset = optimalOffset;
         Friction = friction;
     }
 }
@@ -97,7 +94,6 @@ public class TrackData
     private readonly Dictionary<long, List<int>> spatialBuckets = [];
 
     private readonly ImmutableArray<TrackNode> Nodes;
-    private readonly ImmutableArray<float> OptimalLines;
     public float FrictionMultiplier { get; set; } = 1.0f;
     public float Friction => BaseFriction * FrictionMultiplier;
 
@@ -108,21 +104,15 @@ public class TrackData
         get
         {
             int safeIdx = (index % Length + Length) % Length;
-            return new TrackPoint(safeIdx, Nodes[safeIdx], OptimalLines[safeIdx], Friction);
+            return new TrackPoint(safeIdx, Nodes[safeIdx], Friction);
         }
     }
     public readonly StartingGridAccessor Grids;
 
-    internal TrackData(IReadOnlyList<TrackNode> nodes, TrackGridConfig gridConfig) : this(nodes, gridConfig, TrackLineSolvers.Default)
-    {
-        
-    }
-
-    internal TrackData(IReadOnlyList<TrackNode> nodes, TrackGridConfig gridConfig, ITrackLineSolver lineSolver)
+    internal TrackData(IReadOnlyList<TrackNode> nodes, TrackGridConfig gridConfig)
     {
         Nodes = [.. nodes];
         Grids = new(this);
-        OptimalLines = (lineSolver ?? TrackLineSolvers.Default).GenerateOptimalLines(nodes, SafeMargin);
         GridConfig = gridConfig;
 
         float maxWidth = 0.0f;

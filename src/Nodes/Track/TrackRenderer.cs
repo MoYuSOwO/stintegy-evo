@@ -12,12 +12,10 @@ public partial class TrackRenderer : Node2D
     [Export] public Color RoadColor = Color.FromHtml("#dfe4ea");
     [Export] public Color BufferColor = Color.FromHtml("#e8d3b9");
     [Export] public Color WallColor = Color.FromHtml("#576574");
-    [Export] public Color RacingLineColor = Color.FromHtml("#91c788e4");
     [Export] public Color GridColor = Color.FromHtml("#fbfcf8cb");
 
     [ExportGroup("Value")]
     [Export] public float wallThickness = 2.4f;
-    [Export] public float racingLineThickness = 1.0f;
     [Export] public float finishLineSquareSize = 0.5f;
     [Export] public float startingLineThickness = 0.5f;
 
@@ -70,9 +68,6 @@ public partial class TrackRenderer : Node2D
 
         // Draw physical walls (visual outline + physics Collision) (z-index 3)
         GenerateWalls(Track);
-
-        // Draw racing lines (z-index 4)
-        DrawRacingLine(Track);
     }
 
     private void CreateDynamicBackground()
@@ -267,24 +262,6 @@ public partial class TrackRenderer : Node2D
 
         AddChild(CreateFlatMesh(leftWallVertices, WallColor, 3));
         AddChild(CreateFlatMesh(rightWallVertices, WallColor, 3));
-    }
-
-    private void DrawRacingLine(TrackData trackData)
-    {
-        Line2D line = new() 
-        { 
-            Width = racingLineThickness,
-            DefaultColor = RacingLineColor,
-            ZIndex = 4,
-            Antialiased = true,
-            JointMode = Line2D.LineJointMode.Round,
-            Closed = true
-        };
-        for (int i = 0; i < trackData.Length; i++)
-        {
-            line.AddPoint(trackData[i].Optimal);
-        }
-        AddChild(line);
     }
 
     private static Polygon2D CreatePolygon(Vector2[] points, Color color)

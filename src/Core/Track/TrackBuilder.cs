@@ -209,11 +209,6 @@ public class TrackBuilder
 
     public TrackData Build(TrackGridConfig startingConfig)
     {
-        return Build(startingConfig, TrackLineSolvers.Default);
-    }
-
-    public TrackData Build(TrackGridConfig startingConfig, ITrackLineSolver lineSolver)
-    {
         List<TrackNode> resNodes = [];
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -232,7 +227,7 @@ public class TrackBuilder
                 )
             );
         }
-        return new TrackData(resNodes, startingConfig, lineSolver);
+        return new TrackData(resNodes, startingConfig);
     }
 
 }
