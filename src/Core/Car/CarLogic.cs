@@ -165,32 +165,53 @@ public class CarLogic
         Vector2 velRL_Tire = velRL_Chassis;
         Vector2 velRR_Tire = velRR_Chassis;
 
-        Vector2[] velTires = [velFL_Tire, velFR_Tire, velRL_Tire, velRR_Tire];
+        TireComponent tireFL = TireFrontLeft;
+        TireComponent tireFR = TireFrontRight;
+        TireComponent tireRL = TireRearLeft;
+        TireComponent tireRR = TireRearRight;
 
-        TireOutput[] tireOutputs = new TireOutput[4];
-        for (int i = 0; i < 4; i++)
-        {
-            var tire = Tires[i];
-            float radius = tire.Config.Radius;
-            tireOutputs[i] = tire.UpdateAndGetTire(
-                driveDist.Tires[i] * radius,
-                currentLoad.Tires[i],
-                velTires[i],
-                dt,
-                envTemp
-            );
-        }
+        TireOutput tireOutputFL = tireFL.UpdateAndGetTire(
+            driveDist.FrontLeft * tireFL.Config.Radius,
+            currentLoad.FrontLeft,
+            velFL_Tire,
+            dt,
+            envTemp
+        );
+        TireOutput tireOutputFR = tireFR.UpdateAndGetTire(
+            driveDist.FrontRight * tireFR.Config.Radius,
+            currentLoad.FrontRight,
+            velFR_Tire,
+            dt,
+            envTemp
+        );
+        TireOutput tireOutputRL = tireRL.UpdateAndGetTire(
+            driveDist.RearLeft * tireRL.Config.Radius,
+            currentLoad.RearLeft,
+            velRL_Tire,
+            dt,
+            envTemp
+        );
+        TireOutput tireOutputRR = tireRR.UpdateAndGetTire(
+            driveDist.RearRight * tireRR.Config.Radius,
+            currentLoad.RearRight,
+            velRR_Tire,
+            dt,
+            envTemp
+        );
 
         if (EnableDebugPrints) GD.Print($"input: {input}, steer: {steer}, Drive: {powerOutput.Drive}, Time: {time} s");
         time += dt;
         if (EnableDebugPrints)
         {
             string torque = "powerTorque: ", force = "tireForce: ";
-            foreach (var t in Tires)
-            {
-                torque += $"{driveDist.Tires[(int)t.Config.Type] * t.Config.Radius}, ";
-                force += $"{tireOutputs[(int)t.Config.Type].Force.X}, ";
-            }
+            torque += $"{driveDist.FrontLeft * tireFL.Config.Radius}, ";
+            torque += $"{driveDist.FrontRight * tireFR.Config.Radius}, ";
+            torque += $"{driveDist.RearLeft * tireRL.Config.Radius}, ";
+            torque += $"{driveDist.RearRight * tireRR.Config.Radius}, ";
+            force += $"{tireOutputFL.Force.X}, ";
+            force += $"{tireOutputFR.Force.X}, ";
+            force += $"{tireOutputRL.Force.X}, ";
+            force += $"{tireOutputRR.Force.X}, ";
             GD.Print(torque);
             GD.Print(force);
         }
@@ -209,34 +230,30 @@ public class CarLogic
         // Pure drive mode, the motor outputs positive torque
         if (powerOutput.Drive > 0)  
         {
-            float totalDrivePower = 0f;
-            for (int i = 0; i < 4; i++)
-            {
-                float driveTorque = driveDist.Tires[i] * Tires[i].Config.Radius;
-                float wheelOmega = Tires[i].WheelAngularVel;
-                totalDrivePower += driveTorque * wheelOmega;
-            }
+            float totalDrivePower =
+                driveDist.FrontLeft * tireFL.Config.Radius * tireFL.WheelAngularVel +
+                driveDist.FrontRight * tireFR.Config.Radius * tireFR.WheelAngularVel +
+                driveDist.RearLeft * tireRL.Config.Radius * tireRL.WheelAngularVel +
+                driveDist.RearRight * tireRR.Config.Radius * tireRR.WheelAngularVel;
             Battery.Consume(totalDrivePower, dt);
         }
 
         // Regen exists
         if (powerOutput.Regen > 0)  
         {
-            float totalRegenPower = 0f;
-            for (int i = 0; i < 4; i++)
-            {
-                float regenTorque = regenDist.Tires[i] * Tires[i].Config.Radius;
-                float wheelOmega = Tires[i].WheelAngularVel;
-                totalRegenPower += regenTorque * wheelOmega;
-            }
+            float totalRegenPower =
+                regenDist.FrontLeft * tireFL.Config.Radius * tireFL.WheelAngularVel +
+                regenDist.FrontRight * tireFR.Config.Radius * tireFR.WheelAngularVel +
+                regenDist.RearLeft * tireRL.Config.Radius * tireRL.WheelAngularVel +
+                regenDist.RearRight * tireRR.Config.Radius * tireRR.WheelAngularVel;
             Battery.Regen(totalRegenPower, dt);
         }
 
         // Rotate the force calculated for the front wheels back into the vehicle's coordinate system
-        Vector2 forceFL_Chassis = tireOutputs[0].Force.Rotated(steerFL);
-        Vector2 forceFR_Chassis = tireOutputs[1].Force.Rotated(steerFR);
-        Vector2 forceRL_Chassis = tireOutputs[2].Force;
-        Vector2 forceRR_Chassis = tireOutputs[3].Force;
+        Vector2 forceFL_Chassis = tireOutputFL.Force.Rotated(steerFL);
+        Vector2 forceFR_Chassis = tireOutputFR.Force.Rotated(steerFR);
+        Vector2 forceRL_Chassis = tireOutputRL.Force;
+        Vector2 forceRR_Chassis = tireOutputRR.Force;
 
         // Grip of four tires
         output.FrontLeft = new()
@@ -266,10 +283,10 @@ public class CarLogic
             Power = powerOutput,
             Regen = regenDist,
             Drive = driveDist,
-            FrontLeft = tireOutputs[0],
-            FrontRight = tireOutputs[1],
-            RearLeft = tireOutputs[2],
-            RearRight = tireOutputs[3]
+            FrontLeft = tireOutputFL,
+            FrontRight = tireOutputFR,
+            RearLeft = tireOutputRL,
+            RearRight = tireOutputRR
         };
 
         return output;
