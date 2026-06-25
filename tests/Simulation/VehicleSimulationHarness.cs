@@ -1,3 +1,4 @@
+using System;
 using Godot;
 using StintegyEVO.Core.Car;
 using StintegyEVO.Core.Car.Configs;
@@ -40,7 +41,7 @@ internal sealed class VehicleSimulationHarness
         _rotation = track[grid.Index].Tangent.Angle();
     }
 
-    public VehicleSimulationResult Run(float durationSeconds, float dt = 1f / 60f)
+    public VehicleSimulationResult Run(float durationSeconds, float dt = 1f / 60f, Action<VehicleSimulationSample>? onSample = null)
     {
         int steps = Mathf.CeilToInt(durationSeconds / dt);
         VehicleSimulationSample last = default;
@@ -49,6 +50,7 @@ internal sealed class VehicleSimulationHarness
         for (int i = 0; i < steps; i++)
         {
             last = Step(dt);
+            onSample?.Invoke(last);
             summary.Add(last);
         }
 

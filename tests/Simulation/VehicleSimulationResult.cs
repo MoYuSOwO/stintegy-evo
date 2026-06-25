@@ -17,6 +17,7 @@ internal sealed class VehicleSimulationResult
     public float MinWheelAngularVelocityWithoutPositiveInput { get; private set; } = float.PositiveInfinity;
     public float MinForwardSpeed { get; private set; } = float.PositiveInfinity;
     public float MaxAbsSideSpeed { get; private set; }
+    public float MaxAbsBodySlip { get; private set; }
     public float MaxWear { get; private set; }
     public int SlidingSamples { get; private set; }
     public bool HasInvalidNumber { get; private set; }
@@ -27,6 +28,7 @@ internal sealed class VehicleSimulationResult
         MaxSpeed = Mathf.Max(MaxSpeed, sample.Speed);
         MinForwardSpeed = Mathf.Min(MinForwardSpeed, sample.ForwardSpeed);
         MaxAbsSideSpeed = Mathf.Max(MaxAbsSideSpeed, Mathf.Abs(sample.SideSpeed));
+        MaxAbsBodySlip = Mathf.Max(MaxAbsBodySlip, Mathf.Abs(Mathf.Atan2(sample.SideSpeed, Mathf.Max(Mathf.Abs(sample.ForwardSpeed), 1f))));
         MaxAbsAngularVelocity = Mathf.Max(MaxAbsAngularVelocity, Mathf.Abs(sample.AngularVelocity));
 
         foreach (var tire in sample.Output.Params.Tires)

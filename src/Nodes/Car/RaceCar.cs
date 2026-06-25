@@ -3,9 +3,9 @@ using StintegyEVO.Core.Car;
 using StintegyEVO.Core.Car.Configs;
 using StintegyEVO.Core.Car.Controllers;
 using System;
-using System.Linq;
+using System.Collections.Generic;
+using System.IO;
 using System.Text;
-using FileAccess = Godot.FileAccess;
 
 namespace StintegyEVO.Nodes.Car;
 
@@ -30,8 +30,20 @@ public partial class RaceCar : RigidBody2D
     private Node2D bodyAnchor = new();
     private Vector2 lastGlobalVel = Vector2.Zero;
     private float telemetryTime;
-    private FileAccess? telemetryFile;
+    private StreamWriter? telemetryFile;
     private int telemetryFrame;
+    private const int TelemetryWriteBufferChars = 1 << 20;
+    private readonly StringBuilder telemetryLineBuilder = new(2048);
+    private readonly StringBuilder telemetryWriteBuffer = new(65536);
+    private long racePhysicsPreTelemetryUsec;
+    private long raceControllerUsec;
+    private long raceTelemetryUsec;
+    private long raceBufferWriteUsec;
+    private int raceBufferWriteChars;
+    private int raceGc0Delta;
+    private int raceGc1Delta;
+    private int raceGc2Delta;
+    private Vector2[] debugPathPoints = [];
     public string? TelemetryName { get; set; }
     public int TelemetryFrameStride { get; set; } = 1;
     public Line2D _debug_line = new()
@@ -48,9 +60,16 @@ public partial class RaceCar : RigidBody2D
     public float VisualOffsetX => (0.5f - Config.Chassis.WeightDistFront) * Config.Chassis.WheelBase;
 
 	// Called when the node enters the scene tree for the first time.
-	public override void _Ready()
+    public override void _Ready()
 	{
 	}
+
+    public override void _ExitTree()
+    {
+        FlushTelemetryBuffer(flushWriter: true);
+        telemetryFile?.Dispose();
+        telemetryFile = null;
+    }
 
 	public void Init(CarLogic car, IController controller, Vector2 startPos, float startRotation, Node2D node)
     {
@@ -228,13 +247,16 @@ public partial class RaceCar : RigidBody2D
 	// Called every frame. 'delta' is the elapsed time since the previous frame.
 	public override void _Process(double delta)
     {
-        _debug_line.Points = [];
     }
 
     public override void _PhysicsProcess(double delta)
     {
         if (!IsInit) return;
 
+        ulong physicsStart = Time.GetTicksUsec();
+        int gc0Before = GC.CollectionCount(0);
+        int gc1Before = GC.CollectionCount(1);
+        int gc2Before = GC.CollectionCount(2);
         float dt = (float)delta;
         telemetryTime += dt;
 
@@ -273,8 +295,17 @@ public partial class RaceCar : RigidBody2D
             GD.Print("force: ", output.FrontLeft.Force, output.FrontRight.Force, output.RearLeft.Force, output.RearRight.Force);
         }
 
+        ulong controllerStart = Time.GetTicksUsec();
         Controller.ThinkTick(dt, carData, Logic, Logic.Track);
+        UpdateDebugPath();
+        raceControllerUsec = (long)(Time.GetTicksUsec() - controllerStart);
+        racePhysicsPreTelemetryUsec = (long)(Time.GetTicksUsec() - physicsStart);
+        raceGc0Delta = GC.CollectionCount(0) - gc0Before;
+        raceGc1Delta = GC.CollectionCount(1) - gc1Before;
+        raceGc2Delta = GC.CollectionCount(2) - gc2Before;
+        ulong telemetryStart = Time.GetTicksUsec();
         WriteTelemetry(input, steer, carData, output);
+        raceTelemetryUsec = (long)(Time.GetTicksUsec() - telemetryStart);
 
         if (EnableDebugPrints)
         {
@@ -311,6 +342,25 @@ public partial class RaceCar : RigidBody2D
         ApplyForce(globalForce, globalOffset);
     }
 
+    private void UpdateDebugPath()
+    {
+        if (Controller is not IControllerDebugPath debugPath || debugPath.DebugPathCount <= 1)
+        {
+            if (_debug_line.Points.Length > 0)
+                _debug_line.Points = [];
+            return;
+        }
+
+        int count = debugPath.DebugPathCount;
+        if (debugPathPoints.Length != count)
+            debugPathPoints = new Vector2[count];
+
+        for (int i = 0; i < count; i++)
+            debugPathPoints[i] = debugPath.GetDebugPathPoint(i);
+
+        _debug_line.Points = debugPathPoints;
+    }
+
     public void EnableTelemetry(string telemetryName)
     {
         TelemetryName = telemetryName;
@@ -319,20 +369,33 @@ public partial class RaceCar : RigidBody2D
 
     private void InitTelemetry(string telemetryName)
     {
-        telemetryFile?.Close();
+        FlushTelemetryBuffer(flushWriter: true);
+        telemetryFile?.Dispose();
+        telemetryWriteBuffer.Clear();
         string telemetryDir = ProjectSettings.GlobalizePath("res://.tmp");
-        DirAccess.MakeDirRecursiveAbsolute(telemetryDir);
-        telemetryFile = FileAccess.Open($"res://.tmp/{telemetryName}.csv", FileAccess.ModeFlags.Write);
-        telemetryFile?.StoreLine(
-            "time,input,steer,speed,angular_vel,pos_x,pos_y,rotation," +
-            "fl_slip,fr_slip,rl_slip,rr_slip,fl_angle,fr_angle,rl_angle,rr_angle," +
-            "fl_slide,fr_slide,rl_slide,rr_slide,fl_wear,fr_wear,rl_wear,rr_wear," +
-            "fl_surface,fr_surface,rl_surface,rr_surface,fl_core,fr_core,rl_core,rr_core," +
-            "fl_wheel,fr_wheel,rl_wheel,rr_wheel," +
-            "drive_request,tire_long_force,drag_force," +
-            "mppi_compute_ms,mppi_age_ms,mppi_ess,mppi_temp,mppi_min_cost,mppi_lag_steps,mppi_steer_offset," +
-            "mppi_outside,mppi_line_error,mppi_live_line_error,mppi_optimal_line_error,mppi_slip,mppi_angle,mppi_body_slip,mppi_yaw,mppi_backward_steps"
-        );
+        Directory.CreateDirectory(telemetryDir);
+        string telemetryPath = Path.Combine(telemetryDir, $"{telemetryName}.csv");
+        FileStream stream = new(telemetryPath, FileMode.Create, System.IO.FileAccess.Write, FileShare.Read, TelemetryWriteBufferChars);
+        telemetryFile = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), TelemetryWriteBufferChars)
+        {
+            NewLine = "\n"
+        };
+        List<string> columns =
+        [
+            "time", "input", "steer", "speed", "angular_vel", "pos_x", "pos_y", "rotation",
+            "fl_slip", "fr_slip", "rl_slip", "rr_slip", "fl_angle", "fr_angle", "rl_angle", "rr_angle",
+            "fl_slide", "fr_slide", "rl_slide", "rr_slide", "fl_wear", "fr_wear", "rl_wear", "rr_wear",
+            "fl_surface", "fr_surface", "rl_surface", "rr_surface", "fl_core", "fr_core", "rl_core", "rr_core",
+            "fl_wheel", "fr_wheel", "rl_wheel", "rr_wheel",
+            "drive_request", "tire_long_force", "drag_force",
+            "race_physics_pre_telemetry_usec", "race_controller_usec", "race_telemetry_usec",
+            "race_buffer_write_usec", "race_buffer_write_chars",
+            "race_gc0_delta", "race_gc1_delta", "race_gc2_delta"
+        ];
+        if (Controller is IControllerTelemetry controllerTelemetry)
+            columns.AddRange(controllerTelemetry.TelemetryColumns);
+
+        telemetryFile.WriteLine(string.Join(",", columns));
     }
 
     private void WriteTelemetry(float input, float steer, CarSensor sensor, PhysicsOutput output)
@@ -342,75 +405,79 @@ public partial class RaceCar : RigidBody2D
         if (telemetryFrame % Mathf.Max(TelemetryFrameStride, 1) != 0) return;
 
         var p = output.Params;
-        MppiController? mppi = Controller as MppiController;
-        telemetryFile.StoreLine(string.Join(",",
-            F(telemetryTime),
-            F(input),
-            F(steer),
-            F(sensor.LinearVelocity.Length()),
-            F(sensor.AngularVelocity),
-            F(sensor.Position.X),
-            F(sensor.Position.Y),
-            F(sensor.Rotation),
-            F(p.FrontLeft.SlipRatio),
-            F(p.FrontRight.SlipRatio),
-            F(p.RearLeft.SlipRatio),
-            F(p.RearRight.SlipRatio),
-            F(p.FrontLeft.SlipAngle),
-            F(p.FrontRight.SlipAngle),
-            F(p.RearLeft.SlipAngle),
-            F(p.RearRight.SlipAngle),
-            B(p.FrontLeft.IsSliding),
-            B(p.FrontRight.IsSliding),
-            B(p.RearLeft.IsSliding),
-            B(p.RearRight.IsSliding),
-            F(Logic.TireFrontLeft.Wear),
-            F(Logic.TireFrontRight.Wear),
-            F(Logic.TireRearLeft.Wear),
-            F(Logic.TireRearRight.Wear),
-            F(Logic.TireFrontLeft.SurfaceTemp),
-            F(Logic.TireFrontRight.SurfaceTemp),
-            F(Logic.TireRearLeft.SurfaceTemp),
-            F(Logic.TireRearRight.SurfaceTemp),
-            F(Logic.TireFrontLeft.CoreTemp),
-            F(Logic.TireFrontRight.CoreTemp),
-            F(Logic.TireRearLeft.CoreTemp),
-            F(Logic.TireRearRight.CoreTemp),
-            F(Logic.TireFrontLeft.WheelAngularVel),
-            F(Logic.TireFrontRight.WheelAngularVel),
-            F(Logic.TireRearLeft.WheelAngularVel),
-            F(Logic.TireRearRight.WheelAngularVel),
-            F(p.Power.Drive),
-            F(p.FrontLeft.Force.X + p.FrontRight.Force.X + p.RearLeft.Force.X + p.RearRight.Force.X),
-            F(output.DragForce.Length()),
-            F(mppi?.LastPlanComputeMs ?? 0f),
-            F(mppi?.LastPlanAgeMs ?? 0f),
-            F(mppi?.LastPlanEffectiveSampleSize ?? 0f),
-            F(mppi?.LastPlanTemperature ?? 0f),
-            F(mppi?.LastPlanMinCost ?? 0f),
-            mppi?.LastPlanLagSteps ?? 0,
-            F(mppi?.SteerOffset ?? 0f),
-            F(mppi?.LastPlanMaxOutside ?? 0f),
-            F(mppi?.LastPlanMaxTrackLineError ?? 0f),
-            F(mppi?.CurrentTrackLineError ?? 0f),
-            F(mppi?.CurrentOptimalLineError ?? 0f),
-            F(mppi?.LastPlanMaxSlipRatio ?? 0f),
-            F(mppi?.LastPlanMaxSlipAngle ?? 0f),
-            F(mppi?.LastPlanMaxBodySlip ?? 0f),
-            F(mppi?.LastPlanMaxYawRate ?? 0f),
-            mppi?.LastPlanBackwardIndexSteps ?? 0
-        ));
-        telemetryFile.Flush();
+        telemetryLineBuilder.Clear();
+        TelemetryCsv.Append(telemetryLineBuilder, telemetryTime);
+        TelemetryCsv.Append(telemetryLineBuilder, input);
+        TelemetryCsv.Append(telemetryLineBuilder, steer);
+        TelemetryCsv.Append(telemetryLineBuilder, sensor.LinearVelocity.Length());
+        TelemetryCsv.Append(telemetryLineBuilder, sensor.AngularVelocity);
+        TelemetryCsv.Append(telemetryLineBuilder, sensor.Position.X);
+        TelemetryCsv.Append(telemetryLineBuilder, sensor.Position.Y);
+        TelemetryCsv.Append(telemetryLineBuilder, sensor.Rotation);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontLeft.SlipRatio);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontRight.SlipRatio);
+        TelemetryCsv.Append(telemetryLineBuilder, p.RearLeft.SlipRatio);
+        TelemetryCsv.Append(telemetryLineBuilder, p.RearRight.SlipRatio);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontLeft.SlipAngle);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontRight.SlipAngle);
+        TelemetryCsv.Append(telemetryLineBuilder, p.RearLeft.SlipAngle);
+        TelemetryCsv.Append(telemetryLineBuilder, p.RearRight.SlipAngle);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontLeft.IsSliding);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontRight.IsSliding);
+        TelemetryCsv.Append(telemetryLineBuilder, p.RearLeft.IsSliding);
+        TelemetryCsv.Append(telemetryLineBuilder, p.RearRight.IsSliding);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontLeft.Wear);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontRight.Wear);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearLeft.Wear);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearRight.Wear);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontLeft.SurfaceTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontRight.SurfaceTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearLeft.SurfaceTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearRight.SurfaceTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontLeft.CoreTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontRight.CoreTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearLeft.CoreTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearRight.CoreTemp);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontLeft.WheelAngularVel);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireFrontRight.WheelAngularVel);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearLeft.WheelAngularVel);
+        TelemetryCsv.Append(telemetryLineBuilder, Logic.TireRearRight.WheelAngularVel);
+        TelemetryCsv.Append(telemetryLineBuilder, p.Power.Drive);
+        TelemetryCsv.Append(telemetryLineBuilder, p.FrontLeft.Force.X + p.FrontRight.Force.X + p.RearLeft.Force.X + p.RearRight.Force.X);
+        TelemetryCsv.Append(telemetryLineBuilder, output.DragForce.Length());
+        TelemetryCsv.Append(telemetryLineBuilder, (int)racePhysicsPreTelemetryUsec);
+        TelemetryCsv.Append(telemetryLineBuilder, (int)raceControllerUsec);
+        TelemetryCsv.Append(telemetryLineBuilder, (int)raceTelemetryUsec);
+        TelemetryCsv.Append(telemetryLineBuilder, (int)raceBufferWriteUsec);
+        TelemetryCsv.Append(telemetryLineBuilder, raceBufferWriteChars);
+        TelemetryCsv.Append(telemetryLineBuilder, raceGc0Delta);
+        TelemetryCsv.Append(telemetryLineBuilder, raceGc1Delta);
+        TelemetryCsv.Append(telemetryLineBuilder, raceGc2Delta);
+        if (Controller is IControllerTelemetry controllerTelemetry)
+            controllerTelemetry.AppendTelemetryValues(telemetryLineBuilder);
+
+        telemetryWriteBuffer.Append(telemetryLineBuilder);
+        telemetryWriteBuffer.Append('\n');
+        if (telemetryWriteBuffer.Length >= TelemetryWriteBufferChars)
+            FlushTelemetryBuffer();
     }
 
-    private static string F(float value)
+    private void FlushTelemetryBuffer(bool flushWriter = false)
     {
-        return value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
-    }
+        if (telemetryFile == null)
+            return;
 
-    private static string B(bool value)
-    {
-        return value ? "1" : "0";
+        if (telemetryWriteBuffer.Length > 0)
+        {
+            raceBufferWriteChars = telemetryWriteBuffer.Length;
+            ulong start = Time.GetTicksUsec();
+            telemetryFile.Write(telemetryWriteBuffer);
+            raceBufferWriteUsec = (long)(Time.GetTicksUsec() - start);
+            telemetryWriteBuffer.Clear();
+        }
+
+        if (flushWriter)
+            telemetryFile.Flush();
     }
 
 }

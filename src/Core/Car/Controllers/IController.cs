@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using Godot;
 using StintegyEVO.Core.Track;
 
@@ -24,6 +28,60 @@ public interface IController
 
     public abstract void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
     public abstract void ThinkTick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
+}
+
+public interface IControllerTelemetry
+{
+    public IEnumerable<string> TelemetryColumns { get; }
+    public void AppendTelemetryValues(StringBuilder builder);
+}
+
+public interface IControllerDebugPath
+{
+    public int DebugPathCount { get; }
+    public Vector2 GetDebugPathPoint(int index);
+}
+
+public static class TelemetryCsv
+{
+    public static void Append(StringBuilder builder, float value)
+    {
+        AppendSeparator(builder);
+        Span<char> buffer = stackalloc char[32];
+        if (value.TryFormat(buffer, out int written, "0.######", CultureInfo.InvariantCulture))
+            builder.Append(buffer[..written]);
+        else
+            builder.Append(value.ToString("0.######", CultureInfo.InvariantCulture));
+    }
+
+    public static void Append(StringBuilder builder, int value)
+    {
+        AppendSeparator(builder);
+        Span<char> buffer = stackalloc char[16];
+        if (value.TryFormat(buffer, out int written, provider: CultureInfo.InvariantCulture))
+            builder.Append(buffer[..written]);
+        else
+            builder.Append(value.ToString(CultureInfo.InvariantCulture));
+    }
+
+    public static void Append(StringBuilder builder, bool value)
+    {
+        AppendSeparator(builder);
+        builder.Append(value ? '1' : '0');
+    }
+
+    private static void AppendSeparator(StringBuilder builder)
+    {
+        if (builder.Length > 0)
+            builder.Append(',');
+    }
+}
+
+public static class Controllers
+{
+    public static readonly IController Dummy = DummyController.Instance;
+
+    public static IController Default => Dummy;
 }
 
 public class DummyController : IController

@@ -14,11 +14,15 @@ namespace StintegyEVO.Nodes.Race;
 public partial class RaceManager : Node2D
 {
 	[Export] public TrackRenderer? Renderer { get; set; }
+	[Export] public bool ShowFrameStats { get; set; }
 	private readonly List<RaceCar> cars = [];
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
 	{
+		if (ShowFrameStats)
+			AddChild(new FrameTimeMonitor());
+
 		Init(TrackFactory.SimpleTestTrack(), [new CarConfig()]);
 	}
 
@@ -39,7 +43,7 @@ public partial class RaceManager : Node2D
 				startRotation = trackData[idx].Tangent.Angle();
 			}
 			ConfigureTelemetry(car);
-			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), new MppiController(), startPos, startRotation, this);
+			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), Controllers.Default, startPos, startRotation, this);
 			AddChild(car);
 		}
 	}
