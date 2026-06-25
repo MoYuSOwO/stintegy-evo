@@ -220,6 +220,8 @@ public partial class TrackRenderer : Node2D
         
         Vector2[] leftWallVertices = new Vector2[(n + 1) * 2];
         Vector2[] rightWallVertices = new Vector2[(n + 1) * 2];
+        Vector2[] leftWallSegments = new Vector2[n * 2];
+        Vector2[] rightWallSegments = new Vector2[n * 2];
         StaticBody2D physicsWalls = new();
 
         for (int i = 0; i <= n; i++)
@@ -246,10 +248,21 @@ public partial class TrackRenderer : Node2D
                 Vector2 nextLeftInner = nextNode.LeftEdge + nextNode.Normal * nextNode.LeftBufferWidth;
                 Vector2 nextRightInner = nextNode.RightEdge - nextNode.Normal * nextNode.RightBufferWidth;
 
-                physicsWalls.AddChild(new CollisionShape2D { Shape = new SegmentShape2D { A = leftWallInner, B = nextLeftInner } });
-                physicsWalls.AddChild(new CollisionShape2D { Shape = new SegmentShape2D { A = rightWallInner, B = nextRightInner } });
+                leftWallSegments[i * 2] = leftWallInner;
+                leftWallSegments[i * 2 + 1] = nextLeftInner;
+                rightWallSegments[i * 2] = rightWallInner;
+                rightWallSegments[i * 2 + 1] = nextRightInner;
             }
         }
+
+        physicsWalls.AddChild(new CollisionShape2D
+        {
+            Shape = new ConcavePolygonShape2D { Segments = leftWallSegments }
+        });
+        physicsWalls.AddChild(new CollisionShape2D
+        {
+            Shape = new ConcavePolygonShape2D { Segments = rightWallSegments }
+        });
         AddChild(physicsWalls);
 
         AddChild(CreateFlatMesh(leftWallVertices, WallColor, 3));
