@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 using StintegyEVO.Util;
@@ -140,7 +141,7 @@ public class TrackBuilder
 
     public TrackBuilder CloseLoop()
     {
-        if (nodes == null || nodes.Count == 0) return this;
+        if (nodes.Count == 0) return this;
 
         BuilderNode startNode = nodes[0];
         BuilderNode endNode = nodes[^1];

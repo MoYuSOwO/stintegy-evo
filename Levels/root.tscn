@@ -40,6 +40,7 @@ zoom = Vector2(2, 2)
 [node name="RaceManager" type="Node2D" parent="World" unique_id=1881295525 node_paths=PackedStringArray("Renderer")]
 script = ExtResource("1_k3rnf")
 Renderer = NodePath("Track")
+ShowFrameStats = true
 
 [node name="Track" type="Node2D" parent="World/RaceManager" unique_id=1710661105]
 script = ExtResource("1_nmwl7")

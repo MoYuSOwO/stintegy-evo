@@ -5,6 +5,8 @@ namespace StintegyEVO.Core.Car.Configs;
 public struct TireOutput
 {
     public Vector2 Force;
+    public float SlipRatio;
+    public float SlipAngle;
     public bool IsSliding;
     public bool IsLockedUp;
 }
@@ -48,9 +50,25 @@ public partial class TireConfig(TireType tireType) : Resource
     [Export] public float LongDrop { get; set; } = 0.4f;
     [Export] public float LongPeakFriction { get; set; } = 1.5f;
 
+    // Low speed tire model
+    public const float MinStableSlipSpeed = 1.0f;
+    public const float FullPacejkaSpeed = 3.0f;
+    public const float LowSpeedLongSlipStiffness = 0.6f;
+    public const float LowSpeedLatDamping = 3.0f;
+
+    // Force relaxation
+    public const float LongRelaxationLength = 0.12f;
+    public const float LatRelaxationLength = 0.5f;
+
+    // Wheel stop guard
+    public const float BrakeLockAngularVel = 0.5f;
+    public const float WheelStopDeadbandAngularVel = 0.1f;
+
     [ExportGroup("Thermodynamics")]
     public const float SpecificHeat = 400.0f;
     public const float SurfaceMassRatio = 0.2f;
+    public const float SurfaceFrictionHeatFraction = 0.35f;
+    public const float CoreFrictionHeatFraction = 0.15f;
     [Export] public float OptimalMinTemp { get; set; } = 60.0f;
     [Export] public float OptimalMaxTemp { get; set; } = 110.0f;
     [Export] public float ThermalWearCoef { get; set; } = 0.005f;
@@ -69,6 +87,10 @@ public partial class TireConfig(TireType tireType) : Resource
     public const float LowPressureSensitivity = 0.2f;
     public const float HighPressureSensitivity = 0.5f;
     public const float StiffnessSensitivity = 0.1f;
-    [Export] public float BaseLongWearRate { get; set; } = 0.0000005f;
-    [Export] public float BaseLatWearRate { get; set; } = 0.0000012f;
+    // Default medium-compound calibration: under a clean fast lap on the
+    // simple test track, the limiting rear tire reaches heavy wear in about
+    // fifteen laps. All rates remain energy-based.
+    [Export] public float BaseLongWearRate { get; set; } = 0.00000007142857f;
+    [Export] public float BaseLatWearRate { get; set; } = 0.00000017142857f;
+    [Export] public float RollingWearEnergyRate { get; set; } = 0.000000075f;
 }

@@ -2,7 +2,7 @@ using Godot;
 
 namespace StintegyEVO.Core.Track;
 
-internal readonly struct TrackNode(
+public readonly struct TrackNode(
     Vector2 center, Vector2 tangent, float width, float leftBufferWidth, float rightBufferWidth
 )
 {

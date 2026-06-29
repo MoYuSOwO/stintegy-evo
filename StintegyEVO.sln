@@ -2,6 +2,36 @@
 # Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO", "StintegyEVO.csproj", "{17422C1D-9D51-46C8-997F-BE0B560AC849}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Repository Files", "Repository Files", "{3E3A1EE2-9A35-4FD3-A77A-47B27D8166D6}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitattributes = .gitattributes
+		.gitignore = .gitignore
+		.github/pull_request_template.md = .github/pull_request_template.md
+		.tmp/.gdignore = .tmp/.gdignore
+		CLA.md = CLA.md
+		CLA_zh.md = CLA_zh.md
+		CODE_OF_CONDUCT.md = CODE_OF_CONDUCT.md
+		CODE_OF_CONDUCT_zh.md = CODE_OF_CONDUCT_zh.md
+		CONTRIBUTING.md = CONTRIBUTING.md
+		CONTRIBUTING_zh.md = CONTRIBUTING_zh.md
+		LICENSE = LICENSE
+		README.md = README.md
+		README_zh.md = README_zh.md
+		StintegyEVO.csproj = StintegyEVO.csproj
+		logo.svg = logo.svg
+		project.godot = project.godot
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Godot Files", "Godot Files", "{D12B59E5-0273-4D1C-994A-BCC53808C72E}"
+	ProjectSection(SolutionItems) = preProject
+		Assets/asphalt_track_diff_1k.jpg.import = Assets/asphalt_track_diff_1k.jpg.import
+		Assets/kerb.png.import = Assets/kerb.png.import
+		Assets/road_asphalt.jpg.import = Assets/road_asphalt.jpg.import
+		Levels/root.tscn = Levels/root.tscn
+		logo.svg.import = logo.svg.import
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 	Debug|Any CPU = Debug|Any CPU
