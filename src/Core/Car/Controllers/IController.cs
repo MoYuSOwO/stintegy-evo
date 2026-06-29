@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using Godot;
+using StintegyEVO.Core.Car.Controllers.V1;
 using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Core.Car.Controllers;
@@ -90,7 +91,7 @@ public static class Controllers
 {
     public static readonly IController Dummy = DummyController.Instance;
 
-    public static IController CreateDefault() => Dummy;
+    public static IController CreateDefault() => new V1RacingLinePreviewController();
 }
 
 public class DummyController : IController
