@@ -13,6 +13,10 @@ internal sealed class FixedInputController(float input, float steer) : IControll
     public float FuelSaveFactor { get; set; }
     public float TireSaveFactor { get; set; }
 
+    public void Init(CarLogic carLogic, TrackData track)
+    {
+    }
+
     public void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track)
     {
     }
@@ -31,6 +35,10 @@ internal sealed class TimedInputController(params TimedInputController.Phase[] p
 
     public float FuelSaveFactor { get; set; }
     public float TireSaveFactor { get; set; }
+
+    public void Init(CarLogic carLogic, TrackData track)
+    {
+    }
 
     public void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track)
     {

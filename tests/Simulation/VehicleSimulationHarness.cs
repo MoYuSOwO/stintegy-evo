@@ -33,6 +33,7 @@ internal sealed class VehicleSimulationHarness
         var track = TrackFactory.SimpleTestTrack();
         _logic = new CarLogic(config, track, DummyEnvironment.Instance);
         _controller = controller;
+        _controller.Init(_logic, track);
         _mass = config.Chassis.DryMass;
         _inertia = config.Chassis.DryI;
 

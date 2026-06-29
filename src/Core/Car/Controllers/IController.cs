@@ -26,6 +26,7 @@ public interface IController
     public float FuelSaveFactor { get; set; }
     public float TireSaveFactor { get; set; }
 
+    public abstract void Init(CarLogic carLogic, TrackData track);
     public abstract void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
     public abstract void ThinkTick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track);
 }
@@ -36,10 +37,18 @@ public interface IControllerTelemetry
     public void AppendTelemetryValues(StringBuilder builder);
 }
 
-public interface IControllerDebugPath
+public readonly record struct ControllerDebugPathStyle(Color Color, float Width, int ZIndex)
 {
-    public int DebugPathCount { get; }
-    public Vector2 GetDebugPathPoint(int index);
+    public static ControllerDebugPathStyle Default => new(Color.FromHtml("#65c4ff"), 1.0f, 50);
+}
+
+public interface IControllerDebugPaths
+{
+    public int DebugPathLineCount { get; }
+    public int GetDebugPathPointCount(int lineIndex);
+    public Vector2 GetDebugPathPoint(int lineIndex, int pointIndex);
+    public ControllerDebugPathStyle GetDebugPathStyle(int lineIndex) => ControllerDebugPathStyle.Default;
+    public long GetDebugPathVersion(int lineIndex) => -1;
 }
 
 public static class TelemetryCsv
@@ -81,7 +90,7 @@ public static class Controllers
 {
     public static readonly IController Dummy = DummyController.Instance;
 
-    public static IController Default => Dummy;
+    public static IController CreateDefault() => Dummy;
 }
 
 public class DummyController : IController
@@ -95,6 +104,10 @@ public class DummyController : IController
 
     public float FuelSaveFactor { get; set; }
     public float TireSaveFactor { get; set; }
+
+    public void Init(CarLogic carLogic, TrackData track)
+    {
+    }
 
     public void Tick(float dt, CarSensor carSensor, CarLogic carLogic, TrackData track)
     {

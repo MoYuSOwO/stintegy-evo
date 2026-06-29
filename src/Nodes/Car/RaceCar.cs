@@ -37,25 +37,20 @@ public partial class RaceCar : RigidBody2D
     private readonly StringBuilder telemetryWriteBuffer = new(65536);
     private long racePhysicsPreTelemetryUsec;
     private long raceControllerUsec;
+    private long raceDebugPathUsec;
     private long raceTelemetryUsec;
     private long raceBufferWriteUsec;
     private int raceBufferWriteChars;
     private int raceGc0Delta;
     private int raceGc1Delta;
     private int raceGc2Delta;
-    private Vector2[] debugPathPoints = [];
+    private readonly List<Line2D> debugLines = [];
+    private readonly List<Vector2[]> debugPathPointBuffers = [];
+    private readonly List<long> debugPathVersions = [];
+    private Node2D? debugLineParent;
     public string? TelemetryName { get; set; }
     public int TelemetryFrameStride { get; set; } = 1;
-    public Line2D _debug_line = new()
-    { 
-        Width = 1.0f,
-        DefaultColor = Color.FromHtml("#65c4ff"),
-        ZIndex = 50,
-        Antialiased = true,
-        JointMode = Line2D.LineJointMode.Round,
-        Closed = false,
-        TopLevel = true
-    };
+    public Line2D _debug_line = CreateDebugLine(ControllerDebugPathStyle.Default);
 
     public float VisualOffsetX => (0.5f - Config.Chassis.WeightDistFront) * Config.Chassis.WheelBase;
 
@@ -73,9 +68,19 @@ public partial class RaceCar : RigidBody2D
 
 	public void Init(CarLogic car, IController controller, Vector2 startPos, float startRotation, Node2D node)
     {
-        node.AddChild(_debug_line);
+        debugLineParent = node;
+        if (_debug_line.GetParent() == null)
+            node.AddChild(_debug_line);
+        if (debugLines.Count == 0)
+        {
+            debugLines.Add(_debug_line);
+            debugPathPointBuffers.Add([]);
+            debugPathVersions.Add(long.MinValue);
+        }
+
         _logic = car;
         _controller = controller;
+        _controller.Init(car, car.Track);
 
         Vector2 globalVisualOffset = new Vector2(VisualOffsetX, 0).Rotated(startRotation);
 
@@ -297,8 +302,10 @@ public partial class RaceCar : RigidBody2D
 
         ulong controllerStart = Time.GetTicksUsec();
         Controller.ThinkTick(dt, carData, Logic, Logic.Track);
-        UpdateDebugPath();
         raceControllerUsec = (long)(Time.GetTicksUsec() - controllerStart);
+        ulong debugPathStart = Time.GetTicksUsec();
+        UpdateDebugPath();
+        raceDebugPathUsec = (long)(Time.GetTicksUsec() - debugPathStart);
         racePhysicsPreTelemetryUsec = (long)(Time.GetTicksUsec() - physicsStart);
         raceGc0Delta = GC.CollectionCount(0) - gc0Before;
         raceGc1Delta = GC.CollectionCount(1) - gc1Before;
@@ -344,21 +351,113 @@ public partial class RaceCar : RigidBody2D
 
     private void UpdateDebugPath()
     {
-        if (Controller is not IControllerDebugPath debugPath || debugPath.DebugPathCount <= 1)
+        if (Controller is IControllerDebugPaths debugPaths)
         {
-            if (_debug_line.Points.Length > 0)
-                _debug_line.Points = [];
+            UpdateDebugPaths(debugPaths);
             return;
         }
 
-        int count = debugPath.DebugPathCount;
-        if (debugPathPoints.Length != count)
-            debugPathPoints = new Vector2[count];
+        ClearDebugLines();
+    }
 
-        for (int i = 0; i < count; i++)
-            debugPathPoints[i] = debugPath.GetDebugPathPoint(i);
+    private void UpdateDebugPaths(IControllerDebugPaths debugPaths)
+    {
+        int lineCount = Math.Max(debugPaths.DebugPathLineCount, 0);
+        EnsureDebugLineCapacity(lineCount);
 
-        _debug_line.Points = debugPathPoints;
+        for (int lineIndex = 0; lineIndex < lineCount; lineIndex++)
+        {
+            int pointCount = Math.Max(debugPaths.GetDebugPathPointCount(lineIndex), 0);
+            Line2D line = debugLines[lineIndex];
+            ApplyDebugLineStyle(line, debugPaths.GetDebugPathStyle(lineIndex));
+            long version = debugPaths.GetDebugPathVersion(lineIndex);
+
+            if (pointCount <= 1)
+            {
+                if (debugPathPointBuffers[lineIndex].Length != 0 || debugPathVersions[lineIndex] != version)
+                    line.Points = [];
+                debugPathPointBuffers[lineIndex] = [];
+                debugPathVersions[lineIndex] = version;
+                continue;
+            }
+
+            if (version >= 0 && debugPathVersions[lineIndex] == version && debugPathPointBuffers[lineIndex].Length == pointCount)
+                continue;
+
+            Vector2[] points = debugPathPointBuffers[lineIndex];
+            if (points.Length != pointCount)
+            {
+                points = new Vector2[pointCount];
+                debugPathPointBuffers[lineIndex] = points;
+            }
+
+            for (int pointIndex = 0; pointIndex < pointCount; pointIndex++)
+                points[pointIndex] = debugPaths.GetDebugPathPoint(lineIndex, pointIndex);
+
+            line.Points = points;
+            debugPathVersions[lineIndex] = version;
+        }
+
+        for (int lineIndex = lineCount; lineIndex < debugLines.Count; lineIndex++)
+        {
+            debugLines[lineIndex].Points = [];
+            debugPathPointBuffers[lineIndex] = [];
+            debugPathVersions[lineIndex] = long.MinValue;
+        }
+    }
+
+    private void EnsureDebugLineCapacity(int lineCount)
+    {
+        if (lineCount <= 0)
+            return;
+
+        if (debugLines.Count == 0)
+        {
+            debugLines.Add(_debug_line);
+            debugPathPointBuffers.Add([]);
+            debugPathVersions.Add(long.MinValue);
+            if (_debug_line.GetParent() == null)
+                debugLineParent?.AddChild(_debug_line);
+        }
+
+        while (debugLines.Count < lineCount)
+        {
+            Line2D line = CreateDebugLine(ControllerDebugPathStyle.Default);
+            debugLineParent?.AddChild(line);
+            debugLines.Add(line);
+            debugPathPointBuffers.Add([]);
+            debugPathVersions.Add(long.MinValue);
+        }
+    }
+
+    private void ClearDebugLines()
+    {
+        for (int i = 0; i < debugLines.Count; i++)
+        {
+            debugLines[i].Points = [];
+            debugPathPointBuffers[i] = [];
+            debugPathVersions[i] = long.MinValue;
+        }
+    }
+
+    private static Line2D CreateDebugLine(ControllerDebugPathStyle style)
+    {
+        Line2D line = new()
+        {
+            Antialiased = true,
+            JointMode = Line2D.LineJointMode.Round,
+            Closed = false,
+            TopLevel = true
+        };
+        ApplyDebugLineStyle(line, style);
+        return line;
+    }
+
+    private static void ApplyDebugLineStyle(Line2D line, ControllerDebugPathStyle style)
+    {
+        line.Width = style.Width;
+        line.DefaultColor = style.Color;
+        line.ZIndex = style.ZIndex;
     }
 
     public void EnableTelemetry(string telemetryName)
@@ -389,7 +488,7 @@ public partial class RaceCar : RigidBody2D
             "fl_wheel", "fr_wheel", "rl_wheel", "rr_wheel",
             "drive_request", "tire_long_force", "drag_force",
             "race_physics_pre_telemetry_usec", "race_controller_usec", "race_telemetry_usec",
-            "race_buffer_write_usec", "race_buffer_write_chars",
+            "race_debug_path_usec", "race_buffer_write_usec", "race_buffer_write_chars",
             "race_gc0_delta", "race_gc1_delta", "race_gc2_delta"
         ];
         if (Controller is IControllerTelemetry controllerTelemetry)
@@ -448,6 +547,7 @@ public partial class RaceCar : RigidBody2D
         TelemetryCsv.Append(telemetryLineBuilder, (int)racePhysicsPreTelemetryUsec);
         TelemetryCsv.Append(telemetryLineBuilder, (int)raceControllerUsec);
         TelemetryCsv.Append(telemetryLineBuilder, (int)raceTelemetryUsec);
+        TelemetryCsv.Append(telemetryLineBuilder, (int)raceDebugPathUsec);
         TelemetryCsv.Append(telemetryLineBuilder, (int)raceBufferWriteUsec);
         TelemetryCsv.Append(telemetryLineBuilder, raceBufferWriteChars);
         TelemetryCsv.Append(telemetryLineBuilder, raceGc0Delta);

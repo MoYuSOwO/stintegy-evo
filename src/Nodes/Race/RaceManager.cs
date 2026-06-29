@@ -43,7 +43,7 @@ public partial class RaceManager : Node2D
 				startRotation = trackData[idx].Tangent.Angle();
 			}
 			ConfigureTelemetry(car);
-			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), Controllers.Default, startPos, startRotation, this);
+			car.Init(new CarLogic(config, trackData, DummyEnvironment.Instance), Controllers.CreateDefault(), startPos, startRotation, this);
 			AddChild(car);
 		}
 	}
