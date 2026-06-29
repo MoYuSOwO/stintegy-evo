@@ -75,9 +75,9 @@ public partial class FrameTimeMonitor : CanvasLayer
 
         label.Text =
             $"FPS {Engine.GetFramesPerSecond():0}  monitor {Performance.GetMonitor(Performance.Monitor.TimeFps):0}\n" +
-            $"Render avg {renderAvg:0.00} ms  max {renderMaxMs:0.00} ms\n" +
-            $"Physics avg {physicsAvg:0.00} ms  max {physicsMaxMs:0.00} ms\n" +
-            $"Frame CPU {processMs:0.00} ms  physics script {physicsProcessMs:0.00} ms\n" +
+            $"Frame dt avg {renderAvg:0.00} ms  max {renderMaxMs:0.00} ms\n" +
+            $"Physics dt avg {physicsAvg:0.00} ms  max {physicsMaxMs:0.00} ms\n" +
+            $"Script CPU process {processMs:0.00} ms  physics {physicsProcessMs:0.00} ms\n" +
             $"Draw calls {drawCalls}  objects {renderObjects}  primitives {primitives}\n" +
             $"{cameraText}\n" +
             $"Godot objects {objects}  GC +{newGc0 - gc0}/{newGc1 - gc1}/{newGc2 - gc2}";
