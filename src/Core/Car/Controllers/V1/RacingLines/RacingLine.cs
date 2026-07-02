@@ -21,6 +21,8 @@ public sealed class RacingLine
         Points = points;
     }
 
+    public RacingLinePoint GetPoint(int trackIndex) => this[trackIndex];
+
     public RacingLinePoint this[int index]
     {
         get
