@@ -14,11 +14,13 @@ _The maintainer will make every reasonable effort to keep the English and Chines
 
 ---
 
-## 🤝 Looking for Collaborators
+## 🤝 Focused Collaboration Welcome
 
 StintegyEVO is still an early engineering project, not yet a playable game. The core vehicle physics is implemented; the current blocker is foundational AI driving: making an AI-controlled car complete laps reliably under the existing nonlinear tire model, load transfer, and dynamically generated paths.
 
-We are especially looking for people interested in:
+The repository is public and open to focused collaboration, but the project is still maintainer-led and exploratory. Gameplay scope, physics fidelity, AI architecture, and roadmap priorities may change while the first stable prototype is being found.
+
+Collaboration is especially useful around:
 
 * **Vehicle control and AI**: MPPI, MPC, racing AI, dynamic path planning, and alternative control approaches.
 * **Vehicle dynamics**: Tire modelling, simulation validation, Formula Student, and motorsport engineering.
@@ -103,9 +105,9 @@ StintegyEVO is an independent solo-developed project. Currently, **core physics 
 
 ### Versioning Philosophy
 
-Each completed module receives a version number, marking its transition from "unavailable" to "functional." Pending goals use logical numbering to indicate **suggested priority and dependencies**; they do not strictly lock the release order. You are welcome to complete a lower-priority task first if you feel confident in its implementation.
+Each completed module receives a version number, marking its transition from "unavailable" to "functional." Pending goals use logical numbering to indicate **suggested priority and dependencies**; they do not strictly lock the release order. The roadmap is a working map for exploration, not a promise of stable API, feature scope, or release order.
 
-If you are interested in any of these goals, feel free to jump in. Contributors keep ownership of their work, and accepted contributions remain available to the community under **AGPL-3.0**.
+If you are interested in any of these goals, focused experiments, small implementations, benchmarks, and design reviews are welcome. Contributors keep ownership of their work, and accepted contributions remain available to the community under **AGPL-3.0**.
 
 ### ✅ v0.1 Core Physics (Completed)
 
@@ -220,7 +222,7 @@ Please open the project in the Godot 4.x .NET version. Ensure that .NET SDK 8.0+
 
 ## 🤝 Contributing
 
-StintegyEVO welcomes contributions of all kinds! You don’t need to be a physics engine expert or a C# maestro. As long as you have an interest in a specific area, there is a place for you:
+StintegyEVO welcomes focused contributions. You don’t need to be a physics engine expert or a C# maestro, but contributions are most useful when they are tied to a concrete problem, experiment, or small implementation:
 
 * **AI Development**: Tackle AI-related goals from the roadmap.
 * **Physics Tuning**: Optimize tire parameters and motor characteristic curves.
@@ -232,13 +234,13 @@ StintegyEVO welcomes contributions of all kinds! You don’t need to be a physic
 
 > **Before you begin, please read the [English](CONTRIBUTING.md) or [Chinese](CONTRIBUTING_zh.md) contributing guide for development setup, coding conventions, the CLA, and other details.**
 
-1.  **Pick a Goal**: Choose a task ID that interests you from the [Roadmap](#-roadmap). Each entry lists dependencies and expected inputs/outputs, allowing you to quickly assess if it’s a good fit for you.
+1.  **Pick a Goal or Focused Problem**: Use the [Roadmap](#-roadmap) as context. Each entry lists dependencies and expected inputs/outputs, but the list is not meant to freeze the project direction.
 
 2.  **Communicate First, Code Later**:
     * If your **idea is already formed** (e.g., "I'm going to implement basic AI driving using MPPI"), head over to [Issues](https://github.com/MoYuSOwO/stintegy-evo/issues) to create a task post. Outline your proposed solution and technical approach, and be sure to attach the relevant Issue Label.
     * If your **idea is still evolving** (e.g., "I want to work on AI but I'm not sure which method to use"), start a thread in [Discussions](https://github.com/MoYuSOwO/stintegy-evo/discussions) to get feedback from the community and maintainers.
 
-    **Why communicate first?** The main challenge of this project isn't "writing the code," but rather "navigating the uncertainty of the approach." Communicating beforehand prevents you from spending weeks on a solution that might conflict with someone else's work or be incompatible with the existing architecture. Think of Issues and Discussions as a **"handshake protocol"** to ensure every minute of your time provides maximum value.
+    **Why communicate first?** The main challenge of this project isn't "writing the code," but rather "navigating the uncertainty of the approach." Communicating beforehand prevents you from spending weeks on a solution that might conflict with someone else's work or be incompatible with the existing architecture. Broad feature requests or large rewrites may be deferred until the core driving and product loop are clearer.
 
 3.  **Start Contributing**: Communication is for coordination, not an approval gate. Once the scope is clear—or immediately for a small, self-contained improvement—you can begin. Please read the [English CLA](CLA.md) and the [governing Chinese CLA](CLA_zh.md) before submitting a contribution.
 

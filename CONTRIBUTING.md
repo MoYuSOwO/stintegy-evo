@@ -4,7 +4,9 @@
 
 _The maintainer will make every reasonable effort to keep the English and Chinese versions consistent. If a difference cannot be resolved, the Chinese version prevails._
 
-Thank you for your interest in **StintegyEVO**! This is a solo-initiated race strategy engineer simulator project currently in early development. We welcome all forms of contributions, including but not limited to code, documentation, art, UI, track data, vehicle tuning, and feedback.
+Thank you for your interest in **StintegyEVO**! This is a solo-initiated race strategy engineer simulator project currently in early development. Focused contributions are welcome, especially when they are tied to concrete experiments, bug reports, tooling, documentation, or small implementations.
+
+The project is public and collaborative, but still exploratory. Broad feature requests, large rewrites, and long-term roadmap proposals may be deferred until the core driving and product loop are clearer.
 
 To help us collaborate efficiently, please take a few minutes to read the following guidelines.
 
@@ -24,10 +26,11 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
     *   If you have a **concrete plan** (e.g., "I'll implement AI using MPPI"), open an **Issue** with the corresponding label (e.g., `ai-driving`) and describe your approach.
     *   If your idea is **still shaping up**, start a **Discussion** in the appropriate category (e.g., `🧠 AI & Physics`).
     *   **Why?** Because the main challenge is not "can you write code", but "does your plan fit the dynamic physics and path architecture?" Early communication prevents you from spending weeks on a solution that may conflict with others or the project's direction.
+*   **Keep the scope focused**: Small fixes, reproducible experiments, and reviewable prototypes are easier to accept than broad rewrites.
 
 ### 2. Reporting Bugs & Suggestions
 
-If you find a bug or have a suggestion, please submit it via GitHub Issues with as much of the following information as possible:
+If you find a bug or have a focused suggestion, please submit it via GitHub Issues with as much of the following information as possible:
 
 - **Title**: Concisely describe the issue.
 - **Environment**: Godot version, operating system, etc.
@@ -54,7 +57,7 @@ We follow a standard GitHub Flow workflow. Please adhere to the following steps:
 
 ### 4. Improving Documentation & Art
 
-Contributions to documentation, README improvements, Low Poly models, UI design, and the like are equally valuable. These can also be submitted via Pull Request, following the same process as above.
+Contributions to documentation, README improvements, Low Poly models, UI design, and the like are equally valuable. Focused changes can be submitted via Pull Request, following the same process as above.
 
 ---
 
@@ -95,6 +98,6 @@ The purpose of the CLA is not to take ownership of community work. It lets us bu
 
 ---
 
-> **Let's build the first race strategy simulator driven by a real physics engine — together.**
+> **Focused experiments and small, clear improvements are the best way to move StintegyEVO forward while it is still finding its shape.**
 
 **StintegyEVO Maintainer**
