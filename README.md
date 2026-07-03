@@ -16,7 +16,7 @@ _The maintainer will make every reasonable effort to keep the English and Chines
 
 ## 🤝 Focused Collaboration Welcome
 
-StintegyEVO is still an early engineering project, not yet a playable game. The core vehicle physics is implemented; the current blocker is foundational AI driving: making an AI-controlled car complete laps reliably under the existing nonlinear tire model, load transfer, and dynamically generated paths.
+StintegyEVO is still an early engineering project, not yet a playable game. The core vehicle physics and a first graph-based dynamic path planning foundation are implemented; the current blocker is foundational AI driving control: making an AI-controlled car complete laps reliably under the existing nonlinear tire model, load transfer, and dynamically generated paths.
 
 The repository is public and open to focused collaboration, but the project is still maintainer-led and exploratory. Gameplay scope, physics fidelity, AI architecture, and roadmap priorities may change while the first stable prototype is being found.
 
@@ -44,8 +44,9 @@ Not a simple acceleration/deceleration model, but a **complete four-motor indepe
 * **Composite Braking System**: Kinetic energy recovery and mechanical brake backup are unified under a "one-pedal" logic, featuring battery SOC protection and full-charge decoupling.
 * **Load Transfer and Suspension**: Dynamic four-wheel independent loads based on longitudinal/lateral acceleration, including downforce distribution.
 
-### 2. AI Strategy Execution (Planned)
+### 2. AI Strategy Execution (In Progress)
 Your AI driver will:
+* **Dynamic Path Planning Foundation**: A graph-based local path planner can generate and update single-car paths from the current vehicle pose.
 * **Speed Management**: Automatically control acceleration and deceleration based on track speed limits and preview distance.
 * **Traction Control**: Monitor tire slip ratio in real-time and actively adjust power output to avoid excessive slipping.
 * **Offensive and Defensive Awareness**: Overtaking, defending, and DRS/Attack Mode management.
@@ -95,7 +96,7 @@ Racing games usually make you the driver. But in real racing, victory or defeat 
 * **Engine**: [Godot Engine 4.x] (.NET Version)
 * **Language**: C#
 * **Physics**: Self-developed 2.5D vehicle dynamics (2D logic layer, 3D Low Poly rendering layer)
-* **AI**: Controller based on preview distance + speed planning + slip ratio perception
+* **AI**: Graph-based dynamic path planning foundation; speed planning, steering/throttle control, and multi-car racecraft are still under active development.
 
 ---
 
@@ -127,6 +128,23 @@ If you are interested in any of these goals, focused experiments, small implemen
     * Front/rear downforce distribution and "Dirty Air" factor (downforce loss in wake).
     * Suspension damping smoothing to prevent numerical oscillation from sudden load spikes.
 
+### ✅ v0.2 Dynamic Path Planning Foundation (Completed)
+
+* **Offline graph generation**
+    * Builds a graph-based local trajectory lattice from `TrackData` and the generated racing line.
+    * Places lateral nodes within vehicle-width and safety-margin bounds.
+    * Precomputes spline edges, curvature/length samples, offline costs, pruning, and virtual goal costs.
+* **Online single-car path planning**
+    * Selects a start node from the current vehicle pose and track index.
+    * Searches the offline graph for a feasible path over the planning horizon.
+    * Supports previous-path continuation, constant prefix inheritance, fresh reinitialization from large lateral offsets, and buffer-zone recovery.
+    * Recomputes the selected path into a continuous spline and exposes sampled path data for controllers and visualization.
+* **Preview tooling and tests**
+    * The V1 racing-line preview controller can render the generated dynamic path.
+    * Offline and online planner behavior is covered by focused tests.
+
+Current scope note: this is the path-planning foundation, not the full racecraft layer. Action sets, blocked-zone filtering, obstacle collision filtering, and multi-car tactical decisions remain pending.
+
 ### 🚧 Pending Implementation (Ordered by suggested priority)
 
 #### 1. AI Foundational Driving (Current Focus)
@@ -134,13 +152,13 @@ If you are interested in any of these goals, focused experiments, small implemen
 
 **The Goal**: Enable the AI driver to consistently complete laps with reasonable pace without hitting walls.
 
-* **Inputs**: Dynamic track path, real-time vehicle state (speed, slip ratio, load, etc., accessible via `StintegyEVO.Core.Car.Controllers.CarSensor`).
+* **Inputs**: Generated dynamic path, real-time vehicle state (speed, slip ratio, load, etc., accessible via `StintegyEVO.Core.Car.Controllers.CarSensor`).
 * **Outputs**: Throttle/Brake pedal values, steering ratio (-1 to 1).
 * **Known Challenges**: 
-  * Paths are generated dynamically; speed planning cannot rely on offline baking.
+  * Dynamic paths are now generated online, but speed planning and vehicle control still cannot rely on a baked offline speed map.
   * Due to the non-linear coupling of Pacejka tires and load transfer, traditional "Look-ahead + PID" methods resulted in severe speed estimation errors in previous attempts.
 * **Open Solutions**: No specific technical route is mandated. Whether it's End-to-End control, MPPI, MPC, Reinforcement Learning, State Machines, or your own hybrid method—if it stabilizes the car, it’s welcome.
-* **Performance Requirement**: Must support 20+ AI cars competing simultaneously on a standard processor (2018 or newer).
+* **Performance Requirement**: Must support 20+ AI cars competing simultaneously on a standard processor (2018 or newer). The dynamic path planner is designed to be lightweight enough for this target, but the full multi-car AI stack still needs validation.
 
 **Why is this the top priority?** Every subsequent feature (racecraft, styling, energy strategy) is built on the premise that the AI can actually drive. Without this, everything else is a "castle in the sky."
 
