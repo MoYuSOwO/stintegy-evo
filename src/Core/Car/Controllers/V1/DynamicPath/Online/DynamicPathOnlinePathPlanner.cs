@@ -12,10 +12,12 @@ namespace StintegyEVO.Core.Car.Controllers.V1.DynamicPath.Online;
 public sealed class DynamicPathOnlinePathPlanner
 {
     private readonly DynamicPathOnlineConfig _config;
-    private readonly Queue<float> _calculationTimes = [];
+    private readonly Queue<float> _planningIntervals = [];
     private DynamicPathOnlinePath? _lastPath;
     private DynamicPathOnlinePath? _backupPath;
     private SearchScratch? _searchScratch;
+    private long _lastPlanningTimestamp;
+    private bool _hasLastPlanningTimestamp;
 
     public DynamicPathOnlinePathPlanner(DynamicPathOnlineConfig? config = null)
     {
@@ -27,7 +29,9 @@ public sealed class DynamicPathOnlinePathPlanner
     {
         _lastPath = null;
         _backupPath = null;
-        _calculationTimes.Clear();
+        _planningIntervals.Clear();
+        _lastPlanningTimestamp = 0;
+        _hasLastPlanningTimestamp = false;
     }
 
     public DynamicPathOnlinePath PlanFromPose(
@@ -85,19 +89,20 @@ public sealed class DynamicPathOnlinePathPlanner
     {
         ArgumentNullException.ThrowIfNull(graph);
 
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        float compensationSeconds = BeginPlanningIteration();
         try
         {
             if (_lastPath != null)
             {
-                if (ShouldReinitializeFromCurrentPose(graph, track, _lastPath, position))
-                {
-                    DynamicPathOnlinePath reinitializedPath = PlanFreshFromPose(graph, track, position, heading);
-                    StoreSuccessfulPath(reinitializedPath);
-                    return reinitializedPath;
-                }
-
-                if (TryPlanFromPreviousPath(graph, track, position, heading, speedMetersPerSecond, out DynamicPathOnlinePath inheritedPath))
+                if (TryPlanFromPreviousPath(
+                        graph,
+                        track,
+                        position,
+                        heading,
+                        speedMetersPerSecond,
+                        compensationSeconds,
+                        out DynamicPathOnlinePath inheritedPath
+                    ))
                 {
                     StoreSuccessfulPath(inheritedPath);
                     return inheritedPath;
@@ -118,11 +123,6 @@ public sealed class DynamicPathOnlinePathPlanner
                 return backupPath;
 
             throw;
-        }
-        finally
-        {
-            stopwatch.Stop();
-            RememberCalculationTime((float)stopwatch.Elapsed.TotalSeconds);
         }
     }
 
@@ -212,6 +212,7 @@ public sealed class DynamicPathOnlinePathPlanner
         Vector2 position,
         float heading,
         float speedMetersPerSecond,
+        float compensationSeconds,
         out DynamicPathOnlinePath path
     )
     {
@@ -228,20 +229,39 @@ public sealed class DynamicPathOnlinePathPlanner
         int startNodePathIndex;
         int anchorTrackIndex;
         PrefixSegment inheritedPrefix;
-        if (!TryProjectOntoPathProgress(
-                previousPath.Samples,
-                previousPath.SampleTrackProgress,
-                position,
-                out PathProjection projection
-            ))
+        PathProjection projection;
+        int currentTrackIndex = -1;
+        float currentTrackProgress = 0.0f;
+        if (track != null && previousPath.AnchorTrackIndex >= 0)
+        {
+            currentTrackIndex = track.FindNearestIndex(position);
+            currentTrackProgress = ForwardTrackDistance(previousPath.AnchorTrackIndex, currentTrackIndex, track.Length);
+            if (!TryProjectOntoPathProgressNear(
+                    previousPath.Samples,
+                    previousPath.SampleTrackProgress,
+                    position,
+                    currentTrackProgress,
+                    CalculateProgressProjectionWindow(graph),
+                    out projection
+                ))
+            {
+                return false;
+            }
+        }
+        else if (!TryProjectOntoPathProgress(
+                     previousPath.Samples,
+                     previousPath.SampleTrackProgress,
+                     position,
+                     out projection
+                 ))
         {
             return false;
         }
 
-        if (projection.Distance > CalculateMaximumInheritedPathOffset(graph))
+        if (track == null && projection.Distance > CalculateMaximumInheritedPathOffset(graph))
             return false;
 
-        float delayDistance = MathF.Max(0.0f, speedMetersPerSecond) * CalculateCompensationSeconds();
+        float delayDistance = MathF.Max(0.0f, speedMetersPerSecond) * compensationSeconds;
         if (!TryAdvanceProjectionByDistance(
                 previousPath.Samples,
                 previousPath.SampleTrackProgress,
@@ -257,12 +277,11 @@ public sealed class DynamicPathOnlinePathPlanner
         if (track != null && previousPath.AnchorTrackIndex >= 0)
         {
             float[] nodeProgress = previousPath.NodeTrackProgress;
-            int currentTrackIndex = track.FindNearestIndex(position);
             float poseOffset = CalculateTrackBoundaryExcess(track[WrapIndex(currentTrackIndex, track.Length)], position);
             if (poseOffset > _config.MaxPoseOffsetMeters)
                 return false;
 
-            if (projection.Progress > nodeProgress[^1] + _config.MaxPoseOffsetMeters)
+            if (currentTrackProgress > nodeProgress[^1] + _config.MaxPoseOffsetMeters)
                 return false;
 
             startNodePathIndex = FindFirstUneatenNodeAfterProgress(nodeProgress, delayedProgress);
@@ -276,7 +295,7 @@ public sealed class DynamicPathOnlinePathPlanner
                 projection,
                 startNodeSampleIndex
             );
-            anchorTrackIndex = track.FindNearestIndex(projection.Position);
+            anchorTrackIndex = currentTrackIndex;
         }
         else
         {
@@ -409,43 +428,20 @@ public sealed class DynamicPathOnlinePathPlanner
         _backupPath = path;
     }
 
-    private bool ShouldReinitializeFromCurrentPose(
-        DynamicPathOfflineGraph graph,
-        TrackData? track,
-        DynamicPathOnlinePath previousPath,
-        Vector2 position
-    )
-    {
-        if (previousPath.Samples.Length < 2)
-            return false;
-        if (previousPath.SampleTrackProgress.Length != previousPath.Samples.Length)
-            return false;
-        if (track != null && previousPath.AnchorTrackIndex >= 0)
-        {
-            int currentTrackIndex = track.FindNearestIndex(position);
-            float currentProgress = ForwardTrackDistance(previousPath.AnchorTrackIndex, currentTrackIndex, track.Length);
-            if (currentProgress > previousPath.SampleTrackProgress[^1] + _config.MaxPoseOffsetMeters)
-                return false;
-        }
-
-        if (!TryProjectOntoPathProgress(
-                previousPath.Samples,
-                previousPath.SampleTrackProgress,
-                position,
-                out PathProjection projection
-            ))
-        {
-            return false;
-        }
-
-        return projection.Distance > CalculateMaximumInheritedPathOffset(graph);
-    }
-
     private static float CalculateMaximumInheritedPathOffset(DynamicPathOfflineGraph graph)
     {
         float vehicleWidth = graph.VehicleHalfWidthMeters * 2.0f;
         float graphResolutionBand = graph.Config.LateralResolutionMeters * 2.0f;
         return MathF.Max(vehicleWidth, graphResolutionBand);
+    }
+
+    private static float CalculateProgressProjectionWindow(DynamicPathOfflineGraph graph)
+    {
+        float layerStep = MathF.Max(
+            graph.Config.LongitudinalStraightStepMeters,
+            graph.Config.LongitudinalCurveStepMeters
+        );
+        return MathF.Max(layerStep + graph.Config.EdgeSampleStepMeters * 2.0f, 1e-4f);
     }
 
     private bool TryCreateBackupPath(
@@ -467,25 +463,25 @@ public sealed class DynamicPathOnlinePathPlanner
         if (backupPath.SampleTrackProgress.Length != backupPath.Samples.Length)
             return false;
 
-        if (!TryProjectOntoPathProgress(
+        int currentTrackIndex = track.FindNearestIndex(position);
+        float currentTrackProgress = ForwardTrackDistance(backupPath.AnchorTrackIndex, currentTrackIndex, track.Length);
+        if (!TryProjectOntoPathProgressNear(
                 backupPath.Samples,
                 backupPath.SampleTrackProgress,
                 position,
+                currentTrackProgress,
+                CalculateProgressProjectionWindow(graph),
                 out PathProjection projection
             ))
         {
             return false;
         }
 
-        if (projection.Distance > CalculateMaximumInheritedPathOffset(graph))
-            return false;
-
         float[] nodeProgress = backupPath.NodeTrackProgress;
-        int currentTrackIndex = track.FindNearestIndex(position);
         float poseOffset = CalculateTrackBoundaryExcess(track[WrapIndex(currentTrackIndex, track.Length)], position);
         if (poseOffset > _config.MaxPoseOffsetMeters)
             return false;
-        if (projection.Progress > nodeProgress[^1] + _config.MaxPoseOffsetMeters)
+        if (currentTrackProgress > nodeProgress[^1] + _config.MaxPoseOffsetMeters)
             return false;
 
         int startNodePathIndex = FindFirstUneatenNodeAfterProgress(nodeProgress, projection.Progress);
@@ -538,7 +534,7 @@ public sealed class DynamicPathOnlinePathPlanner
             goalNode: nodePath[^1],
             requestedGoalLayer: backupPath.RequestedGoalLayer,
             goalLayer: backupPath.GoalLayer,
-            anchorTrackIndex: track.FindNearestIndex(projection.Position),
+            anchorTrackIndex: currentTrackIndex,
             horizonReduced: backupPath.HorizonReduced,
             headingCompatible: IsHeadingCompatible(heading, startNode.Heading),
             nodePath: nodePath,
@@ -558,26 +554,42 @@ public sealed class DynamicPathOnlinePathPlanner
         return true;
     }
 
-    private void RememberCalculationTime(float calculationTimeSeconds)
+    private float BeginPlanningIteration()
     {
-        if (!float.IsFinite(calculationTimeSeconds) || calculationTimeSeconds < 0.0f)
+        long timestamp = Stopwatch.GetTimestamp();
+        if (!_hasLastPlanningTimestamp)
+        {
+            _lastPlanningTimestamp = timestamp;
+            _hasLastPlanningTimestamp = true;
+            return 0.0f;
+        }
+
+        float intervalSeconds = (float)((timestamp - _lastPlanningTimestamp) / (double)Stopwatch.Frequency);
+        _lastPlanningTimestamp = timestamp;
+        RememberPlanningInterval(intervalSeconds);
+        return CalculateCompensationSeconds();
+    }
+
+    private void RememberPlanningInterval(float intervalSeconds)
+    {
+        if (!float.IsFinite(intervalSeconds) || intervalSeconds < 0.0f)
             return;
 
-        _calculationTimes.Enqueue(calculationTimeSeconds);
-        while (_calculationTimes.Count > _config.CalculationTimeBufferLength)
-            _calculationTimes.Dequeue();
+        _planningIntervals.Enqueue(intervalSeconds);
+        while (_planningIntervals.Count > _config.CalculationTimeBufferLength)
+            _planningIntervals.Dequeue();
     }
 
     private float CalculateCompensationSeconds()
     {
-        if (_calculationTimes.Count == 0)
+        if (_planningIntervals.Count == 0)
             return 0.0f;
 
         float sum = 0.0f;
-        foreach (float calculationTime in _calculationTimes)
-            sum += calculationTime;
+        foreach (float interval in _planningIntervals)
+            sum += interval;
 
-        float average = sum / _calculationTimes.Count;
+        float average = sum / _planningIntervals.Count;
         float compensated = average * _config.CalculationTimeSafetyFactor;
         return MathF.Min(compensated, _config.MaxConstantPrefixSeconds);
     }
@@ -1259,6 +1271,91 @@ public sealed class DynamicPathOnlinePathPlanner
             bestHeading = segmentLengthSquared > 1e-8f ? segment.Angle() : samples[i].Heading;
             bestCurvature = samples[i].Curvature + (samples[i + 1].Curvature - samples[i].Curvature) * t;
         }
+
+        int cutSampleIndex = FindFirstSampleAtOrAfterProgress(sampleProgress, bestProgress);
+        if (cutSampleIndex < 0)
+            cutSampleIndex = samples.Length - 1;
+
+        projection = new PathProjection(
+            CutSampleIndex: cutSampleIndex,
+            Progress: bestProgress,
+            Position: bestPosition,
+            Heading: bestHeading,
+            Curvature: bestCurvature,
+            Distance: MathF.Sqrt(bestDistanceSquared)
+        );
+        return true;
+    }
+
+    private static bool TryProjectOntoPathProgressNear(
+        DynamicPathEdgeSample[] samples,
+        float[] sampleProgress,
+        Vector2 position,
+        float targetProgress,
+        float progressWindow,
+        out PathProjection projection
+    )
+    {
+        projection = default;
+        if (samples.Length == 0 || sampleProgress.Length != samples.Length)
+            return false;
+        if (samples.Length == 1)
+        {
+            projection = new PathProjection(
+                CutSampleIndex: 0,
+                Progress: sampleProgress[0],
+                Position: samples[0].Position,
+                Heading: samples[0].Heading,
+                Curvature: samples[0].Curvature,
+                Distance: position.DistanceTo(samples[0].Position)
+            );
+            return true;
+        }
+
+        float minProgress = targetProgress - MathF.Max(0.0f, progressWindow);
+        float maxProgress = targetProgress + MathF.Max(0.0f, progressWindow);
+        float bestDistanceSquared = float.PositiveInfinity;
+        Vector2 bestPosition = samples[0].Position;
+        float bestProgress = sampleProgress[0];
+        float bestHeading = samples[0].Heading;
+        float bestCurvature = samples[0].Curvature;
+        bool found = false;
+
+        for (int i = 0; i < samples.Length - 1; i++)
+        {
+            float startProgress = sampleProgress[i];
+            float endProgress = sampleProgress[i + 1];
+            float segmentMinProgress = MathF.Min(startProgress, endProgress);
+            float segmentMaxProgress = MathF.Max(startProgress, endProgress);
+            if (segmentMaxProgress < minProgress || segmentMinProgress > maxProgress)
+                continue;
+
+            Vector2 start = samples[i].Position;
+            Vector2 end = samples[i + 1].Position;
+            Vector2 segment = end - start;
+            float segmentLengthSquared = segment.LengthSquared();
+            float t = segmentLengthSquared > 1e-8f
+                ? Mathf.Clamp((position - start).Dot(segment) / segmentLengthSquared, 0.0f, 1.0f)
+                : 0.0f;
+            float projectedProgress = startProgress + (endProgress - startProgress) * t;
+            if (projectedProgress < minProgress || projectedProgress > maxProgress)
+                continue;
+
+            Vector2 projected = start + segment * t;
+            float distanceSquared = position.DistanceSquaredTo(projected);
+            if (distanceSquared >= bestDistanceSquared)
+                continue;
+
+            found = true;
+            bestDistanceSquared = distanceSquared;
+            bestPosition = projected;
+            bestProgress = projectedProgress;
+            bestHeading = segmentLengthSquared > 1e-8f ? segment.Angle() : samples[i].Heading;
+            bestCurvature = samples[i].Curvature + (samples[i + 1].Curvature - samples[i].Curvature) * t;
+        }
+
+        if (!found)
+            return false;
 
         int cutSampleIndex = FindFirstSampleAtOrAfterProgress(sampleProgress, bestProgress);
         if (cutSampleIndex < 0)

@@ -260,7 +260,7 @@ public sealed class GraphBasedLocalPlannerTests
 
     [TestCase]
     [RequireGodotRuntime]
-    public void ContinuingPlannerReinitializesFromCurrentPoseAfterLargeLateralOffset()
+    public void ContinuingPlannerKeepsPreviousPathAfterLargeLateralOffsetInsideTrack()
     {
         (TrackData track, DynamicPathOfflineGraph graph) = BuildGraph();
         DynamicPathLayer poseLayer = graph.Layers[0];
@@ -302,11 +302,12 @@ public sealed class GraphBasedLocalPlannerTests
             speedMetersPerSecond: 0.0f
         );
 
-        AssertThat(second.UsedPreviousPath).IsFalse();
-        AssertThat(second.InitialConnectorSpline).IsNotNull();
-        AssertThat(second.ConstantPrefixSampleCount).IsEqual(0);
-        AssertThat(second.Samples[0].Position.X).IsEqualApprox(offsetPosition.X, 0.001f);
-        AssertThat(second.Samples[0].Position.Y).IsEqualApprox(offsetPosition.Y, 0.001f);
+        AssertThat(second.UsedPreviousPath).IsTrue();
+        AssertThat(second.InitialConnectorSpline).IsNull();
+        AssertThat(second.ConstantPrefixSampleCount).IsGreater(1);
+        AssertThat(second.StartNode).IsEqual(first.NodePath[1]);
+        AssertThat(second.Samples[0].Position.DistanceTo(projectedSample.Position)).IsLess(2.0f);
+        AssertThat(second.Samples[0].Position.DistanceTo(offsetPosition)).IsGreater(offsetPosition.DistanceTo(projectedSample.Position) * 0.5f);
         AssertPathSamplesAreFinite(second);
         AssertNodeSamplesAlignWithGraph(graph, second);
     }
