@@ -9,6 +9,9 @@ internal sealed class VehicleSimulationResult
     public VehicleSimulationSample Last { get; set; }
     public float MaxSpeed { get; private set; }
     public float MaxAbsAngularVelocity { get; private set; }
+    public float TimeAtMaxAbsAngularVelocity { get; private set; }
+    public Vector2 PositionAtMaxAbsAngularVelocity { get; private set; }
+    public VehicleSimulationSample SampleAtMaxAbsAngularVelocity { get; private set; }
     public float MaxAbsSlipRatio { get; private set; }
     public float MaxAbsSlipAngle { get; private set; }
     public float MaxAbsWheelAngularVelocity { get; private set; }
@@ -29,7 +32,14 @@ internal sealed class VehicleSimulationResult
         MinForwardSpeed = Mathf.Min(MinForwardSpeed, sample.ForwardSpeed);
         MaxAbsSideSpeed = Mathf.Max(MaxAbsSideSpeed, Mathf.Abs(sample.SideSpeed));
         MaxAbsBodySlip = Mathf.Max(MaxAbsBodySlip, Mathf.Abs(Mathf.Atan2(sample.SideSpeed, Mathf.Max(Mathf.Abs(sample.ForwardSpeed), 1f))));
-        MaxAbsAngularVelocity = Mathf.Max(MaxAbsAngularVelocity, Mathf.Abs(sample.AngularVelocity));
+        float absAngularVelocity = Mathf.Abs(sample.AngularVelocity);
+        if (absAngularVelocity > MaxAbsAngularVelocity)
+        {
+            MaxAbsAngularVelocity = absAngularVelocity;
+            TimeAtMaxAbsAngularVelocity = sample.Time;
+            PositionAtMaxAbsAngularVelocity = sample.Position;
+            SampleAtMaxAbsAngularVelocity = sample;
+        }
 
         foreach (var tire in sample.Output.Params.Tires)
         {
