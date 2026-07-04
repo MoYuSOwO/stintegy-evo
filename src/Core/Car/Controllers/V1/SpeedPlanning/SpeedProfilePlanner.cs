@@ -51,7 +51,15 @@ public sealed class SpeedProfilePlanner
         float dirtyAirFactor = 0.0f
     )
     {
-        return PlanCurrentFrame(path.Samples, carSensor, carLogic, track, dirtyAirFactor);
+        return PlanCurrentFrame(
+            path.Samples,
+            path.SampleTrackProgress,
+            path.AnchorTrackIndex,
+            carSensor,
+            carLogic,
+            track,
+            dirtyAirFactor
+        );
     }
 
     public SpeedProfile PlanCurrentFrame(
@@ -66,11 +74,36 @@ public sealed class SpeedProfilePlanner
         return Plan(samples, carLogic.Config, state, carSensor.LinearVelocity.Length());
     }
 
+    public SpeedProfile PlanCurrentFrame(
+        IReadOnlyList<DynamicPathEdgeSample> samples,
+        IReadOnlyList<float> sampleTrackProgress,
+        int anchorTrackIndex,
+        CarSensor carSensor,
+        CarLogic carLogic,
+        TrackData track,
+        float dirtyAirFactor = 0.0f
+    )
+    {
+        SpeedPlanningState state = SpeedPlanningState.FromCurrentFrame(carSensor, carLogic, track, dirtyAirFactor);
+        return Plan(
+            samples,
+            carLogic.Config,
+            state,
+            carSensor.LinearVelocity.Length(),
+            sampleTrackProgress,
+            anchorTrackIndex,
+            track.Length
+        );
+    }
+
     public SpeedProfile Plan(
         IReadOnlyList<DynamicPathEdgeSample> samples,
         CarConfig carConfig,
         SpeedPlanningState state,
-        float initialSpeedMetersPerSecond = 0.0f
+        float initialSpeedMetersPerSecond = 0.0f,
+        IReadOnlyList<float>? sampleTrackProgress = null,
+        int anchorTrackIndex = -1,
+        int trackLength = 0
     )
     {
         ArgumentNullException.ThrowIfNull(samples);
@@ -89,7 +122,7 @@ public sealed class SpeedProfilePlanner
         ApplyForwardAccelerationPass(samples, carConfig, state, speeds, speedLimits);
         ApplyBackwardBrakingPass(samples, carConfig, state, speeds);
 
-        return BuildProfile(samples, carConfig, state, distances, speedLimits, speeds);
+        return BuildProfile(samples, carConfig, state, distances, speedLimits, speeds, sampleTrackProgress, anchorTrackIndex, trackLength);
     }
 
     private void ApplyForwardAccelerationPass(
@@ -254,7 +287,10 @@ public sealed class SpeedProfilePlanner
         SpeedPlanningState state,
         float[] distances,
         float[] speedLimits,
-        float[] speeds
+        float[] speeds,
+        IReadOnlyList<float>? sampleTrackProgress,
+        int anchorTrackIndex,
+        int trackLength
     )
     {
         SpeedProfilePoint[] points = new SpeedProfilePoint[samples.Count];
@@ -296,11 +332,17 @@ public sealed class SpeedProfilePlanner
                 MaxSpeed: speedLimits[i],
                 MaxAcceleration: maxAcceleration,
                 MaxDeceleration: maxDeceleration,
-                LateralAcceleration: speed * speed * MathF.Abs(curvature)
+                LateralAcceleration: speed * speed * MathF.Abs(curvature),
+                TrackProgress: sampleTrackProgress != null && i < sampleTrackProgress.Count
+                    ? sampleTrackProgress[i]
+                    : 0.0f
             );
         }
 
-        return new SpeedProfile(points);
+        bool hasTrackProgress = sampleTrackProgress != null && sampleTrackProgress.Count == samples.Count && anchorTrackIndex >= 0 && trackLength > 0;
+        return hasTrackProgress
+            ? new SpeedProfile(points, anchorTrackIndex, trackLength)
+            : new SpeedProfile(points);
     }
 
     private float[] CalculateDistances(IReadOnlyList<DynamicPathEdgeSample> samples)
