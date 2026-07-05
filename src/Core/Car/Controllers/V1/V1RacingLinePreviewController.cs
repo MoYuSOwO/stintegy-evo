@@ -14,6 +14,7 @@ public sealed class V1RacingLinePreviewController : IController, IControllerDebu
     private static readonly ControllerDebugPathStyle ReferenceLineStyle = new(Color.FromHtml("#65c4ff"), 1.0f, 50);
     private static readonly ControllerDebugPathStyle DynamicPathStyle = new(Color.FromHtml("#ffb14a"), 1.6f, 55);
     private const float DynamicPathPlanHorizonMeters = 80.0f;
+    private const float DynamicPathSafetyMarginMeters = 0.5f;
 
     private readonly IRacingLineSolver _solver;
     private RacingLine? _racingLine;
@@ -129,7 +130,15 @@ public sealed class V1RacingLinePreviewController : IController, IControllerDebu
 
         try
         {
-            _dynamicGraph = new DynamicPathOfflineGraphBuilder().Build(track, _racingLine, carConfig);
+            _dynamicGraph = new DynamicPathOfflineGraphBuilder().Build(
+                track,
+                _racingLine,
+                carConfig,
+                new DynamicPathOfflineConfig
+                {
+                    SafetyMarginMeters = DynamicPathSafetyMarginMeters
+                }
+            );
             _dynamicPathPlanner = new DynamicPathOnlinePathPlanner(new DynamicPathOnlineConfig
             {
                 MinimumPlanHorizonMeters = DynamicPathPlanHorizonMeters,
