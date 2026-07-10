@@ -61,6 +61,48 @@ public sealed class RaceSimulationTests
     }
 
     [Fact]
+    public void RaceEnvironmentTrackTemperatureFeedsTireSurfaceExchange()
+    {
+        TrackData track = BuildTrack();
+        TrackSample start = track.Sample(12f);
+        RaceCar coldTrack = CreateRaceCar(
+            "cold-track",
+            track,
+            start,
+            speed: 0f,
+            new FixedDriver(new DriverInput(0f, 0f))
+        );
+        RaceCar hotTrack = CreateRaceCar(
+            "hot-track",
+            track,
+            start,
+            speed: 0f,
+            new FixedDriver(new DriverInput(0f, 0f))
+        );
+        SetTireTemps(coldTrack.State, surfaceTempC: 80f, coreTempC: 80f);
+        SetTireTemps(hotTrack.State, surfaceTempC: 80f, coreTempC: 80f);
+
+        RaceSimulation coldSimulation = new(
+            track,
+            new RaceEnvironment { AirTempC = 25f, TrackTempC = 10f }
+        );
+        RaceSimulation hotSimulation = new(
+            track,
+            new RaceEnvironment { AirTempC = 25f, TrackTempC = 60f }
+        );
+        coldSimulation.AddCar(coldTrack);
+        hotSimulation.AddCar(hotTrack);
+
+        StepMany(coldSimulation, steps: 120);
+        StepMany(hotSimulation, steps: 120);
+
+        Assert.True(
+            AverageSurfaceTemp(coldTrack.State) < AverageSurfaceTemp(hotTrack.State),
+            "a warmer track should reduce tread heat loss through the contact patch"
+        );
+    }
+
+    [Fact]
     public void AddCarAndStepKeepCarBodyInsideTrackWalls()
     {
         TrackData track = BuildTrack();

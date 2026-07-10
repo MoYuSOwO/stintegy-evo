@@ -61,7 +61,12 @@ public sealed class RaceSimulation
             TrackPose pose = Track.Project(car.State.Position);
             RaceDriverFrameContext context = new(car, Track, pose, Environment, RaceTimeSeconds);
             DriverInput input = car.Driver.GetControl(in context, dt);
-            CarPhysicsStepInput physicsInput = new(input, car.Strategy, Environment.AirTempC);
+            CarPhysicsStepInput physicsInput = new(
+                input,
+                car.Strategy,
+                Environment.AirTempC,
+                Environment.TrackTempC
+            );
 
             car.LastInput = input;
             if (preStepContact.HasValue)
@@ -126,4 +131,5 @@ public sealed class RaceSimulation
 public sealed class RaceEnvironment
 {
     public float AirTempC { get; set; } = 25f;
+    public float TrackTempC { get; set; } = 35f;
 }

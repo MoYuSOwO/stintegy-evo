@@ -6,6 +6,7 @@ namespace TheStint.Core.Tests;
 public sealed class CarPhysicsTests
 {
     private const float TestAirTempC = 25f;
+    private const float TestTrackTempC = 35f;
 
     [Fact]
     public void DriveRequestIncreasesSpeedAndConsumesBattery()
@@ -281,21 +282,34 @@ public sealed class CarPhysicsTests
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeFrontTiresHotAndWorn(state);
 
-        StepMany(
-            state,
-            car,
-            tires,
-            new DriverInput(0.01f, 0f),
-            CarStrategy.Default,
-            steps: 60
-        );
+        float maximumSideslip = 0f;
+        float maximumYawDeficit = 0f;
+        for (int step = 0; step < 60; step++)
+        {
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                PhysicsInput(new DriverInput(0.01f, 0f)),
+                1f / 60f
+            );
+            maximumSideslip = MathF.Max(
+                maximumSideslip,
+                state.SideslipAngleRadians
+            );
+            maximumYawDeficit = MathF.Max(
+                maximumYawDeficit,
+                state.Telemetry.ReferenceYawRateRadiansPerSecond -
+                state.YawRateRadiansPerSecond
+            );
+        }
 
         Assert.True(
-            state.SideslipAngleRadians > 0.02f,
+            maximumSideslip > 0.02f,
             "front saturation in a left turn should leave the velocity direction ahead of the body"
         );
         Assert.True(
-            state.YawRateRadiansPerSecond < state.Telemetry.ReferenceYawRateRadiansPerSecond,
+            maximumYawDeficit > 0.05f,
             "front saturation should produce less yaw rate than requested"
         );
     }
@@ -537,7 +551,62 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void StraightLineSpeedIncreasesTireCooling()
+    public void StraightRollingBuildsCoreHeatWithoutTireSlip()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 25f,
+            StartingCoreTempC = 25f
+        };
+        CarState state = CreateState(speed: 40f, batterySoc: 0.8f, tires);
+        CarPhysicsStepInput input = new(
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            AirTempC: 25f,
+            TrackTempC: 25f
+        );
+
+        for (int step = 0; step < 10 * 60; step++)
+            CarPhysics.Step(state, car, tires, input, 1f / 60f);
+
+        Assert.True(
+            AverageCoreTemp(state) > 25.25f,
+            "cyclic tire deformation should warm the core even without commanded slip"
+        );
+    }
+
+    [Fact]
+    public void CoreTemperatureRespondsMoreSlowlyThanTreadSurface()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 70f,
+            StartingCoreTempC = 70f
+        };
+        CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
+
+        StepMany(
+            state,
+            car,
+            tires,
+            new DriverInput(0.012f, 0f),
+            CarStrategy.Default,
+            steps: 120
+        );
+
+        float surfaceRise = AverageSurfaceTemp(state) - 70f;
+        float coreRise = AverageCoreTemp(state) - 70f;
+        Assert.True(surfaceRise > 1f);
+        Assert.True(
+            surfaceRise > coreRise * 4f,
+            "the high-capacity core should not follow a short tread heat spike"
+        );
+    }
+
+    [Fact]
+    public void StraightLineSpeedIncreasesTreadSurfaceCooling()
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
@@ -552,10 +621,6 @@ public sealed class CarPhysicsTests
         Assert.True(
             AverageSurfaceTemp(fast) < AverageSurfaceTemp(parked),
             "fast straight-line running should increase air cooling at the tire surface"
-        );
-        Assert.True(
-            AverageCoreTemp(fast) < AverageCoreTemp(parked),
-            "fast straight-line running should also improve slow core cooling"
         );
     }
 
@@ -717,7 +782,12 @@ public sealed class CarPhysicsTests
 
     private static CarPhysicsStepInput PhysicsInput(DriverInput input, CarStrategy strategy)
     {
-        return new CarPhysicsStepInput(input, strategy, TestAirTempC);
+        return new CarPhysicsStepInput(
+            input,
+            strategy,
+            TestAirTempC,
+            TestTrackTempC
+        );
     }
 
     private static float AverageSurfaceTemp(CarState state)
