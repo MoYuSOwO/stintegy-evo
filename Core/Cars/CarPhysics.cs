@@ -9,6 +9,78 @@ public static class CarPhysics
     private const float Gravity = 9.80665f;
     private const float Epsilon = 1e-5f;
 
+    internal static CarPerformanceLimits EstimatePerformanceLimits(
+        CarState state,
+        CarConfig config,
+        TireConfig tires,
+        CarStrategy strategy,
+        float speed,
+        float curvature,
+        float gripUsage = 1f,
+        float assumedLongitudinalAcceleration = 0f
+    )
+    {
+        float lateralAcceleration = speed * speed * curvature;
+        WheelLoads loads = CalculateWheelLoads(
+            config,
+            assumedLongitudinalAcceleration,
+            lateralAcceleration
+        );
+        float usage = Math.Clamp(gripUsage, 0.05f, 1f);
+        float frontGrip = (
+            loads.FrontLeft * CalculateTireMu(tires, strategy.TireMode, state.FrontLeft) +
+            loads.FrontRight * CalculateTireMu(tires, strategy.TireMode, state.FrontRight)
+        ) / Math.Max(config.MassKg, Epsilon) * usage;
+        float rearGrip = (
+            loads.RearLeft * CalculateTireMu(tires, strategy.TireMode, state.RearLeft) +
+            loads.RearRight * CalculateTireMu(tires, strategy.TireMode, state.RearRight)
+        ) / Math.Max(config.MassKg, Epsilon) * usage;
+
+        float frontDemandShare = Math.Clamp(config.FrontLateralDemandShare, 0f, 1f);
+        float rearDemandShare = 1f - frontDemandShare;
+        float frontLateralLimit = frontDemandShare <= Epsilon
+            ? float.PositiveInfinity
+            : frontGrip / frontDemandShare;
+        float rearLateralLimit = rearDemandShare <= Epsilon
+            ? float.PositiveInfinity
+            : rearGrip / rearDemandShare;
+        float lateralLimit = Math.Min(frontLateralLimit, rearLateralLimit);
+
+        float frontLateral = lateralAcceleration * frontDemandShare;
+        float rearLateral = lateralAcceleration * rearDemandShare;
+        float frontLongitudinal = RemainingLongitudinalGrip(frontGrip, frontLateral);
+        float rearLongitudinal = RemainingLongitudinalGrip(rearGrip, rearLateral);
+
+        float gripDriveLimit = DistributedDriveLimit(
+            frontLongitudinal,
+            rearLongitudinal,
+            config.FrontDriveShare
+        );
+        float batteryDriveLimit = CalculateDriveAccelLimit(
+            state,
+            config,
+            strategy.BatteryMode,
+            speed
+        );
+        float maximumDrive = Math.Min(
+            config.MaxDriveAccelRequest,
+            Math.Min(gripDriveLimit, batteryDriveLimit)
+        );
+        float maximumBrake = Math.Min(
+            config.MaxBrakeAccel,
+            frontLongitudinal + rearLongitudinal
+        );
+        float lateralUse = Math.Abs(lateralAcceleration) / Math.Max(frontGrip + rearGrip, Epsilon);
+        float loss = CalculateLossAccel(config, speed, lateralUse);
+
+        return new CarPerformanceLimits(
+            Math.Max(0f, lateralLimit),
+            Math.Max(0f, maximumDrive),
+            Math.Max(0f, maximumBrake),
+            Math.Max(0f, loss)
+        );
+    }
+
     public static void Step(
         CarState state,
         CarConfig config,
@@ -150,6 +222,16 @@ public static class CarPhysics
 
     private static float CalculateDriveAccelLimit(CarState state, CarConfig config, BatteryOutputMode mode)
     {
+        return CalculateDriveAccelLimit(state, config, mode, state.Speed);
+    }
+
+    private static float CalculateDriveAccelLimit(
+        CarState state,
+        CarConfig config,
+        BatteryOutputMode mode,
+        float speed
+    )
+    {
         if (state.BatterySoc <= 0f)
             return 0f;
 
@@ -160,9 +242,33 @@ public static class CarPhysics
         float forceLimitedAccel = config.GetBatteryForceAccelLimit(mode);
         float powerLimitedAccel =
             config.GetBatteryPowerLimitWatts(mode) /
-            (config.MassKg * Math.Max(state.Speed, config.MinPowerSpeed));
+            (config.MassKg * Math.Max(speed, config.MinPowerSpeed));
 
         return Math.Min(forceLimitedAccel, powerLimitedAccel) * socFactor;
+    }
+
+    private static float RemainingLongitudinalGrip(float grip, float lateralAcceleration)
+    {
+        float remainingSquared = grip * grip - lateralAcceleration * lateralAcceleration;
+        return MathF.Sqrt(Math.Max(0f, remainingSquared));
+    }
+
+    private static float DistributedDriveLimit(
+        float frontCapacity,
+        float rearCapacity,
+        float frontDriveShare
+    )
+    {
+        float frontShare = Math.Clamp(frontDriveShare, 0f, 1f);
+        float rearShare = 1f - frontShare;
+        float limit = float.PositiveInfinity;
+
+        if (frontShare > Epsilon)
+            limit = Math.Min(limit, frontCapacity / frontShare);
+        if (rearShare > Epsilon)
+            limit = Math.Min(limit, rearCapacity / rearShare);
+
+        return float.IsFinite(limit) ? Math.Max(0f, limit) : 0f;
     }
 
     private static void AllocateBrakeRequest(
@@ -354,14 +460,27 @@ public static class CarPhysics
 
     private static WheelLoads CalculateWheelLoads(CarState state, CarConfig config)
     {
+        return CalculateWheelLoads(
+            config,
+            state.FilteredLongitudinalAccel,
+            state.FilteredLateralAccel
+        );
+    }
+
+    private static WheelLoads CalculateWheelLoads(
+        CarConfig config,
+        float longitudinalAcceleration,
+        float lateralAcceleration
+    )
+    {
         float totalLoad = config.MassKg * Gravity;
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
-        frontLoad -= config.MassKg * state.FilteredLongitudinalAccel * config.CenterOfGravityHeightMeters /
+        frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);
         frontLoad = Math.Clamp(frontLoad, 0f, totalLoad);
 
         float rearLoad = totalLoad - frontLoad;
-        float lateralTransfer = config.MassKg * state.FilteredLateralAccel * config.CenterOfGravityHeightMeters /
+        float lateralTransfer = config.MassKg * lateralAcceleration * config.CenterOfGravityHeightMeters /
                                 Math.Max(config.TrackWidthMeters, Epsilon);
         float frontTransfer = lateralTransfer * frontLoad / Math.Max(totalLoad, Epsilon);
         float rearTransfer = lateralTransfer - frontTransfer;

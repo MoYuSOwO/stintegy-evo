@@ -316,6 +316,7 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
             positions[i] = trackPoint.GetOffsetPos(offset);
         }
 
+        float[] headings = new float[track.Count];
         for (int i = 0; i < track.Count; i++)
         {
             Vector2 tangent = MathHelper.FivePointStencil(
@@ -324,16 +325,28 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
                 positions[WrapIndex(i + 1, track.Count)],
                 positions[WrapIndex(i + 2, track.Count)]
             );
-            float heading = MathHelper.NormalizeAngle(tangent.Angle());
-            float curvature = MathHelper.Curvature(
-                positions[WrapIndex(i - 1, track.Count)],
-                positions[i],
-                positions[WrapIndex(i + 1, track.Count)]
-            );
+            headings[i] = MathHelper.NormalizeAngle(tangent.Angle());
+        }
+
+        const int curvatureRadius = 3;
+        for (int i = 0; i < track.Count; i++)
+        {
+            int previous = WrapIndex(i - curvatureRadius, track.Count);
+            int next = WrapIndex(i + curvatureRadius, track.Count);
+            float arcLength = 0f;
+            for (int offset = -curvatureRadius; offset < curvatureRadius; offset++)
+            {
+                arcLength += Vector2.Distance(
+                    positions[WrapIndex(i + offset, track.Count)],
+                    positions[WrapIndex(i + offset + 1, track.Count)]
+                );
+            }
+            float headingDelta = MathHelper.NormalizeAngle(headings[next] - headings[previous]);
+            float curvature = arcLength <= 1e-4f ? 0f : headingDelta / arcLength;
             points[i] = new RefLinePoint(
                 offsets[i],
                 positions[i],
-                heading,
+                headings[i],
                 curvature
             );
         }

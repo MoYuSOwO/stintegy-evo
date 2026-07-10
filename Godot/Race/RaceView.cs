@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Godot;
 using StintegyEVO.Presentation.Car;
 using StintegyEVO.Presentation.Debug;
@@ -18,6 +19,7 @@ public partial class RaceView : Node2D
     [Export] public TrackView? TrackRenderer { get; set; }
     [Export] public Camera2D? Camera { get; set; }
     [Export] public bool ShowFrameStats { get; set; } = true;
+    [Export] public bool ExportCsvTelemetry { get; set; }
 
     private readonly List<CarView> _carViews = [];
     private readonly Label _telemetryLabel = new()
@@ -27,6 +29,7 @@ public partial class RaceView : Node2D
     };
     private RaceSimulation? _simulation;
     private RaceCar? _playerCar;
+    private RaceCsvTelemetryRecorder? _csvTelemetry;
 
     public override void _Ready()
     {
@@ -56,6 +59,7 @@ public partial class RaceView : Node2D
 
         if (ShowFrameStats)
             AddChild(new FrameTimeMonitor());
+        StartCsvTelemetryIfRequested();
         RefreshTelemetry();
     }
 
@@ -65,9 +69,17 @@ public partial class RaceView : Node2D
             return;
 
         _simulation.Step(Mathf.Min((float)delta, 0.05f));
+        if (_csvTelemetry != null && _playerCar != null)
+            _csvTelemetry.Write(_simulation.RaceTimeSeconds, _playerCar, _simulation.Track);
         foreach (CarView view in _carViews)
             view.SyncFromCore();
         RefreshTelemetry();
+    }
+
+    public override void _ExitTree()
+    {
+        _csvTelemetry?.Dispose();
+        _csvTelemetry = null;
     }
 
     public override void _UnhandledInput(InputEvent inputEvent)
@@ -110,7 +122,7 @@ public partial class RaceView : Node2D
             {
                 Position = start.Position,
                 Heading = startSample.RefHeading,
-                Speed = 8f,
+                Speed = 0f,
                 BatterySoc = 0.82f
             }
         )
@@ -157,6 +169,26 @@ public partial class RaceView : Node2D
             $"Tire {_playerCar.Strategy.TireMode}   Battery {_playerCar.Strategy.BatteryMode}\n" +
             $"Front {frontTemp:0.0} C   Rear {rearTemp:0.0} C   Use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
             $"Region {_playerCar.Progress.Region}   Q/E tire  A/D battery";
+    }
+
+    private void StartCsvTelemetryIfRequested()
+    {
+        string? setting = System.Environment.GetEnvironmentVariable("STINTEGY_CSV_TELEMETRY");
+        if (!ExportCsvTelemetry && string.IsNullOrWhiteSpace(setting))
+            return;
+
+        string path = string.IsNullOrWhiteSpace(setting) || IsEnabledValue(setting)
+            ? ProjectSettings.GlobalizePath("res://.tmp/telemetry.csv")
+            : Path.GetFullPath(setting);
+        _csvTelemetry = new RaceCsvTelemetryRecorder(path);
+        GD.Print($"CSV telemetry: {path}");
+    }
+
+    private static bool IsEnabledValue(string value)
+    {
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("yes", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ConfigureCamera(TrackData track)

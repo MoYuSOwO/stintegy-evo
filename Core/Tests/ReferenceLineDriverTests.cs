@@ -9,15 +9,105 @@ namespace TheStint.Core.Tests;
 public sealed class ReferenceLineDriverTests
 {
     [Fact]
-    public void LateralErrorRequestsCurvatureBackTowardReferenceLine()
+    public void DriverCompletesALapOnSimpleTestTrack()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample start = track.Sample(track.Grids[1].S);
+        RaceCar car = new(
+            "lap-test",
+            new CarConfig(),
+            WarmTires(),
+            new ReferenceLineDriver(),
+            new CarState
+            {
+                Position = start.RefPosition,
+                Heading = start.RefHeading,
+                Speed = 8f,
+                BatterySoc = 0.9f
+            }
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(car);
+
+        const float dt = 1f / 60f;
+        int wallContactFrames = 0;
+        string? firstWall = null;
+        for (int i = 0; i < 60 * 150; i++)
+        {
+            simulation.Step(dt);
+            if (car.LastBoundaryContact.HasValue)
+            {
+                wallContactFrames++;
+                ReferenceLineDriver driver = (ReferenceLineDriver)car.Driver;
+                firstWall ??=
+                    $"firstWall t={simulation.RaceTimeSeconds:0.00}, s={car.Progress.CurrentS:0.0}, " +
+                    $"d={car.Progress.CurrentD:0.0}, speed={car.State.Speed:0.0}, " +
+                    $"error={driver.LastTelemetry.LateralErrorMeters:0.00}, " +
+                    $"correction={driver.LastTelemetry.CurvatureCorrection:0.000}, " +
+                    $"target={driver.LastTelemetry.TargetSpeed:0.0}";
+            }
+        }
+
+        Assert.True(
+            car.Progress.TotalDistance >= track.LengthMeters,
+            $"expected a completed lap, got {car.Progress.TotalDistance:0.0}/{track.LengthMeters:0.0} m; " +
+            $"s={car.Progress.CurrentS:0.0}, d={car.Progress.CurrentD:0.0}, " +
+            $"speed={car.State.Speed:0.0}, region={car.Progress.Region}, " +
+            $"soc={car.State.BatterySoc:0.000}, wall={car.LastBoundaryContact.HasValue}"
+        );
+        Assert.True(
+            wallContactFrames == 0,
+            $"expected a clean lap, got {wallContactFrames} wall-contact frames; " +
+            $"s={car.Progress.CurrentS:0.0}, d={car.Progress.CurrentD:0.0}, " +
+            $"speed={car.State.Speed:0.0}, error={((ReferenceLineDriver)car.Driver).LastTelemetry.LateralErrorMeters:0.00}, " +
+            $"target={((ReferenceLineDriver)car.Driver).LastTelemetry.TargetSpeed:0.0}; {firstWall}"
+        );
+    }
+
+    [Fact]
+    public void LateralErrorKeepsGlobalLineAndBuildsCurvatureSpeedEnvelope()
     {
         TrackData track = BuildTrack();
         ReferenceLineDriver driver = new();
-        RaceDriverFrameContext context = CreateContext(track, driver, s: 20f, speed: 16f, lateralError: 2f);
+        RaceDriverFrameContext context = CreateContext(
+            track,
+            driver,
+            s: 20f,
+            speed: 16f,
+            lateralError: 2f
+        );
 
-        DriverInput input = driver.GetControl(in context, 1f / 60f);
+        driver.GetControl(in context, 1f / 60f);
 
-        Assert.True(input.DesiredCurvature > context.Pose.Sample.RefCurvature);
+        ReferenceLineDriverTelemetry telemetry = driver.LastTelemetry;
+        Assert.True(MathF.Abs(telemetry.CurvatureCorrection) > 1e-3f);
+        Assert.True(telemetry.CorrectionDecayDistanceMeters >= 15f);
+        Assert.True(
+            telemetry.CorrectionEnvelopeMaximumCurvature >=
+            MathF.Abs(telemetry.DesiredCurvature) - 1e-4f
+        );
+        Assert.True(telemetry.TargetSpeed <= telemetry.GlobalProfileTargetSpeed + 1e-4f);
+    }
+
+    [Fact]
+    public void AlignedCarUsesUnmodifiedGlobalSpeedProfile()
+    {
+        TrackData track = BuildTrack();
+        ReferenceLineDriver driver = new();
+        RaceDriverFrameContext context = CreateContext(track, driver, s: 20f, speed: 16f);
+
+        driver.GetControl(in context, 1f / 60f);
+
+        Assert.InRange(MathF.Abs(driver.LastTelemetry.CurvatureCorrection), 0f, 0.002f);
+        Assert.Equal(0f, driver.LastTelemetry.CorrectionDecayDistanceMeters);
+        Assert.InRange(
+            MathF.Abs(
+                driver.LastTelemetry.TargetSpeed -
+                driver.LastTelemetry.GlobalProfileTargetSpeed
+            ),
+            0f,
+            1e-5f
+        );
     }
 
     [Fact]
@@ -33,27 +123,50 @@ public sealed class ReferenceLineDriverTests
     }
 
     [Fact]
-    public void AttackTireModeAllowsMorePaceThanProtect()
+    public void StationaryCarUsesFullAvailableDriveWhileReturningToLine()
     {
         TrackData track = BuildTrack();
         ReferenceLineDriver driver = new();
-        RaceDriverFrameContext protect = CreateContext(
+        RaceDriverFrameContext context = CreateContext(
             track,
             driver,
+            s: 20f,
+            speed: 0f,
+            lateralError: 4f
+        );
+
+        DriverInput input = driver.GetControl(in context, 1f / 60f);
+
+        float fullAvailableDrive = context.Car.CarConfig.GetBatteryForceAccelLimit(
+            context.Car.Strategy.BatteryMode
+        );
+        Assert.InRange(fullAvailableDrive - input.DesiredAccel, 0f, 0.02f);
+        Assert.Equal(0f, driver.LastTelemetry.LossCompensationAcceleration);
+    }
+
+    [Fact]
+    public void AttackTireModeAllowsMorePaceThanProtect()
+    {
+        TrackData track = BuildTrack();
+        ReferenceLineDriver protectDriver = new();
+        ReferenceLineDriver attackDriver = new();
+        RaceDriverFrameContext protect = CreateContext(
+            track,
+            protectDriver,
             s: 100f,
             speed: 14f,
             strategy: new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Normal)
         );
         RaceDriverFrameContext attack = CreateContext(
             track,
-            driver,
+            attackDriver,
             s: 100f,
             speed: 14f,
             strategy: new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal)
         );
 
-        DriverInput protectInput = driver.GetControl(in protect, 1f / 60f);
-        DriverInput attackInput = driver.GetControl(in attack, 1f / 60f);
+        DriverInput protectInput = protectDriver.GetControl(in protect, 1f / 60f);
+        DriverInput attackInput = attackDriver.GetControl(in attack, 1f / 60f);
 
         Assert.True(attackInput.DesiredAccel > protectInput.DesiredAccel);
     }
