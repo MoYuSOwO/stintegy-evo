@@ -478,6 +478,54 @@ public sealed class CarPhysicsTests
         );
     }
 
+    [Theory]
+    [InlineData(0f, 1f)]
+    [InlineData(0.70f, 0.93f)]
+    [InlineData(0.85f, 0.84f)]
+    [InlineData(1f, 0.75f)]
+    public void TireWearUsesLinearLossBeforeSmoothGripCliff(
+        float wear,
+        float expectedGripFactor
+    )
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState fresh = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState worn = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        foreach (TireState tire in Tires(worn))
+            tire.Wear = wear;
+
+        CarPhysicsStepInput input = new(
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            AirTempC: 90f,
+            TrackTempC: 90f
+        );
+        CarPhysics.Step(fresh, car, tires, input, 1f / 120f);
+        CarPhysics.Step(worn, car, tires, input, 1f / 120f);
+
+        float frontGripFactor =
+            worn.Telemetry.FrontGripAccel /
+            fresh.Telemetry.FrontGripAccel;
+        float rearGripFactor =
+            worn.Telemetry.RearGripAccel /
+            fresh.Telemetry.RearGripAccel;
+        Assert.InRange(
+            MathF.Abs(frontGripFactor - expectedGripFactor),
+            0f,
+            1e-4f
+        );
+        Assert.InRange(
+            MathF.Abs(rearGripFactor - expectedGripFactor),
+            0f,
+            1e-4f
+        );
+    }
+
     [Fact]
     public void CorneringScrubSlowsCarEvenWithoutBrakeRequest()
     {

@@ -848,7 +848,18 @@ public static class CarPhysics
 
         tempGrip -= Math.Max(0f, tire.CoreTempC - tires.CoreOverheatTempC) * tires.CoreOverheatGripLossPerC;
 
-        float wearGrip = 1f - tire.Wear * tires.WearGripLoss;
+        float wear = Math.Clamp(tire.Wear, 0f, 1f);
+        float cliffStart = Math.Clamp(tires.WearCliffStart, 0f, 1f);
+        float cliffProgress = Math.Clamp(
+            (wear - cliffStart) / Math.Max(1f - cliffStart, Epsilon),
+            0f,
+            1f
+        );
+        float smoothCliff = cliffProgress * cliffProgress *
+                            (3f - 2f * cliffProgress);
+        float wearGrip = 1f -
+                         Math.Max(0f, tires.WearLinearGripLoss) * wear -
+                         Math.Max(0f, tires.WearCliffGripLoss) * smoothCliff;
         float modeGrip = tires.GetModeGripFactor(mode);
         return tires.BaseMu * modeGrip *
                Math.Clamp(tempGrip, MinimumTemperatureGripFactor, MaximumTemperatureGripFactor) *
