@@ -17,11 +17,15 @@ public sealed class VehicleSpeedPlanner
 {
     private const float PerformanceCacheSpeedStepMetersPerSecond = 0.25f;
     private const float PerformanceCacheCurvatureStep = 0.001f;
+    private const float InitialMaximumSpeedSearchMetersPerSecond = 50f;
+    private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
+    private const int MaximumSpeedSolveIterations = 12;
     private readonly Dictionary<long, float> _driveAccelerationCache = new(16_384);
     private readonly Dictionary<long, float> _brakeDecelerationCache = new(16_384);
     private RaceCar? _planningCar;
     private CarState? _planningState;
     private CarStrategy _planningStrategy;
+    private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
 
     public VehicleSpeedPlanner(VehicleSpeedPlanningConfig? config = null)
     {
@@ -43,7 +47,69 @@ public sealed class VehicleSpeedPlanner
             curvature: 0f,
             gripUsage: Config.LateralGripUsage
         );
-        return LateralSpeedLimit(curvature, limits.LateralAccelerationLimit);
+        return LateralSpeedLimit(
+            curvature,
+            limits.LateralAccelerationLimit,
+            EstimateMaximumSpeedMetersPerSecond(car)
+        );
+    }
+
+    public float EstimateMaximumSpeedMetersPerSecond(RaceCar car)
+    {
+        ArgumentNullException.ThrowIfNull(car);
+
+        CarState optimisticState = car.State.Clone();
+        optimisticState.BatterySoc = 1f;
+        float currentSpeed = Math.Max(0f, car.State.Speed);
+        float upper = Math.Max(
+            InitialMaximumSpeedSearchMetersPerSecond,
+            currentSpeed
+        );
+        upper = Math.Min(upper, NumericalMaximumSpeedMetersPerSecond);
+
+        float upperNetAcceleration = EstimateStraightNetAcceleration(
+            car,
+            optimisticState,
+            upper
+        );
+        while (upperNetAcceleration > 0f &&
+               upper < NumericalMaximumSpeedMetersPerSecond)
+        {
+            upper = Math.Min(
+                upper * 2f,
+                NumericalMaximumSpeedMetersPerSecond
+            );
+            upperNetAcceleration = EstimateStraightNetAcceleration(
+                car,
+                optimisticState,
+                upper
+            );
+        }
+
+        float equilibriumSpeed;
+        if (upperNetAcceleration > 0f)
+        {
+            // A vehicle configured without enough resistance has no finite
+            // equilibrium speed in this model. Keep only a numerical guard.
+            equilibriumSpeed = NumericalMaximumSpeedMetersPerSecond;
+        }
+        else
+        {
+            float lower = 0f;
+            for (int i = 0; i < MaximumSpeedSolveIterations; i++)
+            {
+                float midpoint = (lower + upper) * 0.5f;
+                if (EstimateStraightNetAcceleration(car, optimisticState, midpoint) > 0f)
+                    lower = midpoint;
+                else
+                    upper = midpoint;
+            }
+            equilibriumSpeed = (lower + upper) * 0.5f;
+        }
+
+        float optimisticSpeed = Math.Max(currentSpeed, equilibriumSpeed) *
+                                Config.MaximumSpeedEstimateMultiplier;
+        return Math.Min(optimisticSpeed, NumericalMaximumSpeedMetersPerSecond);
     }
 
     public VehicleSpeedProfile Plan(RaceCar car, TrackData track)
@@ -80,7 +146,8 @@ public sealed class VehicleSpeedPlanner
             );
             speedLimits[i] = LateralSpeedLimit(
                 planningCurvatures[i],
-                baseLimits.LateralAccelerationLimit
+                baseLimits.LateralAccelerationLimit,
+                _planningMaximumSpeedMetersPerSecond
             );
             speeds[i] = speedLimits[i];
         }
@@ -205,7 +272,8 @@ public sealed class VehicleSpeedPlanner
                 );
                 float lateralLimit = LateralSpeedLimit(
                     virtualCurvature,
-                    baseLimits.LateralAccelerationLimit
+                    baseLimits.LateralAccelerationLimit,
+                    _planningMaximumSpeedMetersPerSecond
                 );
                 float globalLimit = globalProfile.Sample(sample.S).TargetSpeed;
                 speedLimits[i] = MathF.Min(lateralLimit, globalLimit);
@@ -384,7 +452,11 @@ public sealed class VehicleSpeedPlanner
             float midpointSpeed = (speed + predicted) * 0.5f;
             float midpointAcceleration = MaximumNetDriveAcceleration(car, midpointSpeed, curvature);
             speed = MathF.Min(
-                LateralSpeedLimit(curvature, lateralAccelerationLimit),
+                LateralSpeedLimit(
+                    curvature,
+                    lateralAccelerationLimit,
+                    _planningMaximumSpeedMetersPerSecond
+                ),
                 MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * midpointAcceleration * stepDistance))
             );
         }
@@ -414,7 +486,11 @@ public sealed class VehicleSpeedPlanner
             float midpointSpeed = (speed + predicted) * 0.5f;
             float midpointDeceleration = MaximumNetBrakeDeceleration(car, midpointSpeed, curvature);
             speed = MathF.Min(
-                LateralSpeedLimit(curvature, lateralAccelerationLimit),
+                LateralSpeedLimit(
+                    curvature,
+                    lateralAccelerationLimit,
+                    _planningMaximumSpeedMetersPerSecond
+                ),
                 MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * midpointDeceleration * stepDistance))
             );
         }
@@ -499,13 +575,35 @@ public sealed class VehicleSpeedPlanner
         );
     }
 
-    private float LateralSpeedLimit(float curvature, float lateralAccelerationLimit)
+    private static float EstimateStraightNetAcceleration(
+        RaceCar car,
+        CarState optimisticState,
+        float speed
+    )
+    {
+        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+            optimisticState,
+            car.CarConfig,
+            car.TireConfig,
+            car.Strategy,
+            speed,
+            curvature: 0f,
+            gripUsage: 1f
+        );
+        return limits.MaximumDriveAcceleration - limits.LossAcceleration;
+    }
+
+    private float LateralSpeedLimit(
+        float curvature,
+        float lateralAccelerationLimit,
+        float maximumSpeedMetersPerSecond
+    )
     {
         float absoluteCurvature = MathF.Abs(curvature);
         if (absoluteCurvature <= Config.CurvatureEpsilon)
-            return Config.MaximumSpeedMetersPerSecond;
+            return maximumSpeedMetersPerSecond;
         return MathF.Min(
-            Config.MaximumSpeedMetersPerSecond,
+            maximumSpeedMetersPerSecond,
             MathF.Sqrt(Math.Max(0f, lateralAccelerationLimit) / absoluteCurvature)
         );
     }
@@ -535,6 +633,7 @@ public sealed class VehicleSpeedPlanner
         _planningCar = car;
         _planningState = car.State.Clone();
         _planningStrategy = car.Strategy;
+        _planningMaximumSpeedMetersPerSecond = EstimateMaximumSpeedMetersPerSecond(car);
         _driveAccelerationCache.Clear();
         _brakeDecelerationCache.Clear();
     }
@@ -565,8 +664,14 @@ public sealed class VehicleSpeedPlanner
 
     private static void Validate(VehicleSpeedPlanningConfig config)
     {
-        if (config.MaximumSpeedMetersPerSecond <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(config), "Maximum speed must be positive.");
+        if (config.MaximumSpeedEstimateMultiplier < 1f ||
+            !float.IsFinite(config.MaximumSpeedEstimateMultiplier))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(config),
+                "Maximum speed estimate multiplier must be finite and at least one."
+            );
+        }
         if (config.LateralGripUsage <= 0f || config.LateralGripUsage > 1f)
             throw new ArgumentOutOfRangeException(nameof(config), "Lateral grip usage must be in (0, 1].");
         if (config.DriveAccelerationUsage <= 0f || config.DriveAccelerationUsage > 1f)

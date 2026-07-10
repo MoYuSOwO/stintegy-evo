@@ -51,6 +51,35 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
+    public void MaximumSpeedEstimateAdaptsToVehicleCapabilityBeyondOldFixedCap()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar defaultCar = CreateCar(track, CarStrategy.Default);
+        RaceCar lowDragCar = CreateCar(
+            track,
+            new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack),
+            new CarConfig
+            {
+                MassKg = 760f,
+                AeroDragAccelPerSpeedSquared = 0.0002f
+            }
+        );
+        VehicleSpeedPlanner planner = new();
+
+        float defaultMaximum = planner.EstimateMaximumSpeedMetersPerSecond(defaultCar);
+        float lowDragMaximum = planner.EstimateMaximumSpeedMetersPerSecond(lowDragCar);
+
+        Assert.InRange(defaultMaximum, 90f, 105f);
+        Assert.True(lowDragMaximum > 110f);
+        Assert.True(lowDragMaximum > defaultMaximum + 20f);
+        Assert.Equal(
+            lowDragMaximum,
+            planner.EstimateLateralSpeedLimit(lowDragCar, curvature: 0f),
+            precision: 3
+        );
+    }
+
+    [Fact]
     public void ReferenceAccelerationMatchesAdjacentProfileSpeed()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -189,7 +218,11 @@ public sealed class VehicleSpeedPlannerTests
         Assert.InRange(MathF.Abs(plan.Current.ReferenceAcceleration - expected), 0f, 0.02f);
     }
 
-    private static RaceCar CreateCar(TrackData track, CarStrategy strategy)
+    private static RaceCar CreateCar(
+        TrackData track,
+        CarStrategy strategy,
+        CarConfig? config = null
+    )
     {
         TrackSample start = track.Sample(track.Grids[1].S);
         TireConfig tires = new()
@@ -199,7 +232,7 @@ public sealed class VehicleSpeedPlannerTests
         };
         RaceCar car = new(
             "planner-test",
-            new CarConfig(),
+            config ?? new CarConfig(),
             tires,
             new ReferenceLineDriver(),
             new CarState

@@ -2,7 +2,7 @@ namespace TheStint.Core.Racing;
 
 public sealed class VehicleSpeedPlanningConfig
 {
-    public float MaximumSpeedMetersPerSecond { get; init; } = 42f;
+    public float MaximumSpeedEstimateMultiplier { get; init; } = 1.08f;
     public float LateralGripUsage { get; init; } = 0.92f;
     public float DriveAccelerationUsage { get; init; } = 1f;
     public float BrakeDecelerationUsage { get; init; } = 0.9f;
