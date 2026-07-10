@@ -4,18 +4,14 @@
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="BlasSharp.AppleAccelerate" Version="0.3.0" />
-    <PackageReference Include="BlasSharp.OpenBlas" Version="0.3.0" />
-    <PackageReference Include="gdUnit4.analyzers" Version="1.0.0">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="gdUnit4.api" Version="5.0.0" />
-    <PackageReference Include="gdUnit4.test.adapter" Version="3.0.0" />
-    <PackageReference Include="Highs.Native" Version="1.14.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+    <ProjectReference Include="Core/TheStint.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove=".godot/**/*.cs" />
+    <Compile Remove="Core/**/*.cs" />
   </ItemGroup>
 </Project>
