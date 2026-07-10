@@ -163,7 +163,11 @@ public static class CarContactResolver
         float speed = velocity.Length();
         state.Speed = speed;
         if (speed > 0.05f)
+        {
             state.Heading = MathF.Atan2(velocity.Y, velocity.X);
+            state.SideslipAngleRadians = 0f;
+            state.YawRateRadiansPerSecond = 0f;
+        }
     }
 }
 

@@ -148,6 +148,218 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void RearCombinedSaturationScalesLateralAndDriveTogether()
+    {
+        CarConfig car = new() { TractionControlStrength = 0f };
+        TireConfig tires = WarmTires();
+        CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        SetSteadyYawRate(cornering, 0.012f);
+        SetSteadyYawRate(powered, 0.012f);
+        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+
+        CarPhysics.Step(
+            cornering,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0.012f, 0f), attack),
+            1f / 60f
+        );
+        CarPhysics.Step(
+            powered,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0.012f, 7f), attack),
+            1f / 60f
+        );
+
+        Assert.True(powered.Telemetry.OverLimit > 0f);
+        Assert.True(
+            Math.Abs(powered.Telemetry.ActualLateralAccel) <
+            Math.Abs(cornering.Telemetry.ActualLateralAccel),
+            "rear combined saturation should reduce lateral force instead of preserving it at all costs"
+        );
+        Assert.True(powered.Telemetry.RearLongitudinalUse > 0f);
+    }
+
+    [Fact]
+    public void DefaultRearDriveMakesTheRearCloserToTheCombinedLimitUnderPower()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = CreateState(speed: 30f, batterySoc: 0.9f, tires);
+        SetSteadyYawRate(state, 0.008f);
+
+        CarPhysics.Step(
+            state,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0.008f, 3f)),
+            1f / 60f
+        );
+
+        float frontCombinedUse = MathF.Sqrt(
+            state.Telemetry.FrontLateralUse * state.Telemetry.FrontLateralUse +
+            state.Telemetry.FrontLongitudinalUse * state.Telemetry.FrontLongitudinalUse
+        );
+        float rearCombinedUse = MathF.Sqrt(
+            state.Telemetry.RearLateralUse * state.Telemetry.RearLateralUse +
+            state.Telemetry.RearLongitudinalUse * state.Telemetry.RearLongitudinalUse
+        );
+        Assert.True(
+            rearCombinedUse > frontCombinedUse,
+            "rear drive should move the rear axle closer to its combined limit under power"
+        );
+    }
+
+    [Fact]
+    public void RearAxleSaturationCreatesRecoverableBodySideslip()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        MakeRearTiresHotAndWorn(state);
+        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+
+        StepMany(state, car, tires, new DriverInput(0.01f, 7f), attack, steps: 60);
+
+        float builtSideslip = Math.Abs(state.SideslipAngleRadians);
+        Assert.True(state.Telemetry.RearSlideSeverity > 0.1f, "rear saturation should expose slide severity");
+        Assert.True(state.SideslipAngleRadians < -0.03f, "a left turn should step the tail outward");
+        Assert.True(state.YawRateRadiansPerSecond > 0f, "left-turn rear saturation should build positive yaw rate");
+        Assert.True(
+            state.Heading > state.VelocityHeading,
+            "the body should point farther into the left turn than the velocity direction"
+        );
+
+        StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 120);
+
+        Assert.True(
+            Math.Abs(state.SideslipAngleRadians) < builtSideslip * 0.1f,
+            "the vehicle layer should stabilize sideslip after rear saturation ends"
+        );
+        Assert.True(
+            Math.Abs(state.YawRateRadiansPerSecond) < 0.05f,
+            "yaw rate should settle after the curvature request ends"
+        );
+    }
+
+    [Fact]
+    public void NeutralYawDynamicsTracksTheCurvatureYawRateReference()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = CreateState(speed: 30f, batterySoc: 0.9f, tires);
+
+        StepMany(
+            state,
+            car,
+            tires,
+            new DriverInput(0.006f, 1f),
+            CarStrategy.Default,
+            steps: 120
+        );
+
+        Assert.True(state.Telemetry.ReferenceYawRateRadiansPerSecond > 0f);
+        Assert.True(state.YawRateRadiansPerSecond > 0f);
+        Assert.InRange(
+            Math.Abs(
+                state.YawRateRadiansPerSecond -
+                state.Telemetry.ReferenceYawRateRadiansPerSecond
+            ),
+            0f,
+            0.15f
+        );
+        Assert.InRange(Math.Abs(state.SideslipAngleRadians), 0f, 0.08f);
+    }
+
+    [Fact]
+    public void FrontAxleSaturationBuildsUndersteerSideslip()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        MakeFrontTiresHotAndWorn(state);
+
+        StepMany(
+            state,
+            car,
+            tires,
+            new DriverInput(0.01f, 0f),
+            CarStrategy.Default,
+            steps: 60
+        );
+
+        Assert.True(
+            state.SideslipAngleRadians > 0.02f,
+            "front saturation in a left turn should leave the velocity direction ahead of the body"
+        );
+        Assert.True(
+            state.YawRateRadiansPerSecond < state.Telemetry.ReferenceYawRateRadiansPerSecond,
+            "front saturation should produce less yaw rate than requested"
+        );
+    }
+
+    [Fact]
+    public void TractionControlCutsDriveNearTheRearCombinedGripLimit()
+    {
+        CarConfig controlledCar = new();
+        CarConfig uncontrolledCar = new() { TractionControlStrength = 0f };
+        TireConfig tires = WarmTires();
+        CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        SetSteadyYawRate(controlled, 0.012f);
+        SetSteadyYawRate(uncontrolled, 0.012f);
+        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0.012f, 5f), attack);
+
+        CarPhysics.Step(controlled, controlledCar, tires, input, 1f / 60f);
+        CarPhysics.Step(uncontrolled, uncontrolledCar, tires, input, 1f / 60f);
+
+        Assert.True(controlled.Telemetry.TractionControlCutAccel > 0f);
+        Assert.Equal(0f, uncontrolled.Telemetry.TractionControlCutAccel, precision: 4);
+        Assert.True(
+            controlled.Telemetry.RearLongitudinalUse < uncontrolled.Telemetry.RearLongitudinalUse,
+            "TC should reduce rear drive use before the physics grip clip"
+        );
+        Assert.True(
+            controlled.Telemetry.ActualLongitudinalAccel < uncontrolled.Telemetry.ActualLongitudinalAccel,
+            "TC intervention should trade acceleration for rear stability"
+        );
+    }
+
+    [Fact]
+    public void SideslipDissipatesSpeedAndHeatsRearTiresWhileTcIntervenes()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState aligned = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        CarState sliding = CreateState(speed: 36f, batterySoc: 0.9f, tires);
+        sliding.Heading = -0.1f;
+        sliding.SideslipAngleRadians = 0.1f;
+        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0.012f, 7f), attack);
+
+        CarPhysics.Step(aligned, car, tires, input, 1f / 60f);
+        CarPhysics.Step(sliding, car, tires, input, 1f / 60f);
+
+        Assert.True(sliding.Telemetry.TractionControlCutAccel > 0f);
+        Assert.True(sliding.Telemetry.SideslipLossAccel > 0.5f);
+        Assert.True(
+            sliding.Telemetry.ActualLongitudinalAccel < aligned.Telemetry.ActualLongitudinalAccel,
+            "existing lateral slip should dissipate speed independently of TC"
+        );
+        Assert.True(
+            AverageRearSurfaceTemp(sliding) > AverageRearSurfaceTemp(aligned),
+            "sideslip should add heat at the rear tires"
+        );
+        Assert.True(
+            AverageRearWear(sliding) > AverageRearWear(aligned),
+            "sideslip should add rear tire wear"
+        );
+    }
+
+    [Fact]
     public void AttackTireModeHeatsAndWearsMoreThanProtect()
     {
         CarConfig car = new();
@@ -268,6 +480,63 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void HighSpeedStraightCoastProducesVisibleDeceleration()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = CreateState(speed: 60f, batterySoc: 0.8f, tires);
+
+        StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 300);
+
+        Assert.True(state.Speed < 55.5f, "five seconds of zero-throttle coasting should lose visible speed");
+        Assert.True(state.Telemetry.ActualLongitudinalAccel < -1.3f, "high-speed drag should keep slowing the car");
+        Assert.Equal(-state.Telemetry.LossAccel, state.Telemetry.ActualLongitudinalAccel, precision: 4);
+        Assert.Equal(0f, state.Telemetry.DrivePowerWatts, precision: 4);
+    }
+
+    [Fact]
+    public void RepresentativeRunningKeepsWarmTiresInABoundedWindow()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 86f,
+            StartingCoreTempC = 84f
+        };
+        CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
+        const float dt = 1f / 60f;
+
+        for (int step = 0; step < 120 * 60; step++)
+        {
+            int phase = step % (10 * 60);
+            DriverInput input;
+            if (phase < 4 * 60)
+            {
+                state.Speed = 36f;
+                input = new DriverInput(0.0075f, 0f);
+            }
+            else if (phase < 7 * 60)
+            {
+                state.Speed = 48f;
+                input = new DriverInput(0.001f, 3f);
+            }
+            else
+            {
+                state.Speed = 42f;
+                input = new DriverInput(0.005f, -5f);
+            }
+
+            state.BatterySoc = 0.8f;
+            CarPhysics.Step(state, car, tires, PhysicsInput(input), dt);
+        }
+
+        float surface = AverageSurfaceTemp(state);
+        float core = AverageCoreTemp(state);
+        Assert.InRange(surface, 70f, 110f);
+        Assert.InRange(core, 70f, 105f);
+    }
+
+    [Fact]
     public void StraightLineSpeedIncreasesTireCooling()
     {
         CarConfig car = new();
@@ -366,9 +635,34 @@ public sealed class CarPhysicsTests
         return state;
     }
 
+    private static void SetSteadyYawRate(CarState state, float curvature)
+    {
+        state.YawRateRadiansPerSecond = state.Speed * curvature;
+    }
+
     private static void MakeTiresHotAndWorn(CarState state)
     {
         foreach (TireState tire in Tires(state))
+        {
+            tire.SurfaceTempC = 130f;
+            tire.CoreTempC = 122f;
+            tire.Wear = 0.65f;
+        }
+    }
+
+    private static void MakeRearTiresHotAndWorn(CarState state)
+    {
+        foreach (TireState tire in new[] { state.RearLeft, state.RearRight })
+        {
+            tire.SurfaceTempC = 130f;
+            tire.CoreTempC = 122f;
+            tire.Wear = 0.65f;
+        }
+    }
+
+    private static void MakeFrontTiresHotAndWorn(CarState state)
+    {
+        foreach (TireState tire in new[] { state.FrontLeft, state.FrontRight })
         {
             tire.SurfaceTempC = 130f;
             tire.CoreTempC = 122f;
@@ -444,6 +738,16 @@ public sealed class CarPhysicsTests
             state.RearLeft.CoreTempC +
             state.RearRight.CoreTempC
         ) * 0.25f;
+    }
+
+    private static float AverageRearSurfaceTemp(CarState state)
+    {
+        return (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
+    }
+
+    private static float AverageRearWear(CarState state)
+    {
+        return (state.RearLeft.Wear + state.RearRight.Wear) * 0.5f;
     }
 
     private static float AverageWear(CarState state)

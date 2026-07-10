@@ -34,7 +34,14 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "target_speed_mps,actual_speed_mps,a_ref_mps2,loss_compensation_mps2," +
             "speed_feedback_mps2," +
             "command_accel_mps2,actual_accel_mps2,actual_lateral_accel_mps2," +
-            "actual_curvature_1pm,front_lateral_use,rear_lateral_use,over_limit,wall_contact"
+            "actual_curvature_1pm,front_lateral_use,rear_lateral_use,over_limit,wall_contact," +
+            "physics_loss_mps2,rolling_loss_mps2,aero_loss_mps2,cornering_scrub_mps2," +
+            "sideslip_loss_mps2,traction_control_cut_mps2," +
+            "front_longitudinal_use,rear_longitudinal_use,drive_power_kw,regen_power_kw," +
+            "battery_soc,front_surface_temp_c,rear_surface_temp_c," +
+            "front_core_temp_c,rear_core_temp_c,front_wear,rear_wear," +
+            "sideslip_angle_rad,rear_slide_severity,reference_yaw_rate_radps," +
+            "yaw_rate_radps,yaw_accel_radps2"
         );
     }
 
@@ -55,6 +62,21 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             MathF.Abs(currentCurvature - previousCurvature),
             MathF.Abs(nextCurvature - currentCurvature)
         );
+        float speed = car.State.Speed;
+        float rollingLoss = speed > 0.01f ? car.CarConfig.RollingDragAccel : 0f;
+        float aeroLoss = speed > 0.01f
+            ? car.CarConfig.AeroDragAccelPerSpeedSquared * speed * speed
+            : 0f;
+        float corneringScrub = MathF.Max(
+            0f,
+            physics.LossAccel - rollingLoss - aeroLoss - physics.SideslipLossAccel
+        );
+        float frontSurfaceTemp = Average(car.State.FrontLeft.SurfaceTempC, car.State.FrontRight.SurfaceTempC);
+        float rearSurfaceTemp = Average(car.State.RearLeft.SurfaceTempC, car.State.RearRight.SurfaceTempC);
+        float frontCoreTemp = Average(car.State.FrontLeft.CoreTempC, car.State.FrontRight.CoreTempC);
+        float rearCoreTemp = Average(car.State.RearLeft.CoreTempC, car.State.RearRight.CoreTempC);
+        float frontWear = Average(car.State.FrontLeft.Wear, car.State.FrontRight.Wear);
+        float rearWear = Average(car.State.RearLeft.Wear, car.State.RearRight.Wear);
 
         object[] values =
         [
@@ -87,7 +109,29 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             physics.FrontLateralUse,
             physics.RearLateralUse,
             physics.OverLimit,
-            car.LastBoundaryContact.HasValue ? 1 : 0
+            car.LastBoundaryContact.HasValue ? 1 : 0,
+            physics.LossAccel,
+            rollingLoss,
+            aeroLoss,
+            corneringScrub,
+            physics.SideslipLossAccel,
+            physics.TractionControlCutAccel,
+            physics.FrontLongitudinalUse,
+            physics.RearLongitudinalUse,
+            physics.DrivePowerWatts * 0.001f,
+            physics.RegenPowerWatts * 0.001f,
+            car.State.BatterySoc,
+            frontSurfaceTemp,
+            rearSurfaceTemp,
+            frontCoreTemp,
+            rearCoreTemp,
+            frontWear,
+            rearWear,
+            physics.SideslipAngleRadians,
+            physics.RearSlideSeverity,
+            physics.ReferenceYawRateRadiansPerSecond,
+            physics.YawRateRadiansPerSecond,
+            physics.YawAccelerationRadiansPerSecondSquared
         ];
 
         for (int i = 0; i < values.Length; i++)
@@ -100,6 +144,11 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
                 _writer.Write(Convert.ToString(values[i], CultureInfo.InvariantCulture));
         }
         _writer.WriteLine();
+    }
+
+    private static float Average(float left, float right)
+    {
+        return (left + right) * 0.5f;
     }
 
     public void Dispose()

@@ -17,5 +17,12 @@ public readonly record struct CarTelemetry(
     float RearLongitudinalUse,
     float OverLimit,
     float DrivePowerWatts,
-    float RegenPowerWatts
+    float RegenPowerWatts,
+    float TractionControlCutAccel,
+    float SideslipLossAccel,
+    float SideslipAngleRadians,
+    float RearSlideSeverity,
+    float ReferenceYawRateRadiansPerSecond,
+    float YawRateRadiansPerSecond,
+    float YawAccelerationRadiansPerSecondSquared
 );

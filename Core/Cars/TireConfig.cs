@@ -16,18 +16,20 @@ public sealed class TireConfig
     public float CoreOverheatGripLossPerC { get; init; } = 0.003f;
     public float WearGripLoss { get; init; } = 0.36f;
 
-    public float LateralHeatRate { get; init; } = 17f;
-    public float LongitudinalHeatRate { get; init; } = 8f;
-    public float OverLimitHeatRate { get; init; } = 28f;
-    public float SurfaceCoolingRate { get; init; } = 0.42f;
-    public float SurfaceCoreTransferRate { get; init; } = 0.18f;
-    public float CoreCoolingRate { get; init; } = 0.026f;
+    public float LateralHeatRate { get; init; } = 4.5f;
+    public float LongitudinalHeatRate { get; init; } = 2.5f;
+    public float OverLimitHeatRate { get; init; } = 6f;
+    public float SideslipHeatRate { get; init; } = 4f;
+    public float SurfaceCoolingRate { get; init; } = 0.012f;
+    public float SurfaceCoreTransferRate { get; init; } = 0.035f;
+    public float CoreCoolingRate { get; init; } = 0.002f;
     public float SpeedCoolingReferenceMps { get; init; } = 70f;
-    public float MaxSpeedCoolingMultiplier { get; init; } = 2f;
+    public float MaxSpeedCoolingMultiplier { get; init; } = 1.5f;
 
     public float LateralWearRate { get; init; } = 0.00022f;
     public float LongitudinalWearRate { get; init; } = 0.00008f;
     public float OverLimitWearRate { get; init; } = 0.00055f;
+    public float SideslipWearRate { get; init; } = 0.00035f;
     public float HotWearStartTempC { get; init; } = 105f;
     public float HotWearSlope { get; init; } = 0.035f;
 

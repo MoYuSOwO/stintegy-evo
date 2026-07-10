@@ -8,6 +8,12 @@ public sealed class CarState
 {
     public Vector2 Position { get; set; }
     public float Heading { get; set; }
+    /// <summary>
+    /// Signed velocity-direction offset relative to the body heading.
+    /// Negative values represent the tail stepping outward in a left turn.
+    /// </summary>
+    public float SideslipAngleRadians { get; set; }
+    public float YawRateRadiansPerSecond { get; set; }
     public float Speed { get; set; }
     public float BatterySoc { get; set; } = 1f;
 
@@ -23,13 +29,16 @@ public sealed class CarState
 
     public Vector2 Forward => new(MathF.Cos(Heading), MathF.Sin(Heading));
     public Vector2 Left => new(-MathF.Sin(Heading), MathF.Cos(Heading));
-    public Vector2 Velocity => Forward * Speed;
+    public float VelocityHeading => MathHelper.NormalizeAngle(Heading + SideslipAngleRadians);
+    public Vector2 VelocityForward => new(MathF.Cos(VelocityHeading), MathF.Sin(VelocityHeading));
+    public Vector2 Velocity => VelocityForward * Speed;
 
     public void Normalize()
     {
         Speed = Math.Max(0f, Speed);
         BatterySoc = Math.Clamp(BatterySoc, 0f, 1f);
         Heading = MathHelper.NormalizeAngle(Heading);
+        SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
     }
 
     public TireState GetTire(WheelId wheel)
@@ -58,6 +67,8 @@ public sealed class CarState
         {
             Position = Position,
             Heading = Heading,
+            SideslipAngleRadians = SideslipAngleRadians,
+            YawRateRadiansPerSecond = YawRateRadiansPerSecond,
             Speed = Speed,
             BatterySoc = BatterySoc,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
@@ -75,6 +86,8 @@ public sealed class CarState
     {
         Position = other.Position;
         Heading = other.Heading;
+        SideslipAngleRadians = other.SideslipAngleRadians;
+        YawRateRadiansPerSecond = other.YawRateRadiansPerSecond;
         Speed = other.Speed;
         BatterySoc = other.BatterySoc;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;

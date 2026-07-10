@@ -7,12 +7,16 @@ public sealed class CarConfig
     public float TrackWidthMeters { get; init; } = 1.65f;
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
     public float FrontStaticLoadShare { get; init; } = 0.47f;
-    public float FrontLateralDemandShare { get; init; } = 0.58f;
     public float FrontDriveShare { get; init; } = 0f;
+    public float YawInertiaKgM2 { get; init; } = 1450f;
+    public float YawResponseTimeSeconds { get; init; } = 0.15f;
+    public float SideslipRecoveryTimeSeconds { get; init; } = 0.15f;
 
     public float MaxCurvatureRequest { get; init; } = 0.32f;
     public float MaxDriveAccelRequest { get; init; } = 8f;
     public float MaxBrakeAccel { get; init; } = 12f;
+    public float TractionControlActivationUse { get; init; } = 0.99f;
+    public float TractionControlStrength { get; init; } = 0.65f;
     public float MinPowerSpeed { get; init; } = 8f;
     public float BatteryCapacityJoules { get; init; } = 42000000f;
     public float BatteryDriveEfficiency { get; init; } = 0.92f;

@@ -8,6 +8,19 @@ public static class CarPhysics
 {
     private const float Gravity = 9.80665f;
     private const float Epsilon = 1e-5f;
+    private const float MinimumTireHeatLoadScale = 0.2f;
+    private const float MaximumThermalOverLimit = 1f;
+    private const float MinimumTemperatureGripFactor = 0.55f;
+    private const float MaximumTemperatureGripFactor = 1.08f;
+    private const float MinimumWearGripFactor = 0.45f;
+    private const float MaximumBodySideslipRadians = 0.174532925f;
+    private const float RearSlipOnsetCombinedUse = 0.82f;
+    private const float RearSlipDominanceRange = 0.2f;
+    private const float DynamicYawMinimumSpeed = 5f;
+    private const float DynamicYawBlendRange = 5f;
+    private const float MaximumYawAccelerationRadiansPerSecondSquared = 2f;
+    private const float MaximumYawRateRadiansPerSecond = 2.5f;
+    private const float SideslipEnergyLossScale = 1f;
 
     internal static CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
@@ -36,7 +49,7 @@ public static class CarPhysics
             loads.RearRight * CalculateTireMu(tires, strategy.TireMode, state.RearRight)
         ) / Math.Max(config.MassKg, Epsilon) * usage;
 
-        float frontDemandShare = Math.Clamp(config.FrontLateralDemandShare, 0f, 1f);
+        float frontDemandShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
         float rearDemandShare = 1f - frontDemandShare;
         float frontLateralLimit = frontDemandShare <= Epsilon
             ? float.PositiveInfinity
@@ -113,8 +126,17 @@ public static class CarPhysics
         );
 
         float requestedLateralAccel = state.Speed * state.Speed * desiredCurvature;
-        float frontLatRequest = requestedLateralAccel * config.FrontLateralDemandShare;
-        float rearLatRequest = requestedLateralAccel - frontLatRequest;
+        float referenceYawRate = state.Speed * desiredCurvature;
+        float dynamicYawBlend = CalculateDynamicYawBlend(state.Speed);
+        LateralRequests lateralRequests = AllocateLateralRequests(
+            state,
+            config,
+            requestedLateralAccel,
+            referenceYawRate,
+            dynamicYawBlend
+        );
+        float frontLatRequest = lateralRequests.Front;
+        float rearLatRequest = lateralRequests.Rear;
 
         float frontLongRequest = 0f;
         float rearLongRequest = 0f;
@@ -142,8 +164,24 @@ public static class CarPhysics
             requestedLongitudinalAccel = -brakeRequest;
         }
 
-        AxleResult front = ResolveFrontAxle(config, frontLatRequest, frontLongRequest, frontGrip);
-        AxleResult rear = ResolveRearAxle(config, rearLatRequest, rearLongRequest, rearGrip);
+        float tractionControlCutAccel = 0f;
+        if (rearLongRequest > 0f)
+        {
+            float uncontrolledRearDrive = rearLongRequest;
+            rearLongRequest = ApplyRearTractionControl(
+                config,
+                rearLatRequest,
+                rearLongRequest,
+                rearGrip
+            );
+            tractionControlCutAccel = Math.Max(
+                0f,
+                uncontrolledRearDrive - rearLongRequest
+            );
+        }
+
+        AxleResult front = ResolveAxle(config, frontLatRequest, frontLongRequest, frontGrip);
+        AxleResult rear = ResolveAxle(config, rearLatRequest, rearLongRequest, rearGrip);
 
         float actualLateralAccel = front.LateralAccel + rear.LateralAccel;
         float driveAccelActual = Math.Max(0f, front.LongitudinalAccel) + Math.Max(0f, rear.LongitudinalAccel);
@@ -156,8 +194,24 @@ public static class CarPhysics
         float rearLongitudinalUse = SafeUse(rear.LongitudinalAccel, rearGrip);
         float lateralUse = Math.Abs(actualLateralAccel) / totalGrip;
         float overLimit = Math.Max(front.OverLimit, rear.OverLimit);
+        float actualYawAcceleration = CalculateYawAcceleration(
+            config,
+            front.LateralAccel,
+            rear.LateralAccel
+        );
+        float rearSlideSeverity = CalculateRearSlideSeverity(
+            front,
+            rear,
+            frontLatRequest,
+            rearLatRequest
+        );
 
-        float lossAccel = CalculateLossAccel(config, state.Speed, lateralUse);
+        float sideslipLossAccel = CalculateSideslipLossAccel(
+            actualLateralAccel,
+            state.SideslipAngleRadians
+        );
+        float lossAccel = CalculateLossAccel(config, state.Speed, lateralUse) +
+                          sideslipLossAccel;
         float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
 
         float oldSpeed = state.Speed;
@@ -167,13 +221,48 @@ public static class CarPhysics
         float actualCurvature = averageSpeed > 0.5f
             ? actualLateralAccel / Math.Max(averageSpeed * averageSpeed, Epsilon)
             : 0f;
-        float headingDelta = actualCurvature * averageSpeed * dt;
-        float travelHeading = state.Heading + headingDelta * 0.5f;
+        referenceYawRate = averageSpeed * desiredCurvature;
+        dynamicYawBlend = CalculateDynamicYawBlend(averageSpeed);
+        float trajectoryYawRate = actualCurvature * averageSpeed;
+        float headingDelta = trajectoryYawRate * dt;
+        float velocityHeading = state.VelocityHeading;
+        float travelHeading = velocityHeading + headingDelta * 0.5f;
         Vector2 travelDirection = new(MathF.Cos(travelHeading), MathF.Sin(travelHeading));
+        float nextVelocityHeading = MathHelper.NormalizeAngle(velocityHeading + headingDelta);
+        float dynamicYawRate = Math.Clamp(
+            state.YawRateRadiansPerSecond + actualYawAcceleration * dt,
+            -MaximumYawRateRadiansPerSecond,
+            MaximumYawRateRadiansPerSecond
+        );
+        float nextYawRate = Lerp(trajectoryYawRate, dynamicYawRate, dynamicYawBlend);
+        float dynamicBodyHeading = MathHelper.NormalizeAngle(
+            state.Heading +
+            (state.YawRateRadiansPerSecond + nextYawRate) * 0.5f * dt
+        );
+        float nextBodyHeading = LerpAngle(
+            nextVelocityHeading,
+            dynamicBodyHeading,
+            dynamicYawBlend
+        );
+        float nextSideslipAngle = Math.Clamp(
+            MathHelper.NormalizeAngle(nextVelocityHeading - nextBodyHeading),
+            -MaximumBodySideslipRadians,
+            MaximumBodySideslipRadians
+        );
+        nextBodyHeading = MathHelper.NormalizeAngle(
+            nextVelocityHeading - nextSideslipAngle
+        );
 
         state.Position += travelDirection * averageSpeed * dt;
-        state.Heading = MathHelper.NormalizeAngle(state.Heading + headingDelta);
+        state.SideslipAngleRadians = nextSideslipAngle;
+        state.YawRateRadiansPerSecond = nextYawRate;
+        state.Heading = nextBodyHeading;
         state.Speed = newSpeed;
+        float normalizedSideslip = Math.Clamp(
+            Math.Abs(state.SideslipAngleRadians) / MaximumBodySideslipRadians,
+            0f,
+            1f
+        );
 
         float drivePowerWatts = UpdateBattery(
             state,
@@ -188,10 +277,58 @@ public static class CarPhysics
 
         float costedFrontOverLimit = CostedOverLimit(config, front.OverLimit);
         float costedRearOverLimit = CostedOverLimit(config, rear.OverLimit);
-        UpdateTires(state.FrontLeft, config, tires, input.Strategy.TireMode, frontLateralUse, frontLongitudinalUse, costedFrontOverLimit, input.AirTempC, averageSpeed, dt);
-        UpdateTires(state.FrontRight, config, tires, input.Strategy.TireMode, frontLateralUse, frontLongitudinalUse, costedFrontOverLimit, input.AirTempC, averageSpeed, dt);
-        UpdateTires(state.RearLeft, config, tires, input.Strategy.TireMode, rearLateralUse, rearLongitudinalUse, costedRearOverLimit, input.AirTempC, averageSpeed, dt);
-        UpdateTires(state.RearRight, config, tires, input.Strategy.TireMode, rearLateralUse, rearLongitudinalUse, costedRearOverLimit, input.AirTempC, averageSpeed, dt);
+        UpdateTires(
+            state.FrontLeft,
+            config,
+            tires,
+            input.Strategy.TireMode,
+            frontLateralUse,
+            frontLongitudinalUse,
+            costedFrontOverLimit,
+            0f,
+            input.AirTempC,
+            averageSpeed,
+            dt
+        );
+        UpdateTires(
+            state.FrontRight,
+            config,
+            tires,
+            input.Strategy.TireMode,
+            frontLateralUse,
+            frontLongitudinalUse,
+            costedFrontOverLimit,
+            0f,
+            input.AirTempC,
+            averageSpeed,
+            dt
+        );
+        UpdateTires(
+            state.RearLeft,
+            config,
+            tires,
+            input.Strategy.TireMode,
+            rearLateralUse,
+            rearLongitudinalUse,
+            costedRearOverLimit,
+            normalizedSideslip,
+            input.AirTempC,
+            averageSpeed,
+            dt
+        );
+        UpdateTires(
+            state.RearRight,
+            config,
+            tires,
+            input.Strategy.TireMode,
+            rearLateralUse,
+            rearLongitudinalUse,
+            costedRearOverLimit,
+            normalizedSideslip,
+            input.AirTempC,
+            averageSpeed,
+            dt
+        );
 
         float response = 1f - MathF.Exp(-config.LoadTransferResponse * dt);
         state.FilteredLongitudinalAccel = Lerp(state.FilteredLongitudinalAccel, actualLongitudinalAccel, response);
@@ -214,7 +351,14 @@ public static class CarPhysics
             rearLongitudinalUse,
             overLimit,
             drivePowerWatts,
-            regenPowerWatts
+            regenPowerWatts,
+            tractionControlCutAccel,
+            sideslipLossAccel,
+            state.SideslipAngleRadians,
+            rearSlideSeverity,
+            referenceYawRate,
+            state.YawRateRadiansPerSecond,
+            actualYawAcceleration
         );
 
         state.Normalize();
@@ -251,6 +395,31 @@ public static class CarPhysics
     {
         float remainingSquared = grip * grip - lateralAcceleration * lateralAcceleration;
         return MathF.Sqrt(Math.Max(0f, remainingSquared));
+    }
+
+    private static float ApplyRearTractionControl(
+        CarConfig config,
+        float lateralRequest,
+        float driveRequest,
+        float rearGrip
+    )
+    {
+        float strength = Math.Clamp(config.TractionControlStrength, 0f, 1f);
+        if (driveRequest <= 0f || rearGrip <= Epsilon || strength <= 0f)
+            return driveRequest;
+
+        float activationUse = Math.Clamp(
+            config.TractionControlActivationUse,
+            0.05f,
+            1f
+        );
+        float activationGrip = rearGrip * activationUse;
+        float availableAtActivation = RemainingLongitudinalGrip(
+            activationGrip,
+            lateralRequest
+        );
+        float targetDrive = Math.Min(driveRequest, availableAtActivation);
+        return Lerp(driveRequest, targetDrive, strength);
     }
 
     private static float DistributedDriveLimit(
@@ -292,7 +461,12 @@ public static class CarPhysics
         rearBrake = brakeRequest - frontBrake;
     }
 
-    private static AxleResult ResolveFrontAxle(CarConfig config, float lateralRequest, float longitudinalRequest, float grip)
+    private static AxleResult ResolveAxle(
+        CarConfig config,
+        float lateralRequest,
+        float longitudinalRequest,
+        float grip
+    )
     {
         if (grip <= Epsilon)
             return default;
@@ -302,7 +476,12 @@ public static class CarPhysics
         float combinedUse = MathF.Sqrt(lateralUse * lateralUse + longitudinalUse * longitudinalUse);
 
         if (combinedUse <= 1f)
-            return new AxleResult(lateralRequest, longitudinalRequest, Math.Max(0f, combinedUse - 1f));
+            return new AxleResult(
+                lateralRequest,
+                longitudinalRequest,
+                Math.Max(0f, combinedUse - 1f),
+                combinedUse
+            );
 
         float overLimit = combinedUse - 1f;
         float efficiency = CalculateOverLimitGripEfficiency(config, overLimit);
@@ -310,41 +489,123 @@ public static class CarPhysics
         return new AxleResult(
             lateralRequest * scale,
             longitudinalRequest * scale,
-            overLimit
+            overLimit,
+            combinedUse
         );
     }
 
-    private static AxleResult ResolveRearAxle(CarConfig config, float lateralRequest, float longitudinalRequest, float grip)
+    private static LateralRequests AllocateLateralRequests(
+        CarState state,
+        CarConfig config,
+        float totalLateralRequest,
+        float referenceYawRate,
+        float dynamicBlend
+    )
     {
-        if (grip <= Epsilon)
-            return default;
+        float frontStaticShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
+        float staticFrontRequest = totalLateralRequest * frontStaticShare;
+        if (dynamicBlend <= 0f)
+            return new LateralRequests(
+                staticFrontRequest,
+                totalLateralRequest - staticFrontRequest
+            );
 
-        float lateralUseRequest = Math.Abs(lateralRequest) / grip;
-        float longitudinalUseRequest = Math.Abs(longitudinalRequest) / grip;
-        float combinedRequest = MathF.Sqrt(
-            lateralUseRequest * lateralUseRequest +
-            longitudinalUseRequest * longitudinalUseRequest
+        float wheelBase = Math.Max(config.WheelBaseMeters, Epsilon);
+        float rearMomentArm = wheelBase * frontStaticShare;
+        float yawResponseTime = Math.Max(config.YawResponseTimeSeconds, 0.05f);
+        float sideslipRecoveryTime = Math.Max(
+            config.SideslipRecoveryTimeSeconds,
+            0.05f
         );
-        float overLimit = Math.Max(0f, combinedRequest - 1f);
-        float efficiency = overLimit <= 0f
-            ? 1f
-            : CalculateOverLimitGripEfficiency(config, overLimit);
-        float effectiveGrip = grip * efficiency;
+        float stabilizedYawRate = referenceYawRate +
+                                  state.SideslipAngleRadians /
+                                  sideslipRecoveryTime;
+        float desiredYawAcceleration = Math.Clamp(
+            (stabilizedYawRate - state.YawRateRadiansPerSecond) / yawResponseTime,
+            -MaximumYawAccelerationRadiansPerSecondSquared,
+            MaximumYawAccelerationRadiansPerSecondSquared
+        );
+        float yawInertiaPerMass = Math.Max(config.YawInertiaKgM2, Epsilon) /
+                                  Math.Max(config.MassKg, Epsilon);
+        float dynamicFrontRequest = (
+            rearMomentArm * totalLateralRequest +
+            yawInertiaPerMass * desiredYawAcceleration
+        ) / wheelBase;
+        float frontRequest = Lerp(
+            staticFrontRequest,
+            dynamicFrontRequest,
+            dynamicBlend
+        );
+        return new LateralRequests(
+            frontRequest,
+            totalLateralRequest - frontRequest
+        );
+    }
 
-        float actualLateral = Math.Clamp(lateralRequest, -effectiveGrip, effectiveGrip);
-        float actualLateralUse = Math.Abs(actualLateral) / grip;
-        float longitudinalRemaining = grip * MathF.Sqrt(Math.Max(0f, efficiency * efficiency - actualLateralUse * actualLateralUse));
-        float actualLongitudinal = Math.Clamp(
-            longitudinalRequest,
-            -longitudinalRemaining,
-            longitudinalRemaining
+    private static float CalculateYawAcceleration(
+        CarConfig config,
+        float frontLateralAcceleration,
+        float rearLateralAcceleration
+    )
+    {
+        float wheelBase = Math.Max(config.WheelBaseMeters, Epsilon);
+        float rearMomentArm = wheelBase * Math.Clamp(
+            config.FrontStaticLoadShare,
+            0f,
+            1f
         );
+        float frontMomentArm = wheelBase - rearMomentArm;
+        float yawMoment = config.MassKg * (
+            frontMomentArm * frontLateralAcceleration -
+            rearMomentArm * rearLateralAcceleration
+        );
+        return yawMoment / Math.Max(config.YawInertiaKgM2, Epsilon);
+    }
 
-        return new AxleResult(
-            actualLateral,
-            actualLongitudinal,
-            overLimit
+    private static float CalculateDynamicYawBlend(float speed)
+    {
+        float t = Math.Clamp(
+            (speed - DynamicYawMinimumSpeed) / DynamicYawBlendRange,
+            0f,
+            1f
         );
+        return t * t * (3f - 2f * t);
+    }
+
+    private static float CalculateRearSlideSeverity(
+        AxleResult front,
+        AxleResult rear,
+        float frontLateralRequest,
+        float rearLateralRequest
+    )
+    {
+        float overLimitImbalance = Math.Max(0f, rear.OverLimit - front.OverLimit);
+        float frontDelivery = RelativeLateralDelivery(frontLateralRequest, front.LateralAccel);
+        float rearDelivery = RelativeLateralDelivery(rearLateralRequest, rear.LateralAccel);
+        float deliveryImbalance = Math.Max(0f, frontDelivery - rearDelivery);
+        float rearNearLimit = Math.Max(
+            0f,
+            rear.CombinedRequest - RearSlipOnsetCombinedUse
+        );
+        float rearDominance = Math.Clamp(
+            (rear.CombinedRequest - front.CombinedRequest) / RearSlipDominanceRange,
+            0f,
+            1f
+        );
+        float utilizationSeverity = rearNearLimit * rearDominance;
+        return Math.Max(
+            overLimitImbalance,
+            Math.Max(deliveryImbalance, utilizationSeverity)
+        );
+    }
+
+    private static float RelativeLateralDelivery(float request, float actual)
+    {
+        float absoluteRequest = Math.Abs(request);
+        if (absoluteRequest <= Epsilon)
+            return 1f;
+
+        return Math.Clamp(Math.Abs(actual) / absoluteRequest, 0f, 1f);
     }
 
     private static float CalculateLossAccel(CarConfig config, float speed, float lateralUse)
@@ -356,6 +617,16 @@ public static class CarPhysics
             config.RollingDragAccel +
             config.AeroDragAccelPerSpeedSquared * speed * speed +
             config.CorneringScrubAccel * lateralUse * lateralUse;
+    }
+
+    private static float CalculateSideslipLossAccel(
+        float lateralAcceleration,
+        float sideslipAngle
+    )
+    {
+        return Math.Abs(
+            lateralAcceleration * MathF.Sin(sideslipAngle)
+        ) * SideslipEnergyLossScale;
     }
 
     private static float CalculateOverLimitGripEfficiency(CarConfig config, float overLimit)
@@ -415,19 +686,25 @@ public static class CarPhysics
         float lateralUse,
         float longitudinalUse,
         float overLimit,
+        float sideslipRatio,
         float airTempC,
         float speed,
         float dt
     )
     {
-        float loadScale = Math.Max(0.2f, tire.LoadN / Math.Max(config.MassKg * Gravity * 0.25f, Epsilon));
+        float loadScale = Math.Max(
+            MinimumTireHeatLoadScale,
+            tire.LoadN / Math.Max(config.MassKg * Gravity * 0.25f, Epsilon)
+        );
         float modeHeat = tires.GetModeHeatFactor(mode);
         float modeWear = tires.GetModeWearFactor(mode);
+        float thermalOverLimit = Math.Min(overLimit, MaximumThermalOverLimit);
 
         float surfaceHeat =
             tires.LateralHeatRate * lateralUse * lateralUse +
             tires.LongitudinalHeatRate * longitudinalUse * longitudinalUse +
-            tires.OverLimitHeatRate * overLimit * overLimit;
+            tires.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
+            tires.SideslipHeatRate * sideslipRatio * sideslipRatio;
         surfaceHeat *= modeHeat * loadScale;
 
         float airCoolingMultiplier = CalculateAirCoolingMultiplier(tires, speed);
@@ -444,7 +721,8 @@ public static class CarPhysics
         float wearDelta =
             tires.LateralWearRate * lateralUse * lateralUse +
             tires.LongitudinalWearRate * longitudinalUse * longitudinalUse +
-            tires.OverLimitWearRate * overLimit * overLimit;
+            tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit +
+            tires.SideslipWearRate * sideslipRatio * sideslipRatio;
         wearDelta *= modeWear * tempWearFactor * loadScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
@@ -532,7 +810,9 @@ public static class CarPhysics
 
         float wearGrip = 1f - tire.Wear * tires.WearGripLoss;
         float modeGrip = tires.GetModeGripFactor(mode);
-        return tires.BaseMu * modeGrip * Math.Clamp(tempGrip, 0.55f, 1.08f) * Math.Clamp(wearGrip, 0.45f, 1f);
+        return tires.BaseMu * modeGrip *
+               Math.Clamp(tempGrip, MinimumTemperatureGripFactor, MaximumTemperatureGripFactor) *
+               Math.Clamp(wearGrip, MinimumWearGripFactor, 1f);
     }
 
     private static float SafeUse(float accel, float grip)
@@ -545,10 +825,19 @@ public static class CarPhysics
         return from + (to - from) * Math.Clamp(weight, 0f, 1f);
     }
 
+    private static float LerpAngle(float from, float to, float weight)
+    {
+        float delta = MathHelper.NormalizeAngle(to - from);
+        return MathHelper.NormalizeAngle(from + delta * Math.Clamp(weight, 0f, 1f));
+    }
+
+    private readonly record struct LateralRequests(float Front, float Rear);
+
     private readonly record struct AxleResult(
         float LateralAccel,
         float LongitudinalAccel,
-        float OverLimit
+        float OverLimit,
+        float CombinedRequest
     );
 
     private readonly record struct WheelLoads(

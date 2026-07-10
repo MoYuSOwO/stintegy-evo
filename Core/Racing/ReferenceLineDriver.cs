@@ -47,7 +47,10 @@ public sealed class ReferenceLineDriver : IRaceDriver
         RaceCar car = context.Car;
         CarState state = car.State;
         float wheelBase = MathF.Max(car.CarConfig.WheelBaseMeters, 0.5f);
-        Vector2 frontAxlePosition = state.Position + state.Forward * (wheelBase * 0.5f);
+        // The path controller follows the velocity direction. Body sideslip is
+        // stabilized by the vehicle layer instead of turning into an abrupt
+        // Stanley heading correction.
+        Vector2 frontAxlePosition = state.Position + state.VelocityForward * (wheelBase * 0.5f);
         TrackPose frontPose = context.Track.Project(frontAxlePosition);
         TrackSample frontSample = frontPose.Sample;
         float curvaturePreviewDistance = MathF.Min(
@@ -60,7 +63,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
 
         float lateralError = frontPose.D - frontSample.RefOffset;
         float headingError = MathHelper.NormalizeAngle(
-            frontSample.RefHeading - state.Heading
+            frontSample.RefHeading - state.VelocityHeading
         );
         float stanleyCorrection = MathF.Atan(
             StanleyGain * lateralError /

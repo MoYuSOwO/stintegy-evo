@@ -144,7 +144,7 @@ public partial class RaceView : Node2D
         ColorRect panel = new()
         {
             Position = new GVector2(8f, 76f),
-            Size = new GVector2(330f, 146f),
+            Size = new GVector2(330f, 186f),
             Color = Color.FromHtml("#111820d8"),
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
@@ -168,6 +168,8 @@ public partial class RaceView : Node2D
             $"Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%\n" +
             $"Tire {_playerCar.Strategy.TireMode}   Battery {_playerCar.Strategy.BatteryMode}\n" +
             $"Front {frontTemp:0.0} C   Rear {rearTemp:0.0} C   Use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg   Slide {telemetry.RearSlideSeverity:0.00}   TC {telemetry.TractionControlCutAccel:0.00}\n" +
+            $"Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s\n" +
             $"Region {_playerCar.Progress.Region}   Q/E tire  A/D battery";
     }
 
