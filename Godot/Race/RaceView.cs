@@ -37,7 +37,14 @@ public partial class RaceView : Node2D
             throw new InvalidOperationException("TrackRenderer is not assigned.");
 
         TrackData track = TrackFactory.SimpleTestTrack();
-        _simulation = new RaceSimulation(track, new RaceEnvironment { AirTempC = 25f });
+        _simulation = new RaceSimulation(
+            track,
+            new RaceEnvironment
+            {
+                AirTempC = 25f,
+                TrackTempC = 35f
+            }
+        );
         TrackRenderer.Initialize(track);
         ConfigureCamera(track);
         CreateHud();
@@ -70,7 +77,12 @@ public partial class RaceView : Node2D
 
         _simulation.Step(Mathf.Min((float)delta, 0.05f));
         if (_csvTelemetry != null && _playerCar != null)
-            _csvTelemetry.Write(_simulation.RaceTimeSeconds, _playerCar, _simulation.Track);
+            _csvTelemetry.Write(
+                _simulation.RaceTimeSeconds,
+                _playerCar,
+                _simulation.Track,
+                _simulation.Environment
+            );
         foreach (CarView view in _carViews)
             view.SyncFromCore();
         RefreshTelemetry();
@@ -144,7 +156,7 @@ public partial class RaceView : Node2D
         ColorRect panel = new()
         {
             Position = new GVector2(8f, 76f),
-            Size = new GVector2(330f, 186f),
+            Size = new GVector2(410f, 246f),
             Color = Color.FromHtml("#111820d8"),
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
@@ -167,10 +179,18 @@ public partial class RaceView : Node2D
             $"STINTEGYEVO  race {_simulation.RaceTimeSeconds:0.0}s  lap {_playerCar.Progress.Lap + 1}\n" +
             $"Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%\n" +
             $"Tire {_playerCar.Strategy.TireMode}   Battery {_playerCar.Strategy.BatteryMode}\n" +
+            $"Air {_simulation.Environment.AirTempC:0} C   Track {_simulation.Environment.TrackTempC:0} C\n" +
             $"Front {frontTemp:0.0} C   Rear {rearTemp:0.0} C   Use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
+            $"FL {WheelStatus(state.FrontLeft)}   FR {WheelStatus(state.FrontRight)}\n" +
+            $"RL {WheelStatus(state.RearLeft)}   RR {WheelStatus(state.RearRight)}\n" +
             $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg   Slide {telemetry.RearSlideSeverity:0.00}   TC {telemetry.TractionControlCutAccel:0.00}\n" +
             $"Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s\n" +
             $"Region {_playerCar.Progress.Region}   Q/E tire  A/D battery";
+    }
+
+    private static string WheelStatus(TireState tire)
+    {
+        return $"{tire.SurfaceTempC:0}/{tire.CoreTempC:0} C {tire.Wear * 100f:0.0}%";
     }
 
     private void StartCsvTelemetryIfRequested()

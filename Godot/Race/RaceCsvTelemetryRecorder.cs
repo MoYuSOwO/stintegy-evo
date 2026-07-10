@@ -38,14 +38,24 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "physics_loss_mps2,rolling_loss_mps2,aero_loss_mps2,cornering_scrub_mps2," +
             "sideslip_loss_mps2,traction_control_cut_mps2," +
             "front_longitudinal_use,rear_longitudinal_use,drive_power_kw,regen_power_kw," +
-            "battery_soc,front_surface_temp_c,rear_surface_temp_c," +
+            "battery_soc,air_temp_c,track_temp_c," +
+            "front_surface_temp_c,rear_surface_temp_c," +
             "front_core_temp_c,rear_core_temp_c,front_wear,rear_wear," +
+            "fl_surface_temp_c,fr_surface_temp_c,rl_surface_temp_c,rr_surface_temp_c," +
+            "fl_core_temp_c,fr_core_temp_c,rl_core_temp_c,rr_core_temp_c," +
+            "fl_wear,fr_wear,rl_wear,rr_wear," +
+            "fl_load_n,fr_load_n,rl_load_n,rr_load_n," +
             "sideslip_angle_rad,rear_slide_severity,reference_yaw_rate_radps," +
             "yaw_rate_radps,yaw_accel_radps2"
         );
     }
 
-    public void Write(float raceTimeSeconds, RaceCar car, TrackData track)
+    public void Write(
+        float raceTimeSeconds,
+        RaceCar car,
+        TrackData track,
+        RaceEnvironment environment
+    )
     {
         if (car.Driver is not ReferenceLineDriver driver)
             return;
@@ -121,12 +131,30 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             physics.DrivePowerWatts * 0.001f,
             physics.RegenPowerWatts * 0.001f,
             car.State.BatterySoc,
+            environment.AirTempC,
+            environment.TrackTempC,
             frontSurfaceTemp,
             rearSurfaceTemp,
             frontCoreTemp,
             rearCoreTemp,
             frontWear,
             rearWear,
+            car.State.FrontLeft.SurfaceTempC,
+            car.State.FrontRight.SurfaceTempC,
+            car.State.RearLeft.SurfaceTempC,
+            car.State.RearRight.SurfaceTempC,
+            car.State.FrontLeft.CoreTempC,
+            car.State.FrontRight.CoreTempC,
+            car.State.RearLeft.CoreTempC,
+            car.State.RearRight.CoreTempC,
+            car.State.FrontLeft.Wear,
+            car.State.FrontRight.Wear,
+            car.State.RearLeft.Wear,
+            car.State.RearRight.Wear,
+            car.State.FrontLeft.LoadN,
+            car.State.FrontRight.LoadN,
+            car.State.RearLeft.LoadN,
+            car.State.RearRight.LoadN,
             physics.SideslipAngleRadians,
             physics.RearSlideSeverity,
             physics.ReferenceYawRateRadiansPerSecond,
