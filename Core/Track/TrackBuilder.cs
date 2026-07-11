@@ -291,6 +291,26 @@ public class TrackBuilder
 
 public static class TrackFactory
 {
+    private const float GrandPrixTestBufferMeters = 5f;
+    private const float GrandPrixTestTrackWidthMeters = 15f;
+    private const int GrandPrixTestStartingLineIndex = 120;
+    private const int GrandPrixTestFirstGridIndex = 110;
+    private const int GrandPrixTestGridCount = 30;
+    private const int GrandPrixTestGridStepMeters = 8;
+
+    private static TrackGridConfig GrandPrixTestGrid(float gridOffsetMeters = 5f)
+    {
+        return new TrackGridConfig
+        {
+            StartingLineIdx = GrandPrixTestStartingLineIndex,
+            GridCount = GrandPrixTestGridCount,
+            GridOffset = gridOffsetMeters,
+            FirstGridIdx = GrandPrixTestFirstGridIndex,
+            IsFirstGridLeft = true,
+            GridStepDist = GrandPrixTestGridStepMeters
+        };
+    }
+
     public static TrackData SimpleOvalTrack(float width, float height, float trackWidth) {
         TrackBuilder builder = new(new(), trackWidth, 5, 5);
         builder.AddStraight(width * 2, trackWidth)
@@ -348,5 +368,208 @@ public static class TrackFactory
                 GridStepDist = 8
             }
         );
+    }
+
+    // Structural benchmark rather than a geographical replica: long straights,
+    // slow complexes and an extended high-speed direction-change sequence.
+    public static TrackData SilverstoneStyleTestTrack()
+    {
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            GrandPrixTestTrackWidthMeters,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters
+        );
+        builder
+            .AddStraight(920f)
+            .AddTurn(-35f, 220f)
+            .AddStraight(100f)
+            .AddTurn(20f, 250f)
+            .AddStraight(150f)
+            .AddTurn(-70f, 55f)
+            .AddStraight(50f)
+            .AddTurn(-35f, 35f)
+            .AddStraight(100f)
+            .AddTurn(30f, 90f)
+            .AddStraight(920f)
+            .AddTurn(-70f, 70f)
+            .AddStraight(70f)
+            .AddTurn(-60f, 55f)
+            .AddStraight(70f)
+            .AddTurn(40f, 180f)
+            .AddStraight(616f)
+            .AddTurn(-55f, 210f)
+            .AddStraight(200f)
+            .AddTurn(35f, 180f)
+            .AddStraight(20f)
+            .AddTurn(-45f, 160f)
+            .AddStraight(20f)
+            .AddTurn(55f, 130f)
+            .AddStraight(20f)
+            .AddTurn(-80f, 110f)
+            .AddStraight(320f)
+            .AddTurn(20f, 200f)
+            .AddStraight(200f)
+            .AddTurn(-75f, 110f)
+            .AddStraight(50f)
+            .AddTurn(-45f, 50f)
+            .AddStraight(50f)
+            .AddTurn(55f, 75f)
+            .AddStraight(80f)
+            .AddTurn(-45f, 150f)
+            .CloseLoop();
+        return builder.Build(GrandPrixTestGrid());
+    }
+
+    // Low-speed, low-energy street benchmark with a very tight hairpin and
+    // one comparatively long tunnel-like section.
+    public static TrackData MonacoStyleTestTrack()
+    {
+        const float trackWidthMeters = 11f;
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            trackWidthMeters,
+            3f,
+            3f
+        );
+        builder
+            .AddStraight(488f)
+            .AddTurn(-35f, 70f)
+            .AddStraight(60f)
+            .AddTurn(20f, 100f)
+            .AddStraight(80f)
+            .AddTurn(-40f, 45f)
+            .AddStraight(50f)
+            .AddTurn(-25f, 30f)
+            .AddStraight(50f)
+            .AddTurn(-10f, 100f)
+            .AddStraight(488f)
+            .AddTurn(-25f, 35f)
+            .AddStraight(50f)
+            .AddTurn(-65f, 18f)
+            .AddStraight(40f)
+            .AddTurn(20f, 35f)
+            .AddStraight(60f)
+            .AddTurn(-35f, 30f)
+            .AddStraight(50f)
+            .AddTurn(15f, 50f)
+            .AddStraight(638f)
+            .AddTurn(-50f, 30f)
+            .AddStraight(40f)
+            .AddTurn(40f, 25f)
+            .AddStraight(50f)
+            .AddTurn(-35f, 35f)
+            .AddStraight(40f)
+            .AddTurn(-60f, 28f)
+            .AddStraight(50f)
+            .AddTurn(15f, 50f)
+            .AddStraight(438f)
+            .AddTurn(-45f, 30f)
+            .AddStraight(40f)
+            .AddTurn(25f, 40f)
+            .AddStraight(50f)
+            .AddTurn(-50f, 35f)
+            .AddStraight(60f)
+            .AddTurn(-20f, 60f)
+            .CloseLoop();
+        return builder.Build(GrandPrixTestGrid(gridOffsetMeters: 4f));
+    }
+
+    // Mixed-load benchmark: tightening opening complex, fast S bends, heavy
+    // braking zones and a long back straight.
+    public static TrackData ShanghaiStyleTestTrack()
+    {
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            GrandPrixTestTrackWidthMeters,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters
+        );
+        builder
+            .AddStraight(900f)
+            .AddTurn(-35f, 120f)
+            .AddStraight(80f)
+            .AddTurn(-45f, 80f)
+            .AddStraight(60f)
+            .AddTurn(-30f, 45f)
+            .AddStraight(100f)
+            .AddTurn(20f, 60f)
+            .AddStraight(800f)
+            .AddTurn(-55f, 55f)
+            .AddStraight(80f)
+            .AddTurn(30f, 130f)
+            .AddStraight(100f)
+            .AddTurn(-50f, 180f)
+            .AddStraight(80f)
+            .AddTurn(-15f, 100f)
+            .AddStraight(565f)
+            .AddTurn(35f, 180f)
+            .AddStraight(80f)
+            .AddTurn(-45f, 160f)
+            .AddStraight(80f)
+            .AddTurn(-65f, 55f)
+            .AddStraight(100f)
+            .AddTurn(-15f, 90f)
+            .AddStraight(1187f)
+            .AddTurn(-70f, 45f)
+            .AddStraight(80f)
+            .AddTurn(25f, 80f)
+            .AddStraight(100f)
+            .AddTurn(-30f, 120f)
+            .AddStraight(80f)
+            .AddTurn(-15f, 100f)
+            .CloseLoop();
+        return builder.Build(GrandPrixTestGrid());
+    }
+
+    // Continuous direction-change benchmark with high-speed Esses, a tight
+    // hairpin, long-radius double-apex corners and a final chicane.
+    public static TrackData SuzukaStyleTestTrack()
+    {
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            GrandPrixTestTrackWidthMeters,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters
+        );
+        builder
+            .AddStraight(435f)
+            .AddTurn(-35f, 180f)
+            .AddStraight(30f)
+            .AddTurn(45f, 150f)
+            .AddStraight(30f)
+            .AddTurn(-50f, 130f)
+            .AddStraight(30f)
+            .AddTurn(55f, 120f)
+            .AddStraight(30f)
+            .AddTurn(-60f, 110f)
+            .AddStraight(80f)
+            .AddTurn(-45f, 100f)
+            .AddStraight(1118f)
+            .AddTurn(-70f, 70f)
+            .AddStraight(80f)
+            .AddTurn(20f, 50f)
+            .AddStraight(80f)
+            .AddTurn(-60f, 30f)
+            .AddStraight(100f)
+            .AddTurn(20f, 80f)
+            .AddStraight(1039f)
+            .AddTurn(-45f, 140f)
+            .AddStraight(100f)
+            .AddTurn(-55f, 100f)
+            .AddStraight(100f)
+            .AddTurn(30f, 220f)
+            .AddStraight(100f)
+            .AddTurn(-20f, 250f)
+            .AddStraight(635f)
+            .AddTurn(-60f, 200f)
+            .AddStraight(200f)
+            .AddTurn(-45f, 35f)
+            .AddStraight(40f)
+            .AddTurn(35f, 30f)
+            .AddStraight(80f)
+            .AddTurn(-20f, 100f)
+            .CloseLoop();
+        return builder.Build(GrandPrixTestGrid());
     }
 }
