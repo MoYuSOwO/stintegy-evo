@@ -44,7 +44,10 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
             return CenterLineRefLineSolver.Instance.Generate(track);
 
         int stride = (int)Math.Max(1, MathF.Round(_optimizationStepMeters / TrackData.StepLength));
-        int count = Math.Max(4, track.Count / stride);
+        int count = Math.Max(
+            4,
+            (int)MathF.Round(track.Count / (float)stride)
+        );
 
         Vector2[] refLine = new Vector2[count];
         int[] trackIndices = new int[count];
@@ -53,7 +56,9 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
 
         for (int i = 0; i < count; i++)
         {
-            int trackIndex = (i * stride) % track.Count;
+            int trackIndex = (int)MathF.Round(
+                i * track.Count / (float)count
+            ) % track.Count;
             RefLineTrackPoint point = track[trackIndex];
             refLine[i] = point.Center;
             trackIndices[i] = trackIndex;
@@ -67,6 +72,7 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
 
         double[] alpha = SolveMinimumCurvature(refSpline, widthRight, widthLeft, _qpSolver, _linearAlgebra);
         LogStage("minimum-curvature QP", stageTimer);
+        alpha = SmoothLateralOffsets(alpha, widthRight, widthLeft, passes: 1);
 
         Vector2[] optimizedRaceline = new Vector2[count];
         for (int i = 0; i < count; i++)
@@ -77,10 +83,40 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
         SplineData racelineSpline = SplineData.CreateClosed(optimizedRaceline, useDistanceScaling: false, _linearAlgebra);
         LogStage("raceline spline", stageTimer);
 
-        RefLine line = BuildTrackAnchoredLine(track, trackIndices, racelineSpline);
-        LogStage("track-anchored raceline", stageTimer);
+        RefLine line = BuildProjectedSplineLine(track, trackIndices, racelineSpline);
+        LogStage("projected raceline sampling", stageTimer);
         Console.WriteLine($"V1 minimum-curvature total: {totalTimer.Elapsed.TotalMilliseconds:0.0} ms, opt nodes={count}, output={line.Count}");
         return line;
+    }
+
+    private static double[] SmoothLateralOffsets(
+        double[] offsets,
+        double[] widthRight,
+        double[] widthLeft,
+        int passes
+    )
+    {
+        double[] current = (double[])offsets.Clone();
+        double[] next = new double[offsets.Length];
+        for (int pass = 0; pass < passes; pass++)
+        {
+            for (int i = 0; i < current.Length; i++)
+            {
+                double smoothed = (
+                    current[(i - 1 + current.Length) % current.Length] +
+                    2.0 * current[i] +
+                    current[(i + 1) % current.Length]
+                ) * 0.25;
+                double lower = -(
+                    widthLeft[i] - TrackPlanningBounds.VehicleHalfWidthMeters
+                );
+                double upper =
+                    widthRight[i] - TrackPlanningBounds.VehicleHalfWidthMeters;
+                next[i] = Math.Clamp(smoothed, lower, upper);
+            }
+            (current, next) = (next, current);
+        }
+        return current;
     }
 
     private static void LogStage(string name, Stopwatch timer)
@@ -273,11 +309,17 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
         return qpSolver.Solve(problem);
     }
 
-    private static RefLine BuildTrackAnchoredLine(IReadOnlyList<RefLineTrackPoint> track, int[] trackIndices, SplineData racelineSpline)
+    // Evaluate the optimized Cartesian spline directly, then adapt it to
+    // TrackData's centerline-distance parameterization by projecting each
+    // sample onto the corresponding track normal. Position, heading and
+    // curvature are all derived from that one projected line, so the
+    // controller never mixes two different longitudinal parameterizations.
+    private static RefLine BuildProjectedSplineLine(
+        IReadOnlyList<RefLineTrackPoint> track,
+        int[] trackIndices,
+        SplineData racelineSpline
+    )
     {
-        const int IntersectionSearchRadius = 2;
-        const int IntersectionSamplesPerSegment = 12;
-
         Vector2[] positions = new Vector2[track.Count];
         float[] offsets = new float[track.Count];
         RefLinePoint[] points = new RefLinePoint[track.Count];
@@ -297,21 +339,16 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
                 ? 0f
                 : Math.Clamp((wrappedIndex - segmentStart) / (float)(segmentEnd - segmentStart), 0f, 1f);
 
-            float maxOffset = Math.Max(0f, trackPoint.HalfWidth - TrackPlanningBounds.VehicleHalfWidthMeters);
-            float offset = TryFindNormalIntersectionOffset(
-                racelineSpline,
-                trackPoint,
-                segment,
-                segmentProgress,
-                IntersectionSearchRadius,
-                IntersectionSamplesPerSegment,
-                maxOffset,
-                out float intersectionOffset
-            )
-                ? intersectionOffset
-                : ProjectApproximateOffset(racelineSpline, trackPoint, segment, segmentProgress);
+            Vector2 splinePosition = racelineSpline.Evaluate(segment, segmentProgress);
+            float offset = Vector2.Dot(
+                splinePosition - trackPoint.Center,
+                trackPoint.Normal
+            );
+            float maxOffset = Math.Max(
+                0f,
+                trackPoint.HalfWidth - TrackPlanningBounds.VehicleHalfWidthMeters
+            );
             offset = Math.Clamp(offset, -maxOffset, maxOffset);
-
             offsets[i] = offset;
             positions[i] = trackPoint.GetOffsetPos(offset);
         }
@@ -334,15 +371,19 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
             int previous = WrapIndex(i - curvatureRadius, track.Count);
             int next = WrapIndex(i + curvatureRadius, track.Count);
             float arcLength = 0f;
-            for (int offset = -curvatureRadius; offset < curvatureRadius; offset++)
+            for (int delta = -curvatureRadius; delta < curvatureRadius; delta++)
             {
                 arcLength += Vector2.Distance(
-                    positions[WrapIndex(i + offset, track.Count)],
-                    positions[WrapIndex(i + offset + 1, track.Count)]
+                    positions[WrapIndex(i + delta, track.Count)],
+                    positions[WrapIndex(i + delta + 1, track.Count)]
                 );
             }
-            float headingDelta = MathHelper.NormalizeAngle(headings[next] - headings[previous]);
-            float curvature = arcLength <= 1e-4f ? 0f : headingDelta / arcLength;
+            float headingDelta = MathHelper.NormalizeAngle(
+                headings[next] - headings[previous]
+            );
+            float curvature = arcLength <= 1e-4f
+                ? 0f
+                : headingDelta / arcLength;
             points[i] = new RefLinePoint(
                 offsets[i],
                 positions[i],
@@ -352,141 +393,6 @@ public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
         }
 
         return new RefLine(points);
-    }
-
-    private static bool TryFindNormalIntersectionOffset(
-        SplineData spline,
-        RefLineTrackPoint trackPoint,
-        int centerSegment,
-        float centerSegmentProgress,
-        int searchRadius,
-        int samplesPerSegment,
-        float maxOffset,
-        out float offset
-    )
-    {
-        const float RootTolerance = 1e-4f;
-        const float OutsideTrackPenalty = 100f;
-
-        offset = 0f;
-        float bestScore = float.PositiveInfinity;
-        bool found = false;
-
-        for (int delta = -searchRadius; delta <= searchRadius; delta++)
-        {
-            int candidateSegment = WrapIndex(centerSegment + delta, spline.Count);
-            float previousT = 0f;
-            float previousValue = NormalLineResidual(spline, candidateSegment, previousT, trackPoint);
-
-            for (int sample = 1; sample <= samplesPerSegment; sample++)
-            {
-                float currentT = sample / (float)samplesPerSegment;
-                float currentValue = NormalLineResidual(spline, candidateSegment, currentT, trackPoint);
-
-                if (MathF.Abs(previousValue) <= RootTolerance)
-                {
-                    ConsiderIntersection(
-                        spline,
-                        trackPoint,
-                        centerSegmentProgress,
-                        candidateSegment,
-                        delta,
-                        previousT,
-                        maxOffset,
-                        OutsideTrackPenalty,
-                        ref found,
-                        ref bestScore,
-                        ref offset
-                    );
-                }
-
-                if (previousValue * currentValue < 0f || MathF.Abs(currentValue) <= RootTolerance)
-                {
-                    float rootT = MathF.Abs(currentValue) <= RootTolerance
-                        ? currentT
-                        : RefineNormalIntersection(spline, candidateSegment, trackPoint, previousT, currentT);
-                    ConsiderIntersection(
-                        spline,
-                        trackPoint,
-                        centerSegmentProgress,
-                        candidateSegment,
-                        delta,
-                        rootT,
-                        maxOffset,
-                        OutsideTrackPenalty,
-                        ref found,
-                        ref bestScore,
-                        ref offset
-                    );
-                }
-
-                previousT = currentT;
-                previousValue = currentValue;
-            }
-        }
-
-        return found;
-    }
-
-    private static void ConsiderIntersection(
-        SplineData spline,
-        RefLineTrackPoint trackPoint,
-        float centerSegmentProgress,
-        int segment,
-        int segmentDelta,
-        float t,
-        float maxOffset,
-        float outsideTrackPenalty,
-        ref bool found,
-        ref float bestScore,
-        ref float bestOffset
-    )
-    {
-        Vector2 point = spline.Evaluate(segment, t);
-        float candidateOffset = Vector2.Dot(point - trackPoint.Center, trackPoint.Normal);
-        float outsideTrack = Math.Max(0f, MathF.Abs(candidateOffset) - maxOffset);
-        float longitudinalDistance = MathF.Abs(segmentDelta + t - centerSegmentProgress);
-        float score = longitudinalDistance + outsideTrack * outsideTrackPenalty;
-
-        if (score >= bestScore)
-            return;
-
-        found = true;
-        bestScore = score;
-        bestOffset = candidateOffset;
-    }
-
-    private static float RefineNormalIntersection(SplineData spline, int segment, RefLineTrackPoint trackPoint, float lowT, float highT)
-    {
-        float lowValue = NormalLineResidual(spline, segment, lowT, trackPoint);
-        for (int i = 0; i < 16; i++)
-        {
-            float midT = (lowT + highT) * 0.5f;
-            float midValue = NormalLineResidual(spline, segment, midT, trackPoint);
-            if (lowValue * midValue <= 0f)
-            {
-                highT = midT;
-            }
-            else
-            {
-                lowT = midT;
-                lowValue = midValue;
-            }
-        }
-
-        return (lowT + highT) * 0.5f;
-    }
-
-    private static float NormalLineResidual(SplineData spline, int segment, float t, RefLineTrackPoint trackPoint)
-    {
-        Vector2 diff = spline.Evaluate(segment, t) - trackPoint.Center;
-        return MathHelper.Cross(diff, trackPoint.Normal);
-    }
-
-    private static float ProjectApproximateOffset(SplineData spline, RefLineTrackPoint trackPoint, int segment, float segmentProgress)
-    {
-        Vector2 sampledPoint = spline.Evaluate(segment, segmentProgress);
-        return Vector2.Dot(sampledPoint - trackPoint.Center, trackPoint.Normal);
     }
 
     private static int WrapIndex(int index, int length) => (index % length + length) % length;

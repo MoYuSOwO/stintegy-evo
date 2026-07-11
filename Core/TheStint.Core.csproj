@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <Compile Remove="Tests/**/*.cs" />
+    <EmbeddedResource Include="Track/Data/*.csv" />
   </ItemGroup>
 
   <ItemGroup>
