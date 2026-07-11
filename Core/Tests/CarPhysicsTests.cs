@@ -616,6 +616,67 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void EqualTireUseAtHigherSpeedAccumulatesMoreWorkBasedWear()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralWearRate = 0.01f,
+            LongitudinalWearRate = 0f,
+            OverLimitWearRate = 0f,
+            SideslipWearRate = 0f,
+            HotWearStartTempC = 1000f
+        };
+        CarState slow = CreateState(speed: 15f, batterySoc: 0.8f, tires);
+        CarState fast = CreateState(speed: 45f, batterySoc: 0.8f, tires);
+        const float targetLateralAccel = 6f;
+        float slowCurvature = targetLateralAccel / (slow.Speed * slow.Speed);
+        float fastCurvature = targetLateralAccel / (fast.Speed * fast.Speed);
+        SetSteadyYawRate(slow, slowCurvature);
+        SetSteadyYawRate(fast, fastCurvature);
+
+        CarPhysics.Step(
+            slow,
+            car,
+            tires,
+            new CarPhysicsStepInput(
+                new DriverInput(slowCurvature, 0f),
+                CarStrategy.Default,
+                AirTempC: 90f,
+                TrackTempC: 90f
+            ),
+            1f / 60f
+        );
+        CarPhysics.Step(
+            fast,
+            car,
+            tires,
+            new CarPhysicsStepInput(
+                new DriverInput(fastCurvature, 0f),
+                CarStrategy.Default,
+                AirTempC: 90f,
+                TrackTempC: 90f
+            ),
+            1f / 60f
+        );
+
+        Assert.InRange(
+            MathF.Abs(
+                slow.Telemetry.ActualLateralAccel -
+                fast.Telemetry.ActualLateralAccel
+            ),
+            0f,
+            0.05f
+        );
+        Assert.True(
+            AverageWear(fast) > AverageWear(slow) * 2.5f,
+            "the speed proxy should approximate greater slip work at equal tire use"
+        );
+    }
+
+    [Fact]
     public void CorneringScrubSlowsCarEvenWithoutBrakeRequest()
     {
         CarConfig car = new();
@@ -748,22 +809,25 @@ public sealed class CarPhysicsTests
         CarConfig car = new();
         TireConfig tires = new()
         {
-            StartingSurfaceTempC = 25f,
-            StartingCoreTempC = 100f,
-            RollingCoreHeatRate = 0f,
-            SurfaceCoreTransferRate = 0f
+            StartingSurfaceTempC = 100f,
+            StartingCoreTempC = 100f
         };
-        CarState state = CreateState(speed: 40f, batterySoc: 0.8f, tires);
+        CarState state = CreateState(speed: 0f, batterySoc: 0.8f, tires);
 
-        StepMany(
+        CarPhysics.Step(
             state,
             car,
             tires,
-            new DriverInput(0f, 0f),
-            CarStrategy.Default,
-            steps: 600
+            new CarPhysicsStepInput(
+                new DriverInput(0f, 0f),
+                CarStrategy.Default,
+                AirTempC: 25f,
+                TrackTempC: 25f
+            ),
+            1f / 60f
         );
 
+        Assert.True(AverageSurfaceTemp(state) < 100f);
         Assert.Equal(100f, AverageCoreTemp(state), precision: 4);
     }
 

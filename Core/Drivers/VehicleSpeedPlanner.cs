@@ -3,9 +3,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using TheStint.Core.Cars;
+using TheStint.Core.Racing;
 using TheStint.Core.Track;
 
-namespace TheStint.Core.Racing;
+namespace TheStint.Core.Drivers;
 
 /// <summary>
 /// Builds a closed-loop, car-specific speed profile with a lateral limit pass,
@@ -26,6 +27,7 @@ public sealed class VehicleSpeedPlanner
     private CarState? _planningState;
     private CarStrategy _planningStrategy;
     private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
+    private DriverPlanningModifiers _driverModifiers = DriverPlanningModifiers.Neutral;
 
     public VehicleSpeedPlanner(VehicleSpeedPlanningConfig? config = null)
     {
@@ -114,9 +116,18 @@ public sealed class VehicleSpeedPlanner
 
     public VehicleSpeedProfile Plan(RaceCar car, TrackData track)
     {
+        return Plan(car, track, DriverPlanningModifiers.Neutral);
+    }
+
+    public VehicleSpeedProfile Plan(
+        RaceCar car,
+        TrackData track,
+        DriverPlanningModifiers driverModifiers
+    )
+    {
         ArgumentNullException.ThrowIfNull(car);
         ArgumentNullException.ThrowIfNull(track);
-        BeginPlanningSnapshot(car);
+        BeginPlanningSnapshot(car, driverModifiers);
 
         int count = Math.Max(1, (int)MathF.Ceiling(track.LengthMeters / Config.PlanningStepMeters));
         float planningStep = track.LengthMeters / count;
@@ -146,7 +157,7 @@ public sealed class VehicleSpeedPlanner
             );
             speedLimits[i] = LateralSpeedLimit(
                 planningCurvatures[i],
-                baseLimits.LateralAccelerationLimit,
+                baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence,
                 _planningMaximumSpeedMetersPerSecond
             );
             speeds[i] = speedLimits[i];
@@ -169,7 +180,7 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                baseLimits.LateralAccelerationLimit
+                baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence
             );
             changed |= ApplyBackwardPass(
                 car,
@@ -177,7 +188,7 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                baseLimits.LateralAccelerationLimit
+                baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence
             );
             if (!changed)
                 break;
@@ -272,7 +283,7 @@ public sealed class VehicleSpeedPlanner
                 );
                 float lateralLimit = LateralSpeedLimit(
                     virtualCurvature,
-                    baseLimits.LateralAccelerationLimit,
+                    baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence,
                     _planningMaximumSpeedMetersPerSecond
                 );
                 float globalLimit = globalProfile.Sample(sample.S).TargetSpeed;
@@ -298,7 +309,7 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                baseLimits.LateralAccelerationLimit
+                baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence
             );
             speeds[0] = MathF.Min(speeds[0], MathF.Max(0f, car.State.Speed));
             float firstForwardReachable = segmentLengths[0] <=
@@ -310,7 +321,7 @@ public sealed class VehicleSpeedPlanner
                     geometry[1].Curvature,
                     speeds[0],
                     segmentLengths[0],
-                    baseLimits.LateralAccelerationLimit
+                    baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence
                 );
             ApplyForwardOpenPass(
                 car,
@@ -319,7 +330,7 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                baseLimits.LateralAccelerationLimit
+                baseLimits.LateralAccelerationLimit * _driverModifiers.CombinedConfidence
             );
 
             float referenceAcceleration = segmentLengths[0] <=
@@ -514,7 +525,8 @@ public sealed class VehicleSpeedPlanner
                 assumedLongitudinalAcceleration: acceleration
             );
             float drive = limits.MaximumDriveAcceleration *
-                          Config.DriveAccelerationUsage;
+                          Config.DriveAccelerationUsage *
+                          _driverModifiers.CombinedConfidence;
             float next = Math.Max(0f, drive - limits.LossAcceleration);
             if (MathF.Abs(next - acceleration) < 1e-3f)
             {
@@ -543,7 +555,8 @@ public sealed class VehicleSpeedPlanner
                 assumedLongitudinalAcceleration: -deceleration
             );
             float brake = limits.MaximumBrakeDeceleration *
-                          Config.BrakeDecelerationUsage;
+                          Config.BrakeDecelerationUsage *
+                          _driverModifiers.CombinedConfidence;
             float next = Math.Max(0f, brake + limits.LossAcceleration);
             if (MathF.Abs(next - deceleration) < 1e-3f)
             {
@@ -628,11 +641,18 @@ public sealed class VehicleSpeedPlanner
     private static float GreaterMagnitude(float first, float second) =>
         MathF.Abs(second) > MathF.Abs(first) ? second : first;
 
-    private void BeginPlanningSnapshot(RaceCar car)
+    private void BeginPlanningSnapshot(
+        RaceCar car,
+        DriverPlanningModifiers driverModifiers
+    )
     {
         _planningCar = car;
         _planningState = car.State.Clone();
         _planningStrategy = car.Strategy;
+        _driverModifiers = new DriverPlanningModifiers(
+            Math.Clamp(driverModifiers.PaceEfficiency, 0.8f, 1f),
+            Math.Clamp(driverModifiers.EstimatedGripScale, 0.9f, 1.1f)
+        );
         _planningMaximumSpeedMetersPerSecond = EstimateMaximumSpeedMetersPerSecond(car);
         _driveAccelerationCache.Clear();
         _brakeDecelerationCache.Clear();
@@ -641,7 +661,7 @@ public sealed class VehicleSpeedPlanner
     private void EnsurePlanningSnapshot(RaceCar car)
     {
         if (!ReferenceEquals(_planningCar, car) || _planningState == null || _planningStrategy != car.Strategy)
-            BeginPlanningSnapshot(car);
+            BeginPlanningSnapshot(car, _driverModifiers);
     }
 
     private static long PerformanceCacheKey(

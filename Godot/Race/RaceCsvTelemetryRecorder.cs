@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using TheStint.Core.Cars;
+using TheStint.Core.Drivers;
 using TheStint.Core.Racing;
 using TheStint.Core.Track;
 
@@ -46,7 +47,14 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "fl_wear,fr_wear,rl_wear,rr_wear," +
             "fl_load_n,fr_load_n,rl_load_n,rr_load_n," +
             "sideslip_angle_rad,rear_slide_severity,reference_yaw_rate_radps," +
-            "yaw_rate_radps,yaw_accel_radps2"
+            "yaw_rate_radps,yaw_accel_radps2," +
+            "driver_pace,driver_consistency,driver_control,driver_tire_management," +
+            "driver_adaptability,session_form,lap_form,segment_form,planning_pace," +
+            "effective_pace,pace_efficiency,effective_control,effective_tire_management," +
+            "tire_energy_efficiency,effective_adaptability,actual_grip,estimated_grip," +
+            "estimated_grip_scale,brake_marker_error_m,lateral_target_error_m," +
+            "local_speed_error_fraction,control_severity,control_curvature_correction," +
+            "driver_recovering"
         );
     }
 
@@ -159,7 +167,31 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             physics.RearSlideSeverity,
             physics.ReferenceYawRateRadiansPerSecond,
             physics.YawRateRadiansPerSecond,
-            physics.YawAccelerationRadiansPerSecondSquared
+            physics.YawAccelerationRadiansPerSecondSquared,
+            control.PaceRating,
+            control.ConsistencyRating,
+            control.CarControlRating,
+            control.TireManagementRating,
+            control.AdaptabilityRating,
+            control.SessionForm,
+            control.LapForm,
+            control.SegmentForm,
+            control.PlanningPace,
+            control.EffectivePace,
+            control.PaceEfficiency,
+            control.EffectiveControl,
+            control.EffectiveTireManagement,
+            control.TireEnergyEfficiency,
+            control.EffectiveAdaptability,
+            control.ActualGrip,
+            control.EstimatedGrip,
+            control.EstimatedGripScale,
+            control.BrakeMarkerErrorMeters,
+            control.LateralTargetErrorMeters,
+            control.LocalSpeedErrorFraction,
+            control.ControlSeverity,
+            control.ControlCurvatureCorrection,
+            control.IsRecovering ? 1 : 0
         ];
 
         for (int i = 0; i < values.Length; i++)

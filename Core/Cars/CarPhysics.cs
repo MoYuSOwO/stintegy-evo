@@ -21,7 +21,6 @@ public static class CarPhysics
     private const float MaximumYawAccelerationRadiansPerSecondSquared = 2f;
     private const float MaximumYawRateRadiansPerSecond = 2.5f;
     private const float SideslipEnergyLossScale = 1f;
-
     internal static CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
         CarConfig config,
@@ -287,7 +286,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
-            dt
+            dt,
+            input.TireEnergyEfficiency
         );
         UpdateTires(
             state.FrontRight,
@@ -300,7 +300,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
-            dt
+            dt,
+            input.TireEnergyEfficiency
         );
         UpdateTires(
             state.RearLeft,
@@ -313,7 +314,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
-            dt
+            dt,
+            input.TireEnergyEfficiency
         );
         UpdateTires(
             state.RearRight,
@@ -326,7 +328,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
-            dt
+            dt,
+            input.TireEnergyEfficiency
         );
 
         float response = 1f - MathF.Exp(-config.LoadTransferResponse * dt);
@@ -685,7 +688,8 @@ public static class CarPhysics
         float airTempC,
         float trackTempC,
         float speed,
-        float dt
+        float dt,
+        float tireEnergyEfficiency
     )
     {
         float loadScale = Math.Max(
@@ -699,15 +703,15 @@ public static class CarPhysics
             0f,
             1f
         );
-        float slipHeatSpeedMultiplier = Math.Clamp(
+        float tireWorkSpeedMultiplier = Math.Clamp(
             Math.Max(0f, speed) /
-            Math.Max(tires.SlipHeatReferenceSpeedMps, Epsilon),
+            TireConfig.TireWorkReferenceSpeedMps,
             0f,
-            Math.Max(1f, tires.MaxSlipHeatSpeedMultiplier)
+            TireConfig.MaximumTireWorkSpeedMultiplier
         );
         float longitudinalHeatUse = MathF.Pow(
             normalizedLongitudinalUse,
-            Math.Max(1f, tires.LongitudinalHeatExponent)
+            TireConfig.LongitudinalHeatExponent
         );
         float combinedUse = Math.Clamp(
             MathF.Sqrt(
@@ -718,7 +722,7 @@ public static class CarPhysics
             1f
         );
         float nearLimitHeatStart = Math.Clamp(
-            tires.NearLimitHeatStartUse,
+            TireConfig.NearLimitHeatStartUse,
             0f,
             1f - Epsilon
         );
@@ -736,55 +740,61 @@ public static class CarPhysics
         float rollingHeatSpeedFactor = Math.Max(0f, speed) /
                                        (
                                            Math.Max(0f, speed) +
-                                           Math.Max(tires.RollingHeatReferenceSpeedMps, Epsilon)
+                                           TireConfig.RollingHeatReferenceSpeedMps
                                        );
-        float rollingSurfaceHeat = Math.Max(0f, tires.RollingSurfaceHeatRate) *
+        float rollingSurfaceHeat = TireConfig.RollingSurfaceHeatRate *
                                    loadScale * rollingHeatSpeedFactor;
 
+        float driverSensitiveEnergyFactor = Math.Clamp(tireEnergyEfficiency, 0.9f, 1.1f);
+        float directionalHeat =
+            tires.LateralHeatRate * normalizedLateralUse * normalizedLateralUse +
+            tires.LongitudinalHeatRate * longitudinalHeatUse;
         float surfaceHeat =
-            slipHeatSpeedMultiplier * slipHeatMultiplier * (
-                tires.LateralHeatRate *
-                normalizedLateralUse * normalizedLateralUse +
-                tires.LongitudinalHeatRate * longitudinalHeatUse
-            ) +
-            tires.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
-            tires.SideslipHeatRate * sideslipRatio * sideslipRatio;
+            tireWorkSpeedMultiplier * slipHeatMultiplier *
+            directionalHeat * driverSensitiveEnergyFactor +
+            TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
+            TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio;
         surfaceHeat *= loadScale;
         surfaceHeat += rollingSurfaceHeat;
 
-        float airCoolingMultiplier = CalculateAirCoolingMultiplier(tires, speed);
-        float surfaceToAir = tires.SurfaceCoolingRate * airCoolingMultiplier * (tire.SurfaceTempC - airTempC);
-        float surfaceToTrack = Math.Max(0f, tires.TrackSurfaceTransferRate) *
+        float airCoolingMultiplier = CalculateAirCoolingMultiplier(speed);
+        float surfaceToAir = TireConfig.SurfaceCoolingRate * airCoolingMultiplier * (tire.SurfaceTempC - airTempC);
+        float surfaceToTrack = TireConfig.TrackSurfaceTransferRate *
                                (tire.SurfaceTempC - trackTempC);
-        float surfaceToCore = tires.SurfaceCoreTransferRate * (tire.SurfaceTempC - tire.CoreTempC);
-        float rollingCoreHeat = Math.Max(0f, tires.RollingCoreHeatRate) *
+        float surfaceToCore = TireConfig.SurfaceCoreTransferRate * (tire.SurfaceTempC - tire.CoreTempC);
+        float rollingCoreHeat = TireConfig.RollingCoreHeatRate *
                                 loadScale * rollingHeatSpeedFactor;
-        float coreHeatCapacityRatio = Math.Max(1f, tires.CoreHeatCapacityRatio);
 
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
         ) * dt;
         tire.CoreTempC += (
             rollingCoreHeat + surfaceToCore
-        ) / coreHeatCapacityRatio * dt;
+        ) / TireConfig.CoreHeatCapacityRatio * dt;
 
         float tempWearFactor = 1f + Math.Max(0f, tire.SurfaceTempC - tires.HotWearStartTempC) * tires.HotWearSlope;
-        float wearDelta =
+        float directionalWear =
             tires.LateralWearRate * lateralUse * lateralUse +
-            tires.LongitudinalWearRate * longitudinalUse * longitudinalUse +
+            tires.LongitudinalWearRate * longitudinalUse * longitudinalUse;
+        float tireWorkWear =
+            directionalWear * driverSensitiveEnergyFactor +
             tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit +
             tires.SideslipWearRate * sideslipRatio * sideslipRatio;
-        wearDelta *= tempWearFactor * loadScale * dt;
+        float wearDelta = tireWorkWear * tireWorkSpeedMultiplier *
+                          tempWearFactor * loadScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
     }
 
-    private static float CalculateAirCoolingMultiplier(TireConfig tires, float speed)
+    private static float CalculateAirCoolingMultiplier(float speed)
     {
-        float maxMultiplier = Math.Max(1f, tires.MaxSpeedCoolingMultiplier);
-        float referenceSpeed = Math.Max(Epsilon, tires.SpeedCoolingReferenceMps);
-        float speedFactor = Math.Max(0f, speed) / (Math.Max(0f, speed) + referenceSpeed);
-        return 1f + (maxMultiplier - 1f) * speedFactor;
+        float speedFactor = Math.Max(0f, speed) /
+                            (
+                                Math.Max(0f, speed) +
+                                TireConfig.SpeedCoolingReferenceMps
+                            );
+        return 1f +
+               (TireConfig.MaximumSpeedCoolingMultiplier - 1f) * speedFactor;
     }
 
     private static WheelLoads CalculateWheelLoads(CarState state, CarConfig config)

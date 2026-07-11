@@ -1,5 +1,6 @@
 using System;
 using TheStint.Core.Cars;
+using TheStint.Core.Drivers;
 
 namespace TheStint.Core.Racing;
 

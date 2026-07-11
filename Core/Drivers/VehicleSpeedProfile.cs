@@ -1,6 +1,6 @@
 using System;
 
-namespace TheStint.Core.Racing;
+namespace TheStint.Core.Drivers;
 
 public readonly record struct VehicleSpeedProfilePoint(
     float TargetSpeed,

@@ -1,6 +1,6 @@
 using TheStint.Core.Cars;
 
-namespace TheStint.Core.Racing;
+namespace TheStint.Core.Drivers;
 
 public sealed class VehicleSpeedPlanningConfig
 {

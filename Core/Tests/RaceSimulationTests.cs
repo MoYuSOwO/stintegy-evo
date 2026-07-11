@@ -1,5 +1,6 @@
 using System.Numerics;
 using TheStint.Core.Cars;
+using TheStint.Core.Drivers;
 using TheStint.Core.Racing;
 using TheStint.Core.Track;
 using Xunit;

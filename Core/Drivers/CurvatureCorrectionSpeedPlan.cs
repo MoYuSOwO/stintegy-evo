@@ -1,4 +1,4 @@
-namespace TheStint.Core.Racing;
+namespace TheStint.Core.Drivers;
 
 public readonly record struct CurvatureCorrectionSpeedPlan(
     VehicleSpeedProfilePoint Current,

@@ -7,6 +7,7 @@ using StintegyEVO.Presentation.Debug;
 using StintegyEVO.Presentation.Interop;
 using StintegyEVO.Presentation.Track;
 using TheStint.Core.Cars;
+using TheStint.Core.Drivers;
 using TheStint.Core.Racing;
 using TheStint.Core.Track;
 using GVector2 = Godot.Vector2;

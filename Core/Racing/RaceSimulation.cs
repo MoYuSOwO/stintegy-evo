@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using TheStint.Core.Cars;
+using TheStint.Core.Drivers;
 using TheStint.Core.Track;
 
 namespace TheStint.Core.Racing;
@@ -65,7 +66,8 @@ public sealed class RaceSimulation
                 input,
                 car.Strategy,
                 Environment.AirTempC,
-                Environment.TrackTempC
+                Environment.TrackTempC,
+                car.Driver.TireEnergyEfficiency
             );
 
             car.LastInput = input;
