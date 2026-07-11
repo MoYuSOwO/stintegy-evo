@@ -10,6 +10,8 @@ public sealed class VehicleSpeedPlanningConfig
     public float NormalAccelerationUsage { get; init; } = 0.94f;
     public float PushAccelerationUsage { get; init; } = 0.97f;
     public float AttackAccelerationUsage { get; init; } = 1f;
+    // Driver confidence in the estimated longitudinal limit. The same value
+    // shapes the planned profile and caps real-time acceleration requests.
     public float DriveAccelerationUsage { get; init; } = 1f;
     public float BrakeDecelerationUsage { get; init; } = 0.9f;
     public float PlanningStepMeters { get; init; } = 2f;

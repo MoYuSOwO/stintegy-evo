@@ -16,5 +16,6 @@ public readonly record struct ReferenceLineDriverTelemetry(
     float ReferenceAcceleration,
     float LossCompensationAcceleration,
     float SpeedFeedbackAcceleration,
+    float DriveAccelerationLimit,
     float DesiredAcceleration
 );

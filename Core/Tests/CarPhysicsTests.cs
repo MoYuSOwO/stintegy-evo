@@ -403,8 +403,8 @@ public sealed class CarPhysicsTests
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
-        CarState save = CreateState(speed: 28f, batterySoc: 0.8f, tires);
-        CarState attack = CreateState(speed: 28f, batterySoc: 0.8f, tires);
+        CarState save = CreateState(speed: 40f, batterySoc: 0.8f, tires);
+        CarState attack = CreateState(speed: 40f, batterySoc: 0.8f, tires);
         DriverInput input = new(0f, 7f);
 
         StepMany(save, car, tires, input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Save), steps: 60);
@@ -413,6 +413,38 @@ public sealed class CarPhysicsTests
         Assert.True(attack.Speed > save.Speed, "attack battery mode should produce more straight-line speed");
         Assert.True(attack.BatterySoc < save.BatterySoc, "attack battery mode should spend more energy");
         Assert.True(attack.Telemetry.DrivePowerWatts > save.Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
+    }
+
+    [Fact]
+    public void BatteryModesShareLowSpeedAccelerationAndEfficiency()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState save = CreateState(speed: 10f, batterySoc: 0.8f, tires);
+        CarState attack = CreateState(speed: 10f, batterySoc: 0.8f, tires);
+        DriverInput input = new(0f, 7f);
+
+        CarPhysics.Step(
+            save,
+            car,
+            tires,
+            PhysicsInput(input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Save)),
+            1f / 60f
+        );
+        CarPhysics.Step(
+            attack,
+            car,
+            tires,
+            PhysicsInput(input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack)),
+            1f / 60f
+        );
+
+        Assert.Equal(
+            save.Telemetry.RequestedLongitudinalAccel,
+            attack.Telemetry.RequestedLongitudinalAccel,
+            precision: 5
+        );
+        Assert.Equal(save.BatterySoc, attack.BatterySoc, precision: 7);
     }
 
     [Fact]

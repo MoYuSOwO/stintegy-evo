@@ -13,12 +13,12 @@ public sealed class CarConfig
     public float SideslipRecoveryTimeSeconds { get; init; } = 0.15f;
 
     public float MaxCurvatureRequest { get; init; } = 0.32f;
-    public float MaxDriveAccelRequest { get; init; } = 8f;
+    public float MaxDriveAcceleration { get; init; } = 12f;
     public float MaxBrakeAccel { get; init; } = 12f;
     public float TractionControlActivationUse { get; init; } = 0.99f;
     public float TractionControlStrength { get; init; } = 0.65f;
     public float MinPowerSpeed { get; init; } = 8f;
-    public float BatteryCapacityJoules { get; init; } = 42000000f;
+    public float BatteryCapacityJoules { get; init; } = 830000000f;
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
     public float LowSocPowerLimitStart { get; init; } = 0.08f;
     public float RegenEfficiency { get; init; } = 0.56f;
@@ -33,45 +33,17 @@ public sealed class CarConfig
     public float LoadTransferResponse { get; init; } = 8f;
     public float MinimumWheelLoadShare { get; init; } = 0.08f;
 
-    public float GetBatteryForceAccelLimit(BatteryOutputMode mode)
+    public float GetDrivePowerLimitWatts(BatteryOutputMode mode)
     {
-        return BatteryForceAccelLimits[CarModeIndex.ToIndex(mode)];
+        return DrivePowerLimitsWatts[CarModeIndex.ToIndex(mode)];
     }
 
-    public float GetBatteryPowerLimitWatts(BatteryOutputMode mode)
-    {
-        return BatteryPowerLimitsWatts[CarModeIndex.ToIndex(mode)];
-    }
-
-    public float GetBatteryDrainMultiplier(BatteryOutputMode mode)
-    {
-        return BatteryDrainMultipliers[CarModeIndex.ToIndex(mode)];
-    }
-
-    private static readonly float[] BatteryForceAccelLimits =
+    private static readonly float[] DrivePowerLimitsWatts =
     [
-        2.1f,
-        2.9f,
-        3.8f,
-        4.8f,
-        5.7f
-    ];
-
-    private static readonly float[] BatteryPowerLimitsWatts =
-    [
-        160000f,
-        215000f,
+        220000f,
+        260000f,
         285000f,
         365000f,
         455000f
-    ];
-
-    private static readonly float[] BatteryDrainMultipliers =
-    [
-        0.82f,
-        0.92f,
-        1.00f,
-        1.11f,
-        1.25f
     ];
 }

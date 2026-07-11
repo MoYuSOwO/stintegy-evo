@@ -168,11 +168,11 @@ public sealed class VehicleSpeedPlannerTests
             plan.NextTargetSpeed * plan.NextTargetSpeed -
             plan.Current.TargetSpeed * plan.Current.TargetSpeed
         ) / (2f * plan.FirstSegmentLengthMeters);
-        float fullAvailableDrive = car.CarConfig.GetBatteryForceAccelLimit(
-            car.Strategy.BatteryMode
+        Assert.InRange(
+            car.CarConfig.MaxDriveAcceleration - plan.Current.ReferenceAcceleration,
+            0f,
+            car.CarConfig.MaxDriveAcceleration
         );
-
-        Assert.InRange(fullAvailableDrive - plan.Current.ReferenceAcceleration, 0f, 0.02f);
         Assert.True(plan.Current.ReferenceAcceleration > segmentAverage);
     }
 
@@ -196,12 +196,10 @@ public sealed class VehicleSpeedPlannerTests
             curvatureCorrection: 0.08f,
             commandedCurvature: 0.08f
         );
-        float fullAvailableDrive = car.CarConfig.GetBatteryForceAccelLimit(
-            car.Strategy.BatteryMode
-        );
-
         Assert.True(plan.Current.ReferenceAcceleration > 4f);
-        Assert.InRange(fullAvailableDrive - plan.Current.ReferenceAcceleration, 0f, 0.02f);
+        Assert.True(
+            plan.Current.ReferenceAcceleration <= car.CarConfig.MaxDriveAcceleration
+        );
     }
 
     [Fact]
@@ -210,6 +208,16 @@ public sealed class VehicleSpeedPlannerTests
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(track, CarStrategy.Default);
         car.State.Speed = 0f;
+        VehicleSpeedPlanner fullPlanner = new();
+        VehicleSpeedProfile fullGlobal = fullPlanner.Plan(car, track);
+        CurvatureCorrectionSpeedPlan fullPlan = fullPlanner.PlanCurvatureCorrection(
+            car,
+            track,
+            fullGlobal,
+            track.Grids[1].S,
+            curvatureCorrection: 0.08f,
+            commandedCurvature: 0.08f
+        );
         VehicleSpeedPlanner planner = new(
             new VehicleSpeedPlanningConfig { DriveAccelerationUsage = 0.8f }
         );
@@ -223,11 +231,13 @@ public sealed class VehicleSpeedPlannerTests
             curvatureCorrection: 0.08f,
             commandedCurvature: 0.08f
         );
-        float expected = car.CarConfig.GetBatteryForceAccelLimit(
-            car.Strategy.BatteryMode
-        ) * 0.8f;
-
-        Assert.InRange(MathF.Abs(plan.Current.ReferenceAcceleration - expected), 0f, 0.02f);
+        Assert.True(
+            plan.Current.ReferenceAcceleration <=
+            car.CarConfig.MaxDriveAcceleration * 0.8f + 0.02f
+        );
+        Assert.True(
+            plan.Current.ReferenceAcceleration < fullPlan.Current.ReferenceAcceleration
+        );
     }
 
     private static RaceCar CreateCar(

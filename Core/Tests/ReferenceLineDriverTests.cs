@@ -123,25 +123,71 @@ public sealed class ReferenceLineDriverTests
     }
 
     [Fact]
-    public void StationaryCarUsesFullAvailableDriveWhileReturningToLine()
+    public void DriverClampsSpeedFeedbackToEstimatedDriveLimit()
     {
         TrackData track = BuildTrack();
-        ReferenceLineDriver driver = new();
+        ReferenceLineDriver driver = new() { SpeedGain = 100f };
         RaceDriverFrameContext context = CreateContext(
             track,
             driver,
+            s: 20f,
+            speed: 5f
+        );
+
+        DriverInput input = driver.GetControl(in context, 1f / 60f);
+
+        Assert.True(
+            driver.LastTelemetry.ReferenceAcceleration +
+            driver.LastTelemetry.LossCompensationAcceleration +
+            driver.LastTelemetry.SpeedFeedbackAcceleration >
+            driver.LastTelemetry.DriveAccelerationLimit
+        );
+        Assert.InRange(
+            driver.LastTelemetry.DriveAccelerationLimit - input.DesiredAccel,
+            0f,
+            0.02f
+        );
+    }
+
+    [Fact]
+    public void DriverCapabilityUsageScalesExecutionDriveLimit()
+    {
+        TrackData track = BuildTrack();
+        ReferenceLineDriver fullDriver = new(
+            new VehicleSpeedPlanningConfig { DriveAccelerationUsage = 1f }
+        ) { SpeedGain = 100f };
+        ReferenceLineDriver learningDriver = new(
+            new VehicleSpeedPlanningConfig { DriveAccelerationUsage = 0.8f }
+        ) { SpeedGain = 100f };
+        RaceDriverFrameContext full = CreateContext(
+            track,
+            fullDriver,
+            s: 20f,
+            speed: 0f,
+            lateralError: 4f
+        );
+        RaceDriverFrameContext learning = CreateContext(
+            track,
+            learningDriver,
             s: 20f,
             speed: 0f,
             lateralError: 4f
         );
 
-        DriverInput input = driver.GetControl(in context, 1f / 60f);
+        DriverInput fullInput = fullDriver.GetControl(in full, 1f / 60f);
+        DriverInput learningInput = learningDriver.GetControl(in learning, 1f / 60f);
 
-        float fullAvailableDrive = context.Car.CarConfig.GetBatteryForceAccelLimit(
-            context.Car.Strategy.BatteryMode
+        Assert.InRange(
+            fullDriver.LastTelemetry.DriveAccelerationLimit - fullInput.DesiredAccel,
+            0f,
+            0.02f
         );
-        Assert.InRange(fullAvailableDrive - input.DesiredAccel, 0f, 0.02f);
-        Assert.Equal(0f, driver.LastTelemetry.LossCompensationAcceleration);
+        Assert.InRange(
+            learningDriver.LastTelemetry.DriveAccelerationLimit - learningInput.DesiredAccel,
+            0f,
+            0.02f
+        );
+        Assert.True(learningInput.DesiredAccel < fullInput.DesiredAccel);
     }
 
     [Fact]

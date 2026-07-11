@@ -132,10 +132,13 @@ public sealed class ReferenceLineDriver : IRaceDriver
         float desiredAcceleration = referenceAcceleration +
                                     lossCompensationAcceleration +
                                     speedFeedbackAcceleration;
+        float driveAccelerationLimit =
+            currentLimits.MaximumDriveAcceleration *
+            _speedPlanner.Config.DriveAccelerationUsage;
         desiredAcceleration = Math.Clamp(
             desiredAcceleration,
             -car.CarConfig.MaxBrakeAccel,
-            car.CarConfig.MaxDriveAccelRequest
+            driveAccelerationLimit
         );
 
         LastTelemetry = new ReferenceLineDriverTelemetry(
@@ -154,6 +157,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
             referenceAcceleration,
             lossCompensationAcceleration,
             speedFeedbackAcceleration,
+            driveAccelerationLimit,
             desiredAcceleration
         );
         return new DriverInput(desiredCurvature, desiredAcceleration);

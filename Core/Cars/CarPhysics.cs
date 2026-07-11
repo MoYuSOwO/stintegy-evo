@@ -76,7 +76,7 @@ public static class CarPhysics
             speed
         );
         float maximumDrive = Math.Min(
-            config.MaxDriveAccelRequest,
+            config.MaxDriveAcceleration,
             Math.Min(gripDriveLimit, batteryDriveLimit)
         );
         float maximumBrake = Math.Min(
@@ -122,7 +122,7 @@ public static class CarPhysics
         float desiredAccel = Math.Clamp(
             input.DriverInput.DesiredAccel,
             -config.MaxBrakeAccel,
-            config.MaxDriveAccelRequest
+            config.MaxDriveAcceleration
         );
 
         float requestedLateralAccel = state.Speed * state.Speed * desiredCurvature;
@@ -267,7 +267,6 @@ public static class CarPhysics
         float drivePowerWatts = UpdateBattery(
             state,
             config,
-            input.Strategy.BatteryMode,
             driveAccelActual,
             brakeAccelActual,
             averageSpeed,
@@ -383,9 +382,9 @@ public static class CarPhysics
             ? 1f
             : state.BatterySoc / Math.Max(config.LowSocPowerLimitStart, Epsilon);
 
-        float forceLimitedAccel = config.GetBatteryForceAccelLimit(mode);
+        float forceLimitedAccel = config.MaxDriveAcceleration;
         float powerLimitedAccel =
-            config.GetBatteryPowerLimitWatts(mode) /
+            config.GetDrivePowerLimitWatts(mode) /
             (config.MassKg * Math.Max(speed, config.MinPowerSpeed));
 
         return Math.Min(forceLimitedAccel, powerLimitedAccel) * socFactor;
@@ -644,7 +643,6 @@ public static class CarPhysics
     private static float UpdateBattery(
         CarState state,
         CarConfig config,
-        BatteryOutputMode mode,
         float driveAccel,
         float brakeAccel,
         float speed,
@@ -656,9 +654,7 @@ public static class CarPhysics
             : config.MassKg * driveAccel * speed / Math.Max(config.BatteryDriveEfficiency, Epsilon);
         float regenPower = CalculateRegenPower(config, brakeAccel, speed);
 
-        float netEnergy =
-            drivePower * config.GetBatteryDrainMultiplier(mode) * dt -
-            regenPower * dt;
+        float netEnergy = (drivePower - regenPower) * dt;
 
         state.BatterySoc = Math.Clamp(
             state.BatterySoc - netEnergy / Math.Max(config.BatteryCapacityJoules, Epsilon),
