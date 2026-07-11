@@ -374,7 +374,7 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void AttackTireModeHeatsAndWearsMoreThanProtect()
+    public void TireUsageModeDoesNotChangePhysicsForSameDriverInput()
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
@@ -385,13 +385,16 @@ public sealed class CarPhysicsTests
         StepMany(protect, car, tires, input, new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Normal), steps: 240);
         StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal), steps: 240);
 
-        Assert.True(
-            AverageSurfaceTemp(attack) > AverageSurfaceTemp(protect),
-            "attack mode should heat tire surfaces more than protect mode"
+        Assert.Equal(
+            AverageSurfaceTemp(protect),
+            AverageSurfaceTemp(attack),
+            precision: 5
         );
-        Assert.True(
-            AverageWear(attack) > AverageWear(protect),
-            "attack mode should wear tires more than protect mode"
+        Assert.Equal(AverageWear(protect), AverageWear(attack), precision: 5);
+        Assert.Equal(
+            protect.Telemetry.FrontGripAccel,
+            attack.Telemetry.FrontGripAccel,
+            precision: 5
         );
     }
 
@@ -436,7 +439,7 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void AttackTireModeCanDeliverMoreCurvatureThanProtect()
+    public void TireUsageModeDoesNotChangeAvailablePhysicalGrip()
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
@@ -447,13 +450,15 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(protect, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Normal)), 1f / 60f);
         CarPhysics.Step(attack, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal)), 1f / 60f);
 
-        Assert.True(
-            Math.Abs(attack.Telemetry.ActualCurvature) > Math.Abs(protect.Telemetry.ActualCurvature),
-            "attack tire mode should deliver more curvature when cornering is grip-limited"
+        Assert.Equal(
+            protect.Telemetry.ActualCurvature,
+            attack.Telemetry.ActualCurvature,
+            precision: 5
         );
-        Assert.True(
-            attack.Telemetry.FrontGripAccel > protect.Telemetry.FrontGripAccel,
-            "attack tire mode should expose more front grip"
+        Assert.Equal(
+            protect.Telemetry.FrontGripAccel,
+            attack.Telemetry.FrontGripAccel,
+            precision: 5
         );
     }
 
@@ -475,6 +480,58 @@ public sealed class CarPhysicsTests
         Assert.True(
             Math.Abs(worn.Telemetry.ActualCurvature) < Math.Abs(fresh.Telemetry.ActualCurvature),
             "hot worn tires should deliver less curvature under the same request"
+        );
+    }
+
+    [Fact]
+    public void SurfaceTemperaturesInsideIdealBandKeepFullGrip()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState cold = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState lowIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState middleIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState highIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState hot = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        SetTireTemps(cold, surfaceTempC: 75f, coreTempC: 90f);
+        SetTireTemps(lowIdeal, surfaceTempC: 85f, coreTempC: 90f);
+        SetTireTemps(middleIdeal, surfaceTempC: 100f, coreTempC: 90f);
+        SetTireTemps(highIdeal, surfaceTempC: 115f, coreTempC: 90f);
+        SetTireTemps(hot, surfaceTempC: 125f, coreTempC: 90f);
+
+        foreach (CarState state in new[]
+                 {
+                     cold,
+                     lowIdeal,
+                     middleIdeal,
+                     highIdeal,
+                     hot
+                 })
+        {
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                PhysicsInput(new DriverInput(0f, 0f)),
+                1f / 120f
+            );
+        }
+
+        Assert.Equal(
+            lowIdeal.Telemetry.FrontGripAccel,
+            middleIdeal.Telemetry.FrontGripAccel,
+            precision: 4
+        );
+        Assert.Equal(
+            middleIdeal.Telemetry.FrontGripAccel,
+            highIdeal.Telemetry.FrontGripAccel,
+            precision: 4
+        );
+        Assert.True(
+            cold.Telemetry.FrontGripAccel < lowIdeal.Telemetry.FrontGripAccel
+        );
+        Assert.True(
+            hot.Telemetry.FrontGripAccel < highIdeal.Telemetry.FrontGripAccel
         );
     }
 
@@ -599,6 +656,35 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void CombinedNearLimitUseAmplifiesExistingSlipHeatOnce()
+    {
+        CarConfig car = new();
+        TireConfig baselineTires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            NearLimitHeatGain = 0f
+        };
+        TireConfig amplifiedTires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            NearLimitHeatGain = 2f
+        };
+        CarState baseline = CreateState(speed: 38f, batterySoc: 0.8f, baselineTires);
+        CarState amplified = CreateState(speed: 38f, batterySoc: 0.8f, amplifiedTires);
+        DriverInput input = new(0.011f, 5f);
+
+        StepMany(baseline, car, baselineTires, input, CarStrategy.Default, steps: 120);
+        StepMany(amplified, car, amplifiedTires, input, CarStrategy.Default, steps: 120);
+
+        Assert.True(
+            AverageSurfaceTemp(amplified) > AverageSurfaceTemp(baseline),
+            "combined friction-circle use should multiply the existing directional slip heat"
+        );
+    }
+
+    [Fact]
     public void StraightRollingBuildsCoreHeatWithoutTireSlip()
     {
         CarConfig car = new();
@@ -615,13 +701,38 @@ public sealed class CarPhysicsTests
             TrackTempC: 25f
         );
 
-        for (int step = 0; step < 10 * 60; step++)
+        for (int step = 0; step < 30 * 60; step++)
             CarPhysics.Step(state, car, tires, input, 1f / 60f);
 
         Assert.True(
             AverageCoreTemp(state) > 25.25f,
             "cyclic tire deformation should warm the core even without commanded slip"
         );
+    }
+
+    [Fact]
+    public void IsolatedCoreDoesNotExchangeHeatDirectlyWithAmbientAir()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 25f,
+            StartingCoreTempC = 100f,
+            RollingCoreHeatRate = 0f,
+            SurfaceCoreTransferRate = 0f
+        };
+        CarState state = CreateState(speed: 40f, batterySoc: 0.8f, tires);
+
+        StepMany(
+            state,
+            car,
+            tires,
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            steps: 600
+        );
+
+        Assert.Equal(100f, AverageCoreTemp(state), precision: 4);
     }
 
     [Fact]
@@ -767,9 +878,9 @@ public sealed class CarPhysicsTests
     {
         foreach (TireState tire in new[] { state.RearLeft, state.RearRight })
         {
-            tire.SurfaceTempC = 130f;
-            tire.CoreTempC = 122f;
-            tire.Wear = 0.65f;
+            tire.SurfaceTempC = 140f;
+            tire.CoreTempC = 130f;
+            tire.Wear = 0.95f;
         }
     }
 

@@ -10,6 +10,18 @@ namespace TheStint.Core.Tests;
 public sealed class VehicleSpeedPlannerTests
 {
     [Fact]
+    public void TireModePresetsIncreaseControllerAccelerationUsage()
+    {
+        VehicleSpeedPlanningConfig config = new();
+
+        Assert.Equal(0.88f, config.GetAccelerationUsage(TireUsageMode.Protect));
+        Assert.Equal(0.91f, config.GetAccelerationUsage(TireUsageMode.Light));
+        Assert.Equal(0.94f, config.GetAccelerationUsage(TireUsageMode.Normal));
+        Assert.Equal(0.97f, config.GetAccelerationUsage(TireUsageMode.Push));
+        Assert.Equal(1f, config.GetAccelerationUsage(TireUsageMode.Attack));
+    }
+
+    [Fact]
     public void ProfileBrakesBeforeTightCorners()
     {
         TrackData track = TrackFactory.SimpleTestTrack();

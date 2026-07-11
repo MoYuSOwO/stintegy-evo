@@ -41,12 +41,12 @@ public static class CarPhysics
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
-            loads.FrontLeft * CalculateTireMu(tires, strategy.TireMode, state.FrontLeft) +
-            loads.FrontRight * CalculateTireMu(tires, strategy.TireMode, state.FrontRight)
+            loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
+            loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
         ) / Math.Max(config.MassKg, Epsilon) * usage;
         float rearGrip = (
-            loads.RearLeft * CalculateTireMu(tires, strategy.TireMode, state.RearLeft) +
-            loads.RearRight * CalculateTireMu(tires, strategy.TireMode, state.RearRight)
+            loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
+            loads.RearRight * CalculateTireMu(tires, state.RearRight)
         ) / Math.Max(config.MassKg, Epsilon) * usage;
 
         float frontDemandShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
@@ -110,8 +110,8 @@ public static class CarPhysics
         WheelLoads loads = CalculateWheelLoads(state, config);
         ApplyWheelLoads(state, loads);
 
-        float frontGrip = CalculateAxleGripAccel(config, tires, input.Strategy.TireMode, state.FrontLeft, state.FrontRight);
-        float rearGrip = CalculateAxleGripAccel(config, tires, input.Strategy.TireMode, state.RearLeft, state.RearRight);
+        float frontGrip = CalculateAxleGripAccel(config, tires, state.FrontLeft, state.FrontRight);
+        float rearGrip = CalculateAxleGripAccel(config, tires, state.RearLeft, state.RearRight);
         float totalGrip = Math.Max(Epsilon, frontGrip + rearGrip);
 
         float desiredCurvature = Math.Clamp(
@@ -281,7 +281,6 @@ public static class CarPhysics
             state.FrontLeft,
             config,
             tires,
-            input.Strategy.TireMode,
             frontLateralUse,
             frontLongitudinalUse,
             costedFrontOverLimit,
@@ -295,7 +294,6 @@ public static class CarPhysics
             state.FrontRight,
             config,
             tires,
-            input.Strategy.TireMode,
             frontLateralUse,
             frontLongitudinalUse,
             costedFrontOverLimit,
@@ -309,7 +307,6 @@ public static class CarPhysics
             state.RearLeft,
             config,
             tires,
-            input.Strategy.TireMode,
             rearLateralUse,
             rearLongitudinalUse,
             costedRearOverLimit,
@@ -323,7 +320,6 @@ public static class CarPhysics
             state.RearRight,
             config,
             tires,
-            input.Strategy.TireMode,
             rearLateralUse,
             rearLongitudinalUse,
             costedRearOverLimit,
@@ -686,7 +682,6 @@ public static class CarPhysics
         TireState tire,
         CarConfig config,
         TireConfig tires,
-        TireUsageMode mode,
         float lateralUse,
         float longitudinalUse,
         float overLimit,
@@ -701,8 +696,6 @@ public static class CarPhysics
             MinimumTireHeatLoadScale,
             tire.LoadN / Math.Max(config.MassKg * Gravity * 0.25f, Epsilon)
         );
-        float modeHeat = tires.GetModeHeatFactor(mode);
-        float modeWear = tires.GetModeWearFactor(mode);
         float thermalOverLimit = Math.Min(overLimit, MaximumThermalOverLimit);
         float normalizedLateralUse = Math.Clamp(Math.Abs(lateralUse), 0f, 1f);
         float normalizedLongitudinalUse = Math.Clamp(
@@ -720,6 +713,30 @@ public static class CarPhysics
             normalizedLongitudinalUse,
             Math.Max(1f, tires.LongitudinalHeatExponent)
         );
+        float combinedUse = Math.Clamp(
+            MathF.Sqrt(
+                normalizedLateralUse * normalizedLateralUse +
+                normalizedLongitudinalUse * normalizedLongitudinalUse
+            ),
+            0f,
+            1f
+        );
+        float nearLimitHeatStart = Math.Clamp(
+            tires.NearLimitHeatStartUse,
+            0f,
+            1f - Epsilon
+        );
+        float nearLimitProgress = Math.Clamp(
+            (combinedUse - nearLimitHeatStart) /
+            Math.Max(1f - nearLimitHeatStart, Epsilon),
+            0f,
+            1f
+        );
+        float nearLimitSmoothStep =
+            nearLimitProgress * nearLimitProgress *
+            (3f - 2f * nearLimitProgress);
+        float slipHeatMultiplier =
+            1f + Math.Max(0f, tires.NearLimitHeatGain) * nearLimitSmoothStep;
         float rollingHeatSpeedFactor = Math.Max(0f, speed) /
                                        (
                                            Math.Max(0f, speed) +
@@ -729,14 +746,14 @@ public static class CarPhysics
                                    loadScale * rollingHeatSpeedFactor;
 
         float surfaceHeat =
-            slipHeatSpeedMultiplier * (
+            slipHeatSpeedMultiplier * slipHeatMultiplier * (
                 tires.LateralHeatRate *
                 normalizedLateralUse * normalizedLateralUse +
                 tires.LongitudinalHeatRate * longitudinalHeatUse
             ) +
             tires.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             tires.SideslipHeatRate * sideslipRatio * sideslipRatio;
-        surfaceHeat *= modeHeat * loadScale;
+        surfaceHeat *= loadScale;
         surfaceHeat += rollingSurfaceHeat;
 
         float airCoolingMultiplier = CalculateAirCoolingMultiplier(tires, speed);
@@ -746,15 +763,13 @@ public static class CarPhysics
         float surfaceToCore = tires.SurfaceCoreTransferRate * (tire.SurfaceTempC - tire.CoreTempC);
         float rollingCoreHeat = Math.Max(0f, tires.RollingCoreHeatRate) *
                                 loadScale * rollingHeatSpeedFactor;
-        float coreToAir = tires.CoreCoolingRate * airCoolingMultiplier *
-                          (tire.CoreTempC - airTempC);
         float coreHeatCapacityRatio = Math.Max(1f, tires.CoreHeatCapacityRatio);
 
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
         ) * dt;
         tire.CoreTempC += (
-            rollingCoreHeat + surfaceToCore - coreToAir
+            rollingCoreHeat + surfaceToCore
         ) / coreHeatCapacityRatio * dt;
 
         float tempWearFactor = 1f + Math.Max(0f, tire.SurfaceTempC - tires.HotWearStartTempC) * tires.HotWearSlope;
@@ -763,7 +778,7 @@ public static class CarPhysics
             tires.LongitudinalWearRate * longitudinalUse * longitudinalUse +
             tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit +
             tires.SideslipWearRate * sideslipRatio * sideslipRatio;
-        wearDelta *= modeWear * tempWearFactor * loadScale * dt;
+        wearDelta *= tempWearFactor * loadScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
     }
@@ -828,23 +843,30 @@ public static class CarPhysics
     private static float CalculateAxleGripAccel(
         CarConfig config,
         TireConfig tires,
-        TireUsageMode mode,
         TireState left,
         TireState right
     )
     {
-        float leftForce = left.LoadN * CalculateTireMu(tires, mode, left);
-        float rightForce = right.LoadN * CalculateTireMu(tires, mode, right);
+        float leftForce = left.LoadN * CalculateTireMu(tires, left);
+        float rightForce = right.LoadN * CalculateTireMu(tires, right);
         return (leftForce + rightForce) / Math.Max(config.MassKg, Epsilon);
     }
 
-    private static float CalculateTireMu(TireConfig tires, TireUsageMode mode, TireState tire)
+    private static float CalculateTireMu(TireConfig tires, TireState tire)
     {
         float tempGrip = 1f;
-        if (tire.SurfaceTempC < tires.IdealSurfaceTempC)
-            tempGrip -= (tires.IdealSurfaceTempC - tire.SurfaceTempC) * tires.ColdGripLossPerC;
-        else
-            tempGrip -= (tire.SurfaceTempC - tires.IdealSurfaceTempC) * tires.HotGripLossPerC;
+        float idealLow = Math.Min(
+            tires.IdealSurfaceTempLowC,
+            tires.IdealSurfaceTempHighC
+        );
+        float idealHigh = Math.Max(
+            tires.IdealSurfaceTempLowC,
+            tires.IdealSurfaceTempHighC
+        );
+        if (tire.SurfaceTempC < idealLow)
+            tempGrip -= (idealLow - tire.SurfaceTempC) * tires.ColdGripLossPerC;
+        else if (tire.SurfaceTempC > idealHigh)
+            tempGrip -= (tire.SurfaceTempC - idealHigh) * tires.HotGripLossPerC;
 
         tempGrip -= Math.Max(0f, tire.CoreTempC - tires.CoreOverheatTempC) * tires.CoreOverheatGripLossPerC;
 
@@ -860,8 +882,7 @@ public static class CarPhysics
         float wearGrip = 1f -
                          Math.Max(0f, tires.WearLinearGripLoss) * wear -
                          Math.Max(0f, tires.WearCliffGripLoss) * smoothCliff;
-        float modeGrip = tires.GetModeGripFactor(mode);
-        return tires.BaseMu * modeGrip *
+        return tires.BaseMu *
                Math.Clamp(tempGrip, MinimumTemperatureGripFactor, MaximumTemperatureGripFactor) *
                Math.Clamp(wearGrip, MinimumWearGripFactor, 1f);
     }

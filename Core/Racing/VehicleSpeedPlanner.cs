@@ -45,7 +45,7 @@ public sealed class VehicleSpeedPlanner
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.LateralGripUsage
+            gripUsage: Config.GetAccelerationUsage(car.Strategy.TireMode)
         );
         return LateralSpeedLimit(
             curvature,
@@ -133,7 +133,7 @@ public sealed class VehicleSpeedPlanner
             _planningStrategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.LateralGripUsage
+            gripUsage: Config.GetAccelerationUsage(_planningStrategy.TireMode)
         );
 
         for (int i = 0; i < count; i++)
@@ -234,7 +234,7 @@ public sealed class VehicleSpeedPlanner
                 _planningStrategy,
                 speed: 0f,
                 curvature: 0f,
-                gripUsage: Config.LateralGripUsage
+                gripUsage: Config.GetAccelerationUsage(_planningStrategy.TireMode)
             );
 
             float maximumAbsoluteCurvature = 0f;
@@ -570,7 +570,7 @@ public sealed class VehicleSpeedPlanner
             _planningState == null ? car.Strategy : _planningStrategy,
             speed,
             curvature,
-            Config.LateralGripUsage,
+            Config.GetAccelerationUsage(_planningStrategy.TireMode),
             assumedLongitudinalAcceleration
         );
     }
@@ -672,8 +672,26 @@ public sealed class VehicleSpeedPlanner
                 "Maximum speed estimate multiplier must be finite and at least one."
             );
         }
-        if (config.LateralGripUsage <= 0f || config.LateralGripUsage > 1f)
-            throw new ArgumentOutOfRangeException(nameof(config), "Lateral grip usage must be in (0, 1].");
+        float protectUsage = config.ProtectAccelerationUsage;
+        float lightUsage = config.LightAccelerationUsage;
+        float normalUsage = config.NormalAccelerationUsage;
+        float pushUsage = config.PushAccelerationUsage;
+        float attackUsage = config.AttackAccelerationUsage;
+        ValidateAccelerationUsage(protectUsage);
+        ValidateAccelerationUsage(lightUsage);
+        ValidateAccelerationUsage(normalUsage);
+        ValidateAccelerationUsage(pushUsage);
+        ValidateAccelerationUsage(attackUsage);
+        if (!(protectUsage < lightUsage &&
+              lightUsage < normalUsage &&
+              normalUsage < pushUsage &&
+              pushUsage < attackUsage))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(config),
+                "Tire-mode acceleration usages must increase from Protect to Attack."
+            );
+        }
         if (config.DriveAccelerationUsage <= 0f || config.DriveAccelerationUsage > 1f)
             throw new ArgumentOutOfRangeException(nameof(config), "Drive acceleration usage must be in (0, 1].");
         if (config.BrakeDecelerationUsage <= 0f || config.BrakeDecelerationUsage > 1f)
@@ -690,6 +708,17 @@ public sealed class VehicleSpeedPlanner
             config.CurvatureCorrectionActivationThreshold < 0f)
         {
             throw new ArgumentOutOfRangeException(nameof(config), "Curvature correction distances must be positive.");
+        }
+    }
+
+    private static void ValidateAccelerationUsage(float usage)
+    {
+        if (!float.IsFinite(usage) || usage <= 0f || usage > 1f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(usage),
+                "Acceleration usage must be finite and in (0, 1]."
+            );
         }
     }
 

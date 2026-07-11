@@ -121,7 +121,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
             car.Strategy,
             state.Speed,
             desiredCurvature,
-            _speedPlanner.Config.LateralGripUsage,
+            _speedPlanner.Config.GetAccelerationUsage(car.Strategy.TireMode),
             referenceAcceleration
         );
         // The speed plan stores net vehicle acceleration, while DriverInput asks
