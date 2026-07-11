@@ -8,7 +8,7 @@ public sealed class TireConfig
     public const float TireWorkReferenceSpeedMps = 30f;
     public const float MaximumTireWorkSpeedMultiplier = 1.5f;
     public const float LongitudinalHeatExponent = 4f;
-    public const float NearLimitHeatStartUse = 0.94f;
+    public const float NearLimitHeatStartUse = 0.96f;
     public const float OverLimitHeatRate = 6f;
     public const float SideslipHeatRate = 4f;
     public const float RollingSurfaceHeatRate = 1f;
@@ -36,8 +36,8 @@ public sealed class TireConfig
     public float WearCliffStart { get; init; } = 0.70f;
     public float WearCliffGripLoss { get; init; } = 0.15f;
 
-    public float LateralHeatRate { get; init; } = 1.70f;
-    public float LongitudinalHeatRate { get; init; } = 1.15f;
+    public float LateralHeatRate { get; init; } = 1.15f;
+    public float LongitudinalHeatRate { get; init; } = 0.80f;
     public float NearLimitHeatGain { get; init; } = 1.10f;
 
     public float LateralWearRate { get; init; } = 0.00055f;
