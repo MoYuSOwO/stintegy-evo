@@ -293,6 +293,52 @@ public sealed class RaceSimulationTests
         Assert.InRange(progress.TotalDistance, 4.5f, 5.5f);
     }
 
+    [Fact]
+    public void RaceProgressCountsLapsAtConfiguredStartingLine()
+    {
+        TrackData track = BuildTrack();
+        RaceProgress progress = new();
+        float spawnS = track.LengthMeters - 10f;
+        TrackPose spawn = track.Project(track.Sample(spawnS).Center);
+        progress.Reset(
+            track,
+            spawn,
+            TrackBoundaryResolver.Classify(spawn)
+        );
+
+        float travelled = 0f;
+        while (travelled < track.LengthMeters - 1f)
+        {
+            travelled = MathF.Min(
+                travelled + 20f,
+                track.LengthMeters - 1f
+            );
+            TrackPose pose = track.Project(
+                track.Sample(spawnS + travelled).Center
+            );
+            progress.Update(
+                track,
+                pose,
+                TrackBoundaryResolver.Classify(pose),
+                hitWallThisFrame: false
+            );
+        }
+
+        Assert.Equal(0, progress.Lap);
+
+        TrackPose afterFinish = track.Project(
+            track.Sample(spawnS + track.LengthMeters + 11f).Center
+        );
+        progress.Update(
+            track,
+            afterFinish,
+            TrackBoundaryResolver.Classify(afterFinish),
+            hitWallThisFrame: false
+        );
+
+        Assert.Equal(1, progress.Lap);
+    }
+
     private static void AssertCarInsideTrackWalls(TrackData track, RaceCar car, CarCollisionConfig collision)
     {
         Assert.True(

@@ -29,7 +29,12 @@ public sealed class RaceSimulation
 
         TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
         TrackPose pose = Track.Project(car.State.Position);
-        car.Progress.Reset(pose, TrackBoundaryResolver.Classify(pose), contact.HasValue);
+        car.Progress.Reset(
+            Track,
+            pose,
+            TrackBoundaryResolver.Classify(pose),
+            contact.HasValue
+        );
         car.LastBoundaryContact = contact;
         RaceDriverInitContext context = new(car, Track, pose, Environment, RaceTimeSeconds);
         car.Driver.Initialize(in context);

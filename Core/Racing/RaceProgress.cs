@@ -6,6 +6,7 @@ namespace TheStint.Core.Racing;
 public sealed class RaceProgress
 {
     private bool _initialized;
+    private float _initialStartLineOffset;
 
     public float CurrentS { get; private set; }
     public float CurrentD { get; private set; }
@@ -18,6 +19,7 @@ public sealed class RaceProgress
     public void Reset(TrackPose pose, TrackRegion region, bool hitWallThisFrame = false)
     {
         _initialized = true;
+        _initialStartLineOffset = 0f;
         CurrentS = pose.S;
         CurrentD = pose.D;
         TotalDistance = 0f;
@@ -25,6 +27,23 @@ public sealed class RaceProgress
         Lap = 0;
         Region = region;
         HitWallThisFrame = hitWallThisFrame;
+    }
+
+    public void Reset(
+        TrackData track,
+        TrackPose pose,
+        TrackRegion region,
+        bool hitWallThisFrame = false
+    )
+    {
+        Reset(pose, region, hitWallThisFrame);
+        float offset = pose.S - track.StartingLineS;
+        float halfLength = track.LengthMeters * 0.5f;
+        if (offset > halfLength)
+            offset -= track.LengthMeters;
+        else if (offset < -halfLength)
+            offset += track.LengthMeters;
+        _initialStartLineOffset = offset;
     }
 
     public void Update(TrackData track, TrackPose pose, TrackRegion region, bool hitWallThisFrame)
@@ -48,7 +67,13 @@ public sealed class RaceProgress
         CurrentD = pose.D;
         LastDeltaS = deltaS;
         TotalDistance += deltaS;
-        Lap = (int)MathF.Floor(TotalDistance / Math.Max(track.LengthMeters, 1e-5f));
+        float startLineDistance = _initialStartLineOffset + TotalDistance;
+        Lap = Math.Max(
+            0,
+            (int)MathF.Floor(
+                startLineDistance / Math.Max(track.LengthMeters, 1e-5f)
+            )
+        );
         Region = region;
         HitWallThisFrame = hitWallThisFrame;
     }
