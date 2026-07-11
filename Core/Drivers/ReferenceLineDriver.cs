@@ -108,9 +108,35 @@ public sealed class ReferenceLineDriver : IRaceDriver
             out float controlSeverity
         );
 
-        // Feedforward already represents the global line. Only the signed
-        // feedback contribution is carried forward as a decaying correction.
-        float curvatureCorrection = desiredCurvature - previewSample.RefCurvature;
+        // The front-axle Stanley error contains the normal geometric offset
+        // between the car centre and its front axle while cornering. That is
+        // useful for steering, but it is not an off-line recovery path and
+        // must not lower the speed plan. Build the recovery correction from
+        // the car-centre pose instead, then retain any active stability-control
+        // correction made above.
+        TrackSample centerSample = context.Pose.Sample;
+        float centerLateralError =
+            context.Pose.D - (centerSample.RefOffset + lateralTargetError);
+        float centerHeadingError = MathHelper.NormalizeAngle(
+            centerSample.RefHeading - state.VelocityHeading
+        );
+        float recoveryStanleyCorrection = MathF.Atan(
+            StanleyGain * centerLateralError /
+            MathF.Max(StanleySofteningSpeed + state.Speed, 0.1f)
+        );
+        float recoverySteeringAngle = Math.Clamp(
+            feedforwardSteer + HeadingGain * centerHeadingError +
+            recoveryStanleyCorrection,
+            -maximumSteeringAngle,
+            maximumSteeringAngle
+        );
+        float recoveryCurvature = Math.Clamp(
+            MathF.Tan(recoverySteeringAngle) / wheelBase + controlCorrection,
+            -car.CarConfig.MaxCurvatureRequest,
+            car.CarConfig.MaxCurvatureRequest
+        );
+        float curvatureCorrection =
+            recoveryCurvature - previewSample.RefCurvature;
         float perceivedS = frontPose.S + _performance.BrakeMarkerErrorMeters;
         VehicleSpeedProfilePoint globalReference = _speedProfile!.Sample(perceivedS);
         VehicleSpeedProfilePoint speedReference = globalReference;
