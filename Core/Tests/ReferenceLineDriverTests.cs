@@ -212,10 +212,13 @@ public sealed class ReferenceLineDriverTests
             strategy: new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal)
         );
 
-        DriverInput protectInput = protectDriver.GetControl(in protect, 1f / 60f);
-        DriverInput attackInput = attackDriver.GetControl(in attack, 1f / 60f);
+        protectDriver.GetControl(in protect, 1f / 60f);
+        attackDriver.GetControl(in attack, 1f / 60f);
 
-        Assert.True(attackInput.DesiredAccel > protectInput.DesiredAccel);
+        Assert.True(
+            attackDriver.LastTelemetry.TargetSpeed >
+            protectDriver.LastTelemetry.TargetSpeed
+        );
     }
 
     private static RaceDriverFrameContext CreateContext(

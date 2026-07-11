@@ -198,7 +198,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
             car.Strategy,
             state.Speed,
             desiredCurvature,
-            _speedPlanner.Config.GetAccelerationUsage(car.Strategy.TireMode),
+            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
             referenceAcceleration
         );
         // The speed plan stores net vehicle acceleration, while DriverInput asks
@@ -418,7 +418,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy.TireMode)
+            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy)
         );
         return MathF.Max(limits.LateralAccelerationLimit, 1e-3f);
     }

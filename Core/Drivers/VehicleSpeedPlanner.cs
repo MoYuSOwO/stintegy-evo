@@ -47,7 +47,7 @@ public sealed class VehicleSpeedPlanner
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.GetAccelerationUsage(car.Strategy.TireMode)
+            gripUsage: Config.GetAccelerationUsage(car.Strategy)
         );
         return LateralSpeedLimit(
             curvature,
@@ -144,7 +144,7 @@ public sealed class VehicleSpeedPlanner
             _planningStrategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.GetAccelerationUsage(_planningStrategy.TireMode)
+            gripUsage: Config.GetAccelerationUsage(_planningStrategy)
         );
 
         for (int i = 0; i < count; i++)
@@ -245,7 +245,7 @@ public sealed class VehicleSpeedPlanner
                 _planningStrategy,
                 speed: 0f,
                 curvature: 0f,
-                gripUsage: Config.GetAccelerationUsage(_planningStrategy.TireMode)
+                gripUsage: Config.GetAccelerationUsage(_planningStrategy)
             );
 
             float maximumAbsoluteCurvature = 0f;
@@ -583,7 +583,7 @@ public sealed class VehicleSpeedPlanner
             _planningState == null ? car.Strategy : _planningStrategy,
             speed,
             curvature,
-            Config.GetAccelerationUsage(_planningStrategy.TireMode),
+            Config.GetAccelerationUsage(_planningStrategy),
             assumedLongitudinalAcceleration
         );
     }

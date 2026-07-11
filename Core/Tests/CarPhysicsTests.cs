@@ -403,9 +403,9 @@ public sealed class CarPhysicsTests
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
-        CarState save = CreateState(speed: 40f, batterySoc: 0.8f, tires);
-        CarState attack = CreateState(speed: 40f, batterySoc: 0.8f, tires);
-        DriverInput input = new(0f, 7f);
+        CarState save = CreateState(speed: 50f, batterySoc: 0.8f, tires);
+        CarState attack = CreateState(speed: 50f, batterySoc: 0.8f, tires);
+        DriverInput input = new(0f, car.MaxDriveAcceleration);
 
         StepMany(save, car, tires, input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Save), steps: 60);
         StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack), steps: 60);
@@ -413,6 +413,29 @@ public sealed class CarPhysicsTests
         Assert.True(attack.Speed > save.Speed, "attack battery mode should produce more straight-line speed");
         Assert.True(attack.BatterySoc < save.BatterySoc, "attack battery mode should spend more energy");
         Assert.True(attack.Telemetry.DrivePowerWatts > save.Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
+    }
+
+    [Fact]
+    public void DrivePowerSliderInterpolatesAbsoluteVehicleLimits()
+    {
+        CarConfig car = new();
+
+        Assert.Equal(330000f, car.GetDrivePowerLimitWatts(0f));
+        Assert.Equal(360000f, car.GetDrivePowerLimitWatts(0.25f));
+        Assert.Equal(390000f, car.GetDrivePowerLimitWatts(0.5f));
+        Assert.Equal(420000f, car.GetDrivePowerLimitWatts(0.75f));
+        Assert.Equal(455000f, car.GetDrivePowerLimitWatts(1f));
+        Assert.Equal(375000f, car.GetDrivePowerLimitWatts(0.375f));
+    }
+
+    [Fact]
+    public void CustomDrivePowerOverridesPresetWithinVehicleLimits()
+    {
+        CarConfig car = new();
+        CarStrategy strategy = CarStrategy.Default
+            .WithDrivePowerLimitWatts(407000f);
+
+        Assert.Equal(407000f, car.GetDrivePowerLimitWatts(strategy));
     }
 
     [Fact]

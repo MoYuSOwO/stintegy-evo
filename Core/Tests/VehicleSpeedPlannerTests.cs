@@ -15,11 +15,33 @@ public sealed class VehicleSpeedPlannerTests
     {
         VehicleSpeedPlanningConfig config = new();
 
-        Assert.Equal(0.88f, config.GetAccelerationUsage(TireUsageMode.Protect));
-        Assert.Equal(0.91f, config.GetAccelerationUsage(TireUsageMode.Light));
-        Assert.Equal(0.94f, config.GetAccelerationUsage(TireUsageMode.Normal));
-        Assert.Equal(0.97f, config.GetAccelerationUsage(TireUsageMode.Push));
+        Assert.Equal(0.95f, config.GetAccelerationUsage(TireUsageMode.Protect));
+        Assert.Equal(0.955f, config.GetAccelerationUsage(TireUsageMode.Light));
+        Assert.Equal(0.96f, config.GetAccelerationUsage(TireUsageMode.Normal));
+        Assert.Equal(0.98f, config.GetAccelerationUsage(TireUsageMode.Push));
         Assert.Equal(1f, config.GetAccelerationUsage(TireUsageMode.Attack));
+    }
+
+    [Fact]
+    public void TireSliderInterpolatesBetweenNonUniformPresets()
+    {
+        VehicleSpeedPlanningConfig config = new();
+
+        Assert.Equal(0.95f, config.GetAccelerationUsage(0f));
+        Assert.Equal(0.955f, config.GetAccelerationUsage(0.25f));
+        Assert.Equal(0.96f, config.GetAccelerationUsage(0.5f));
+        Assert.Equal(0.98f, config.GetAccelerationUsage(0.75f));
+        Assert.Equal(1f, config.GetAccelerationUsage(1f));
+        Assert.Equal(0.9575f, config.GetAccelerationUsage(0.375f));
+    }
+
+    [Fact]
+    public void CustomTireUsageOverridesPresetWithinCalibratedRange()
+    {
+        VehicleSpeedPlanningConfig config = new();
+        CarStrategy strategy = CarStrategy.Default.WithTireGripUsage(0.972f);
+
+        Assert.Equal(0.972f, config.GetAccelerationUsage(strategy));
     }
 
     [Fact]
@@ -82,7 +104,7 @@ public sealed class VehicleSpeedPlannerTests
         float defaultMaximum = planner.EstimateMaximumSpeedMetersPerSecond(defaultCar);
         float lowDragMaximum = planner.EstimateMaximumSpeedMetersPerSecond(lowDragCar);
 
-        Assert.InRange(defaultMaximum, 90f, 105f);
+        Assert.InRange(defaultMaximum, 105f, 115f);
         Assert.True(lowDragMaximum > 110f);
         Assert.True(lowDragMaximum > defaultMaximum + 20f);
         Assert.Equal(

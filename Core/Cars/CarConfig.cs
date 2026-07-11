@@ -23,6 +23,11 @@ public sealed class CarConfig
     public float LowSocPowerLimitStart { get; init; } = 0.08f;
     public float RegenEfficiency { get; init; } = 0.56f;
     public float RegenPowerCapWatts { get; init; } = 260000f;
+    public float SaveDrivePowerLimitWatts { get; init; } = 330000f;
+    public float EcoDrivePowerLimitWatts { get; init; } = 360000f;
+    public float NormalDrivePowerLimitWatts { get; init; } = 390000f;
+    public float PushDrivePowerLimitWatts { get; init; } = 420000f;
+    public float AttackDrivePowerLimitWatts { get; init; } = 455000f;
 
     public float RollingDragAccel { get; init; } = 0.18f;
     public float AeroDragAccelPerSpeedSquared { get; init; } = 0.00046f;
@@ -35,15 +40,51 @@ public sealed class CarConfig
 
     public float GetDrivePowerLimitWatts(BatteryOutputMode mode)
     {
-        return DrivePowerLimitsWatts[CarModeIndex.ToIndex(mode)];
+        return mode switch
+        {
+            BatteryOutputMode.Save => SaveDrivePowerLimitWatts,
+            BatteryOutputMode.Eco => EcoDrivePowerLimitWatts,
+            BatteryOutputMode.Normal => NormalDrivePowerLimitWatts,
+            BatteryOutputMode.Push => PushDrivePowerLimitWatts,
+            BatteryOutputMode.Attack => AttackDrivePowerLimitWatts,
+            _ => NormalDrivePowerLimitWatts
+        };
     }
 
-    private static readonly float[] DrivePowerLimitsWatts =
-    [
-        220000f,
-        260000f,
-        285000f,
-        365000f,
-        455000f
-    ];
+    public float GetDrivePowerLimitWatts(CarStrategy strategy)
+    {
+        if (!strategy.DrivePowerLimitWattsOverride.HasValue)
+            return GetDrivePowerLimitWatts(strategy.BatteryMode);
+
+        float minimum = Math.Min(
+            SaveDrivePowerLimitWatts,
+            AttackDrivePowerLimitWatts
+        );
+        float maximum = Math.Max(
+            SaveDrivePowerLimitWatts,
+            AttackDrivePowerLimitWatts
+        );
+        return Math.Clamp(
+            strategy.DrivePowerLimitWattsOverride.Value,
+            minimum,
+            maximum
+        );
+    }
+
+    public float GetDrivePowerLimitWatts(float sliderPosition)
+    {
+        float scaled = Math.Clamp(sliderPosition, 0f, 1f) * 4f;
+        int segment = Math.Min((int)scaled, 3);
+        float t = scaled - segment;
+        return segment switch
+        {
+            0 => Lerp(SaveDrivePowerLimitWatts, EcoDrivePowerLimitWatts, t),
+            1 => Lerp(EcoDrivePowerLimitWatts, NormalDrivePowerLimitWatts, t),
+            2 => Lerp(NormalDrivePowerLimitWatts, PushDrivePowerLimitWatts, t),
+            _ => Lerp(PushDrivePowerLimitWatts, AttackDrivePowerLimitWatts, t)
+        };
+    }
+
+    private static float Lerp(float from, float to, float t) =>
+        from + (to - from) * t;
 }

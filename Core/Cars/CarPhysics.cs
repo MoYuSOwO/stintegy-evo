@@ -60,8 +60,14 @@ public static class CarPhysics
 
         float frontLateral = lateralAcceleration * frontDemandShare;
         float rearLateral = lateralAcceleration * rearDemandShare;
-        float frontLongitudinal = RemainingLongitudinalGrip(frontGrip, frontLateral);
-        float rearLongitudinal = RemainingLongitudinalGrip(rearGrip, rearLateral);
+        float frontLongitudinal = RemainingLongitudinalGrip(
+            frontGrip,
+            frontLateral
+        );
+        float rearLongitudinal = RemainingLongitudinalGrip(
+            rearGrip,
+            rearLateral
+        );
 
         float gripDriveLimit = DistributedDriveLimit(
             frontLongitudinal,
@@ -71,7 +77,7 @@ public static class CarPhysics
         float batteryDriveLimit = CalculateDriveAccelLimit(
             state,
             config,
-            strategy.BatteryMode,
+            strategy,
             speed
         );
         float maximumDrive = Math.Min(
@@ -143,7 +149,10 @@ public static class CarPhysics
 
         if (desiredAccel >= 0f)
         {
-            float driveAccel = Math.Min(desiredAccel, CalculateDriveAccelLimit(state, config, input.Strategy.BatteryMode));
+            float driveAccel = Math.Min(
+                desiredAccel,
+                CalculateDriveAccelLimit(state, config, input.Strategy)
+            );
             frontLongRequest = driveAccel * config.FrontDriveShare;
             rearLongRequest = driveAccel - frontLongRequest;
             requestedLongitudinalAccel = driveAccel;
@@ -366,15 +375,24 @@ public static class CarPhysics
         state.Normalize();
     }
 
-    private static float CalculateDriveAccelLimit(CarState state, CarConfig config, BatteryOutputMode mode)
+    private static float CalculateDriveAccelLimit(
+        CarState state,
+        CarConfig config,
+        CarStrategy strategy
+    )
     {
-        return CalculateDriveAccelLimit(state, config, mode, state.Speed);
+        return CalculateDriveAccelLimit(
+            state,
+            config,
+            strategy,
+            state.Speed
+        );
     }
 
     private static float CalculateDriveAccelLimit(
         CarState state,
         CarConfig config,
-        BatteryOutputMode mode,
+        CarStrategy strategy,
         float speed
     )
     {
@@ -387,7 +405,7 @@ public static class CarPhysics
 
         float forceLimitedAccel = config.MaxDriveAcceleration;
         float powerLimitedAccel =
-            config.GetDrivePowerLimitWatts(mode) /
+            config.GetDrivePowerLimitWatts(strategy) /
             (config.MassKg * Math.Max(speed, config.MinPowerSpeed));
 
         return Math.Min(forceLimitedAccel, powerLimitedAccel) * socFactor;
