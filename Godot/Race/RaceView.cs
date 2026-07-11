@@ -56,14 +56,6 @@ public partial class RaceView : Node2D
             new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Normal),
             Color.FromHtml("#ff5d73")
         );
-        AddRaceCar(
-            id: "opponent",
-            track,
-            start: track.Grids[2],
-            new CarStrategy(TireUsageMode.Push, BatteryOutputMode.Eco),
-            Color.FromHtml("#4da3ff")
-        );
-
         if (ShowFrameStats)
             AddChild(new FrameTimeMonitor());
         StartCsvTelemetryIfRequested();
