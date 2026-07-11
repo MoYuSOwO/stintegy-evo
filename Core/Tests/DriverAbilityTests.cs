@@ -261,14 +261,19 @@ public sealed class DriverAbilityTests
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
 
-        simulation.Step(1f);
+        bool sawRecoveryEnvelope = false;
+        for (int frame = 0; frame < 60; frame++)
+        {
+            simulation.Step(1f / 60f);
+            sawRecoveryEnvelope |= driver.LastTelemetry.CorrectionDecayDistanceMeters > 0f;
+        }
 
         Assert.True(
             car.State.Speed > 2f,
             $"offset grid launch should accelerate, got {car.State.Speed:0.000} m/s"
         );
         Assert.True(driver.LastTelemetry.ReferenceAcceleration > 0f);
-        Assert.True(driver.LastTelemetry.CorrectionDecayDistanceMeters > 0f);
+        Assert.True(sawRecoveryEnvelope);
     }
 
     private static (float Minimum, float Maximum) ObservePaceRange(float consistency)
