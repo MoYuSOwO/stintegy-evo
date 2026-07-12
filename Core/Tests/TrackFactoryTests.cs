@@ -8,6 +8,26 @@ namespace StintegyEVO.Core.Tests;
 public sealed class TrackFactoryTests
 {
     [Fact]
+    public void TrackBuilderUsesInjectedReferenceLineSolver()
+    {
+        RecordingRefLineSolver solver = new();
+        TrackData track = new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 10f,
+                refLineSolver: solver
+            )
+            .AddStraight(80f)
+            .AddTurn(180f, 24f)
+            .AddStraight(80f)
+            .AddTurn(180f, 24f)
+            .CloseLoop()
+            .Build(default);
+
+        Assert.True(solver.WasCalled);
+        Assert.True(track.LengthMeters > 0f);
+    }
+
+    [Fact]
     public void SilverstoneUsesPublishedArenaGrandPrixGeometry()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
@@ -247,4 +267,15 @@ public sealed class TrackFactoryTests
     private static float Cross(Vector2 a, Vector2 b, Vector2 c) =>
         (b.X - a.X) * (c.Y - a.Y) -
         (b.Y - a.Y) * (c.X - a.X);
+
+    private sealed class RecordingRefLineSolver : IRefLineSolver
+    {
+        public bool WasCalled { get; private set; }
+
+        public RefLine Generate(IReadOnlyList<RefLineTrackPoint> track)
+        {
+            WasCalled = true;
+            return CenterLineRefLineSolver.Instance.Generate(track);
+        }
+    }
 }

@@ -8,7 +8,8 @@ namespace StintegyEVO.Core.Track;
 
 public class TrackBuilder
 {
-    private static readonly IRefLineSolver solver = new MinimumCurvatureRefLineSolver();
+    private static readonly IRefLineSolver DefaultRefLineSolver =
+        new MinimumCurvatureRefLineSolver();
 
     private readonly struct BuilderNode(Vector2 center, float width, float leftBuffer, float rightBuffer)
     {
@@ -30,6 +31,7 @@ public class TrackBuilder
     private readonly float _startLeftBuffer;
     private readonly float _startRightBuffer;
     private readonly float _startAngle;
+    private readonly IRefLineSolver _refLineSolver;
 
     private Vector2 currentPos;
     private float currentWidth;
@@ -37,13 +39,21 @@ public class TrackBuilder
     private float currentRightBuffer;
     private float currentAngle;
 
-    public TrackBuilder(Vector2 startPos, float startWidth, float startLeftBuffer = 0, float startRightBuffer = 0, float startAngleDeg = 0)
+    public TrackBuilder(
+        Vector2 startPos,
+        float startWidth,
+        float startLeftBuffer = 0,
+        float startRightBuffer = 0,
+        float startAngleDeg = 0,
+        IRefLineSolver? refLineSolver = null
+    )
     {
         _startPos = startPos;
         _startWidth = startWidth;
         _startLeftBuffer = startLeftBuffer;
         _startRightBuffer = startRightBuffer;
         _startAngle = MathHelper.DegToRad(startAngleDeg);
+        _refLineSolver = refLineSolver ?? DefaultRefLineSolver;
 
         currentPos = _startPos;
         currentWidth = _startWidth;
@@ -787,7 +797,7 @@ public class TrackBuilder
                 )
             );
         }
-        var refNodes = solver.Generate(refTrackPoints);
+        RefLine refNodes = _refLineSolver.Generate(refTrackPoints);
         List<TrackNode> resNodes = [];
         for (int i = 0; i < nodes.Count; i++)
         {
