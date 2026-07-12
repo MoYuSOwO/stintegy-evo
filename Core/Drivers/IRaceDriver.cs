@@ -1,3 +1,4 @@
+using System;
 using TheStint.Core.Cars;
 using TheStint.Core.Racing;
 using TheStint.Core.Track;
@@ -32,5 +33,14 @@ public readonly record struct RaceDriverFrameContext(
     TrackData Track,
     TrackPose Pose,
     RaceEnvironment Environment,
-    float RaceTimeSeconds
-);
+    float RaceTimeSeconds,
+    RaceFrameSnapshot Frame = default,
+    int CarSnapshotIndex = -1
+)
+{
+    public bool HasFrameSnapshot => CarSnapshotIndex >= 0 && CarSnapshotIndex < Frame.Count;
+
+    public RaceCarSnapshot CarSnapshot => HasFrameSnapshot
+        ? Frame[CarSnapshotIndex]
+        : throw new InvalidOperationException("This driver context has no race-frame snapshot.");
+}

@@ -33,6 +33,81 @@ public sealed class RaceSimulationTests
     }
 
     [Fact]
+    public void StepSharesOneFrozenVehicleFrameWithEveryDriver()
+    {
+        TrackData track = BuildTrack();
+        TrackSample firstStart = track.Sample(12f);
+        TrackSample secondStart = track.Sample(42f);
+        SnapshotTrafficDriver firstDriver = new("second");
+        SnapshotTrafficDriver secondDriver = new("first");
+        RaceCar first = CreateRaceCar("first", track, firstStart, speed: 12f, firstDriver);
+        RaceCar second = CreateRaceCar("second", track, secondStart, speed: 24f, secondDriver);
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(first);
+        simulation.AddCar(second);
+
+        simulation.Step(1f / 120f);
+
+        Assert.True(firstDriver.LastContext.HasFrameSnapshot);
+        Assert.True(secondDriver.LastContext.HasFrameSnapshot);
+        Assert.Equal("first", firstDriver.LastContext.CarSnapshot.Id);
+        Assert.Equal("second", secondDriver.LastContext.CarSnapshot.Id);
+        Assert.Equal(2, firstDriver.LastContext.Frame.Count);
+        Assert.Equal(2, secondDriver.LastContext.Frame.Count);
+        Assert.Equal(24f, firstDriver.ObservedSpeedMetersPerSecond);
+        Assert.Equal(12f, secondDriver.ObservedSpeedMetersPerSecond);
+        Assert.Equal(
+            firstDriver.LastContext.Frame[0],
+            secondDriver.LastContext.Frame[0]
+        );
+        Assert.Equal(
+            firstDriver.LastContext.Frame[1],
+            secondDriver.LastContext.Frame[1]
+        );
+
+        RaceFrameSnapshot capturedFrame = firstDriver.LastContext.Frame;
+        first.State.Speed = 99f;
+        Assert.True(capturedFrame.TryGetCar("first", out RaceCarSnapshot capturedFirst));
+        Assert.Equal(12f, capturedFirst.SpeedMetersPerSecond);
+    }
+
+    [Fact]
+    public void PhysicsResultsAreCommittedAfterEveryDriverEvaluates()
+    {
+        TrackData track = BuildTrack();
+        TrackSample firstStart = track.Sample(12f);
+        TrackSample secondStart = track.Sample(42f);
+        FixedDriver acceleratingDriver = new(new DriverInput(0f, 8f));
+        RaceCar first = CreateRaceCar("first", track, firstStart, speed: 12f, acceleratingDriver);
+        LiveSpeedProbeDriver probeDriver = new(first);
+        RaceCar second = CreateRaceCar("second", track, secondStart, speed: 12f, probeDriver);
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(first);
+        simulation.AddCar(second);
+
+        simulation.Step(1f / 120f);
+
+        Assert.Equal(12f, probeDriver.ObservedSpeedMetersPerSecond);
+        Assert.NotEqual(12f, first.State.Speed);
+    }
+
+    [Fact]
+    public void SnapshotBasedInputsDoNotDependOnCarInsertionOrder()
+    {
+        TrackData track = BuildTrack();
+        var forwardOrder = BuildTrafficAwareSimulation(track, reverseOrder: false);
+        var reverseOrder = BuildTrafficAwareSimulation(track, reverseOrder: true);
+
+        forwardOrder.Simulation.Step(1f / 120f);
+        reverseOrder.Simulation.Step(1f / 120f);
+
+        Assert.Equal(forwardOrder.First.LastInput, reverseOrder.First.LastInput);
+        Assert.Equal(forwardOrder.Second.LastInput, reverseOrder.Second.LastInput);
+        Assert.Equal(2.4f, forwardOrder.First.LastInput.DesiredAccel);
+        Assert.Equal(1.2f, forwardOrder.Second.LastInput.DesiredAccel);
+    }
+
+    [Fact]
     public void RaceEnvironmentAirTemperatureFeedsTireCooling()
     {
         TrackData track = BuildTrack();
@@ -400,6 +475,43 @@ public sealed class RaceSimulationTests
         };
     }
 
+    private static (
+        RaceSimulation Simulation,
+        RaceCar First,
+        RaceCar Second
+    ) BuildTrafficAwareSimulation(TrackData track, bool reverseOrder)
+    {
+        SnapshotTrafficDriver firstDriver = new("second");
+        SnapshotTrafficDriver secondDriver = new("first");
+        RaceCar first = CreateRaceCar(
+            "first",
+            track,
+            track.Sample(12f),
+            speed: 12f,
+            firstDriver
+        );
+        RaceCar second = CreateRaceCar(
+            "second",
+            track,
+            track.Sample(42f),
+            speed: 24f,
+            secondDriver
+        );
+        RaceSimulation simulation = new(track);
+        if (reverseOrder)
+        {
+            simulation.AddCar(second);
+            simulation.AddCar(first);
+        }
+        else
+        {
+            simulation.AddCar(first);
+            simulation.AddCar(second);
+        }
+
+        return (simulation, first, second);
+    }
+
     private static void StepMany(RaceSimulation simulation, int steps)
     {
         for (int i = 0; i < steps; i++)
@@ -462,6 +574,33 @@ public sealed class RaceSimulationTests
             CallCount++;
             LastContext = context;
             return Input;
+        }
+    }
+
+    private sealed class SnapshotTrafficDriver(string observedCarId) : IRaceDriver
+    {
+        public RaceDriverFrameContext LastContext { get; private set; }
+        public float ObservedSpeedMetersPerSecond { get; private set; }
+
+        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        {
+            LastContext = context;
+            if (!context.Frame.TryGetCar(observedCarId, out RaceCarSnapshot observed))
+                throw new InvalidOperationException($"Missing car snapshot '{observedCarId}'.");
+
+            ObservedSpeedMetersPerSecond = observed.SpeedMetersPerSecond;
+            return new DriverInput(0f, observed.SpeedMetersPerSecond * 0.1f);
+        }
+    }
+
+    private sealed class LiveSpeedProbeDriver(RaceCar observedCar) : IRaceDriver
+    {
+        public float ObservedSpeedMetersPerSecond { get; private set; }
+
+        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        {
+            ObservedSpeedMetersPerSecond = observedCar.State.Speed;
+            return new DriverInput(0f, 0f);
         }
     }
 }
