@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace TheStint.Core.Track.RefLines;
+namespace StintegyEVO.Core.Track.RefLines;
 
 public readonly record struct RefLineTrackPoint(
     Vector2 Center,

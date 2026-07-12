@@ -1,7 +1,7 @@
 using System;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Track;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 public sealed class RaceProgress
 {

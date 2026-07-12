@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 public readonly record struct VehiclePathPredictionPoint(
     float DistanceMeters,

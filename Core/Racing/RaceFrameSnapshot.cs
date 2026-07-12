@@ -1,10 +1,10 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Cars;
-using TheStint.Core.Track;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 /// <summary>
 /// Immutable vehicle data captured before any driver is evaluated for a physics substep.

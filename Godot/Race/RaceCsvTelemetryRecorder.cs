@@ -2,10 +2,10 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using TheStint.Core.Cars;
-using TheStint.Core.Drivers;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Presentation.Race;
 

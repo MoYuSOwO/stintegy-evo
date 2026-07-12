@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using TheStint.Core.Track.Numerics;
+using StintegyEVO.Core.Track.Numerics;
 using System.Numerics;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Track.RefLines;
+namespace StintegyEVO.Core.Track.RefLines;
 
 public sealed class MinimumCurvatureRefLineSolver : IRefLineSolver
 {

@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Numerics;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Track.RefLines;
+namespace StintegyEVO.Core.Track.RefLines;
 
 public sealed class CenterLineRefLineSolver : IRefLineSolver
 {

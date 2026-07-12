@@ -1,4 +1,4 @@
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 public readonly record struct DynamicPathSpeedPlan(
     VehicleSpeedPlanPoint Current,

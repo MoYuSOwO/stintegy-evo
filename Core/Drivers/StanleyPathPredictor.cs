@@ -1,11 +1,11 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Cars;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
 /// Rolls the current Stanley control law forward in space. Commanded curvature

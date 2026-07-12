@@ -1,11 +1,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using TheStint.Core.Cars;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
 /// Builds car-specific rolling speed lookaheads with lateral limits plus

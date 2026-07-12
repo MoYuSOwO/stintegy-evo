@@ -1,7 +1,7 @@
 using System;
 using Godot;
 using StintegyEVO.Presentation.Interop;
-using CoreRaceCar = TheStint.Core.Racing.RaceCar;
+using CoreRaceCar = StintegyEVO.Core.Racing.RaceCar;
 
 namespace StintegyEVO.Presentation.Car;
 

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>StintegyEVO.Core.Tests</RootNamespace>
     <RollForward>Major</RollForward>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -9,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../TheStint.Core.csproj" />
+    <ProjectReference Include="../StintegyEVO.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

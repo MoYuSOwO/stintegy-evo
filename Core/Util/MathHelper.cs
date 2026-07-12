@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
 
-namespace TheStint.Core.Util;
+namespace StintegyEVO.Core.Util;
 
 public static class MathHelper
 {

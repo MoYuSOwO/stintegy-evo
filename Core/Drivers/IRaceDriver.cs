@@ -1,9 +1,9 @@
 using System;
-using TheStint.Core.Cars;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 public interface IRaceDriver
 {

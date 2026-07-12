@@ -1,4 +1,4 @@
-namespace TheStint.Core.Track.RefLines;
+namespace StintegyEVO.Core.Track.RefLines;
 
 public static class TrackPlanningBounds
 {

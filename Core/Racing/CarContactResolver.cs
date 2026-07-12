@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using TheStint.Core.Cars;
+using StintegyEVO.Core.Cars;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 public static class CarContactResolver
 {

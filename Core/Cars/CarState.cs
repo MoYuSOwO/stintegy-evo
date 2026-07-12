@@ -1,8 +1,8 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Cars;
+namespace StintegyEVO.Core.Cars;
 
 public sealed class CarState
 {

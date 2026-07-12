@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Numerics;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 public struct TrackGridConfig
 {

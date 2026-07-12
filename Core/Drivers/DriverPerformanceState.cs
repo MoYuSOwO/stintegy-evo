@@ -1,6 +1,6 @@
 using System;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
 /// Seeded, slowly varying execution state. No random value is sampled at the

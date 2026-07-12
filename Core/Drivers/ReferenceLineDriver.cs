@@ -1,10 +1,10 @@
 using System;
 using System.Diagnostics;
-using TheStint.Core.Cars;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
 /// Tracks the global racing line with Stanley steering, predicts the spatial

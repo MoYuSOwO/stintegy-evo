@@ -1,4 +1,4 @@
-namespace TheStint.Core.Cars;
+namespace StintegyEVO.Core.Cars;
 
 public sealed class CarConfig
 {

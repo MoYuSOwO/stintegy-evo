@@ -1,9 +1,9 @@
 using System.Numerics;
-using TheStint.Core.Track;
-using TheStint.Core.Track.RefLines;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Track.RefLines;
 using Xunit;
 
-namespace TheStint.Core.Tests;
+namespace StintegyEVO.Core.Tests;
 
 public sealed class TrackFactoryTests
 {

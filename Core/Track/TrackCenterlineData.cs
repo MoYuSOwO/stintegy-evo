@@ -5,7 +5,7 @@ using System.IO;
 using System.Numerics;
 using System.Reflection;
 
-namespace TheStint.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 internal readonly record struct TrackCenterlinePoint(
     Vector2 Center,
@@ -45,7 +45,7 @@ internal static class TrackCenterlineData
     )
     {
         Assembly assembly = typeof(TrackCenterlineData).Assembly;
-        string resourceName = $"TheStint.Core.Track.Data.{fileName}";
+        string resourceName = $"StintegyEVO.Core.Track.Data.{fileName}";
         using Stream stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException(
                 $"Embedded track centerline '{resourceName}' was not found."

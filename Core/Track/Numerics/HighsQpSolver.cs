@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Highs;
 
-namespace TheStint.Core.Track.Numerics;
+namespace StintegyEVO.Core.Track.Numerics;
 
 public sealed class HighsQpSolver : IQpSolver
 {

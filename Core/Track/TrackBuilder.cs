@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using TheStint.Core.Track.RefLines;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Track.RefLines;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 public class TrackBuilder
 {

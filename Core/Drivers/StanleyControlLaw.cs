@@ -1,9 +1,9 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Track;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 internal readonly record struct StanleyControlSample(
     TrackPose FrontPose,

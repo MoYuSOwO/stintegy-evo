@@ -1,8 +1,8 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Cars;
+using StintegyEVO.Core.Cars;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 internal readonly record struct CarBodyGeometry(
     Vector2 Center,

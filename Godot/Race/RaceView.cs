@@ -6,10 +6,10 @@ using StintegyEVO.Presentation.Car;
 using StintegyEVO.Presentation.Debug;
 using StintegyEVO.Presentation.Interop;
 using StintegyEVO.Presentation.Track;
-using TheStint.Core.Cars;
-using TheStint.Core.Drivers;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
 using GVector2 = Godot.Vector2;
 using NVector2 = System.Numerics.Vector2;
 

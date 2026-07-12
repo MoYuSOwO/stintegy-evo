@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace TheStint.Core.Track.RefLines;
+namespace StintegyEVO.Core.Track.RefLines;
 
 public interface IRefLineSolver
 {

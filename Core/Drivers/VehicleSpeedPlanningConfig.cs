@@ -1,6 +1,6 @@
-using TheStint.Core.Cars;
+using StintegyEVO.Core.Cars;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 public sealed class VehicleSpeedPlanningConfig
 {

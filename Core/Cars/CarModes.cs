@@ -1,6 +1,6 @@
 using System;
 
-namespace TheStint.Core.Cars;
+namespace StintegyEVO.Core.Cars;
 
 public enum BatteryOutputMode
 {

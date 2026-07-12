@@ -1,7 +1,7 @@
 using System;
 using BlasSharp;
 
-namespace TheStint.Core.Track.Numerics;
+namespace StintegyEVO.Core.Track.Numerics;
 
 public sealed class BlasSharpLinearAlgebraBackend(ILapackOperations lapack, string name) : ILinearAlgebraBackend
 {

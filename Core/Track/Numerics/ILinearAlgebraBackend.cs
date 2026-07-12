@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using BlasSharp.AppleAccelerate;
 using BlasSharp.OpenBlas;
 
-namespace TheStint.Core.Track.Numerics;
+namespace StintegyEVO.Core.Track.Numerics;
 
 public interface ILinearAlgebraBackend
 {

@@ -1,7 +1,7 @@
 using System.Numerics;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Track;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 public readonly record struct TrackBoundaryContact(
     TrackSide Side,

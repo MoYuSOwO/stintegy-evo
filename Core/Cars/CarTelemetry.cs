@@ -1,4 +1,4 @@
-namespace TheStint.Core.Cars;
+namespace StintegyEVO.Core.Cars;
 
 public readonly record struct CarTelemetry(
     DriverInput Input,

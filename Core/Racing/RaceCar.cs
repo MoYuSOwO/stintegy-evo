@@ -1,8 +1,8 @@
 using System;
-using TheStint.Core.Cars;
-using TheStint.Core.Drivers;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 public sealed class RaceCar
 {

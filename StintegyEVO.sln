@@ -2,9 +2,9 @@
 # Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO", "StintegyEVO.csproj", "{17422C1D-9D51-46C8-997F-BE0B560AC849}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TheStint.Core", "Core\TheStint.Core.csproj", "{E34B180F-843B-4A6E-9E05-4202C506D02C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO.Core", "Core\StintegyEVO.Core.csproj", "{E34B180F-843B-4A6E-9E05-4202C506D02C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TheStint.Core.Tests", "Core\Tests\TheStint.Core.Tests.csproj", "{8F3D166E-01B1-4823-A6A8-B5F7E5413BBA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO.Core.Tests", "Core\Tests\StintegyEVO.Core.Tests.csproj", "{8F3D166E-01B1-4823-A6A8-B5F7E5413BBA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Repository Files", "Repository Files", "{3E3A1EE2-9A35-4FD3-A77A-47B27D8166D6}"
 	ProjectSection(SolutionItems) = preProject

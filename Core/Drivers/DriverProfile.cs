@@ -1,6 +1,6 @@
 using System;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
 /// Stable, manager-facing driver ratings. Ratings describe the driver's mean

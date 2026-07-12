@@ -1,4 +1,4 @@
-namespace TheStint.Core.Cars;
+namespace StintegyEVO.Core.Cars;
 
 internal readonly record struct CarPerformanceLimits(
     float LateralAccelerationLimit,

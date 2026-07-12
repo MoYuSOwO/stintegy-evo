@@ -1,4 +1,4 @@
-namespace TheStint.Core.Track.Numerics;
+namespace StintegyEVO.Core.Track.Numerics;
 
 public interface IQpSolver
 {

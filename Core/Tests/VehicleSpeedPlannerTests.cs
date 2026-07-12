@@ -1,12 +1,12 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Cars;
-using TheStint.Core.Drivers;
-using TheStint.Core.Racing;
-using TheStint.Core.Track;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
 using Xunit;
 
-namespace TheStint.Core.Tests;
+namespace StintegyEVO.Core.Tests;
 
 public sealed class VehicleSpeedPlannerTests
 {

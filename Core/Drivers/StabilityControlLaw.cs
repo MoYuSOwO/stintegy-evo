@@ -1,6 +1,6 @@
 using System;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
 /// Copyable observation memory used by the stability controller. The live

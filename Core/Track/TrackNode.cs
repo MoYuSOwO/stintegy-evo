@@ -1,7 +1,7 @@
 using System.Numerics;
-using TheStint.Core.Track.RefLines;
+using StintegyEVO.Core.Track.RefLines;
 
-namespace TheStint.Core.Track;
+namespace StintegyEVO.Core.Track;
 
 internal readonly record struct TrackNode(
     Vector2 Center, Vector2 Tangent,

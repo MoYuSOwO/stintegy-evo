@@ -1,10 +1,10 @@
 using System;
 using System.Numerics;
-using TheStint.Core.Cars;
-using TheStint.Core.Track;
-using TheStint.Core.Util;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Util;
 
-namespace TheStint.Core.Racing;
+namespace StintegyEVO.Core.Racing;
 
 public static class TrackBoundaryResolver
 {

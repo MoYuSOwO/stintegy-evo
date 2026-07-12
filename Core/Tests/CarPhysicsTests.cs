@@ -1,7 +1,7 @@
-using TheStint.Core.Cars;
+using StintegyEVO.Core.Cars;
 using Xunit;
 
-namespace TheStint.Core.Tests;
+namespace StintegyEVO.Core.Tests;
 
 public sealed class CarPhysicsTests
 {

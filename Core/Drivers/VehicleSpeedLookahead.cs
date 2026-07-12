@@ -1,6 +1,6 @@
 using System;
 
-namespace TheStint.Core.Drivers;
+namespace StintegyEVO.Core.Drivers;
 
 public readonly record struct VehicleSpeedPlanPoint(
     float TargetSpeed,
