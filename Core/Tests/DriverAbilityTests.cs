@@ -73,6 +73,61 @@ public sealed class DriverAbilityTests
     }
 
     [Fact]
+    public void CarControlAndConsistencyProduceBoundedBrakeBiasError()
+    {
+        TrackData eliteTrack = TrackFactory.SimpleTestTrack();
+        TrackData developingTrack = TrackFactory.SimpleTestTrack();
+        RaceCar elite = CreateCar(
+            eliteTrack,
+            "brake-elite",
+            new DriverAbilities
+            {
+                CarControl = 100f,
+                Consistency = 100f
+            },
+            seed: 42
+        );
+        RaceCar developing = CreateCar(
+            developingTrack,
+            "brake-developing",
+            new DriverAbilities
+            {
+                CarControl = 25f,
+                Consistency = 35f
+            },
+            seed: 42
+        );
+        RaceSimulation eliteSimulation = new(eliteTrack);
+        RaceSimulation developingSimulation = new(developingTrack);
+        eliteSimulation.AddCar(elite);
+        developingSimulation.AddCar(developing);
+
+        float eliteMaximumError = 0f;
+        float developingMaximumError = 0f;
+        for (int frame = 0; frame < 600; frame++)
+        {
+            eliteSimulation.Step(1f / 60f);
+            developingSimulation.Step(1f / 60f);
+            eliteMaximumError = MathF.Max(
+                eliteMaximumError,
+                MathF.Abs(elite.LastInput.FrontBrakeBiasOffset)
+            );
+            developingMaximumError = MathF.Max(
+                developingMaximumError,
+                MathF.Abs(developing.LastInput.FrontBrakeBiasOffset)
+            );
+        }
+
+        Assert.InRange(eliteMaximumError, 0f, 1e-6f);
+        Assert.InRange(developingMaximumError, 0.002f, 0.0701f);
+        Assert.Equal(
+            developing.LastInput.FrontBrakeBiasOffset,
+            ((ReferenceLineDriver)developing.Driver)
+            .LastTelemetry.FrontBrakeBiasOffset
+        );
+    }
+
+    [Fact]
     public void SameSeedAndIdentityReproduceDriverForms()
     {
         DriverAbilities abilities = new()

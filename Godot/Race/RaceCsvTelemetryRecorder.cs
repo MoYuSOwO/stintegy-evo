@@ -56,7 +56,8 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "effective_pace,pace_efficiency,effective_control,effective_tire_management," +
             "tire_energy_efficiency,effective_adaptability,actual_grip,estimated_grip," +
             "estimated_grip_scale,brake_marker_error_m,lateral_target_error_m," +
-            "local_speed_error_fraction,control_severity,control_curvature_correction," +
+            "local_speed_error_fraction,front_brake_bias_offset,control_severity," +
+            "control_curvature_correction," +
             "driver_recovering"
         );
     }
@@ -197,6 +198,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             control.BrakeMarkerErrorMeters,
             control.LateralTargetErrorMeters,
             control.LocalSpeedErrorFraction,
+            control.FrontBrakeBiasOffset,
             control.ControlSeverity,
             control.ControlCurvatureCorrection,
             control.IsRecovering ? 1 : 0

@@ -119,6 +119,33 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
+    public void BrakeBiasErrorIsIncludedInSpeedPlanning()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedPlanner idealPlanner = new();
+        VehicleSpeedPlanner biasedPlanner = new();
+
+        VehicleSpeedLookahead ideal = ReferenceLookahead(
+            idealPlanner,
+            car,
+            track,
+            DriverPlanningModifiers.Neutral
+        );
+        VehicleSpeedLookahead biased = ReferenceLookahead(
+            biasedPlanner,
+            car,
+            track,
+            new DriverPlanningModifiers(1f, 1f, 0.07f)
+        );
+
+        Assert.True(
+            AverageSpeed(biased) < AverageSpeed(ideal),
+            "the planner should brake earlier when axle allocation is imperfect"
+        );
+    }
+
+    [Fact]
     public void MaximumSpeedEstimateAdaptsToVehicleCapabilityBeyondOldFixedCap()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -410,6 +437,21 @@ public sealed class VehicleSpeedPlannerTests
         TrackData track
     )
     {
+        return ReferenceLookahead(
+            planner,
+            car,
+            track,
+            DriverPlanningModifiers.Neutral
+        );
+    }
+
+    private static VehicleSpeedLookahead ReferenceLookahead(
+        VehicleSpeedPlanner planner,
+        RaceCar car,
+        TrackData track,
+        DriverPlanningModifiers modifiers
+    )
+    {
         VehicleSpeedPlanningConfig config = planner.Config;
         return planner.PlanReferenceLookahead(
             car,
@@ -417,7 +459,7 @@ public sealed class VehicleSpeedPlannerTests
             track.Project(car.State.Position).S,
             config.SpeedPlanningHorizonMeters,
             config.PathPredictionStepMeters,
-            DriverPlanningModifiers.Neutral
+            modifiers
         );
     }
 

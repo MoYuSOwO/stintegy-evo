@@ -29,7 +29,8 @@ public static class CarPhysics
         float speed,
         float curvature,
         float gripUsage = 1f,
-        float assumedLongitudinalAcceleration = 0f
+        float assumedLongitudinalAcceleration = 0f,
+        float frontBrakeBiasOffset = 0f
     )
     {
         float lateralAcceleration = speed * speed * curvature;
@@ -69,7 +70,7 @@ public static class CarPhysics
             rearLateral
         );
 
-        float gripDriveLimit = DistributedDriveLimit(
+        float gripDriveLimit = DistributedLongitudinalLimit(
             frontLongitudinal,
             rearLongitudinal,
             config.FrontDriveShare
@@ -84,9 +85,18 @@ public static class CarPhysics
             config.MaxDriveAcceleration,
             Math.Min(gripDriveLimit, batteryDriveLimit)
         );
+        float frontBrakeShare = BiasedFrontBrakeShare(
+            frontLongitudinal,
+            rearLongitudinal,
+            frontBrakeBiasOffset
+        );
         float maximumBrake = Math.Min(
             config.MaxBrakeAccel,
-            frontLongitudinal + rearLongitudinal
+            DistributedLongitudinalLimit(
+                frontLongitudinal,
+                rearLongitudinal,
+                frontBrakeShare
+            )
         );
         float lateralUse = Math.Abs(lateralAcceleration) / Math.Max(frontGrip + rearGrip, Epsilon);
         float loss = CalculateLossAccel(config, speed, lateralUse);
@@ -166,6 +176,7 @@ public static class CarPhysics
                 rearLatRequest,
                 frontGrip,
                 rearGrip,
+                input.DriverInput.FrontBrakeBiasOffset,
                 out float frontBrake,
                 out float rearBrake
             );
@@ -444,18 +455,18 @@ public static class CarPhysics
         return Lerp(driveRequest, targetDrive, strength);
     }
 
-    private static float DistributedDriveLimit(
+    private static float DistributedLongitudinalLimit(
         float frontCapacity,
         float rearCapacity,
-        float frontDriveShare
+        float frontShare
     )
     {
-        float frontShare = Math.Clamp(frontDriveShare, 0f, 1f);
-        float rearShare = 1f - frontShare;
+        float normalizedFrontShare = Math.Clamp(frontShare, 0f, 1f);
+        float rearShare = 1f - normalizedFrontShare;
         float limit = float.PositiveInfinity;
 
-        if (frontShare > Epsilon)
-            limit = Math.Min(limit, frontCapacity / frontShare);
+        if (normalizedFrontShare > Epsilon)
+            limit = Math.Min(limit, frontCapacity / normalizedFrontShare);
         if (rearShare > Epsilon)
             limit = Math.Min(limit, rearCapacity / rearShare);
 
@@ -468,6 +479,7 @@ public static class CarPhysics
         float rearLateralRequest,
         float frontGrip,
         float rearGrip,
+        float frontBrakeBiasOffset,
         out float frontBrake,
         out float rearBrake
     )
@@ -480,9 +492,12 @@ public static class CarPhysics
             rearGrip,
             rearLateralRequest
         );
-        float totalCapacity = frontCapacity + rearCapacity;
-
-        if (totalCapacity <= Epsilon)
+        float frontShare = BiasedFrontBrakeShare(
+            frontCapacity,
+            rearCapacity,
+            frontBrakeBiasOffset
+        );
+        if (frontCapacity + rearCapacity <= Epsilon)
         {
             float totalGrip = frontGrip + rearGrip;
             if (totalGrip <= Epsilon)
@@ -494,13 +509,34 @@ public static class CarPhysics
 
             // Both axles are already at their lateral limit. Preserve the
             // requested combined-demand behavior and let ResolveAxle clip it.
-            frontBrake = brakeRequest * frontGrip / totalGrip;
+            frontShare = BiasedFrontBrakeShare(
+                frontGrip,
+                rearGrip,
+                frontBrakeBiasOffset
+            );
+            frontBrake = brakeRequest * frontShare;
             rearBrake = brakeRequest - frontBrake;
             return;
         }
 
-        frontBrake = brakeRequest * frontCapacity / totalCapacity;
+        frontBrake = brakeRequest * frontShare;
         rearBrake = brakeRequest - frontBrake;
+    }
+
+    private static float BiasedFrontBrakeShare(
+        float frontCapacity,
+        float rearCapacity,
+        float frontBrakeBiasOffset
+    )
+    {
+        float totalCapacity = frontCapacity + rearCapacity;
+        float optimalFrontShare = totalCapacity <= Epsilon
+            ? 0.5f
+            : frontCapacity / totalCapacity;
+        float finiteOffset = float.IsFinite(frontBrakeBiasOffset)
+            ? Math.Clamp(frontBrakeBiasOffset, -0.25f, 0.25f)
+            : 0f;
+        return Math.Clamp(optimalFrontShare + finiteOffset, 0f, 1f);
     }
 
     private static AxleResult ResolveAxle(

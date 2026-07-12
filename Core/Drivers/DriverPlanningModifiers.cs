@@ -4,10 +4,11 @@ namespace TheStint.Core.Drivers;
 
 public readonly record struct DriverPlanningModifiers(
     float PaceEfficiency,
-    float EstimatedGripScale
+    float EstimatedGripScale,
+    float FrontBrakeBiasOffset
 )
 {
-    public static readonly DriverPlanningModifiers Neutral = new(1f, 1f);
+    public static readonly DriverPlanningModifiers Neutral = new(1f, 1f, 0f);
 
     internal float CombinedConfidence => Math.Clamp(
         PaceEfficiency * EstimatedGripScale,

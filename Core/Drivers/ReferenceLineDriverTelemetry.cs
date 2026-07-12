@@ -44,6 +44,7 @@ public readonly record struct ReferenceLineDriverTelemetry(
     float BrakeMarkerErrorMeters,
     float LateralTargetErrorMeters,
     float LocalSpeedErrorFraction,
+    float FrontBrakeBiasOffset,
     float ControlSeverity,
     float ControlCurvatureCorrection,
     bool IsRecovering

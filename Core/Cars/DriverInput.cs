@@ -2,7 +2,10 @@ namespace TheStint.Core.Cars;
 
 public readonly record struct DriverInput(
     float DesiredCurvature,
-    float DesiredAccel
+    float DesiredAccel,
+    // Signed fraction of total braking demand. Positive values move braking
+    // toward the front axle; zero retains the dynamically optimal split.
+    float FrontBrakeBiasOffset = 0f
 );
 
 public readonly record struct CarStrategy

@@ -12,6 +12,9 @@ internal sealed class DriverPerformanceState
     private const float SegmentLengthMeters = 40f;
     private const float MaximumAbilityVolatility = 0.12f;
     private const float ErrorFilterTimeSeconds = 0.35f;
+    private const float MaximumLapBrakeBiasFraction = 0.025f;
+    private const float MaximumSegmentBrakeJitterFraction = 0.035f;
+    private const float MaximumBrakeBiasErrorFraction = 0.07f;
 
     private readonly DriverAbilities _abilities;
     private readonly DriverRandom _random;
@@ -20,6 +23,8 @@ internal sealed class DriverPerformanceState
     private float _targetBrakeMarkerErrorMeters;
     private float _targetLateralErrorMeters;
     private float _targetLocalSpeedErrorFraction;
+    private float _lapBrakeBiasFraction;
+    private float _targetFrontBrakeBiasOffset;
     private float _gripEstimateBias;
     private bool _gripInitialized;
 
@@ -44,6 +49,7 @@ internal sealed class DriverPerformanceState
     public float BrakeMarkerErrorMeters { get; private set; }
     public float LateralTargetErrorMeters { get; private set; }
     public float LocalSpeedErrorFraction { get; private set; }
+    public float FrontBrakeBiasOffset { get; private set; }
     public float EstimatedGrip { get; private set; }
     public float EstimatedGripScale { get; private set; } = 1f;
     public float ActualGrip { get; private set; }
@@ -91,6 +97,11 @@ internal sealed class DriverPerformanceState
         BrakeMarkerErrorMeters = Lerp(BrakeMarkerErrorMeters, _targetBrakeMarkerErrorMeters, response);
         LateralTargetErrorMeters = Lerp(LateralTargetErrorMeters, _targetLateralErrorMeters, response);
         LocalSpeedErrorFraction = Lerp(LocalSpeedErrorFraction, _targetLocalSpeedErrorFraction, response);
+        FrontBrakeBiasOffset = Lerp(
+            FrontBrakeBiasOffset,
+            _targetFrontBrakeBiasOffset,
+            response
+        );
 
         UpdateGripEstimate(actualGrip, dt);
     }
@@ -125,6 +136,14 @@ internal sealed class DriverPerformanceState
         EffectiveTireManagement = SampleAbility(_abilities.TireManagement, longRunForm);
         EffectiveAdaptability = SampleAbility(_abilities.Adaptability, longRunForm);
 
+        // Brake allocation is an execution skill rather than another manager-
+        // facing rating. Car control sets the typical error; consistency decides
+        // how much it wanders from one track segment to the next.
+        float brakeControlError = MathF.Pow(1f - EffectiveControl, 1.25f);
+        _lapBrakeBiasFraction = _random.NextNormal() *
+                                MaximumLapBrakeBiasFraction *
+                                brakeControlError;
+
         float adaptabilityError = MathF.Pow(1f - EffectiveAdaptability, 1.2f);
         _gripEstimateBias = _random.NextNormal() * 0.03f * adaptabilityError;
     }
@@ -138,6 +157,18 @@ internal sealed class DriverPerformanceState
         _targetBrakeMarkerErrorMeters = _random.NextNormal() * 1.5f * consistencyError;
         _targetLateralErrorMeters = _random.NextNormal() * 0.25f * consistencyError;
         _targetLocalSpeedErrorFraction = _random.NextNormal() * 0.012f * consistencyError;
+
+        float brakeControlError = MathF.Pow(1f - EffectiveControl, 1.25f);
+        float brakeJitterScale = Lerp(0.2f, 1f, consistencyError);
+        _targetFrontBrakeBiasOffset = Math.Clamp(
+            _lapBrakeBiasFraction +
+            _random.NextNormal() *
+            MaximumSegmentBrakeJitterFraction *
+            brakeControlError *
+            brakeJitterScale,
+            -MaximumBrakeBiasErrorFraction,
+            MaximumBrakeBiasErrorFraction
+        );
     }
 
     private void UpdateGripEstimate(float actualGrip, float dt)

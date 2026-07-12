@@ -100,7 +100,8 @@ public sealed class ReferenceLineDriver : IRaceDriver
         );
         DriverPlanningModifiers planningModifiers = new(
             planningPace,
-            _performance.EstimatedGripScale
+            _performance.EstimatedGripScale,
+            _performance.FrontBrakeBiasOffset
         );
         long speedPlanningStartTimestamp = Stopwatch.GetTimestamp();
         VehicleSpeedLookahead referenceLookahead =
@@ -242,11 +243,16 @@ public sealed class ReferenceLineDriver : IRaceDriver
             _performance.BrakeMarkerErrorMeters,
             lateralTargetError,
             _performance.LocalSpeedErrorFraction,
+            _performance.FrontBrakeBiasOffset,
             controlSeverity,
             controlCorrection,
             _performance.IsRecovering
         );
-        return new DriverInput(desiredCurvature, desiredAcceleration);
+        return new DriverInput(
+            desiredCurvature,
+            desiredAcceleration,
+            _performance.FrontBrakeBiasOffset
+        );
     }
 
     private void UpdatePerformanceState(

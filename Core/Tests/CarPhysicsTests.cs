@@ -222,6 +222,43 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void BrakeBiasErrorLeavesGripUnusedAtTheLimit()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState optimal = CreateState(speed: 25f, batterySoc: 0.9f, tires);
+        CarState frontBiased = CreateState(speed: 25f, batterySoc: 0.9f, tires);
+
+        CarPhysics.Step(
+            optimal,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0.018f, -12f)),
+            1f / 60f
+        );
+        CarPhysics.Step(
+            frontBiased,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0.018f, -12f, 0.07f)),
+            1f / 60f
+        );
+
+        Assert.InRange(optimal.Telemetry.OverLimit, 0f, 1e-5f);
+        Assert.True(frontBiased.Telemetry.OverLimit > 0.02f);
+        Assert.True(
+            frontBiased.Telemetry.ActualLongitudinalAccel >
+            optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
+            "a biased split should clip one axle before all remaining grip is used"
+        );
+        Assert.True(
+            frontBiased.Telemetry.ActualLateralAccel <
+            optimal.Telemetry.ActualLateralAccel,
+            "excess front braking should trade away some front lateral force"
+        );
+    }
+
+    [Fact]
     public void DefaultRearDriveMakesTheRearCloserToTheCombinedLimitUnderPower()
     {
         CarConfig car = new();
