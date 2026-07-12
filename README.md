@@ -269,9 +269,13 @@ We look forward to advancing this project together while fully respecting the co
 
 ## 📜 License
 
-This project is open-sourced under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.  
+This project is open-sourced under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
 
-The standalone Community Edition will remain open source. The [CLA](CLA.md) gives the maintainer a limited additional license for a possible future official online version, so shared systems such as physics, AI, and UI would not need to be rewritten. It does not permit converting the standalone Community Edition into a proprietary product or selling individual contributions separately. The maintainer will make every reasonable effort to keep the [English](CLA.md) and [Chinese](CLA_zh.md) texts consistent; if a difference cannot be resolved, the Chinese text prevails.
+The standalone Community Edition will remain open source. The Project may eventually charge for official distributions through Steam or other platforms. Charging for an official distribution does not turn the Community Edition into a proprietary product or reduce recipients' rights under AGPL-3.0 to obtain, modify, and redistribute the corresponding source. Every publicly distributed official client build must correspond to a published source revision (normally a Git tag) and make the complete AGPL-covered source used by that build available. Project-owned client changes, including platform integration code, are part of that corresponding source and may not be withheld merely as an “official-only feature.”
+
+The code license does not require every piece of music, artwork, track data, font, or other game content to use the same license. Project assets published in this repository without a separate notice are provided with the Community Edition under AGPL-3.0; third-party material remains under its respective license. Future official distributions may include separately licensed content, provided that its terms are identified clearly and AGPL-covered program code or modifications are not relabeled as “content” to withhold their source. See the [Content and Asset Licensing Notice](CONTENT_LICENSE.md) for the detailed boundary. The StintegyEVO name, logo, and other project identifiers may not be used to make an unofficial product appear official; reasonable use to describe compatibility, origin, or derivation is unaffected.
+
+The [CLA](CLA.md) gives the maintainer a limited additional license for a possible future official online version, so shared systems such as physics, AI, and UI would not need to be rewritten. It does not permit converting the standalone Community Edition into a proprietary product or selling a contribution separately from StintegyEVO; this does not prevent charging for an AGPL-3.0 Community Edition that includes the contribution. The maintainer will make every reasonable effort to keep the English and [Chinese](CLA_zh.md) texts consistent; if a difference cannot be resolved, the Chinese text prevails.
 
 ---
 
