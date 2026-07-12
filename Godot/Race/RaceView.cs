@@ -21,6 +21,9 @@ public partial class RaceView : Node2D
     [Export] public Camera2D? Camera { get; set; }
     [Export] public bool ShowFrameStats { get; set; } = true;
     [Export] public bool ExportCsvTelemetry { get; set; }
+    [Export] public bool EnableTrafficAvoidanceDemo { get; set; } = true;
+    [Export] public float TrafficDemoLeadSpeedKph { get; set; } = 45f;
+    [Export] public float TrafficDemoCameraZoom { get; set; } = 3f;
 
     private readonly List<CarView> _carViews = [];
     private readonly Label _telemetryLabel = new()
@@ -30,6 +33,7 @@ public partial class RaceView : Node2D
     };
     private RaceSimulation? _simulation;
     private RaceCar? _playerCar;
+    private RaceCar? _demoLeadCar;
     private RaceCsvTelemetryRecorder? _csvTelemetry;
 
     public override void _Ready()
@@ -50,13 +54,38 @@ public partial class RaceView : Node2D
         ConfigureCamera(track);
         CreateHud();
 
-        _playerCar = AddRaceCar(
-            id: "player",
-            track,
-            start: track.Grids[1],
-            new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Normal),
-            Color.FromHtml("#ff5d73")
-        );
+        if (EnableTrafficAvoidanceDemo)
+        {
+            float leadSpeed = MathF.Max(5f, TrafficDemoLeadSpeedKph / 3.6f);
+            _demoLeadCar = AddRaceCar(
+                id: "pace-car",
+                track,
+                start: track.Grids[1],
+                new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Save),
+                Color.FromHtml("#4aa8ff"),
+                new SpeedLimitedReferenceDriver(leadSpeed),
+                initialSpeedMetersPerSecond: leadSpeed
+            );
+            _playerCar = AddRaceCar(
+                id: "player",
+                track,
+                start: track.Grids[5],
+                new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Normal),
+                Color.FromHtml("#ff5d73"),
+                initialSpeedMetersPerSecond: 25f
+            );
+        }
+        else
+        {
+            _playerCar = AddRaceCar(
+                id: "player",
+                track,
+                start: track.Grids[1],
+                new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Normal),
+                Color.FromHtml("#ff5d73")
+            );
+        }
+        UpdateCamera();
         if (ShowFrameStats)
             AddChild(new FrameTimeMonitor());
         StartCsvTelemetryIfRequested();
@@ -78,6 +107,7 @@ public partial class RaceView : Node2D
             );
         foreach (CarView view in _carViews)
             view.SyncFromCore();
+        UpdateCamera();
         RefreshTelemetry();
     }
 
@@ -109,7 +139,9 @@ public partial class RaceView : Node2D
         TrackData track,
         Grid start,
         CarStrategy strategy,
-        Color color
+        Color color,
+        IRaceDriver? driver = null,
+        float initialSpeedMetersPerSecond = 0f
     )
     {
         TrackSample startSample = track.Sample(start.S);
@@ -122,12 +154,12 @@ public partial class RaceView : Node2D
             id,
             new CarConfig(),
             tires,
-            new ReferenceLineDriver(),
+            driver ?? new ReferenceLineDriver(),
             new CarState
             {
                 Position = start.Position,
                 Heading = startSample.RefHeading,
-                Speed = 0f,
+                Speed = MathF.Max(0f, initialSpeedMetersPerSecond),
                 BatterySoc = 0.82f
             }
         )
@@ -149,7 +181,7 @@ public partial class RaceView : Node2D
         ColorRect panel = new()
         {
             Position = new GVector2(8f, 76f),
-            Size = new GVector2(410f, 246f),
+            Size = new GVector2(510f, 266f),
             Color = Color.FromHtml("#111820d8"),
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
@@ -168,9 +200,14 @@ public partial class RaceView : Node2D
         var telemetry = state.Telemetry;
         float frontTemp = (state.FrontLeft.SurfaceTempC + state.FrontRight.SurfaceTempC) * 0.5f;
         float rearTemp = (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
+        string trafficStatus = TrafficStatus(_playerCar);
+        string demoStatus = _demoLeadCar == null
+            ? string.Empty
+            : $"   Blue {_demoLeadCar.State.Speed * 3.6f:0} km/h";
         _telemetryLabel.Text =
             $"STINTEGYEVO  race {_simulation.RaceTimeSeconds:0.0}s  lap {_playerCar.Progress.Lap + 1}\n" +
-            $"Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%\n" +
+            $"Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%{demoStatus}\n" +
+            $"{trafficStatus}\n" +
             $"Tire {_playerCar.Strategy.TireMode}   Battery {_playerCar.Strategy.BatteryMode}\n" +
             $"Air {_simulation.Environment.AirTempC:0} C   Track {_simulation.Environment.TrackTempC:0} C\n" +
             $"Front {frontTemp:0.0} C   Rear {rearTemp:0.0} C   Use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
@@ -179,6 +216,23 @@ public partial class RaceView : Node2D
             $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg   Slide {telemetry.RearSlideSeverity:0.00}   TC {telemetry.TractionControlCutAccel:0.00}\n" +
             $"Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s\n" +
             $"Region {_playerCar.Progress.Region}   Q/E tire  A/D battery";
+    }
+
+    private static string TrafficStatus(RaceCar car)
+    {
+        if (car.Driver is not ReferenceLineDriver driver)
+            return "Traffic unavailable";
+
+        ReferenceLineDriverTelemetry telemetry = driver.LastTelemetry;
+        if (telemetry.TrafficConstraintKind == TrafficSpeedConstraintKind.None)
+            return "Traffic CLEAR   Catch the blue pace car";
+
+        return
+            $"Traffic {telemetry.TrafficConstraintKind.ToString().ToUpperInvariant()} " +
+            $"{telemetry.TrafficOpponentId ?? "?"}   " +
+            $"gap {telemetry.TrafficCurrentClearanceMeters:0.0} m\n" +
+            $"Traffic plan {telemetry.TrafficConstraintDistanceMeters:0} m ahead @ " +
+            $"{telemetry.TrafficTargetSpeedMetersPerSecond * 3.6f:0} km/h";
     }
 
     private static string WheelStatus(TireState tire)
@@ -229,5 +283,49 @@ public partial class RaceView : Node2D
 
         Camera.Position = ((min + max) * 0.5f).ToGodot();
         Camera.Zoom = GVector2.One * zoom;
+    }
+
+    private void UpdateCamera()
+    {
+        if (!EnableTrafficAvoidanceDemo || Camera == null || _playerCar == null)
+            return;
+
+        Camera.Position = _playerCar.State.Position.ToGodot();
+        Camera.Zoom = GVector2.One * MathF.Max(0.25f, TrafficDemoCameraZoom);
+    }
+
+    private sealed class SpeedLimitedReferenceDriver(
+        float speedLimitMetersPerSecond
+    ) : IRaceDriver
+    {
+        private const float SpeedGain = 2.5f;
+        private readonly ReferenceLineDriver _inner = new();
+        private readonly float _speedLimitMetersPerSecond = MathF.Max(
+            1f,
+            speedLimitMetersPerSecond
+        );
+
+        public float TireEnergyEfficiency => _inner.TireEnergyEfficiency;
+
+        public void Initialize(in RaceDriverInitContext context)
+        {
+            _inner.Initialize(in context);
+        }
+
+        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        {
+            DriverInput input = _inner.GetControl(in context, dt);
+            float speedLimitedAcceleration =
+                SpeedGain *
+                (_speedLimitMetersPerSecond - context.Car.State.Speed) +
+                context.Car.State.Telemetry.LossAccel;
+            return input with
+            {
+                DesiredAccel = MathF.Min(
+                    input.DesiredAccel,
+                    speedLimitedAcceleration
+                )
+            };
+        }
     }
 }
