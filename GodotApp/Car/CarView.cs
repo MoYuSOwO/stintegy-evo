@@ -1,9 +1,9 @@
 using System;
 using Godot;
-using StintegyEVO.Presentation.Interop;
+using StintegyEVO.GodotApp.Interop;
 using CoreRaceCar = StintegyEVO.Core.Racing.RaceCar;
 
-namespace StintegyEVO.Presentation.Car;
+namespace StintegyEVO.GodotApp.Car;
 
 public partial class CarView : Node2D
 {

@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://cv83jpnvwp8l0"]
 
-[ext_resource type="Script" path="res://Godot/Race/RaceView.cs" id="1_race"]
-[ext_resource type="Script" path="res://Godot/Track/TrackView.cs" id="2_track"]
+[ext_resource type="Script" path="res://GodotApp/Race/RaceView.cs" id="1_race"]
+[ext_resource type="Script" path="res://GodotApp/Track/TrackView.cs" id="2_track"]
 
 [node name="Root" type="Node2D" node_paths=PackedStringArray("TrackRenderer", "Camera")]
 script = ExtResource("1_race")

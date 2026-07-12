@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Godot;
-using StintegyEVO.Presentation.Car;
-using StintegyEVO.Presentation.Debug;
-using StintegyEVO.Presentation.Interop;
-using StintegyEVO.Presentation.Track;
+using StintegyEVO.GodotApp.Car;
+using StintegyEVO.GodotApp.Debug;
+using StintegyEVO.GodotApp.Interop;
+using StintegyEVO.GodotApp.Track;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -13,7 +13,7 @@ using StintegyEVO.Core.Track;
 using GVector2 = Godot.Vector2;
 using NVector2 = System.Numerics.Vector2;
 
-namespace StintegyEVO.Presentation.Race;
+namespace StintegyEVO.GodotApp.Race;
 
 public partial class RaceView : Node2D
 {

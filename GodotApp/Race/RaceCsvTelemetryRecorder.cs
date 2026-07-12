@@ -7,7 +7,7 @@ using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 
-namespace StintegyEVO.Presentation.Race;
+namespace StintegyEVO.GodotApp.Race;
 
 internal sealed class RaceCsvTelemetryRecorder : IDisposable
 {

@@ -1,6 +1,6 @@
 using Godot;
 
-namespace StintegyEVO.Presentation.Debug;
+namespace StintegyEVO.GodotApp.Debug;
 
 public partial class FrameTimeMonitor : CanvasLayer
 {

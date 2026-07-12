@@ -82,7 +82,7 @@ Contributions to documentation, README improvements, Low Poly models, UI design,
 To maintain consistency across the project, please keep the following in mind when contributing code:
 
 - **Language**: C#. English is recommended for code comments and commit messages.
-- **Namespaces**: The independent simulation core belongs under `StintegyEVO.Core` and its sub-namespaces. The Godot presentation layer belongs under `StintegyEVO.Presentation` and its sub-namespaces.
+- **Namespaces**: The independent simulation core belongs in `Core/` under `StintegyEVO.Core` and its sub-namespaces. The Godot application layer belongs in `GodotApp/` under `StintegyEVO.GodotApp` and its sub-namespaces.
 - **Formatting**: Try to maintain the formatting conventions of the existing code (brace style, indentation, etc.).
 - **Physics / Vehicle Terminology**: Use precise terms that match the current model layer, such as `DesiredCurvature`, `YawRateRadiansPerSecond`, and `BatterySoc`.
 

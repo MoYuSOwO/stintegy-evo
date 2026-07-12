@@ -1,4 +1,4 @@
-namespace StintegyEVO.Presentation.Interop;
+namespace StintegyEVO.GodotApp.Interop;
 
 public static class NumericsExtensions
 {

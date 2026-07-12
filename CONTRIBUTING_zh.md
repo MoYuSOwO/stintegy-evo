@@ -85,7 +85,7 @@ _维护者会尽合理努力保证中英文版本一致。如果仍存在无法�
 为了保持项目一致性，请注意：
 
 - **语言**：使用 C#。代码注释和提交信息建议使用英文，以方便国际协作。
-- **命名空间**：独立仿真核心应放在 `StintegyEVO.Core` 及其子命名空间中；Godot 表现层应放在 `StintegyEVO.Presentation` 及其子命名空间中。
+- **命名空间**：独立仿真核心应放在 `Core/` 目录和 `StintegyEVO.Core` 及其子命名空间中；Godot 应用层应放在 `GodotApp/` 目录和 `StintegyEVO.GodotApp` 及其子命名空间中。
 - **格式**：尽量遵循现有代码的括号、缩进及其他格式习惯。
 - **物理和车辆术语**：变量命名尽可能使用准确且符合当前模型层级的术语，例如 `DesiredCurvature`、`YawRateRadiansPerSecond`、`BatterySoc`。
 

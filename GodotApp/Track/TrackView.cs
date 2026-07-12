@@ -1,9 +1,9 @@
 using System;
 using Godot;
-using StintegyEVO.Presentation.Interop;
+using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.Core.Track;
 
-namespace StintegyEVO.Presentation.Track;
+namespace StintegyEVO.GodotApp.Track;
 
 [Tool]
 public partial class TrackView : Node2D
