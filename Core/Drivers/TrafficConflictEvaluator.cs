@@ -10,7 +10,7 @@ namespace StintegyEVO.Core.Drivers;
 /// Converts state-only opponent predictions into longitudinal constraints on
 /// an already selected ego path. No opponent driver or opponent plan is read.
 /// </summary>
-internal sealed class TrafficSpeedConstraintPlanner
+internal static class TrafficConflictEvaluator
 {
     private const float SameDirectionDotThreshold = 0.5f;
     private const float MovingSpeedThresholdMetersPerSecond = 0.5f;
@@ -27,26 +27,7 @@ internal sealed class TrafficSpeedConstraintPlanner
     private const int PathProjectionSearchRadius = 16;
     private const float BroadphaseCurvePaddingMeters = 2f;
 
-    private string? _heldOpponentId;
-    private TrafficSpeedConstraintKind _heldKind;
-    private float _heldUntilSeconds;
-    private float _heldRemainingDistanceMeters;
-    private float _heldTargetSpeedMetersPerSecond;
-    private float _heldConflictTimeSeconds;
-    private Vector2 _heldEgoPosition;
-
-    public TrafficSpeedConstraint LastConstraint { get; private set; }
-
-    public void BeginPlan(bool enabled, in RaceFrameSnapshot frame)
-    {
-        LastConstraint = default;
-        if (enabled && frame.Count > 1)
-            return;
-
-        ClearHold();
-    }
-
-    public bool ApplyConstraints(
+    public static bool ApplyConstraints(
         VehicleSpeedPlanningConfig config,
         TrackData track,
         VehiclePathPrediction path,
@@ -55,7 +36,9 @@ internal sealed class TrafficSpeedConstraintPlanner
         float[] segmentLengths,
         float[] speeds,
         float[] speedLimits,
-        float[] arrivalTimes
+        float[] arrivalTimes,
+        ref TrafficConstraintMemory memory,
+        ref TrafficSpeedConstraint lastConstraint
     )
     {
         if (!config.EnableTrafficAvoidance ||
@@ -80,7 +63,9 @@ internal sealed class TrafficSpeedConstraintPlanner
             path,
             in frame,
             in ego,
-            speedLimits
+            speedLimits,
+            ref memory,
+            ref lastConstraint
         );
 
         ReadOnlySpan<RaceCarSnapshot> cars = frame.Cars;
@@ -121,7 +106,8 @@ internal sealed class TrafficSpeedConstraintPlanner
                 in opponent,
                 in currentProjection,
                 currentDirectionDot,
-                speedLimits
+                speedLimits,
+                ref lastConstraint
             );
 
             if (TryFindFirstConflict(
@@ -143,7 +129,9 @@ internal sealed class TrafficSpeedConstraintPlanner
                     in currentProjection,
                     in conflict,
                     speedLimits,
-                    frame.RaceTimeSeconds
+                    frame.RaceTimeSeconds,
+                    ref memory,
+                    ref lastConstraint
                 );
             }
         }
@@ -151,7 +139,7 @@ internal sealed class TrafficSpeedConstraintPlanner
         return changed;
     }
 
-    private bool ApplyPredictedConflict(
+    private static bool ApplyPredictedConflict(
         VehicleSpeedPlanningConfig config,
         VehiclePathPrediction path,
         in RaceCarSnapshot ego,
@@ -159,7 +147,9 @@ internal sealed class TrafficSpeedConstraintPlanner
         in PathProjection currentProjection,
         in PredictedConflict conflict,
         float[] speedLimits,
-        float raceTimeSeconds
+        float raceTimeSeconds,
+        ref TrafficConstraintMemory memory,
+        ref TrafficSpeedConstraint lastConstraint
     )
     {
         float desiredGap = DesiredGap(
@@ -192,26 +182,29 @@ internal sealed class TrafficSpeedConstraintPlanner
             conflict.TimeSeconds,
             currentClearance
         );
-        if (RecordConstraint(in constraint))
+        if (RecordConstraint(in constraint, ref lastConstraint))
         {
-            _heldOpponentId = opponent.Id;
-            _heldKind = conflict.Kind;
-            _heldUntilSeconds = raceTimeSeconds + config.TrafficConstraintHoldSeconds;
-            _heldRemainingDistanceMeters = constraint.PathDistanceMeters;
-            _heldTargetSpeedMetersPerSecond = conflict.TargetSpeedMetersPerSecond;
-            _heldConflictTimeSeconds = conflict.TimeSeconds;
-            _heldEgoPosition = ego.Position;
+            memory.OpponentId = opponent.Id;
+            memory.Kind = conflict.Kind;
+            memory.HeldUntilSeconds = raceTimeSeconds +
+                                      config.TrafficConstraintHoldSeconds;
+            memory.RemainingDistanceMeters = constraint.PathDistanceMeters;
+            memory.TargetSpeedMetersPerSecond =
+                conflict.TargetSpeedMetersPerSecond;
+            memory.ConflictTimeSeconds = conflict.TimeSeconds;
+            memory.EgoPosition = ego.Position;
         }
         return changed;
     }
 
-    private bool ApplyCloseFollowingConstraint(
+    private static bool ApplyCloseFollowingConstraint(
         VehicleSpeedPlanningConfig config,
         in RaceCarSnapshot ego,
         in RaceCarSnapshot opponent,
         in PathProjection projection,
         float directionDot,
-        float[] speedLimits
+        float[] speedLimits,
+        ref TrafficSpeedConstraint lastConstraint
     )
     {
         if (!projection.IsValid ||
@@ -271,38 +264,40 @@ internal sealed class TrafficSpeedConstraintPlanner
             0f,
             clearance
         );
-        RecordConstraint(in constraint);
+        RecordConstraint(in constraint, ref lastConstraint);
         return changed;
     }
 
-    private bool ApplyHeldConstraint(
+    private static bool ApplyHeldConstraint(
         VehicleSpeedPlanningConfig config,
         TrackData track,
         VehiclePathPrediction path,
         in RaceFrameSnapshot frame,
         in RaceCarSnapshot ego,
-        float[] speedLimits
+        float[] speedLimits,
+        ref TrafficConstraintMemory memory,
+        ref TrafficSpeedConstraint lastConstraint
     )
     {
-        if (_heldOpponentId is null ||
-            frame.RaceTimeSeconds > _heldUntilSeconds ||
-            !frame.TryGetCar(_heldOpponentId, out RaceCarSnapshot opponent))
+        if (memory.OpponentId is null ||
+            frame.RaceTimeSeconds > memory.HeldUntilSeconds ||
+            !frame.TryGetCar(memory.OpponentId, out RaceCarSnapshot opponent))
         {
-            ClearHold();
+            memory.Clear();
             return false;
         }
 
-        float travelled = Vector2.Distance(ego.Position, _heldEgoPosition);
-        _heldRemainingDistanceMeters = MathF.Max(
+        float travelled = Vector2.Distance(ego.Position, memory.EgoPosition);
+        memory.RemainingDistanceMeters = MathF.Max(
             0f,
-            _heldRemainingDistanceMeters - travelled
+            memory.RemainingDistanceMeters - travelled
         );
-        _heldEgoPosition = ego.Position;
-        int index = IndexAtOrBefore(path, _heldRemainingDistanceMeters);
+        memory.EgoPosition = ego.Position;
+        int index = IndexAtOrBefore(path, memory.RemainingDistanceMeters);
         bool changed = ApplySpeedConstraint(
-            _heldKind,
+            memory.Kind,
             index,
-            _heldTargetSpeedMetersPerSecond,
+            memory.TargetSpeedMetersPerSecond,
             speedLimits,
             path.Count
         );
@@ -315,14 +310,14 @@ internal sealed class TrafficSpeedConstraintPlanner
             estimatedAlongDistance
         );
         TrafficSpeedConstraint constraint = new(
-            _heldKind,
+            memory.Kind,
             opponent.Id,
             path[index].DistanceMeters,
-            _heldTargetSpeedMetersPerSecond,
-            _heldConflictTimeSeconds,
+            memory.TargetSpeedMetersPerSecond,
+            memory.ConflictTimeSeconds,
             CurrentClearance(in ego, in opponent, in projection)
         );
-        RecordConstraint(in constraint);
+        RecordConstraint(in constraint, ref lastConstraint);
         return changed;
     }
 
@@ -711,16 +706,19 @@ internal sealed class TrafficSpeedConstraintPlanner
         return changed;
     }
 
-    private bool RecordConstraint(in TrafficSpeedConstraint constraint)
+    private static bool RecordConstraint(
+        in TrafficSpeedConstraint constraint,
+        ref TrafficSpeedConstraint lastConstraint
+    )
     {
-        TrafficSpeedConstraint current = LastConstraint;
+        TrafficSpeedConstraint current = lastConstraint;
         if (current.Active && !IsHigherPriority(
                 in constraint,
                 in current
             ))
             return false;
 
-        LastConstraint = constraint;
+        lastConstraint = constraint;
         return true;
     }
 
@@ -894,17 +892,6 @@ internal sealed class TrafficSpeedConstraintPlanner
                 high = middle - 1;
         }
         return low;
-    }
-
-    private void ClearHold()
-    {
-        _heldOpponentId = null;
-        _heldKind = TrafficSpeedConstraintKind.None;
-        _heldUntilSeconds = 0f;
-        _heldRemainingDistanceMeters = 0f;
-        _heldTargetSpeedMetersPerSecond = 0f;
-        _heldConflictTimeSeconds = 0f;
-        _heldEgoPosition = default;
     }
 
     private readonly record struct PathProjection(

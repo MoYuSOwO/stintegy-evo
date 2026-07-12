@@ -14,12 +14,8 @@ namespace StintegyEVO.Core.Drivers;
 /// </summary>
 public sealed class StanleyPathPredictor
 {
-    private const float MaximumBodySideslipRadians = 0.174532925f;
-    private const float MaximumYawAccelerationRadiansPerSecondSquared = 2f;
-    private const float MaximumYawRateRadiansPerSecond = 2.5f;
-    private readonly VehiclePathPrediction _prediction = new();
-
     public VehiclePathPrediction Predict(
+        VehiclePathPrediction destination,
         RaceCar car,
         TrackData track,
         VehicleSpeedLookahead speedEstimate,
@@ -51,6 +47,7 @@ public sealed class StanleyPathPredictor
             ControlGainScale: 1f
         );
         return Predict(
+            destination,
             car,
             track,
             speedEstimate,
@@ -74,6 +71,7 @@ public sealed class StanleyPathPredictor
     }
 
     internal VehiclePathPrediction Predict(
+        VehiclePathPrediction destination,
         RaceCar car,
         TrackData track,
         VehicleSpeedLookahead speedEstimate,
@@ -95,6 +93,7 @@ public sealed class StanleyPathPredictor
         StabilityPredictionSeed stabilitySeed
     )
     {
+        ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(car);
         ArgumentNullException.ThrowIfNull(track);
         ArgumentNullException.ThrowIfNull(speedEstimate);
@@ -102,7 +101,7 @@ public sealed class StanleyPathPredictor
         float horizon = MathF.Max(horizonMeters, 0f);
         float step = MathF.Max(stepMeters, 0.25f);
         int count = Math.Max(2, (int)MathF.Ceiling(horizon / step) + 1);
-        _prediction.Reset(count);
+        destination.Reset(count);
 
         CarState state = car.State;
         Vector2 position = state.Position;
@@ -143,7 +142,7 @@ public sealed class StanleyPathPredictor
             if (followsReferenceLine)
             {
                 float referenceDistance =
-                    distance - _prediction.ReferenceLineJoinDistanceMeters;
+                    distance - destination.ReferenceLineJoinDistanceMeters;
                 TrackSample referenceSample = track.Sample(
                     referenceLineCenterS + referenceDistance
                 );
@@ -155,7 +154,7 @@ public sealed class StanleyPathPredictor
                 position = referenceSample.RefPosition +
                            referenceSample.Normal * lateralTargetOffsetMeters;
                 velocityHeading = referenceSample.RefHeading;
-                _prediction.Add(new VehiclePathPredictionPoint(
+                destination.Add(new VehiclePathPredictionPoint(
                     distance,
                     position,
                     velocityHeading,
@@ -248,7 +247,7 @@ public sealed class StanleyPathPredictor
                 gripUsage
             );
 
-            _prediction.Add(new VehiclePathPredictionPoint(
+            destination.Add(new VehiclePathPredictionPoint(
                 distance,
                 position,
                 velocityHeading,
@@ -287,7 +286,7 @@ public sealed class StanleyPathPredictor
                     centerPose.S + segmentLength,
                     segmentLength * 0.5f
                 );
-                _prediction.MarkReferenceLineJoin(
+                destination.MarkReferenceLineJoin(
                     distance,
                     nextReferenceCurvature - commandedCurvature
                 );
@@ -316,7 +315,7 @@ public sealed class StanleyPathPredictor
             previousSegmentTime = segmentTime;
         }
 
-        return _prediction;
+        return destination;
     }
 
     /// <summary>
@@ -350,19 +349,19 @@ public sealed class StanleyPathPredictor
                                   sideslip / sideslipRecoveryTime;
         float yawAcceleration = Math.Clamp(
             (stabilizedYawRate - yawRate) / yawResponseTime,
-            -MaximumYawAccelerationRadiansPerSecondSquared,
-            MaximumYawAccelerationRadiansPerSecondSquared
+            -ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared,
+            ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared
         );
         float nextYawRate = Math.Clamp(
             yawRate + yawAcceleration * dt,
-            -MaximumYawRateRadiansPerSecond,
-            MaximumYawRateRadiansPerSecond
+            -ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond,
+            ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond
         );
         float averageYawRate = (yawRate + nextYawRate) * 0.5f;
         sideslip = Math.Clamp(
             sideslip + (trajectoryYawRate - averageYawRate) * dt,
-            -MaximumBodySideslipRadians,
-            MaximumBodySideslipRadians
+            -ReducedOrderDynamicsLimits.MaximumBodySideslipRadians,
+            ReducedOrderDynamicsLimits.MaximumBodySideslipRadians
         );
         yawRate = nextYawRate;
         rearSlideSeverity *= MathF.Exp(-dt / sideslipRecoveryTime);

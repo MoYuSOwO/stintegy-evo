@@ -143,14 +143,79 @@ public sealed class StanleyPathPredictorTests
             config
         );
         StanleyPathPredictor predictor = new();
-        Predict(car, track, speedEstimate, config, 0.08f, predictor);
+        VehiclePathPrediction destination = new();
+        Predict(
+            car,
+            track,
+            speedEstimate,
+            config,
+            0.08f,
+            predictor,
+            destination
+        );
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++)
-            Predict(car, track, speedEstimate, config, 0.08f, predictor);
+        {
+            Predict(
+                car,
+                track,
+                speedEstimate,
+                config,
+                0.08f,
+                predictor,
+                destination
+            );
+        }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.InRange(allocated, 0L, 256L);
+    }
+
+    [Fact]
+    public void CallerOwnedPredictionsDoNotAliasEachOther()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, speed: 20f, lateralOffset: 2f);
+        VehicleSpeedPlanningConfig config = new();
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            car,
+            track,
+            config
+        );
+        StanleyPathPredictor predictor = new();
+        VehiclePathPrediction first = new();
+        VehiclePathPrediction second = new();
+
+        VehiclePathPrediction returnedFirst = Predict(
+            car,
+            track,
+            speedEstimate,
+            config,
+            initialCurvature: 0.08f,
+            predictor,
+            first
+        );
+        int firstCount = first.Count;
+        VehiclePathPredictionPoint firstStart = first[0];
+        VehiclePathPredictionPoint firstEnd = first[first.Count - 1];
+
+        VehiclePathPrediction returnedSecond = Predict(
+            car,
+            track,
+            speedEstimate,
+            config,
+            initialCurvature: -0.08f,
+            predictor,
+            second
+        );
+
+        Assert.Same(first, returnedFirst);
+        Assert.Same(second, returnedSecond);
+        Assert.Equal(firstCount, first.Count);
+        Assert.Equal(firstStart, first[0]);
+        Assert.Equal(firstEnd, first[first.Count - 1]);
+        Assert.NotEqual(first[0].CommandedCurvature, second[0].CommandedCurvature);
     }
 
     [Fact]
@@ -256,10 +321,12 @@ public sealed class StanleyPathPredictorTests
         VehicleSpeedLookahead speedEstimate,
         VehicleSpeedPlanningConfig config,
         float initialCurvature,
-        StanleyPathPredictor? predictor = null
+        StanleyPathPredictor? predictor = null,
+        VehiclePathPrediction? destination = null
     )
     {
         return (predictor ?? new StanleyPathPredictor()).Predict(
+            destination ?? new VehiclePathPrediction(),
             car,
             track,
             speedEstimate,
@@ -292,6 +359,7 @@ public sealed class StanleyPathPredictorTests
     {
         float startS = track.Project(car.State.Position).S;
         return new VehicleSpeedPlanner(config).PlanReferenceLookahead(
+            new VehicleSpeedLookahead(),
             car,
             track,
             startS,

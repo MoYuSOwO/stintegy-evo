@@ -220,7 +220,8 @@ public sealed class VehicleSpeedPlannerTests
             lateralError: 0f,
             initialCurvature: 0f
         );
-        DynamicPathSpeedPlan baseline = planner.PlanPredictedPath(
+        DynamicPathSpeedPlan baseline = PlanPredictedPath(
+            planner,
             car,
             baselinePath
         );
@@ -232,7 +233,8 @@ public sealed class VehicleSpeedPlannerTests
             lateralError: 4f,
             initialCurvature: 0.08f
         );
-        DynamicPathSpeedPlan corrected = planner.PlanPredictedPath(
+        DynamicPathSpeedPlan corrected = PlanPredictedPath(
+            planner,
             car,
             correctedPath
         );
@@ -261,7 +263,8 @@ public sealed class VehicleSpeedPlannerTests
             lateralError: 4f,
             initialCurvature: 0.08f
         );
-        DynamicPathSpeedPlan plan = planner.PlanPredictedPath(
+        DynamicPathSpeedPlan plan = PlanPredictedPath(
+            planner,
             car,
             path
         );
@@ -300,7 +303,8 @@ public sealed class VehicleSpeedPlannerTests
             lateralError: 4f,
             initialCurvature: 0.08f
         );
-        DynamicPathSpeedPlan plan = planner.PlanPredictedPath(
+        DynamicPathSpeedPlan plan = PlanPredictedPath(
+            planner,
             car,
             path
         );
@@ -329,7 +333,8 @@ public sealed class VehicleSpeedPlannerTests
             lateralError: 4f,
             initialCurvature: 0.08f
         );
-        DynamicPathSpeedPlan fullPlan = fullPlanner.PlanPredictedPath(
+        DynamicPathSpeedPlan fullPlan = PlanPredictedPath(
+            fullPlanner,
             car,
             fullPath
         );
@@ -349,7 +354,8 @@ public sealed class VehicleSpeedPlannerTests
             lateralError: 4f,
             initialCurvature: 0.08f
         );
-        DynamicPathSpeedPlan plan = planner.PlanPredictedPath(
+        DynamicPathSpeedPlan plan = PlanPredictedPath(
+            planner,
             car,
             path
         );
@@ -360,6 +366,69 @@ public sealed class VehicleSpeedPlannerTests
         Assert.True(
             plan.Current.ReferenceAcceleration < fullPlan.Current.ReferenceAcceleration
         );
+    }
+
+    [Fact]
+    public void CallerOwnedSpeedLookaheadsDoNotAliasEachOther()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedPlanner planner = new();
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            planner,
+            car,
+            track
+        );
+        VehiclePathPrediction path = PredictPath(
+            car,
+            track,
+            speedEstimate,
+            lateralError: 2f,
+            initialCurvature: 0.08f
+        );
+        VehicleSpeedLookahead first = new();
+        VehicleSpeedLookahead second = new();
+
+        planner.PlanPredictedPath(first, car, path);
+        int firstCount = first.Count;
+        VehicleSpeedPlanPoint firstStart = first[0];
+        VehicleSpeedPlanPoint firstEnd = first[first.Count - 1];
+
+        planner.PlanPredictedPath(second, car, path);
+
+        Assert.Equal(firstCount, first.Count);
+        Assert.Equal(firstStart, first[0]);
+        Assert.Equal(firstEnd, first[first.Count - 1]);
+        Assert.NotSame(first, second);
+    }
+
+    [Fact]
+    public void RepeatedPredictedPathPlanningReusesOutputStorage()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedPlanner planner = new();
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            planner,
+            car,
+            track
+        );
+        VehiclePathPrediction path = PredictPath(
+            car,
+            track,
+            speedEstimate,
+            lateralError: 2f,
+            initialCurvature: 0.08f
+        );
+        VehicleSpeedLookahead destination = new();
+        planner.PlanPredictedPath(destination, car, path);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 50; i++)
+            planner.PlanPredictedPath(destination, car, path);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.InRange(allocated, 0L, 256L);
     }
 
     private static RaceCar CreateCar(
@@ -407,6 +476,7 @@ public sealed class VehicleSpeedPlannerTests
         car.State.Heading = sample.RefHeading;
         VehicleSpeedPlanningConfig config = new();
         return new StanleyPathPredictor().Predict(
+            new VehiclePathPrediction(),
             car,
             track,
             speedEstimate,
@@ -454,12 +524,26 @@ public sealed class VehicleSpeedPlannerTests
     {
         VehicleSpeedPlanningConfig config = planner.Config;
         return planner.PlanReferenceLookahead(
+            new VehicleSpeedLookahead(),
             car,
             track,
             track.Project(car.State.Position).S,
             config.SpeedPlanningHorizonMeters,
             config.PathPredictionStepMeters,
             modifiers
+        );
+    }
+
+    private static DynamicPathSpeedPlan PlanPredictedPath(
+        VehicleSpeedPlanner planner,
+        RaceCar car,
+        VehiclePathPrediction path
+    )
+    {
+        return planner.PlanPredictedPath(
+            new VehicleSpeedLookahead(),
+            car,
+            path
         );
     }
 

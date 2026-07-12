@@ -18,8 +18,8 @@ public readonly record struct VehiclePathPredictionPoint(
 
 /// <summary>
 /// Spatial prediction of the path that the vehicle controller is expected to
-/// produce. The object is reused by its predictor and remains valid only until
-/// the owning driver performs its next prediction.
+/// produce. Callers own and reuse the buffer so several path candidates can be
+/// retained and compared without allocating or aliasing predictor-owned state.
 /// </summary>
 public sealed class VehiclePathPrediction
 {

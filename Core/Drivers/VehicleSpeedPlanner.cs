@@ -22,9 +22,6 @@ public sealed class VehicleSpeedPlanner
     private readonly Dictionary<long, float> _driveAccelerationCache = new(16_384);
     private readonly Dictionary<long, float> _brakeDecelerationCache = new(16_384);
     private readonly CarState _optimisticState = new();
-    private readonly VehicleSpeedLookahead _referenceLookahead = new();
-    private readonly VehicleSpeedLookahead _predictedPathLookahead = new();
-    private readonly TrafficSpeedConstraintPlanner _trafficPlanner = new();
     private RaceCar? _planningCar;
     private CarState? _planningState;
     private TireConfig? _planningTireConfig;
@@ -41,11 +38,6 @@ public sealed class VehicleSpeedPlanner
     }
 
     public VehicleSpeedPlanningConfig Config { get; }
-    public VehicleSpeedLookahead CurrentPredictedPathLookahead =>
-        _predictedPathLookahead;
-    public TrafficSpeedConstraint LastTrafficConstraint =>
-        _trafficPlanner.LastConstraint;
-
     public float EstimateLateralSpeedLimit(RaceCar car, float curvature)
     {
         ArgumentNullException.ThrowIfNull(car);
@@ -124,6 +116,7 @@ public sealed class VehicleSpeedPlanner
     }
 
     public VehicleSpeedLookahead PlanReferenceLookahead(
+        VehicleSpeedLookahead destination,
         RaceCar car,
         TrackData track,
         float startS,
@@ -132,6 +125,7 @@ public sealed class VehicleSpeedPlanner
         DriverPlanningModifiers driverModifiers
     )
     {
+        ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(car);
         ArgumentNullException.ThrowIfNull(track);
         BeginPlanningSnapshot(car, driverModifiers);
@@ -183,14 +177,14 @@ public sealed class VehicleSpeedPlanner
                 lateralAccelerationLimit
             );
             FillLookahead(
-                _referenceLookahead,
+                destination,
                 count,
                 planningStep,
                 horizon,
                 segmentLengths,
                 speeds
             );
-            return _referenceLookahead;
+            return destination;
         }
         finally
         {
@@ -202,45 +196,67 @@ public sealed class VehicleSpeedPlanner
     }
 
     public DynamicPathSpeedPlan PlanPredictedPath(
+        VehicleSpeedLookahead destination,
         RaceCar car,
         VehiclePathPrediction path
     )
     {
+        TrafficConstraintMemory noTrafficMemory = default;
         return PlanPredictedPathCore(
             car,
             path,
+            destination,
             track: null,
             frame: default,
-            egoSnapshotIndex: -1
+            egoSnapshotIndex: -1,
+            in noTrafficMemory,
+            out _,
+            out _
         );
     }
 
-    public DynamicPathSpeedPlan PlanPredictedPath(
+    internal TrafficAwareSpeedPlan PlanPredictedPath(
+        VehicleSpeedLookahead destination,
         RaceCar car,
         VehiclePathPrediction path,
         TrackData track,
         in RaceFrameSnapshot frame,
-        int egoSnapshotIndex
+        int egoSnapshotIndex,
+        in TrafficConstraintMemory committedTrafficMemory
     )
     {
         ArgumentNullException.ThrowIfNull(track);
-        return PlanPredictedPathCore(
+        DynamicPathSpeedPlan speedPlan = PlanPredictedPathCore(
             car,
             path,
+            destination,
             track,
             frame,
-            egoSnapshotIndex
+            egoSnapshotIndex,
+            in committedTrafficMemory,
+            out TrafficConstraintMemory nextTrafficMemory,
+            out TrafficSpeedConstraint trafficConstraint
+        );
+        return new TrafficAwareSpeedPlan(
+            speedPlan,
+            trafficConstraint,
+            nextTrafficMemory
         );
     }
 
     private DynamicPathSpeedPlan PlanPredictedPathCore(
         RaceCar car,
         VehiclePathPrediction path,
+        VehicleSpeedLookahead destination,
         TrackData? track,
         RaceFrameSnapshot frame,
-        int egoSnapshotIndex
+        int egoSnapshotIndex,
+        in TrafficConstraintMemory committedTrafficMemory,
+        out TrafficConstraintMemory nextTrafficMemory,
+        out TrafficSpeedConstraint trafficConstraint
     )
     {
+        ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(car);
         ArgumentNullException.ThrowIfNull(path);
         if (path.Count < 2)
@@ -253,6 +269,11 @@ public sealed class VehicleSpeedPlanner
                               egoSnapshotIndex >= 0 &&
                               egoSnapshotIndex < frame.Count &&
                               frame.Count > 1;
+        TrafficConstraintMemory evaluationMemory = committedTrafficMemory;
+        trafficConstraint = default;
+        if (!trafficEnabled)
+            evaluationMemory.Clear();
+        nextTrafficMemory = evaluationMemory;
         float[] curvatures = ArrayPool<float>.Shared.Rent(count);
         float[] segmentLengths = ArrayPool<float>.Shared.Rent(count);
         float[] speedLimits = ArrayPool<float>.Shared.Rent(count);
@@ -312,14 +333,13 @@ public sealed class VehicleSpeedPlanner
                 speeds,
                 lateralAccelerationLimit
             );
-            _trafficPlanner.BeginPlan(trafficEnabled, in frame);
             if (trafficEnabled)
             {
                 for (int iteration = 0;
                      iteration < Config.TrafficConstraintIterations;
                      iteration++)
                 {
-                    bool changed = _trafficPlanner.ApplyConstraints(
+                    bool changed = TrafficConflictEvaluator.ApplyConstraints(
                         Config,
                         track!,
                         path,
@@ -328,7 +348,9 @@ public sealed class VehicleSpeedPlanner
                         segmentLengths,
                         speeds,
                         speedLimits,
-                        arrivalTimes
+                        arrivalTimes,
+                        ref evaluationMemory,
+                        ref trafficConstraint
                     );
                     if (!changed)
                         break;
@@ -381,20 +403,21 @@ public sealed class VehicleSpeedPlanner
             }
             float stepLength = path.LengthMeters / Math.Max(count - 1, 1);
             FillLookahead(
-                _predictedPathLookahead,
+                destination,
                 count,
                 stepLength,
                 path.LengthMeters,
                 segmentLengths,
                 speeds
             );
-            _predictedPathLookahead.Set(
+            destination.Set(
                 0,
                 new VehicleSpeedPlanPoint(
                     speeds[0],
                     referenceAcceleration
                 )
             );
+            nextTrafficMemory = evaluationMemory;
             return new DynamicPathSpeedPlan(
                 new VehicleSpeedPlanPoint(speeds[0], referenceAcceleration),
                 speeds[1],

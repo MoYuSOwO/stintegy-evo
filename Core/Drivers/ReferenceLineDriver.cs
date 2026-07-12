@@ -16,9 +16,12 @@ public sealed class ReferenceLineDriver : IRaceDriver
 {
     private readonly VehicleSpeedPlanner _speedPlanner;
     private readonly StanleyPathPredictor _pathPredictor = new();
+    private readonly VehicleSpeedLookahead _referenceSpeedLookahead = new();
+    private readonly PathPlanBuffer _currentPlan = new();
     private RaceCar? _runtimeCar;
     private DriverPerformanceState? _performance;
     private StabilityControlState _stabilityControlState;
+    private TrafficConstraintMemory _trafficMemory;
 
     public ReferenceLineDriver(
         VehicleSpeedPlanningConfig? speedPlanningConfig = null,
@@ -43,8 +46,8 @@ public sealed class ReferenceLineDriver : IRaceDriver
     public DriverProfile Profile { get; }
     public float TireEnergyEfficiency => _performance?.TireEnergyEfficiency ?? 1f;
     public VehicleSpeedLookahead CurrentSpeedLookahead =>
-        _speedPlanner.CurrentPredictedPathLookahead;
-    public VehiclePathPrediction CurrentPathPrediction { get; private set; } = new();
+        _currentPlan.SpeedLookahead;
+    public VehiclePathPrediction CurrentPathPrediction => _currentPlan.Path;
     public ReferenceLineDriverTelemetry LastTelemetry { get; private set; }
 
     public void Initialize(in RaceDriverInitContext context)
@@ -106,6 +109,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
         long speedPlanningStartTimestamp = Stopwatch.GetTimestamp();
         VehicleSpeedLookahead referenceLookahead =
             _speedPlanner.PlanReferenceLookahead(
+                _referenceSpeedLookahead,
                 car,
                 context.Track,
                 frontPose.S + _performance.BrakeMarkerErrorMeters,
@@ -115,58 +119,20 @@ public sealed class ReferenceLineDriver : IRaceDriver
             );
         VehicleSpeedPlanPoint referencePathPlan =
             referenceLookahead.Sample(0f);
-        long predictionStartTimestamp = Stopwatch.GetTimestamp();
-        CurrentPathPrediction = _pathPredictor.Predict(
-            car,
-            context.Track,
+        EvaluatePathCandidate(
+            in context,
             referenceLookahead,
             lateralTargetError,
-            StanleyGain,
-            StanleySofteningSpeed,
-            HeadingGain,
-            CurvaturePreviewTimeSeconds,
-            MaximumCurvaturePreviewMeters,
-            _speedPlanner.Config.SpeedPlanningHorizonMeters,
-            _speedPlanner.Config.PathPredictionStepMeters,
-            _speedPlanner.Config.MinimumDynamicPredictionMeters,
-            _speedPlanner.Config.PredictionConvergenceHoldMeters,
-            _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
-            _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
-            _speedPlanner.Config.PredictionConvergenceCurvatureError,
-            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
             desiredCurvature,
-            new StabilityPredictionSeed(
-                _stabilityControlState,
-                _performance.IsRecovering,
-                _performance.EffectiveControl,
-                _performance.ControlGainScale
-            )
+            in _trafficMemory,
+            _currentPlan,
+            out float pathPredictionMilliseconds
         );
-        float pathPredictionMilliseconds = ElapsedMilliseconds(
-            predictionStartTimestamp
-        );
-        DynamicPathSpeedPlan dynamicPlan;
-        if (context.HasFrameSnapshot)
-        {
-            RaceFrameSnapshot frame = context.Frame;
-            dynamicPlan = _speedPlanner.PlanPredictedPath(
-                car,
-                CurrentPathPrediction,
-                context.Track,
-                in frame,
-                context.CarSnapshotIndex
-            );
-        }
-        else
-        {
-            dynamicPlan = _speedPlanner.PlanPredictedPath(
-                car,
-                CurrentPathPrediction
-            );
-        }
-        VehicleSpeedPlanPoint speedReference = dynamicPlan.Current;
+        CommitSelectedPlan(_currentPlan);
+        DynamicPathSpeedPlan dynamicPlan = _currentPlan.SpeedPlan;
         TrafficSpeedConstraint trafficConstraint =
-            _speedPlanner.LastTrafficConstraint;
+            _currentPlan.TrafficConstraint;
+        VehicleSpeedPlanPoint speedReference = dynamicPlan.Current;
         float rollingSpeedPlanningMilliseconds = MathF.Max(
             0f,
             ElapsedMilliseconds(speedPlanningStartTimestamp) -
@@ -226,12 +192,12 @@ public sealed class ReferenceLineDriver : IRaceDriver
             previewSample.RefCurvature,
             desiredCurvature,
             curvatureCorrection,
-            CurrentPathPrediction.LengthMeters,
-            CurrentPathPrediction.MaximumAbsoluteCommandedCurvature,
-            CurrentPathPrediction.TerminalLateralErrorMeters,
-            CurrentPathPrediction.DynamicPredictionLengthMeters,
-            CurrentPathPrediction.JoinsReferenceLine,
-            CurrentPathPrediction.ReferenceLineJoinCurvatureDelta,
+            _currentPlan.Path.LengthMeters,
+            _currentPlan.Path.MaximumAbsoluteCommandedCurvature,
+            _currentPlan.Path.TerminalLateralErrorMeters,
+            _currentPlan.Path.DynamicPredictionLengthMeters,
+            _currentPlan.Path.JoinsReferenceLine,
+            _currentPlan.Path.ReferenceLineJoinCurvatureDelta,
             pathPredictionMilliseconds,
             rollingSpeedPlanningMilliseconds,
             trafficConstraint.Kind,
@@ -280,6 +246,81 @@ public sealed class ReferenceLineDriver : IRaceDriver
         );
     }
 
+    private void EvaluatePathCandidate(
+        in RaceDriverFrameContext context,
+        VehicleSpeedLookahead referenceLookahead,
+        float lateralTargetOffsetMeters,
+        float initialCommandedCurvature,
+        in TrafficConstraintMemory committedTrafficMemory,
+        PathPlanBuffer destination,
+        out float pathPredictionMilliseconds
+    )
+    {
+        RaceCar car = context.Car;
+        long predictionStartTimestamp = Stopwatch.GetTimestamp();
+        _pathPredictor.Predict(
+            destination.Path,
+            car,
+            context.Track,
+            referenceLookahead,
+            lateralTargetOffsetMeters,
+            StanleyGain,
+            StanleySofteningSpeed,
+            HeadingGain,
+            CurvaturePreviewTimeSeconds,
+            MaximumCurvaturePreviewMeters,
+            _speedPlanner.Config.SpeedPlanningHorizonMeters,
+            _speedPlanner.Config.PathPredictionStepMeters,
+            _speedPlanner.Config.MinimumDynamicPredictionMeters,
+            _speedPlanner.Config.PredictionConvergenceHoldMeters,
+            _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
+            _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
+            _speedPlanner.Config.PredictionConvergenceCurvatureError,
+            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            initialCommandedCurvature,
+            new StabilityPredictionSeed(
+                _stabilityControlState,
+                _performance!.IsRecovering,
+                _performance.EffectiveControl,
+                _performance.ControlGainScale
+            )
+        );
+        pathPredictionMilliseconds = ElapsedMilliseconds(
+            predictionStartTimestamp
+        );
+
+        if (context.HasFrameSnapshot)
+        {
+            RaceFrameSnapshot frame = context.Frame;
+            TrafficAwareSpeedPlan trafficPlan = _speedPlanner.PlanPredictedPath(
+                destination.SpeedLookahead,
+                car,
+                destination.Path,
+                context.Track,
+                in frame,
+                context.CarSnapshotIndex,
+                in committedTrafficMemory
+            );
+            destination.SpeedPlan = trafficPlan.SpeedPlan;
+            destination.TrafficConstraint = trafficPlan.TrafficConstraint;
+            destination.NextTrafficMemory = trafficPlan.NextTrafficMemory;
+            return;
+        }
+
+        destination.SpeedPlan = _speedPlanner.PlanPredictedPath(
+            destination.SpeedLookahead,
+            car,
+            destination.Path
+        );
+        destination.TrafficConstraint = default;
+        destination.NextTrafficMemory = default;
+    }
+
+    private void CommitSelectedPlan(PathPlanBuffer selectedPlan)
+    {
+        _trafficMemory = selectedPlan.NextTrafficMemory;
+    }
+
     private void UpdatePerformanceState(
         in RaceDriverFrameContext context,
         float dt
@@ -310,6 +351,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
             car.State.SideslipAngleRadians,
             car.State.YawRateRadiansPerSecond
         );
+        _trafficMemory.Clear();
     }
 
     private float ApplyCarControl(

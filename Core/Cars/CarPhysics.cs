@@ -13,13 +13,10 @@ public static class CarPhysics
     private const float MinimumTemperatureGripFactor = 0.55f;
     private const float MaximumTemperatureGripFactor = 1.08f;
     private const float MinimumWearGripFactor = 0.45f;
-    private const float MaximumBodySideslipRadians = 0.174532925f;
     private const float RearSlipOnsetCombinedUse = 0.82f;
     private const float RearSlipDominanceRange = 0.2f;
     private const float DynamicYawMinimumSpeed = 5f;
     private const float DynamicYawBlendRange = 5f;
-    private const float MaximumYawAccelerationRadiansPerSecondSquared = 2f;
-    private const float MaximumYawRateRadiansPerSecond = 2.5f;
     private const float SideslipEnergyLossScale = 1f;
     internal static CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
@@ -252,8 +249,8 @@ public static class CarPhysics
         float nextVelocityHeading = MathHelper.NormalizeAngle(velocityHeading + headingDelta);
         float dynamicYawRate = Math.Clamp(
             state.YawRateRadiansPerSecond + actualYawAcceleration * dt,
-            -MaximumYawRateRadiansPerSecond,
-            MaximumYawRateRadiansPerSecond
+            -ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond,
+            ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond
         );
         float nextYawRate = Lerp(trajectoryYawRate, dynamicYawRate, dynamicYawBlend);
         float dynamicBodyHeading = MathHelper.NormalizeAngle(
@@ -267,8 +264,8 @@ public static class CarPhysics
         );
         float nextSideslipAngle = Math.Clamp(
             MathHelper.NormalizeAngle(nextVelocityHeading - nextBodyHeading),
-            -MaximumBodySideslipRadians,
-            MaximumBodySideslipRadians
+            -ReducedOrderDynamicsLimits.MaximumBodySideslipRadians,
+            ReducedOrderDynamicsLimits.MaximumBodySideslipRadians
         );
         nextBodyHeading = MathHelper.NormalizeAngle(
             nextVelocityHeading - nextSideslipAngle
@@ -280,7 +277,8 @@ public static class CarPhysics
         state.Heading = nextBodyHeading;
         state.Speed = newSpeed;
         float normalizedSideslip = Math.Clamp(
-            Math.Abs(state.SideslipAngleRadians) / MaximumBodySideslipRadians,
+            Math.Abs(state.SideslipAngleRadians) /
+            ReducedOrderDynamicsLimits.MaximumBodySideslipRadians,
             0f,
             1f
         );
@@ -600,8 +598,8 @@ public static class CarPhysics
                                   sideslipRecoveryTime;
         float desiredYawAcceleration = Math.Clamp(
             (stabilizedYawRate - state.YawRateRadiansPerSecond) / yawResponseTime,
-            -MaximumYawAccelerationRadiansPerSecondSquared,
-            MaximumYawAccelerationRadiansPerSecondSquared
+            -ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared,
+            ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared
         );
         float yawInertiaPerMass = Math.Max(config.YawInertiaKgM2, Epsilon) /
                                   Math.Max(config.MassKg, Epsilon);
