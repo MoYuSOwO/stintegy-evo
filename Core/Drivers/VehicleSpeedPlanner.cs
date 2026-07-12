@@ -24,6 +24,7 @@ public sealed class VehicleSpeedPlanner
     private readonly CarState _optimisticState = new();
     private readonly VehicleSpeedLookahead _referenceLookahead = new();
     private readonly VehicleSpeedLookahead _predictedPathLookahead = new();
+    private readonly TrafficSpeedConstraintPlanner _trafficPlanner = new();
     private RaceCar? _planningCar;
     private CarState? _planningState;
     private TireConfig? _planningTireConfig;
@@ -42,6 +43,8 @@ public sealed class VehicleSpeedPlanner
     public VehicleSpeedPlanningConfig Config { get; }
     public VehicleSpeedLookahead CurrentPredictedPathLookahead =>
         _predictedPathLookahead;
+    public TrafficSpeedConstraint LastTrafficConstraint =>
+        _trafficPlanner.LastConstraint;
 
     public float EstimateLateralSpeedLimit(RaceCar car, float curvature)
     {
@@ -203,6 +206,41 @@ public sealed class VehicleSpeedPlanner
         VehiclePathPrediction path
     )
     {
+        return PlanPredictedPathCore(
+            car,
+            path,
+            track: null,
+            frame: default,
+            egoSnapshotIndex: -1
+        );
+    }
+
+    public DynamicPathSpeedPlan PlanPredictedPath(
+        RaceCar car,
+        VehiclePathPrediction path,
+        TrackData track,
+        in RaceFrameSnapshot frame,
+        int egoSnapshotIndex
+    )
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        return PlanPredictedPathCore(
+            car,
+            path,
+            track,
+            frame,
+            egoSnapshotIndex
+        );
+    }
+
+    private DynamicPathSpeedPlan PlanPredictedPathCore(
+        RaceCar car,
+        VehiclePathPrediction path,
+        TrackData? track,
+        RaceFrameSnapshot frame,
+        int egoSnapshotIndex
+    )
+    {
         ArgumentNullException.ThrowIfNull(car);
         ArgumentNullException.ThrowIfNull(path);
         if (path.Count < 2)
@@ -210,10 +248,18 @@ public sealed class VehicleSpeedPlanner
         EnsurePlanningSnapshot(car);
 
         int count = path.Count;
+        bool trafficEnabled = track != null &&
+                              Config.EnableTrafficAvoidance &&
+                              egoSnapshotIndex >= 0 &&
+                              egoSnapshotIndex < frame.Count &&
+                              frame.Count > 1;
         float[] curvatures = ArrayPool<float>.Shared.Rent(count);
         float[] segmentLengths = ArrayPool<float>.Shared.Rent(count);
         float[] speedLimits = ArrayPool<float>.Shared.Rent(count);
         float[] speeds = ArrayPool<float>.Shared.Rent(count);
+        float[] arrivalTimes = trafficEnabled
+            ? ArrayPool<float>.Shared.Rent(count)
+            : Array.Empty<float>();
         try
         {
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
@@ -266,6 +312,39 @@ public sealed class VehicleSpeedPlanner
                 speeds,
                 lateralAccelerationLimit
             );
+            _trafficPlanner.BeginPlan(trafficEnabled, in frame);
+            if (trafficEnabled)
+            {
+                for (int iteration = 0;
+                     iteration < Config.TrafficConstraintIterations;
+                     iteration++)
+                {
+                    bool changed = _trafficPlanner.ApplyConstraints(
+                        Config,
+                        track!,
+                        path,
+                        in frame,
+                        egoSnapshotIndex,
+                        segmentLengths,
+                        speeds,
+                        speedLimits,
+                        arrivalTimes
+                    );
+                    if (!changed)
+                        break;
+
+                    Array.Copy(speedLimits, speeds, count);
+                    PlanOpenChain(
+                        car,
+                        curvatures,
+                        count,
+                        segmentLengths,
+                        speedLimits,
+                        speeds,
+                        lateralAccelerationLimit
+                    );
+                }
+            }
             float firstForwardReachable = segmentLengths[0] <=
                                           Config.MinimumSegmentLengthMeters
                 ? speeds[0]
@@ -331,6 +410,8 @@ public sealed class VehicleSpeedPlanner
             ArrayPool<float>.Shared.Return(segmentLengths);
             ArrayPool<float>.Shared.Return(speedLimits);
             ArrayPool<float>.Shared.Return(speeds);
+            if (arrivalTimes.Length > 0)
+                ArrayPool<float>.Shared.Return(arrivalTimes);
         }
     }
 
@@ -738,6 +819,25 @@ public sealed class VehicleSpeedPlanner
             throw new ArgumentOutOfRangeException(nameof(config), "Planning pass counts must be positive.");
         if (config.AccelerationSolveIterations < 1)
             throw new ArgumentOutOfRangeException(nameof(config), "Acceleration iterations must be positive.");
+        if (!float.IsFinite(config.TrafficPredictionHorizonSeconds) ||
+            config.TrafficPredictionHorizonSeconds <= 0f ||
+            !float.IsFinite(config.TrafficMinimumGapMeters) ||
+            config.TrafficMinimumGapMeters < 0f ||
+            !float.IsFinite(config.TrafficTimeHeadwaySeconds) ||
+            config.TrafficTimeHeadwaySeconds < 0f ||
+            !float.IsFinite(config.TrafficLateralSafetyMarginMeters) ||
+            config.TrafficLateralSafetyMarginMeters < 0f ||
+            !float.IsFinite(config.TrafficLongitudinalSafetyMarginMeters) ||
+            config.TrafficLongitudinalSafetyMarginMeters < 0f ||
+            !float.IsFinite(config.TrafficConstraintHoldSeconds) ||
+            config.TrafficConstraintHoldSeconds < 0f ||
+            config.TrafficConstraintIterations < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(config),
+                "Traffic prediction settings must be finite and non-negative."
+            );
+        }
         if (config.SpeedPlanningHorizonMeters <= 0f ||
             config.PathPredictionStepMeters <= 0f ||
             config.MinimumDynamicPredictionMeters < 0f ||

@@ -34,6 +34,8 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "predicted_terminal_lateral_error_m,dynamic_prediction_length_m," +
             "joins_reference_line,reference_line_join_curvature_delta_1pm," +
             "path_prediction_ms,rolling_speed_plan_ms," +
+            "traffic_constraint,traffic_opponent,traffic_constraint_distance_m," +
+            "traffic_target_speed_mps,traffic_conflict_time_s,traffic_clearance_m," +
             "reference_path_speed_mps," +
             "target_speed_mps,actual_speed_mps,a_ref_mps2,loss_compensation_mps2," +
             "speed_feedback_mps2," +
@@ -123,6 +125,12 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             control.ReferenceLineJoinCurvatureDelta,
             control.PathPredictionMilliseconds,
             control.RollingSpeedPlanningMilliseconds,
+            control.TrafficConstraintKind,
+            control.TrafficOpponentId ?? string.Empty,
+            control.TrafficConstraintDistanceMeters,
+            control.TrafficTargetSpeedMetersPerSecond,
+            control.TrafficConflictTimeSeconds,
+            control.TrafficCurrentClearanceMeters,
             control.ReferencePathTargetSpeed,
             control.TargetSpeed,
             car.State.Speed,

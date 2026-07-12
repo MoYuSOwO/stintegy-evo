@@ -145,9 +145,28 @@ public sealed class ReferenceLineDriver : IRaceDriver
         float pathPredictionMilliseconds = ElapsedMilliseconds(
             predictionStartTimestamp
         );
-        DynamicPathSpeedPlan dynamicPlan =
-            _speedPlanner.PlanPredictedPath(car, CurrentPathPrediction);
+        DynamicPathSpeedPlan dynamicPlan;
+        if (context.HasFrameSnapshot)
+        {
+            RaceFrameSnapshot frame = context.Frame;
+            dynamicPlan = _speedPlanner.PlanPredictedPath(
+                car,
+                CurrentPathPrediction,
+                context.Track,
+                in frame,
+                context.CarSnapshotIndex
+            );
+        }
+        else
+        {
+            dynamicPlan = _speedPlanner.PlanPredictedPath(
+                car,
+                CurrentPathPrediction
+            );
+        }
         VehicleSpeedPlanPoint speedReference = dynamicPlan.Current;
+        TrafficSpeedConstraint trafficConstraint =
+            _speedPlanner.LastTrafficConstraint;
         float rollingSpeedPlanningMilliseconds = MathF.Max(
             0f,
             ElapsedMilliseconds(speedPlanningStartTimestamp) -
@@ -215,6 +234,12 @@ public sealed class ReferenceLineDriver : IRaceDriver
             CurrentPathPrediction.ReferenceLineJoinCurvatureDelta,
             pathPredictionMilliseconds,
             rollingSpeedPlanningMilliseconds,
+            trafficConstraint.Kind,
+            trafficConstraint.OpponentId,
+            trafficConstraint.PathDistanceMeters,
+            trafficConstraint.TargetSpeedMetersPerSecond,
+            trafficConstraint.PredictedConflictTimeSeconds,
+            trafficConstraint.CurrentClearanceMeters,
             referencePathPlan.TargetSpeed,
             speedReference.TargetSpeed,
             referenceAcceleration,

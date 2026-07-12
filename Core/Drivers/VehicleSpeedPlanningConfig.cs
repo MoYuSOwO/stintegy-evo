@@ -23,6 +23,14 @@ public sealed class VehicleSpeedPlanningConfig
     public float PredictionConvergenceLateralErrorMeters { get; init; } = 0.15f;
     public float PredictionConvergenceHeadingErrorRadians { get; init; } = 0.01f;
     public float PredictionConvergenceCurvatureError { get; init; } = 0.0015f;
+    public bool EnableTrafficAvoidance { get; init; } = true;
+    public float TrafficPredictionHorizonSeconds { get; init; } = 6f;
+    public float TrafficMinimumGapMeters { get; init; } = 0.8f;
+    public float TrafficTimeHeadwaySeconds { get; init; } = 0.12f;
+    public float TrafficLateralSafetyMarginMeters { get; init; } = 0.15f;
+    public float TrafficLongitudinalSafetyMarginMeters { get; init; } = 0.25f;
+    public float TrafficConstraintHoldSeconds { get; init; } = 0.35f;
+    public int TrafficConstraintIterations { get; init; } = 2;
     public float CurvatureEpsilon { get; init; } = 1e-4f;
     public float MinimumSegmentLengthMeters { get; init; } = 1e-4f;
     public float ConvergenceToleranceMetersPerSecond { get; init; } = 0.01f;
