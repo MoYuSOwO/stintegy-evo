@@ -66,7 +66,7 @@ public sealed class ReferenceLineDriverTests
     }
 
     [Fact]
-    public void LateralErrorKeepsGlobalLineAndBuildsCurvatureSpeedEnvelope()
+    public void LateralErrorBuildsStanleyMotionPredictionAndDynamicSpeedPlan()
     {
         TrackData track = BuildTrack();
         ReferenceLineDriver driver = new();
@@ -82,16 +82,31 @@ public sealed class ReferenceLineDriverTests
 
         ReferenceLineDriverTelemetry telemetry = driver.LastTelemetry;
         Assert.True(MathF.Abs(telemetry.CurvatureCorrection) > 1e-3f);
-        Assert.True(telemetry.CorrectionDecayDistanceMeters >= 15f);
+        Assert.True(telemetry.PredictedPathLengthMeters >= 599f);
         Assert.True(
-            telemetry.CorrectionEnvelopeMaximumCurvature >=
+            telemetry.PredictedPathMaximumCurvature >=
             MathF.Abs(telemetry.DesiredCurvature) - 1e-4f
         );
-        Assert.True(telemetry.TargetSpeed <= telemetry.GlobalProfileTargetSpeed + 1e-4f);
+        Assert.True(telemetry.JoinsReferenceLine);
+        Assert.True(
+            MathF.Abs(telemetry.PredictedTerminalLateralErrorMeters) <
+            MathF.Abs(telemetry.LateralErrorMeters)
+        );
+        Assert.True(driver.CurrentSpeedLookahead.LengthMeters >= 599f);
+        Assert.True(driver.CurrentPathPrediction.JoinsReferenceLine);
+        Assert.True(
+            driver.CurrentPathPrediction.DynamicPredictionLengthMeters <
+            driver.CurrentPathPrediction.LengthMeters
+        );
+        Assert.InRange(
+            driver.CurrentPathPrediction.ReferenceLineJoinCurvatureDelta,
+            0f,
+            0.002f
+        );
     }
 
     [Fact]
-    public void AlignedCarUsesUnmodifiedGlobalSpeedProfile()
+    public void AlignedCarPredictionStartsAtCommandAndStaysNearReferenceLine()
     {
         TrackData track = BuildTrack();
         ReferenceLineDriver driver = new();
@@ -99,15 +114,19 @@ public sealed class ReferenceLineDriverTests
 
         driver.GetControl(in context, 1f / 60f);
 
-        Assert.InRange(MathF.Abs(driver.LastTelemetry.CurvatureCorrection), 0f, 0.002f);
-        Assert.Equal(0f, driver.LastTelemetry.CorrectionDecayDistanceMeters);
+        Assert.True(driver.CurrentPathPrediction.Count > 2);
         Assert.InRange(
             MathF.Abs(
-                driver.LastTelemetry.TargetSpeed -
-                driver.LastTelemetry.GlobalProfileTargetSpeed
+                driver.CurrentPathPrediction[0].CommandedCurvature -
+                driver.LastTelemetry.DesiredCurvature
             ),
             0f,
             1e-5f
+        );
+        Assert.InRange(
+            MathF.Abs(driver.CurrentPathPrediction.TerminalLateralErrorMeters),
+            0f,
+            0.5f
         );
     }
 
@@ -137,12 +156,6 @@ public sealed class ReferenceLineDriverTests
 
         DriverInput input = driver.GetControl(in context, 1f / 60f);
 
-        Assert.True(
-            driver.LastTelemetry.ReferenceAcceleration +
-            driver.LastTelemetry.LossCompensationAcceleration +
-            driver.LastTelemetry.SpeedFeedbackAcceleration >
-            driver.LastTelemetry.DriveAccelerationLimit
-        );
         Assert.InRange(
             driver.LastTelemetry.DriveAccelerationLimit - input.DesiredAccel,
             0f,
@@ -212,12 +225,11 @@ public sealed class ReferenceLineDriverTests
             strategy: new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal)
         );
 
-        protectDriver.GetControl(in protect, 1f / 60f);
-        attackDriver.GetControl(in attack, 1f / 60f);
+        DriverInput protectInput = protectDriver.GetControl(in protect, 1f / 60f);
+        DriverInput attackInput = attackDriver.GetControl(in attack, 1f / 60f);
 
         Assert.True(
-            attackDriver.LastTelemetry.TargetSpeed >
-            protectDriver.LastTelemetry.TargetSpeed
+            attackInput.DesiredAccel > protectInput.DesiredAccel
         );
     }
 

@@ -30,8 +30,11 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "time_s,lap,total_distance_m,s_m,d_m,lateral_error_m,heading_error_rad," +
             "ref_curvature_1pm,preview_curvature_1pm,curvature_gradient_1pm2," +
             "curvature_step_delta_1pm,desired_curvature_1pm,curvature_correction_1pm," +
-            "correction_decay_m,correction_envelope_max_curvature_1pm,speed_plan_ms," +
-            "global_profile_speed_mps," +
+            "predicted_path_length_m,predicted_path_max_curvature_1pm," +
+            "predicted_terminal_lateral_error_m,dynamic_prediction_length_m," +
+            "joins_reference_line,reference_line_join_curvature_delta_1pm," +
+            "path_prediction_ms,rolling_speed_plan_ms," +
+            "reference_path_speed_mps," +
             "target_speed_mps,actual_speed_mps,a_ref_mps2,loss_compensation_mps2," +
             "speed_feedback_mps2," +
             "command_accel_mps2,actual_accel_mps2,actual_lateral_accel_mps2," +
@@ -111,10 +114,15 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             curvatureStepDelta,
             control.DesiredCurvature,
             control.CurvatureCorrection,
-            control.CorrectionDecayDistanceMeters,
-            control.CorrectionEnvelopeMaximumCurvature,
-            control.CorrectionSpeedPlanningMilliseconds,
-            control.GlobalProfileTargetSpeed,
+            control.PredictedPathLengthMeters,
+            control.PredictedPathMaximumCurvature,
+            control.PredictedTerminalLateralErrorMeters,
+            control.DynamicPredictionLengthMeters,
+            control.JoinsReferenceLine ? 1 : 0,
+            control.ReferenceLineJoinCurvatureDelta,
+            control.PathPredictionMilliseconds,
+            control.RollingSpeedPlanningMilliseconds,
+            control.ReferencePathTargetSpeed,
             control.TargetSpeed,
             car.State.Speed,
             control.ReferenceAcceleration,

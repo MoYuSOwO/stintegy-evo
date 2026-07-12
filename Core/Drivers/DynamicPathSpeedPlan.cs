@@ -1,10 +1,10 @@
 namespace TheStint.Core.Drivers;
 
-public readonly record struct CurvatureCorrectionSpeedPlan(
-    VehicleSpeedProfilePoint Current,
+public readonly record struct DynamicPathSpeedPlan(
+    VehicleSpeedPlanPoint Current,
     float NextTargetSpeed,
     float FirstSegmentLengthMeters,
-    float DecayDistanceMeters,
+    float PathLengthMeters,
     float MaximumAbsoluteCurvature,
     int SampleCount
 );

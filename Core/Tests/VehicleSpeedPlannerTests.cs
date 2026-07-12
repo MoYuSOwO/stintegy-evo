@@ -45,11 +45,38 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
-    public void ProfileBrakesBeforeTightCorners()
+    public void ReferenceLookaheadUsesConfiguredLocalHorizon()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(track, CarStrategy.Default);
-        VehicleSpeedProfile profile = new VehicleSpeedPlanner().Plan(car, track);
+        VehicleSpeedPlanningConfig config = new()
+        {
+            SpeedPlanningHorizonMeters = 600f,
+            PathPredictionStepMeters = 2f
+        };
+        VehicleSpeedPlanner planner = new(config);
+
+        VehicleSpeedLookahead lookahead = ReferenceLookahead(
+            planner,
+            car,
+            track
+        );
+
+        Assert.Equal(301, lookahead.Count);
+        Assert.Equal(600f, lookahead.LengthMeters);
+        Assert.Equal(2f, lookahead.StepLengthMeters);
+    }
+
+    [Fact]
+    public void ReferenceLookaheadBrakesBeforeTightCorners()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedLookahead profile = ReferenceLookahead(
+            new VehicleSpeedPlanner(),
+            car,
+            track
+        );
 
         float minimumSpeed = float.PositiveInfinity;
         float maximumSpeed = 0f;
@@ -66,7 +93,7 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
-    public void ProfileUsesEachCarsStrategyAndCondition()
+    public void ReferenceLookaheadUsesEachCarsStrategyAndCondition()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar protect = CreateCar(
@@ -77,12 +104,18 @@ public sealed class VehicleSpeedPlannerTests
             track,
             new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Attack)
         );
-        VehicleSpeedPlanner planner = new();
+        float protectAverage = AverageSpeed(ReferenceLookahead(
+            new VehicleSpeedPlanner(),
+            protect,
+            track
+        ));
+        float attackAverage = AverageSpeed(ReferenceLookahead(
+            new VehicleSpeedPlanner(),
+            attack,
+            track
+        ));
 
-        VehicleSpeedProfile protectProfile = planner.Plan(protect, track);
-        VehicleSpeedProfile attackProfile = planner.Plan(attack, track);
-
-        Assert.True(AverageSpeed(attackProfile) > AverageSpeed(protectProfile));
+        Assert.True(attackAverage > protectAverage);
     }
 
     [Fact]
@@ -115,19 +148,21 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
-    public void ReferenceAccelerationMatchesAdjacentProfileSpeed()
+    public void ReferenceAccelerationMatchesAdjacentLookaheadSpeed()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(track, CarStrategy.Default);
-        VehicleSpeedProfile profile = new VehicleSpeedPlanner().Plan(car, track);
+        VehicleSpeedLookahead profile = ReferenceLookahead(
+            new VehicleSpeedPlanner(),
+            car,
+            track
+        );
 
-        int index = FindModerateAccelerationPoint(profile, track);
+        int index = FindModerateAccelerationPoint(profile);
         Assert.True(index >= 0, "profile should contain a non-saturated acceleration segment");
 
-        int next = (index + 1) % profile.Count;
-        TrackSample sample = track.Sample(index * profile.StepLengthMeters);
-        TrackSample nextSample = track.Sample(next * profile.StepLengthMeters);
-        float distance = Vector2.Distance(sample.RefPosition, nextSample.RefPosition);
+        int next = index + 1;
+        float distance = profile.StepLengthMeters;
         float startSpeed = profile[index].TargetSpeed;
         float targetSpeed = profile[next].TargetSpeed;
         float expected = (targetSpeed * targetSpeed - startSpeed * startSpeed) /
@@ -141,51 +176,67 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
-    public void CurvatureCorrectionEnvelopeLowersSpeedOnlyForExtraCurvature()
+    public void PredictedRecoveryPathLowersSpeedForExtraCommandedCurvature()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(track, CarStrategy.Default);
         VehicleSpeedPlanner planner = new();
-        VehicleSpeedProfile global = planner.Plan(car, track);
-        float s = track.Grids[1].S;
-
-        CurvatureCorrectionSpeedPlan baseline = planner.PlanCurvatureCorrection(
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            planner,
             car,
-            track,
-            global,
-            s,
-            curvatureCorrection: 0f,
-            commandedCurvature: 0f
+            track
         );
-        CurvatureCorrectionSpeedPlan corrected = planner.PlanCurvatureCorrection(
+        VehiclePathPrediction baselinePath = PredictPath(
             car,
             track,
-            global,
-            s,
-            curvatureCorrection: 0.08f,
-            commandedCurvature: 0.08f
+            speedEstimate,
+            lateralError: 0f,
+            initialCurvature: 0f
+        );
+        DynamicPathSpeedPlan baseline = planner.PlanPredictedPath(
+            car,
+            baselinePath
+        );
+        speedEstimate = ReferenceLookahead(planner, car, track);
+        VehiclePathPrediction correctedPath = PredictPath(
+            car,
+            track,
+            speedEstimate,
+            lateralError: 4f,
+            initialCurvature: 0.08f
+        );
+        DynamicPathSpeedPlan corrected = planner.PlanPredictedPath(
+            car,
+            correctedPath
         );
 
         Assert.True(corrected.Current.TargetSpeed < baseline.Current.TargetSpeed);
-        Assert.True(corrected.MaximumAbsoluteCurvature >= 0.08f);
+        Assert.True(corrected.MaximumAbsoluteCurvature >= 0.08f - 1e-5f);
     }
 
     [Fact]
-    public void CurvatureCorrectionUsesInstantaneousAccelerationAtLaunch()
+    public void DynamicPathPlanUsesInstantaneousAccelerationAtLaunch()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(track, CarStrategy.Default);
         car.State.Speed = 0f;
         VehicleSpeedPlanner planner = new();
-        VehicleSpeedProfile global = planner.Plan(car, track);
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            planner,
+            car,
+            track
+        );
 
-        CurvatureCorrectionSpeedPlan plan = planner.PlanCurvatureCorrection(
+        VehiclePathPrediction path = PredictPath(
             car,
             track,
-            global,
-            track.Grids[1].S,
-            curvatureCorrection: 0.08f,
-            commandedCurvature: 0.08f
+            speedEstimate,
+            lateralError: 4f,
+            initialCurvature: 0.08f
+        );
+        DynamicPathSpeedPlan plan = planner.PlanPredictedPath(
+            car,
+            path
         );
         float segmentAverage = (
             plan.NextTargetSpeed * plan.NextTargetSpeed -
@@ -209,15 +260,22 @@ public sealed class VehicleSpeedPlannerTests
         );
         car.State.Speed = 0f;
         VehicleSpeedPlanner planner = new();
-        VehicleSpeedProfile global = planner.Plan(car, track);
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            planner,
+            car,
+            track
+        );
 
-        CurvatureCorrectionSpeedPlan plan = planner.PlanCurvatureCorrection(
+        VehiclePathPrediction path = PredictPath(
             car,
             track,
-            global,
-            track.Grids[1].S,
-            curvatureCorrection: 0.08f,
-            commandedCurvature: 0.08f
+            speedEstimate,
+            lateralError: 4f,
+            initialCurvature: 0.08f
+        );
+        DynamicPathSpeedPlan plan = planner.PlanPredictedPath(
+            car,
+            path
         );
         Assert.True(plan.Current.ReferenceAcceleration > 4f);
         Assert.True(
@@ -232,27 +290,41 @@ public sealed class VehicleSpeedPlannerTests
         RaceCar car = CreateCar(track, CarStrategy.Default);
         car.State.Speed = 0f;
         VehicleSpeedPlanner fullPlanner = new();
-        VehicleSpeedProfile fullGlobal = fullPlanner.Plan(car, track);
-        CurvatureCorrectionSpeedPlan fullPlan = fullPlanner.PlanCurvatureCorrection(
+        VehicleSpeedLookahead fullSpeedEstimate = ReferenceLookahead(
+            fullPlanner,
+            car,
+            track
+        );
+        VehiclePathPrediction fullPath = PredictPath(
             car,
             track,
-            fullGlobal,
-            track.Grids[1].S,
-            curvatureCorrection: 0.08f,
-            commandedCurvature: 0.08f
+            fullSpeedEstimate,
+            lateralError: 4f,
+            initialCurvature: 0.08f
+        );
+        DynamicPathSpeedPlan fullPlan = fullPlanner.PlanPredictedPath(
+            car,
+            fullPath
         );
         VehicleSpeedPlanner planner = new(
             new VehicleSpeedPlanningConfig { DriveAccelerationUsage = 0.8f }
         );
-        VehicleSpeedProfile global = planner.Plan(car, track);
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            planner,
+            car,
+            track
+        );
 
-        CurvatureCorrectionSpeedPlan plan = planner.PlanCurvatureCorrection(
+        VehiclePathPrediction path = PredictPath(
             car,
             track,
-            global,
-            track.Grids[1].S,
-            curvatureCorrection: 0.08f,
-            commandedCurvature: 0.08f
+            speedEstimate,
+            lateralError: 4f,
+            initialCurvature: 0.08f
+        );
+        DynamicPathSpeedPlan plan = planner.PlanPredictedPath(
+            car,
+            path
         );
         Assert.True(
             plan.Current.ReferenceAcceleration <=
@@ -294,7 +366,62 @@ public sealed class VehicleSpeedPlannerTests
         return car;
     }
 
-    private static float AverageSpeed(VehicleSpeedProfile profile)
+    private static VehiclePathPrediction PredictPath(
+        RaceCar car,
+        TrackData track,
+        VehicleSpeedLookahead speedEstimate,
+        float lateralError,
+        float initialCurvature
+    )
+    {
+        float s = track.Grids[1].S;
+        TrackSample sample = track.Sample(s);
+        car.State.Position = sample.RefPosition + sample.Normal * lateralError;
+        car.State.Heading = sample.RefHeading;
+        VehicleSpeedPlanningConfig config = new();
+        return new StanleyPathPredictor().Predict(
+            car,
+            track,
+            speedEstimate,
+            lateralTargetOffsetMeters: 0f,
+            stanleyGain: 2f,
+            stanleySofteningSpeed: 4f,
+            headingGain: 1f,
+            curvaturePreviewTimeSeconds: 0.15f,
+            maximumCurvaturePreviewMeters: 6f,
+            horizonMeters: config.SpeedPlanningHorizonMeters,
+            stepMeters: config.PathPredictionStepMeters,
+            minimumDynamicMeters: config.MinimumDynamicPredictionMeters,
+            convergenceHoldMeters: config.PredictionConvergenceHoldMeters,
+            convergenceLateralErrorMeters:
+                config.PredictionConvergenceLateralErrorMeters,
+            convergenceHeadingErrorRadians:
+                config.PredictionConvergenceHeadingErrorRadians,
+            convergenceCurvatureError:
+                config.PredictionConvergenceCurvatureError,
+            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            initialCommandedCurvature: initialCurvature
+        );
+    }
+
+    private static VehicleSpeedLookahead ReferenceLookahead(
+        VehicleSpeedPlanner planner,
+        RaceCar car,
+        TrackData track
+    )
+    {
+        VehicleSpeedPlanningConfig config = planner.Config;
+        return planner.PlanReferenceLookahead(
+            car,
+            track,
+            track.Project(car.State.Position).S,
+            config.SpeedPlanningHorizonMeters,
+            config.PathPredictionStepMeters,
+            DriverPlanningModifiers.Neutral
+        );
+    }
+
+    private static float AverageSpeed(VehicleSpeedLookahead profile)
     {
         float sum = 0f;
         for (int i = 0; i < profile.Count; i++)
@@ -302,13 +429,14 @@ public sealed class VehicleSpeedPlannerTests
         return sum / Math.Max(profile.Count, 1);
     }
 
-    private static int FindModerateAccelerationPoint(VehicleSpeedProfile profile, TrackData track)
+    private static int FindModerateAccelerationPoint(
+        VehicleSpeedLookahead profile
+    )
     {
-        for (int i = 0; i < profile.Count; i++)
+        for (int i = 0; i < profile.Count - 1; i++)
         {
             float command = profile[i].ReferenceAcceleration;
-            float curvature = MathF.Abs(track.Sample(i * profile.StepLengthMeters).RefCurvature);
-            if (command > 0.4f && command < 3.5f && curvature < 0.01f)
+            if (command > 0.4f && command < 3.5f)
                 return i;
         }
         return -1;

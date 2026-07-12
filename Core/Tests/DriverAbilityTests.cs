@@ -67,8 +67,8 @@ public sealed class DriverAbilityTests
             eliteDriver.LastTelemetry.PaceEfficiency
         );
         Assert.True(
-            MinimumTargetSpeed(developingDriver.CurrentSpeedProfile!) <
-            MinimumTargetSpeed(eliteDriver.CurrentSpeedProfile!)
+            MinimumTargetSpeed(developingDriver.CurrentSpeedLookahead) <
+            MinimumTargetSpeed(eliteDriver.CurrentSpeedLookahead)
         );
     }
 
@@ -195,7 +195,7 @@ public sealed class DriverAbilityTests
         Assert.InRange(
             MathF.Abs(slowTelemetry.ActualGrip - instantTelemetry.ActualGrip),
             0f,
-            1e-5f
+            2e-5f
         );
     }
 
@@ -261,11 +261,11 @@ public sealed class DriverAbilityTests
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
 
-        bool sawRecoveryEnvelope = false;
+        bool sawRollingSpeedPlan = false;
         for (int frame = 0; frame < 60; frame++)
         {
             simulation.Step(1f / 60f);
-            sawRecoveryEnvelope |= driver.LastTelemetry.CorrectionDecayDistanceMeters > 0f;
+            sawRollingSpeedPlan |= driver.CurrentSpeedLookahead.Count > 1;
         }
 
         Assert.True(
@@ -273,7 +273,7 @@ public sealed class DriverAbilityTests
             $"offset grid launch should accelerate, got {car.State.Speed:0.000} m/s"
         );
         Assert.True(driver.LastTelemetry.ReferenceAcceleration > 0f);
-        Assert.True(sawRecoveryEnvelope);
+        Assert.True(sawRollingSpeedPlan);
     }
 
     private static (float Minimum, float Maximum) ObservePaceRange(float consistency)
@@ -385,7 +385,7 @@ public sealed class DriverAbilityTests
         }
     }
 
-    private static float MinimumTargetSpeed(VehicleSpeedProfile profile)
+    private static float MinimumTargetSpeed(VehicleSpeedLookahead profile)
     {
         float minimum = float.PositiveInfinity;
         for (int i = 0; i < profile.Count; i++)

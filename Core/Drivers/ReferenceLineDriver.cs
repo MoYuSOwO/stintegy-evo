@@ -1,30 +1,24 @@
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using TheStint.Core.Cars;
 using TheStint.Core.Racing;
 using TheStint.Core.Track;
-using TheStint.Core.Util;
 
 namespace TheStint.Core.Drivers;
 
 /// <summary>
-/// Always tracks the global racing line with Stanley steering. When steering
-/// feedback adds curvature, a decaying virtual-curvature envelope adjusts the
-/// car-specific speed plan without creating a second geometric path.
+/// Tracks the global racing line with Stanley steering, predicts the spatial
+/// path produced by that same control law from the live vehicle state, joins
+/// that prediction back to the racing line, and replans speed over the rolling
+/// local horizon every frame.
 /// </summary>
 public sealed class ReferenceLineDriver : IRaceDriver
 {
     private readonly VehicleSpeedPlanner _speedPlanner;
-    private VehicleSpeedProfile? _speedProfile;
-    private RaceCar? _plannedCar;
+    private readonly StanleyPathPredictor _pathPredictor = new();
     private RaceCar? _runtimeCar;
     private DriverPerformanceState? _performance;
-    private CarStrategy _plannedStrategy;
-    private int _plannedPerformanceRevision = -1;
-    private float _nextGlobalReplanTime;
-    private float _perceivedSideslip;
-    private float _perceivedYawRate;
+    private StabilityControlState _stabilityControlState;
 
     public ReferenceLineDriver(
         VehicleSpeedPlanningConfig? speedPlanningConfig = null,
@@ -48,58 +42,47 @@ public sealed class ReferenceLineDriver : IRaceDriver
 
     public DriverProfile Profile { get; }
     public float TireEnergyEfficiency => _performance?.TireEnergyEfficiency ?? 1f;
-    public VehicleSpeedProfile? CurrentSpeedProfile => _speedProfile;
+    public VehicleSpeedLookahead CurrentSpeedLookahead =>
+        _speedPlanner.CurrentPredictedPathLookahead;
+    public VehiclePathPrediction CurrentPathPrediction { get; private set; } = new();
     public ReferenceLineDriverTelemetry LastTelemetry { get; private set; }
 
     public void Initialize(in RaceDriverInitContext context)
     {
         ResetPerformanceState(context.Car, context.Pose);
-        ReplanGlobal(context.Car, context.Track, context.RaceTimeSeconds);
     }
 
     public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
     {
         UpdatePerformanceState(in context, dt);
-        EnsureGlobalSpeedProfile(in context);
 
         RaceCar car = context.Car;
         CarState state = car.State;
         float wheelBase = MathF.Max(car.CarConfig.WheelBaseMeters, 0.5f);
+        float lateralTargetError = _performance!.LateralTargetErrorMeters;
         // The path controller follows the velocity direction. Body sideslip is
         // stabilized by the vehicle layer instead of turning into an abrupt
         // Stanley heading correction.
-        Vector2 frontAxlePosition = state.Position + state.VelocityForward * (wheelBase * 0.5f);
-        TrackPose frontPose = context.Track.Project(frontAxlePosition);
-        TrackSample frontSample = frontPose.Sample;
-        float curvaturePreviewDistance = MathF.Min(
-            state.Speed * CurvaturePreviewTimeSeconds,
-            MaximumCurvaturePreviewMeters
+        StanleyControlSample control = StanleyControlLaw.Sample(
+            context.Track,
+            state.Position,
+            state.VelocityHeading,
+            state.Speed,
+            wheelBase,
+            lateralTargetError,
+            StanleyGain,
+            StanleySofteningSpeed,
+            HeadingGain,
+            CurvaturePreviewTimeSeconds,
+            MaximumCurvaturePreviewMeters,
+            car.CarConfig.MaxCurvatureRequest
         );
-        TrackSample previewSample = context.Track.Sample(
-            frontPose.S + curvaturePreviewDistance
-        );
-
-        float lateralTargetError = _performance!.LateralTargetErrorMeters;
-        float lateralError = frontPose.D - (frontSample.RefOffset + lateralTargetError);
-        float headingError = MathHelper.NormalizeAngle(
-            frontSample.RefHeading - state.VelocityHeading
-        );
-        float stanleyCorrection = MathF.Atan(
-            StanleyGain * lateralError /
-            MathF.Max(StanleySofteningSpeed + state.Speed, 0.1f)
-        );
-        float feedforwardSteer = MathF.Atan(wheelBase * previewSample.RefCurvature);
-        float steeringAngle =
-            feedforwardSteer + HeadingGain * headingError + stanleyCorrection;
-        float maximumSteeringAngle = MathF.Atan(
-            wheelBase * MathF.Max(car.CarConfig.MaxCurvatureRequest, 0f)
-        );
-        steeringAngle = Math.Clamp(
-            steeringAngle,
-            -maximumSteeringAngle,
-            maximumSteeringAngle
-        );
-        float desiredCurvature = MathF.Tan(steeringAngle) / wheelBase;
+        TrackPose frontPose = control.FrontPose;
+        TrackSample frontSample = control.FrontSample;
+        TrackSample previewSample = control.PreviewSample;
+        float lateralError = control.LateralErrorMeters;
+        float headingError = control.HeadingErrorRadians;
+        float desiredCurvature = control.DesiredCurvature;
         float controlCorrection = ApplyCarControl(
             state,
             wheelBase,
@@ -108,85 +91,67 @@ public sealed class ReferenceLineDriver : IRaceDriver
             out float controlSeverity
         );
 
-        // The front-axle Stanley error contains the normal geometric offset
-        // between the car centre and its front axle while cornering. That is
-        // useful for steering, but it is not an off-line recovery path and
-        // must not lower the speed plan. Build the recovery correction from
-        // the car-centre pose instead, then retain any active stability-control
-        // correction made above.
-        TrackSample centerSample = context.Pose.Sample;
-        float centerLateralError =
-            context.Pose.D - (centerSample.RefOffset + lateralTargetError);
-        float centerHeadingError = MathHelper.NormalizeAngle(
-            centerSample.RefHeading - state.VelocityHeading
+        float curvatureCorrection = desiredCurvature - previewSample.RefCurvature;
+        float planningPace = Math.Clamp(
+            _performance.PaceEfficiency *
+            (1f + _performance.LocalSpeedErrorFraction),
+            0.8f,
+            1.05f
         );
-        float recoveryStanleyCorrection = MathF.Atan(
-            StanleyGain * centerLateralError /
-            MathF.Max(StanleySofteningSpeed + state.Speed, 0.1f)
+        DriverPlanningModifiers planningModifiers = new(
+            planningPace,
+            _performance.EstimatedGripScale
         );
-        float recoverySteeringAngle = Math.Clamp(
-            feedforwardSteer + HeadingGain * centerHeadingError +
-            recoveryStanleyCorrection,
-            -maximumSteeringAngle,
-            maximumSteeringAngle
+        long speedPlanningStartTimestamp = Stopwatch.GetTimestamp();
+        VehicleSpeedLookahead referenceLookahead =
+            _speedPlanner.PlanReferenceLookahead(
+                car,
+                context.Track,
+                frontPose.S + _performance.BrakeMarkerErrorMeters,
+                _speedPlanner.Config.SpeedPlanningHorizonMeters,
+                _speedPlanner.Config.PathPredictionStepMeters,
+                planningModifiers
+            );
+        VehicleSpeedPlanPoint referencePathPlan =
+            referenceLookahead.Sample(0f);
+        long predictionStartTimestamp = Stopwatch.GetTimestamp();
+        CurrentPathPrediction = _pathPredictor.Predict(
+            car,
+            context.Track,
+            referenceLookahead,
+            lateralTargetError,
+            StanleyGain,
+            StanleySofteningSpeed,
+            HeadingGain,
+            CurvaturePreviewTimeSeconds,
+            MaximumCurvaturePreviewMeters,
+            _speedPlanner.Config.SpeedPlanningHorizonMeters,
+            _speedPlanner.Config.PathPredictionStepMeters,
+            _speedPlanner.Config.MinimumDynamicPredictionMeters,
+            _speedPlanner.Config.PredictionConvergenceHoldMeters,
+            _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
+            _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
+            _speedPlanner.Config.PredictionConvergenceCurvatureError,
+            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            desiredCurvature,
+            new StabilityPredictionSeed(
+                _stabilityControlState,
+                _performance.IsRecovering,
+                _performance.EffectiveControl,
+                _performance.ControlGainScale
+            )
         );
-        float recoveryCurvature = Math.Clamp(
-            MathF.Tan(recoverySteeringAngle) / wheelBase + controlCorrection,
-            -car.CarConfig.MaxCurvatureRequest,
-            car.CarConfig.MaxCurvatureRequest
+        float pathPredictionMilliseconds = ElapsedMilliseconds(
+            predictionStartTimestamp
         );
-        float curvatureCorrection =
-            recoveryCurvature - previewSample.RefCurvature;
-        float perceivedS = frontPose.S + _performance.BrakeMarkerErrorMeters;
-        VehicleSpeedProfilePoint globalReference = _speedProfile!.Sample(perceivedS);
-        VehicleSpeedProfilePoint speedReference = globalReference;
-        float correctionDecayDistance = 0f;
-        float correctionMaximumCurvature = MathF.Abs(desiredCurvature);
-        float correctionSpeedPlanningMilliseconds = 0f;
-
-        if (MathF.Abs(curvatureCorrection) >
-            _speedPlanner.Config.CurvatureCorrectionActivationThreshold)
-        {
-            Stopwatch timer = Stopwatch.StartNew();
-            CurvatureCorrectionSpeedPlan correctionPlan =
-                _speedPlanner.PlanCurvatureCorrection(
-                    car,
-                    context.Track,
-                    _speedProfile,
-                    frontPose.S,
-                    curvatureCorrection,
-                    desiredCurvature
-                );
-            timer.Stop();
-            speedReference = correctionPlan.Current;
-            correctionDecayDistance = correctionPlan.DecayDistanceMeters;
-            correctionMaximumCurvature = correctionPlan.MaximumAbsoluteCurvature;
-            correctionSpeedPlanningMilliseconds = ElapsedMilliseconds(timer);
-        }
-
-        float cornerWeight = SmoothStep01(
-            MathF.Abs(previewSample.RefCurvature) / 0.01f
+        DynamicPathSpeedPlan dynamicPlan =
+            _speedPlanner.PlanPredictedPath(car, CurrentPathPrediction);
+        VehicleSpeedPlanPoint speedReference = dynamicPlan.Current;
+        float rollingSpeedPlanningMilliseconds = MathF.Max(
+            0f,
+            ElapsedMilliseconds(speedPlanningStartTimestamp) -
+            pathPredictionMilliseconds
         );
-        float paceRatio = _performance.PaceEfficiency /
-                          MathF.Max(_performance.PlanningPaceEfficiency, 0.8f);
-        float localSpeedFactor = Math.Clamp(
-            1f + (paceRatio - 1f) * cornerWeight +
-            _performance.LocalSpeedErrorFraction * cornerWeight,
-            0.97f,
-            1.02f
-        );
-        // The curvature-correction plan anchors its first target to the
-        // current speed and carries acceleration separately. Scaling that
-        // anchored target below one would look like an overspeed condition
-        // and suppress the positive recovery acceleration, most visibly when
-        // launching from an offset grid slot.
-        if (correctionDecayDistance <= 0f)
-        {
-            speedReference = speedReference with
-            {
-                TargetSpeed = speedReference.TargetSpeed * localSpeedFactor
-            };
-        }
 
         float referenceAcceleration = speedReference.ReferenceAcceleration;
         if (state.Speed > speedReference.TargetSpeed)
@@ -241,10 +206,15 @@ public sealed class ReferenceLineDriver : IRaceDriver
             previewSample.RefCurvature,
             desiredCurvature,
             curvatureCorrection,
-            correctionDecayDistance,
-            correctionMaximumCurvature,
-            correctionSpeedPlanningMilliseconds,
-            globalReference.TargetSpeed,
+            CurrentPathPrediction.LengthMeters,
+            CurrentPathPrediction.MaximumAbsoluteCommandedCurvature,
+            CurrentPathPrediction.TerminalLateralErrorMeters,
+            CurrentPathPrediction.DynamicPredictionLengthMeters,
+            CurrentPathPrediction.JoinsReferenceLine,
+            CurrentPathPrediction.ReferenceLineJoinCurvatureDelta,
+            pathPredictionMilliseconds,
+            rollingSpeedPlanningMilliseconds,
+            referencePathPlan.TargetSpeed,
             speedReference.TargetSpeed,
             referenceAcceleration,
             lossCompensationAcceleration,
@@ -279,31 +249,6 @@ public sealed class ReferenceLineDriver : IRaceDriver
         return new DriverInput(desiredCurvature, desiredAcceleration);
     }
 
-    private void EnsureGlobalSpeedProfile(in RaceDriverFrameContext context)
-    {
-        if (_speedProfile == null ||
-            !ReferenceEquals(_plannedCar, context.Car) ||
-            _plannedStrategy != context.Car.Strategy ||
-            _plannedPerformanceRevision != _performance!.PlanningRevision ||
-            context.RaceTimeSeconds >= _nextGlobalReplanTime)
-        {
-            ReplanGlobal(context.Car, context.Track, context.RaceTimeSeconds);
-        }
-    }
-
-    private void ReplanGlobal(RaceCar car, TrackData track, float raceTimeSeconds)
-    {
-        DriverPlanningModifiers modifiers = new(
-            _performance?.PlanningPaceEfficiency ?? 1f,
-            _performance?.EstimatedGripScale ?? 1f
-        );
-        _speedProfile = _speedPlanner.Plan(car, track, modifiers);
-        _plannedCar = car;
-        _plannedStrategy = car.Strategy;
-        _plannedPerformanceRevision = _performance?.PlanningRevision ?? 0;
-        _nextGlobalReplanTime = raceTimeSeconds + _speedPlanner.Config.ReplanIntervalSeconds;
-    }
-
     private void UpdatePerformanceState(
         in RaceDriverFrameContext context,
         float dt
@@ -330,11 +275,10 @@ public sealed class ReferenceLineDriver : IRaceDriver
             pose.S,
             EstimateCurrentLateralGrip(car)
         );
-        _perceivedSideslip = car.State.SideslipAngleRadians;
-        _perceivedYawRate = car.State.YawRateRadiansPerSecond;
-        _speedProfile = null;
-        _plannedCar = null;
-        _plannedPerformanceRevision = -1;
+        _stabilityControlState = new StabilityControlState(
+            car.State.SideslipAngleRadians,
+            car.State.YawRateRadiansPerSecond
+        );
     }
 
     private float ApplyCarControl(
@@ -345,68 +289,34 @@ public sealed class ReferenceLineDriver : IRaceDriver
         out float severity
     )
     {
-        float desiredYawRate = state.Speed * desiredCurvature;
-        float actualYawError = state.YawRateRadiansPerSecond - desiredYawRate;
-        float sideslipSeverity = Math.Clamp(
-            (MathF.Abs(state.SideslipAngleRadians) - 0.03f) / 0.07f,
-            0f,
-            1f
-        );
-        float yawSeverity = Math.Clamp(
-            (MathF.Abs(actualYawError) - 0.08f) / 0.6f,
-            0f,
-            1f
-        ) * Math.Clamp(
-            MathF.Abs(state.SideslipAngleRadians) / 0.04f,
-            0f,
-            1f
-        );
-        float rearSlideSeverity = Math.Clamp(
-            (state.Telemetry.RearSlideSeverity - 0.15f) / 0.6f,
-            0f,
-            1f
-        );
-        severity = MathF.Max(
-            sideslipSeverity,
-            MathF.Max(yawSeverity, rearSlideSeverity)
-        );
-
-        bool unstable = _performance!.IsRecovering
-            ? severity > 0.05f
-            : severity > 0.15f;
-        _performance.UpdateControlEvent(unstable);
-
-        float observationTime = Lerp(
-            0.25f,
-            0.04f,
-            _performance.EffectiveControl
-        );
-        float response = 1f - MathF.Exp(-MathF.Max(0f, dt) / observationTime);
-        _perceivedSideslip = Lerp(
-            _perceivedSideslip,
+        severity = StabilityControlLaw.CalculateSeverity(
+            state.Speed,
             state.SideslipAngleRadians,
-            response
-        );
-        _perceivedYawRate = Lerp(
-            _perceivedYawRate,
             state.YawRateRadiansPerSecond,
-            response
+            state.Telemetry.RearSlideSeverity,
+            desiredCurvature
         );
 
-        if (!_performance.IsRecovering)
-            return 0f;
-
-        float perceivedYawError = _perceivedYawRate - desiredYawRate;
-        float correction = (
-            0.35f * _perceivedSideslip / MathF.Max(wheelBase, 0.5f) -
-            0.25f * perceivedYawError / MathF.Max(state.Speed, 5f)
-        ) * _performance.ControlGainScale;
-        desiredCurvature = Math.Clamp(
-            desiredCurvature + correction,
-            -_runtimeCar!.CarConfig.MaxCurvatureRequest,
-            _runtimeCar.CarConfig.MaxCurvatureRequest
+        bool unstable = StabilityControlLaw.IsUnstable(
+            severity,
+            _performance!.IsRecovering
         );
-        return correction;
+        _performance.UpdateControlEvent(unstable);
+        StabilityControlResult result = StabilityControlLaw.Apply(
+            ref _stabilityControlState,
+            state.SideslipAngleRadians,
+            state.YawRateRadiansPerSecond,
+            state.Speed,
+            desiredCurvature,
+            wheelBase,
+            _runtimeCar!.CarConfig.MaxCurvatureRequest,
+            _performance.EffectiveControl,
+            _performance.ControlGainScale,
+            _performance.IsRecovering,
+            dt
+        );
+        desiredCurvature = result.CommandedCurvature;
+        return result.CurvatureCorrection;
     }
 
     private float EstimateCurrentLateralGrip(RaceCar car)
@@ -423,17 +333,12 @@ public sealed class ReferenceLineDriver : IRaceDriver
         return MathF.Max(limits.LateralAccelerationLimit, 1e-3f);
     }
 
-    private static float SmoothStep01(float value)
-    {
-        float x = Math.Clamp(value, 0f, 1f);
-        return x * x * (3f - 2f * x);
-    }
-
     private static float Lerp(float from, float to, float t) =>
         from + (to - from) * Math.Clamp(t, 0f, 1f);
 
-    private static float ElapsedMilliseconds(Stopwatch stopwatch)
+    private static float ElapsedMilliseconds(long startTimestamp)
     {
-        return (float)(stopwatch.ElapsedTicks * 1000.0 / Stopwatch.Frequency);
+        long elapsedTicks = Stopwatch.GetTimestamp() - startTimestamp;
+        return (float)(elapsedTicks * 1000.0 / Stopwatch.Frequency);
     }
 }

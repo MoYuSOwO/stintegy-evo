@@ -14,15 +14,15 @@ public sealed class VehicleSpeedPlanningConfig
     // shapes the planned profile and caps real-time acceleration requests.
     public float DriveAccelerationUsage { get; init; } = 1f;
     public float BrakeDecelerationUsage { get; init; } = 0.9f;
-    public float PlanningStepMeters { get; init; } = 2f;
     public int IntegrationSubsteps { get; init; } = 3;
-    public int ClosedLoopPasses { get; init; } = 8;
     public int AccelerationSolveIterations { get; init; } = 4;
-    public float ReplanIntervalSeconds { get; init; } = 5f;
-    public float CurvatureCorrectionHorizonMeters { get; init; } = 150f;
-    public float CurvatureCorrectionDecayTimeSeconds { get; init; } = 1f;
-    public float MinimumCurvatureCorrectionDecayMeters { get; init; } = 15f;
-    public float CurvatureCorrectionActivationThreshold { get; init; } = 0.002f;
+    public float SpeedPlanningHorizonMeters { get; init; } = 600f;
+    public float PathPredictionStepMeters { get; init; } = 2f;
+    public float MinimumDynamicPredictionMeters { get; init; } = 30f;
+    public float PredictionConvergenceHoldMeters { get; init; } = 10f;
+    public float PredictionConvergenceLateralErrorMeters { get; init; } = 0.15f;
+    public float PredictionConvergenceHeadingErrorRadians { get; init; } = 0.01f;
+    public float PredictionConvergenceCurvatureError { get; init; } = 0.0015f;
     public float CurvatureEpsilon { get; init; } = 1e-4f;
     public float MinimumSegmentLengthMeters { get; init; } = 1e-4f;
     public float ConvergenceToleranceMetersPerSecond { get; init; } = 0.01f;
