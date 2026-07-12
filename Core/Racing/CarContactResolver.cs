@@ -11,20 +11,37 @@ public static class CarContactResolver
 
     public static void Resolve(IReadOnlyList<RaceCar> cars)
     {
+        ResolveUntilSeparated(cars);
+    }
+
+    internal static bool ResolveUntilSeparated(IReadOnlyList<RaceCar> cars)
+    {
         int iterations = 1;
         foreach (RaceCar car in cars)
             iterations = Math.Max(iterations, car.Collision.SolverIterations);
 
+        bool resolvedAny = false;
         for (int iteration = 0; iteration < iterations; iteration++)
         {
-            for (int i = 0; i < cars.Count; i++)
+            bool resolvedThisPass = ResolveSinglePass(cars);
+            resolvedAny |= resolvedThisPass;
+            if (!resolvedThisPass)
+                break;
+        }
+        return resolvedAny;
+    }
+
+    private static bool ResolveSinglePass(IReadOnlyList<RaceCar> cars)
+    {
+        bool resolvedAny = false;
+        for (int i = 0; i < cars.Count; i++)
+        {
+            for (int j = i + 1; j < cars.Count; j++)
             {
-                for (int j = i + 1; j < cars.Count; j++)
-                {
-                    ResolvePair(cars[i], cars[j]);
-                }
+                resolvedAny |= ResolvePair(cars[i], cars[j]);
             }
         }
+        return resolvedAny;
     }
 
     public static bool AreOverlapping(RaceCar a, RaceCar b)
@@ -37,34 +54,39 @@ public static class CarContactResolver
         CarBodyGeometry bodyA = CarBodyGeometry.FromState(a.State, a.Collision);
         CarBodyGeometry bodyB = CarBodyGeometry.FromState(b.State, b.Collision);
 
-        Vector2[] axes =
-        [
-            bodyA.Forward,
-            bodyA.Left,
-            bodyB.Forward,
-            bodyB.Left
-        ];
-
         float minOverlap = float.MaxValue;
         Vector2 bestAxis = Vector2.UnitX;
-
-        foreach (Vector2 axis in axes)
+        if (!TryUpdateMinimumOverlap(
+                in bodyA,
+                in bodyB,
+                bodyA.Forward,
+                ref minOverlap,
+                ref bestAxis
+            ) ||
+            !TryUpdateMinimumOverlap(
+                in bodyA,
+                in bodyB,
+                bodyA.Left,
+                ref minOverlap,
+                ref bestAxis
+            ) ||
+            !TryUpdateMinimumOverlap(
+                in bodyA,
+                in bodyB,
+                bodyB.Forward,
+                ref minOverlap,
+                ref bestAxis
+            ) ||
+            !TryUpdateMinimumOverlap(
+                in bodyA,
+                in bodyB,
+                bodyB.Left,
+                ref minOverlap,
+                ref bestAxis
+            ))
         {
-            Project(bodyA, axis, out float minA, out float maxA);
-            Project(bodyB, axis, out float minB, out float maxB);
-
-            float overlap = MathF.Min(maxA, maxB) - MathF.Max(minA, minB);
-            if (overlap <= 0f)
-            {
-                contact = default;
-                return false;
-            }
-
-            if (overlap < minOverlap)
-            {
-                minOverlap = overlap;
-                bestAxis = axis;
-            }
+            contact = default;
+            return false;
         }
 
         Vector2 centerDelta = bodyB.Center - bodyA.Center;
@@ -75,22 +97,23 @@ public static class CarContactResolver
         return true;
     }
 
-    private static void ResolvePair(RaceCar a, RaceCar b)
+    private static bool ResolvePair(RaceCar a, RaceCar b)
     {
         if (!TryGetContact(a, b, out CarContact contact))
-            return;
+            return false;
 
         float invMassA = InverseMass(a);
         float invMassB = InverseMass(b);
         float invMassSum = invMassA + invMassB;
         if (invMassSum <= Epsilon)
-            return;
+            return false;
 
         Vector2 correction = contact.Normal * (contact.PenetrationMeters / invMassSum);
         a.State.Position -= correction * invMassA;
         b.State.Position += correction * invMassB;
 
         ApplyImpulse(a, b, contact.Normal, invMassA, invMassB, invMassSum);
+        return true;
     }
 
     private static void ApplyImpulse(
@@ -139,18 +162,26 @@ public static class CarContactResolver
         ApplyVelocity(b.State, velocityB);
     }
 
-    private static void Project(CarBodyGeometry body, Vector2 axis, out float min, out float max)
+    private static bool TryUpdateMinimumOverlap(
+        in CarBodyGeometry bodyA,
+        in CarBodyGeometry bodyB,
+        Vector2 axis,
+        ref float minimumOverlap,
+        ref Vector2 bestAxis
+    )
     {
-        Vector2[] corners = body.GetCorners();
-        min = Vector2.Dot(corners[0], axis);
-        max = min;
+        bodyA.ProjectOntoAxis(axis, out float minA, out float maxA);
+        bodyB.ProjectOntoAxis(axis, out float minB, out float maxB);
+        float overlap = MathF.Min(maxA, maxB) - MathF.Max(minA, minB);
+        if (overlap <= 0f)
+            return false;
 
-        for (int i = 1; i < corners.Length; i++)
+        if (overlap < minimumOverlap)
         {
-            float projected = Vector2.Dot(corners[i], axis);
-            min = MathF.Min(min, projected);
-            max = MathF.Max(max, projected);
+            minimumOverlap = overlap;
+            bestAxis = axis;
         }
+        return true;
     }
 
     private static float InverseMass(RaceCar car)

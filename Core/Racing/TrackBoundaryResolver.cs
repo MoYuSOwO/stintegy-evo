@@ -151,8 +151,9 @@ public static class TrackBoundaryResolver
         violation = default;
         bool found = false;
 
-        foreach (Vector2 corner in body.GetCorners())
+        for (int cornerIndex = 0; cornerIndex < 4; cornerIndex++)
         {
+            Vector2 corner = body.GetCorner(cornerIndex);
             TrackPose pose = track.Project(corner);
             var limits = GetWallLimits(pose.Sample);
 

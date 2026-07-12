@@ -17,9 +17,16 @@ internal readonly record struct CarBodyGeometry(
     public Vector2 RearLeft => Center - Forward * HalfLength + Left * HalfWidth;
     public Vector2 RearRight => Center - Forward * HalfLength - Left * HalfWidth;
 
-    public Vector2[] GetCorners()
+    public Vector2 GetCorner(int index)
     {
-        return [FrontLeft, FrontRight, RearRight, RearLeft];
+        return index switch
+        {
+            0 => FrontLeft,
+            1 => FrontRight,
+            2 => RearRight,
+            3 => RearLeft,
+            _ => throw new ArgumentOutOfRangeException(nameof(index))
+        };
     }
 
     public static CarBodyGeometry FromState(CarState state, CarCollisionConfig collision)
@@ -59,6 +66,18 @@ internal readonly record struct CarBodyGeometry(
                HasOverlapOnAxis(in other, Left) &&
                HasOverlapOnAxis(in other, other.Forward) &&
                HasOverlapOnAxis(in other, other.Left);
+    }
+
+    public void ProjectOntoAxis(
+        Vector2 axis,
+        out float minimum,
+        out float maximum
+    )
+    {
+        float center = Vector2.Dot(Center, axis);
+        float radius = ProjectionRadius(axis);
+        minimum = center - radius;
+        maximum = center + radius;
     }
 
     private bool HasOverlapOnAxis(

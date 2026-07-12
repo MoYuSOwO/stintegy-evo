@@ -333,6 +333,65 @@ public sealed class RaceSimulationTests
     }
 
     [Fact]
+    public void ConfiguredContactPassesSeparateAThreeCarPileup()
+    {
+        TrackData track = BuildTrack();
+        TrackSample start = track.Sample(12f);
+        CarCollisionConfig collision = new()
+        {
+            LengthMeters = 4.8f,
+            WidthMeters = 1.8f,
+            SolverIterations = 6
+        };
+        Vector2 forward = start.Tangent;
+        RaceCar first = CreateRaceCar(
+            "pileup-first",
+            track,
+            start,
+            speed: 0f,
+            new FixedDriver(default),
+            collision
+        );
+        RaceCar second = CreateRaceCar(
+            "pileup-second",
+            track,
+            start,
+            speed: 0f,
+            new FixedDriver(default),
+            collision
+        );
+        RaceCar third = CreateRaceCar(
+            "pileup-third",
+            track,
+            start,
+            speed: 0f,
+            new FixedDriver(default),
+            collision
+        );
+        second.State.Position += forward * 2f;
+        third.State.Position += forward * 4f;
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(first);
+        simulation.AddCar(second);
+        simulation.AddCar(third);
+
+        simulation.Step(1f / 120f);
+
+        Assert.False(
+            CarContactResolver.AreOverlapping(first, second),
+            $"first={first.State.Position}, second={second.State.Position}"
+        );
+        Assert.False(
+            CarContactResolver.AreOverlapping(second, third),
+            $"second={second.State.Position}, third={third.State.Position}"
+        );
+        Assert.False(
+            CarContactResolver.AreOverlapping(first, third),
+            $"first={first.State.Position}, third={third.State.Position}"
+        );
+    }
+
+    [Fact]
     public void CarContactTransfersSpeedFromRearCarToFrontCar()
     {
         TrackData track = BuildTrack();
@@ -351,6 +410,56 @@ public sealed class RaceSimulationTests
         Assert.True(rear.State.Speed < 30f, "rear car should lose speed in a front impact");
         Assert.True(front.State.Speed > 0f, "front car should receive speed from the impact");
         Assert.False(CarContactResolver.AreOverlapping(rear, front));
+    }
+
+    [Fact]
+    public void ContactAndBoundaryQueriesReuseValueGeometry()
+    {
+        TrackData track = BuildTrack();
+        TrackSample start = track.Sample(20f);
+        CarCollisionConfig collision = new()
+        {
+            LengthMeters = 4.8f,
+            WidthMeters = 1.8f
+        };
+        RaceCar first = CreateRaceCar(
+            "first-allocation-probe",
+            track,
+            start,
+            speed: 15f,
+            new FixedDriver(default),
+            collision
+        );
+        RaceCar second = CreateRaceCar(
+            "second-allocation-probe",
+            track,
+            start,
+            speed: 15f,
+            new FixedDriver(default),
+            collision
+        );
+        second.State.Position += start.Tangent * 3f;
+
+        CarContactResolver.TryGetContact(first, second, out _);
+        TrackBoundaryResolver.IsInsideTrackWalls(
+            track,
+            first.State,
+            collision
+        );
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+        {
+            CarContactResolver.TryGetContact(first, second, out _);
+            TrackBoundaryResolver.IsInsideTrackWalls(
+                track,
+                first.State,
+                collision
+            );
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.InRange(allocated, 0L, 256L);
     }
 
     [Fact]

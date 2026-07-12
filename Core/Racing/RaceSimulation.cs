@@ -207,20 +207,27 @@ public sealed class RaceSimulation
 
         for (int i = 0; i < iterations; i++)
         {
-            ResolveCurrentWalls();
-            CarContactResolver.Resolve(_cars);
-            ResolveCurrentWalls();
+            bool changed = ResolveCurrentWalls();
+            changed |= CarContactResolver.ResolveUntilSeparated(_cars);
+            changed |= ResolveCurrentWalls();
+            if (!changed)
+                break;
         }
     }
 
-    private void ResolveCurrentWalls()
+    private bool ResolveCurrentWalls()
     {
+        bool resolvedAny = false;
         foreach (RaceCar car in _cars)
         {
             TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
             if (contact.HasValue)
+            {
                 car.LastBoundaryContact = contact;
+                resolvedAny = true;
+            }
         }
+        return resolvedAny;
     }
 }
 
