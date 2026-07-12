@@ -162,6 +162,8 @@ public static class CarPhysics
             float brakeRequest = Math.Min(-desiredAccel, config.MaxBrakeAccel);
             AllocateBrakeRequest(
                 brakeRequest,
+                frontLatRequest,
+                rearLatRequest,
                 frontGrip,
                 rearGrip,
                 out float frontBrake,
@@ -462,22 +464,42 @@ public static class CarPhysics
 
     private static void AllocateBrakeRequest(
         float brakeRequest,
+        float frontLateralRequest,
+        float rearLateralRequest,
         float frontGrip,
         float rearGrip,
         out float frontBrake,
         out float rearBrake
     )
     {
-        float totalGrip = frontGrip + rearGrip;
+        float frontCapacity = RemainingLongitudinalGrip(
+            frontGrip,
+            frontLateralRequest
+        );
+        float rearCapacity = RemainingLongitudinalGrip(
+            rearGrip,
+            rearLateralRequest
+        );
+        float totalCapacity = frontCapacity + rearCapacity;
 
-        if (totalGrip <= Epsilon)
+        if (totalCapacity <= Epsilon)
         {
-            frontBrake = 0f;
-            rearBrake = 0f;
+            float totalGrip = frontGrip + rearGrip;
+            if (totalGrip <= Epsilon)
+            {
+                frontBrake = 0f;
+                rearBrake = 0f;
+                return;
+            }
+
+            // Both axles are already at their lateral limit. Preserve the
+            // requested combined-demand behavior and let ResolveAxle clip it.
+            frontBrake = brakeRequest * frontGrip / totalGrip;
+            rearBrake = brakeRequest - frontBrake;
             return;
         }
 
-        frontBrake = brakeRequest * frontGrip / totalGrip;
+        frontBrake = brakeRequest * frontCapacity / totalCapacity;
         rearBrake = brakeRequest - frontBrake;
     }
 

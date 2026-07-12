@@ -184,6 +184,44 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void BrakeDistributionUsesEachAxlesRemainingFrictionCircle()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = CreateState(speed: 25f, batterySoc: 0.9f, tires);
+        state.SideslipAngleRadians = 0.04f;
+
+        CarPhysics.Step(
+            state,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0.006f, -2f)),
+            1f / 60f
+        );
+
+        Assert.InRange(state.Telemetry.OverLimit, 0f, 1e-5f);
+        float frontRemainingUse = MathF.Sqrt(MathF.Max(
+            0f,
+            1f - state.Telemetry.FrontLateralUse *
+                 state.Telemetry.FrontLateralUse
+        ));
+        float rearRemainingUse = MathF.Sqrt(MathF.Max(
+            0f,
+            1f - state.Telemetry.RearLateralUse *
+                 state.Telemetry.RearLateralUse
+        ));
+        float frontCapacityFraction =
+            state.Telemetry.FrontLongitudinalUse / frontRemainingUse;
+        float rearCapacityFraction =
+            state.Telemetry.RearLongitudinalUse / rearRemainingUse;
+        Assert.InRange(
+            MathF.Abs(frontCapacityFraction - rearCapacityFraction),
+            0f,
+            0.01f
+        );
+    }
+
+    [Fact]
     public void DefaultRearDriveMakesTheRearCloserToTheCombinedLimitUnderPower()
     {
         CarConfig car = new();
