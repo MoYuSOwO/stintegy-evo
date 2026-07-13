@@ -17,6 +17,7 @@ internal static class TrafficConflictEvaluator
     private const float OpponentAccelerationHoldSeconds = 0.75f;
     private const float OpponentLateralVelocityHoldSeconds = 0.75f;
     private const float OpponentHeadingConvergenceSeconds = 0.75f;
+    private const float ReferenceOffsetDerivativeProbeMeters = 1f;
     private const float MaximumOpponentDriveAcceleration = 5f;
     private const float MaximumOpponentBrakeDeceleration = 14f;
     private const float LongitudinalUncertaintyGrowthMetersPerSecond = 0.08f;
@@ -152,9 +153,15 @@ internal static class TrafficConflictEvaluator
         ref TrafficSpeedConstraint lastConstraint
     )
     {
-        float desiredGap = DesiredGap(
-            config,
-            conflict.EgoSpeedMetersPerSecond
+        float desiredGap = MathF.Max(
+            DesiredGap(config, conflict.EgoSpeedMetersPerSecond),
+            SafeStoppingGap(
+                config,
+                in ego,
+                in opponent,
+                conflict.EgoSpeedMetersPerSecond,
+                conflict.TargetSpeedMetersPerSecond
+            )
         );
         float constraintDistance = MathF.Max(
             0f,
@@ -216,25 +223,61 @@ internal static class TrafficConflictEvaluator
 
         float lateralLimit = (ego.WidthMeters + opponent.WidthMeters) * 0.5f +
                              config.TrafficLateralSafetyMarginMeters;
-        if (MathF.Abs(projection.LateralDistanceMeters) > lateralLimit)
+        Vector2 pathLeft = new(
+            -projection.Tangent.Y,
+            projection.Tangent.X
+        );
+        float relativeLateralSpeed = Vector2.Dot(
+            opponent.Velocity - ego.Velocity,
+            pathLeft
+        );
+        float predictedLateralDistance =
+            projection.LateralDistanceMeters +
+            relativeLateralSpeed *
+            MathF.Max(
+                config.TrafficLateralMergePredictionSeconds,
+                0f
+            );
+        float minimumLateralDistance = MathF.Min(
+            projection.LateralDistanceMeters,
+            predictedLateralDistance
+        );
+        float maximumLateralDistance = MathF.Max(
+            projection.LateralDistanceMeters,
+            predictedLateralDistance
+        );
+        bool mayOverlapLaterally =
+            minimumLateralDistance <= lateralLimit &&
+            maximumLateralDistance >= -lateralLimit;
+        if (!mayOverlapLaterally)
             return false;
 
+        float egoAlongSpeed = MathF.Max(
+            0f,
+            Vector2.Dot(ego.Velocity, projection.Tangent)
+        );
+        float opponentAlongSpeed = MathF.Max(
+            0f,
+            Vector2.Dot(opponent.Velocity, projection.Tangent)
+        );
         float clearance = CurrentClearance(
             in ego,
             in opponent,
             in projection
         );
-        float desiredGap = DesiredGap(
-            config,
-            ego.SpeedMetersPerSecond
+        float desiredGap = MathF.Max(
+            DesiredGap(config, egoAlongSpeed),
+            SafeStoppingGap(
+                config,
+                in ego,
+                in opponent,
+                egoAlongSpeed,
+                opponentAlongSpeed
+            )
         );
         if (clearance > desiredGap + FollowingReleaseMarginMeters)
             return false;
 
-        float opponentAlongSpeed = MathF.Max(
-            0f,
-            Vector2.Dot(opponent.Velocity, projection.Tangent)
-        );
         TrafficSpeedConstraintKind kind =
             opponentAlongSpeed > MovingSpeedThresholdMetersPerSecond
                 ? TrafficSpeedConstraintKind.Follow
@@ -542,7 +585,23 @@ internal static class TrafficConflictEvaluator
             velocity,
             currentSample.Tangent
         );
-        float lateralSpeed = Vector2.Dot(velocity, currentSample.Normal);
+        float centerlineLateralSpeed = Vector2.Dot(
+            velocity,
+            currentSample.Normal
+        );
+        float referenceOffsetDerivative = (
+            track.Sample(
+                opponent.TrackS + ReferenceOffsetDerivativeProbeMeters
+            ).RefOffset -
+            track.Sample(
+                opponent.TrackS - ReferenceOffsetDerivativeProbeMeters
+            ).RefOffset
+        ) / (2f * ReferenceOffsetDerivativeProbeMeters);
+        float relativeLateralSpeed = centerlineLateralSpeed -
+                                     referenceOffsetDerivative *
+                                     signedLongitudinalSpeed;
+        float currentOffsetFromReference = opponent.TrackD -
+                                           currentSample.RefOffset;
         float direction = signedLongitudinalSpeed < -MovingSpeedThresholdMetersPerSecond
             ? -1f
             : 1f;
@@ -566,21 +625,33 @@ internal static class TrafficConflictEvaluator
 
         float predictedS = opponent.TrackS + direction * longitudinalDistance;
         TrackSample predictedSample = track.Sample(predictedS);
-        float lateralTime = MathF.Min(
-            timeSeconds,
-            OpponentLateralVelocityHoldSeconds
-        );
-        float predictedD = opponent.TrackD + lateralSpeed * lateralTime;
+        bool convergingToReference =
+            currentOffsetFromReference * relativeLateralSpeed < 0f;
+        float lateralTime = convergingToReference
+            ? timeSeconds
+            : MathF.Min(
+                timeSeconds,
+                OpponentLateralVelocityHoldSeconds
+            );
+        float predictedOffsetFromReference = currentOffsetFromReference +
+                                             relativeLateralSpeed *
+                                             lateralTime;
+        if (convergingToReference &&
+            currentOffsetFromReference * predictedOffsetFromReference < 0f)
+        {
+            predictedOffsetFromReference = 0f;
+        }
+        float predictedD = predictedSample.RefOffset +
+                           predictedOffsetFromReference;
         Vector2 position = predictedSample.Center +
                            predictedSample.Normal * predictedD;
 
-        float predictedTrackHeading = MathF.Atan2(
-            direction * predictedSample.Tangent.Y,
-            direction * predictedSample.Tangent.X
+        float reverseHeadingOffset = direction < 0f ? MathF.PI : 0f;
+        float predictedReferenceHeading = MathHelper.NormalizeAngle(
+            predictedSample.RefHeading + reverseHeadingOffset
         );
-        float currentTrackHeading = MathF.Atan2(
-            direction * currentSample.Tangent.Y,
-            direction * currentSample.Tangent.X
+        float currentReferenceHeading = MathHelper.NormalizeAngle(
+            currentSample.RefHeading + reverseHeadingOffset
         );
         float heading;
         if (opponent.SpeedMetersPerSecond < MovingSpeedThresholdMetersPerSecond)
@@ -590,7 +661,7 @@ internal static class TrafficConflictEvaluator
         else
         {
             float headingOffset = MathHelper.NormalizeAngle(
-                opponent.HeadingRadians - currentTrackHeading
+                opponent.HeadingRadians - currentReferenceHeading
             );
             float headingWeight = Math.Clamp(
                 1f - timeSeconds / OpponentHeadingConvergenceSeconds,
@@ -598,16 +669,24 @@ internal static class TrafficConflictEvaluator
                 1f
             );
             heading = MathHelper.NormalizeAngle(
-                predictedTrackHeading + headingOffset * headingWeight
+                predictedReferenceHeading + headingOffset * headingWeight
             );
         }
 
-        float retainedLateralSpeed = timeSeconds <
-                                     OpponentLateralVelocityHoldSeconds
-            ? lateralSpeed
+        bool reachedReference = convergingToReference &&
+                                predictedOffsetFromReference == 0f;
+        float retainedLateralSpeed = !reachedReference &&
+                                     (convergingToReference ||
+                                      timeSeconds <
+                                      OpponentLateralVelocityHoldSeconds)
+            ? relativeLateralSpeed
             : 0f;
+        Vector2 predictedReferenceForward = new(
+            MathF.Cos(predictedReferenceHeading),
+            MathF.Sin(predictedReferenceHeading)
+        );
         Vector2 predictedVelocity =
-            direction * predictedSample.Tangent * predictedLongitudinalSpeed +
+            predictedReferenceForward * predictedLongitudinalSpeed +
             predictedSample.Normal * retainedLateralSpeed;
         return new PredictedTrafficPose(
             position,
@@ -783,6 +862,36 @@ internal static class TrafficConflictEvaluator
         return config.TrafficMinimumGapMeters +
                config.TrafficTimeHeadwaySeconds *
                MathF.Max(0f, egoSpeedMetersPerSecond);
+    }
+
+    private static float SafeStoppingGap(
+        VehicleSpeedPlanningConfig config,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        float egoSpeedMetersPerSecond,
+        float opponentSpeedMetersPerSecond
+    )
+    {
+        float egoBrakeDeceleration = MathF.Max(
+            ego.MaximumBrakeDecelerationMetersPerSecondSquared *
+            config.BrakeDecelerationUsage,
+            0.1f
+        );
+        float opponentBrakeDeceleration = MathF.Max(
+            opponent.MaximumBrakeDecelerationMetersPerSecondSquared,
+            0.1f
+        );
+        float egoStoppingDistance =
+            egoSpeedMetersPerSecond * egoSpeedMetersPerSecond /
+            (2f * egoBrakeDeceleration);
+        float opponentStoppingDistance =
+            opponentSpeedMetersPerSecond * opponentSpeedMetersPerSecond /
+            (2f * opponentBrakeDeceleration);
+        return MathF.Max(
+            config.TrafficMinimumGapMeters,
+            config.TrafficMinimumGapMeters +
+            egoStoppingDistance - opponentStoppingDistance
+        );
     }
 
     private static float CurrentClearance(

@@ -27,6 +27,7 @@ public sealed class VehicleSpeedPlanningConfig
     public float TrafficPredictionHorizonSeconds { get; init; } = 6f;
     public float TrafficMinimumGapMeters { get; init; } = 0.8f;
     public float TrafficTimeHeadwaySeconds { get; init; } = 0.12f;
+    public float TrafficLateralMergePredictionSeconds { get; init; } = 1f;
     public float TrafficLateralSafetyMarginMeters { get; init; } = 0.15f;
     public float TrafficLongitudinalSafetyMarginMeters { get; init; } = 0.25f;
     public float TrafficConstraintHoldSeconds { get; init; } = 0.35f;

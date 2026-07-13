@@ -848,6 +848,8 @@ public sealed class VehicleSpeedPlanner
             config.TrafficMinimumGapMeters < 0f ||
             !float.IsFinite(config.TrafficTimeHeadwaySeconds) ||
             config.TrafficTimeHeadwaySeconds < 0f ||
+            !float.IsFinite(config.TrafficLateralMergePredictionSeconds) ||
+            config.TrafficLateralMergePredictionSeconds < 0f ||
             !float.IsFinite(config.TrafficLateralSafetyMarginMeters) ||
             config.TrafficLateralSafetyMarginMeters < 0f ||
             !float.IsFinite(config.TrafficLongitudinalSafetyMarginMeters) ||
