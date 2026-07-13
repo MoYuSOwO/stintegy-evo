@@ -7,8 +7,8 @@ _The maintainer will make every reasonable effort to keep the English and Chines
 - **Project**: StintegyEVO
 - **Maintainer**: MoYuSOwO
 - **Contact**: stintegy-evo@proton.me
-- **Version**: 2.1
-- **Effective date**: June 12, 2026
+- **Version**: 2.2
+- **Effective date**: July 13, 2026
 
 Thank you for helping build StintegyEVO.
 
@@ -46,7 +46,11 @@ Nothing in this agreement prevents You from using, modifying, publishing, or lic
 
 You grant the Maintainer and all recipients of the Community Edition the rights provided by AGPL-3.0 for Your Contribution.
 
+For third-party material that You have the right to submit and clearly identify under Section 8, this agreement does not change or replace its existing license; You grant only the rights that You are permitted to grant under that license. Your original Contribution remains available under AGPL-3.0.
+
 Once a Contribution has been accepted into the public repository under AGPL-3.0, the AGPL-3.0 license already granted for that Contribution is perpetual and irrevocable to the extent provided by that license. Use of the same Contribution in an Official Online Product does not revoke or reduce the community's open-source rights.
+
+For clarity, the Maintainer may charge for distribution of a Community Edition that includes Your Contribution under AGPL-3.0, including through third-party platforms such as Steam. Such paid distribution does not reduce recipients' rights under AGPL-3.0 and is not a sale or license of Your Contribution separately from StintegyEVO prohibited by Section 4.
 
 This agreement does not require every future feature of an Official Online Product, including server infrastructure and service-specific code, to be added to the Community Edition.
 

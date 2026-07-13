@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>StintegyEVO.Core</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Tests/**/*.cs" />
+    <EmbeddedResource Include="Track/Data/*.csv" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BlasSharp.AppleAccelerate" Version="0.3.0" />
+    <PackageReference Include="BlasSharp.OpenBlas" Version="0.3.0" />
+    <PackageReference Include="Highs.Native" Version="1.15.1" />
+  </ItemGroup>
+</Project>
