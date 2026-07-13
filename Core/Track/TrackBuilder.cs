@@ -681,7 +681,7 @@ public class TrackBuilder
         float startRightBuffer = currentRightBuffer;
         float stepAngle = turnAngleRad / steps;
 
-        for (int i = 1; i <= steps; i++) 
+        for (int i = 1; i <= steps; i++)
         {
             currentAngle += stepAngle;
             Vector2 dir = new(MathF.Cos(currentAngle), MathF.Sin(currentAngle));
@@ -718,7 +718,7 @@ public class TrackBuilder
         BuilderNode startNode = nodes[0];
         BuilderNode endNode = nodes[^1];
 
-        Vector2 p0 = endNode.Center; 
+        Vector2 p0 = endNode.Center;
         Vector2 p3 = startNode.Center;
 
         Vector2 startDir = new(MathF.Cos(_startAngle), MathF.Sin(_startAngle));
@@ -758,7 +758,7 @@ public class TrackBuilder
             while (distanceWalked + segmentLength >= currentTargetDist && currentTargetDist < totalTrueLength)
             {
                 float remainDist = currentTargetDist - distanceWalked;
-                float lerpFactor = remainDist / segmentLength; 
+                float lerpFactor = remainDist / segmentLength;
 
                 Vector2 exactPos = Lerp(segmentStart, segmentEnd, lerpFactor);
 
@@ -771,7 +771,7 @@ public class TrackBuilder
 
                 nodes.Add(new BuilderNode(exactPos, width, leftBuffer, rightBuffer));
 
-                currentTargetDist += TrackData.StepLength; 
+                currentTargetDist += TrackData.StepLength;
             }
             distanceWalked += segmentLength;
         }
@@ -788,7 +788,7 @@ public class TrackBuilder
             Vector2 p_1 = GetCircular(nodes, i - 1).Center;
             Vector2 p1 = GetCircular(nodes, i + 1).Center;
             Vector2 p2 = GetCircular(nodes, i + 2).Center;
-            
+
             refTrackPoints.Add(
                 new RefLineTrackPoint(
                     nodes[i].Center,
