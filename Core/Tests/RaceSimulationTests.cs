@@ -33,6 +33,34 @@ public sealed class RaceSimulationTests
     }
 
     [Fact]
+    public void DriverPlanningRunsAtSixtyHertzWhilePhysicsUsesSubsteps()
+    {
+        TrackData track = BuildTrack();
+        TrackSample start = track.Sample(12f);
+        FixedDriver driver = new(new DriverInput(0f, 1.5f));
+        RaceCar car = CreateRaceCar(
+            "player",
+            track,
+            start,
+            speed: 20f,
+            driver
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(car);
+
+        simulation.Step(1f / 60f);
+        Assert.Equal(1, driver.CallCount);
+
+        simulation.Step(1f / 30f);
+        Assert.Equal(3, driver.CallCount);
+        Assert.InRange(
+            simulation.RaceTimeSeconds,
+            0.05f - 1e-5f,
+            0.05f + 1e-5f
+        );
+    }
+
+    [Fact]
     public void StepSharesOneFrozenVehicleFrameWithEveryDriver()
     {
         TrackData track = BuildTrack();

@@ -8,7 +8,9 @@ namespace StintegyEVO.Core.Racing;
 
 public sealed class RaceSimulation
 {
+    private const float MaxDriverStepSeconds = 1f / 60f;
     private const float MaxSubstepSeconds = 1f / 120f;
+    private const float MinimumStepSeconds = 1e-7f;
 
     private readonly List<RaceCar> _cars = [];
     private DriverInput[] _stepInputs = [];
@@ -57,17 +59,31 @@ public sealed class RaceSimulation
         foreach (RaceCar car in _cars)
             car.LastBoundaryContact = null;
 
-        float remaining = dt;
-        while (remaining > 0f)
+        float remainingDriverTime = dt;
+        while (remainingDriverTime > MinimumStepSeconds)
         {
-            float substep = MathF.Min(remaining, MaxSubstepSeconds);
-            StepSubstep(substep);
-            RaceTimeSeconds += substep;
-            remaining -= substep;
+            float driverStep = MathF.Min(
+                remainingDriverTime,
+                MaxDriverStepSeconds
+            );
+            EvaluateDrivers(driverStep);
+
+            float remainingPhysicsTime = driverStep;
+            while (remainingPhysicsTime > MinimumStepSeconds)
+            {
+                float physicsStep = MathF.Min(
+                    remainingPhysicsTime,
+                    MaxSubstepSeconds
+                );
+                StepPhysicsSubstep(physicsStep);
+                RaceTimeSeconds += physicsStep;
+                remainingPhysicsTime -= physicsStep;
+            }
+            remainingDriverTime -= driverStep;
         }
     }
 
-    private void StepSubstep(float dt)
+    private void EvaluateDrivers(float dt)
     {
         int carCount = _cars.Count;
         if (carCount == 0)
@@ -93,13 +109,10 @@ public sealed class RaceSimulation
             RaceCar car = _cars[i];
             TrackPose pose = Track.Project(car.State.Position);
             _stepPoses[i] = pose;
-            _startStates[i].CopyFrom(car.State);
             carSnapshots[i] = RaceCarSnapshot.Capture(car, pose);
         }
 
         RaceFrameSnapshot frame = new(RaceTimeSeconds, carSnapshots);
-        float airTempC = Environment.AirTempC;
-        float trackTempC = Environment.TrackTempC;
 
         // Driver evaluation is a read phase: every driver receives the exact same
         // pre-physics vehicle snapshot regardless of car insertion order.
@@ -124,6 +137,16 @@ public sealed class RaceSimulation
             if (_preStepContacts[i].HasValue)
                 car.LastBoundaryContact = _preStepContacts[i];
         }
+    }
+
+    private void StepPhysicsSubstep(float dt)
+    {
+        int carCount = _cars.Count;
+        if (carCount == 0)
+            return;
+
+        for (int i = 0; i < carCount; i++)
+            _startStates[i].CopyFrom(_cars[i].State);
 
         // Predict every car from its frozen start state before committing any of
         // the results to the live race state.
@@ -133,8 +156,8 @@ public sealed class RaceSimulation
             CarPhysicsStepInput physicsInput = new(
                 _stepInputs[i],
                 _stepStrategies[i],
-                airTempC,
-                trackTempC,
+                Environment.AirTempC,
+                Environment.TrackTempC,
                 _stepTireEnergyEfficiencies[i]
             );
 
