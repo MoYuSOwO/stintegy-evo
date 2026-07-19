@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Godot;
 using StintegyEVO.GodotApp.Car;
@@ -35,6 +36,7 @@ public partial class RaceView : Node2D
     private RaceCar? _playerCar;
     private RaceCar? _demoLeadCar;
     private RaceCsvTelemetryRecorder? _csvTelemetry;
+    private FrameTimeMonitor? _frameTimeMonitor;
 
     public override void _Ready()
     {
@@ -87,7 +89,10 @@ public partial class RaceView : Node2D
         }
         UpdateCamera();
         if (ShowFrameStats)
-            AddChild(new FrameTimeMonitor());
+        {
+            _frameTimeMonitor = new FrameTimeMonitor();
+            AddChild(_frameTimeMonitor);
+        }
         StartCsvTelemetryIfRequested();
         RefreshTelemetry();
     }
@@ -97,7 +102,11 @@ public partial class RaceView : Node2D
         if (_simulation == null)
             return;
 
+        long coreStepStart = Stopwatch.GetTimestamp();
         _simulation.Step(Mathf.Min((float)delta, 0.05f));
+        _frameTimeMonitor?.RecordCoreStep(
+            Stopwatch.GetElapsedTime(coreStepStart).TotalMilliseconds
+        );
         if (_csvTelemetry != null && _playerCar != null)
             _csvTelemetry.Write(
                 _simulation.RaceTimeSeconds,

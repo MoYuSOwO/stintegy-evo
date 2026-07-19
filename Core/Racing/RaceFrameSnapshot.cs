@@ -25,6 +25,7 @@ public readonly record struct RaceCarSnapshot(
     TrackRegion Region,
     float LengthMeters,
     float WidthMeters,
+    float MaximumBrakeDecelerationMetersPerSecondSquared,
     DriverInput LastInput
 )
 {
@@ -56,6 +57,7 @@ public readonly record struct RaceCarSnapshot(
             TrackBoundaryResolver.Classify(pose),
             car.Collision.LengthMeters,
             car.Collision.WidthMeters,
+            car.CarConfig.MaxBrakeAccel,
             car.LastInput
         );
     }

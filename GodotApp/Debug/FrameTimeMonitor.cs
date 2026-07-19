@@ -10,7 +10,12 @@ public partial class FrameTimeMonitor : CanvasLayer
         ZIndex = 1000
     };
     private double _elapsed;
-    private float _maximumFrameMs;
+    private double _frameIntervalTotalMs;
+    private float _maximumFrameIntervalMs;
+    private int _frameIntervalSamples;
+    private double _coreStepTotalMs;
+    private float _maximumCoreStepMs;
+    private int _coreStepSamples;
 
     public override void _Ready()
     {
@@ -25,12 +30,47 @@ public partial class FrameTimeMonitor : CanvasLayer
     public override void _Process(double delta)
     {
         _elapsed += delta;
-        _maximumFrameMs = Mathf.Max(_maximumFrameMs, (float)delta * 1000f);
+        float frameIntervalMs = (float)delta * 1000f;
+        _frameIntervalTotalMs += frameIntervalMs;
+        _maximumFrameIntervalMs = Mathf.Max(
+            _maximumFrameIntervalMs,
+            frameIntervalMs
+        );
+        _frameIntervalSamples++;
         if (_elapsed < 0.75)
             return;
 
-        _label.Text = $"FPS {Engine.GetFramesPerSecond():0}\nFrame max {_maximumFrameMs:0.00} ms";
+        double averageFrameIntervalMs = _frameIntervalSamples > 0
+            ? _frameIntervalTotalMs / _frameIntervalSamples
+            : 0.0;
+        double averageCoreStepMs = _coreStepSamples > 0
+            ? _coreStepTotalMs / _coreStepSamples
+            : 0.0;
+        _label.Text =
+            $"FPS {Engine.GetFramesPerSecond():0}\n" +
+            $"Frame interval  {averageFrameIntervalMs:0.00} avg / " +
+            $"{_maximumFrameIntervalMs:0.00} max ms\n" +
+            $"Core step       {averageCoreStepMs:0.00} avg / " +
+            $"{_maximumCoreStepMs:0.00} max ms";
         _elapsed = 0.0;
-        _maximumFrameMs = 0f;
+        _frameIntervalTotalMs = 0.0;
+        _maximumFrameIntervalMs = 0f;
+        _frameIntervalSamples = 0;
+        _coreStepTotalMs = 0.0;
+        _maximumCoreStepMs = 0f;
+        _coreStepSamples = 0;
+    }
+
+    public void RecordCoreStep(double milliseconds)
+    {
+        if (!double.IsFinite(milliseconds) || milliseconds < 0.0)
+            return;
+
+        _coreStepTotalMs += milliseconds;
+        _maximumCoreStepMs = Mathf.Max(
+            _maximumCoreStepMs,
+            (float)milliseconds
+        );
+        _coreStepSamples++;
     }
 }

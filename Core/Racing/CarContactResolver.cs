@@ -17,8 +17,13 @@ public static class CarContactResolver
     internal static bool ResolveUntilSeparated(IReadOnlyList<RaceCar> cars)
     {
         int iterations = 1;
-        foreach (RaceCar car in cars)
-            iterations = Math.Max(iterations, car.Collision.SolverIterations);
+        for (int i = 0; i < cars.Count; i++)
+        {
+            iterations = Math.Max(
+                iterations,
+                cars[i].Collision.SolverIterations
+            );
+        }
 
         bool resolvedAny = false;
         for (int iteration = 0; iteration < iterations; iteration++)
