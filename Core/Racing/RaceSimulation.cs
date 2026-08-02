@@ -21,6 +21,7 @@ public sealed class RaceSimulation
     private TrackBoundaryContact?[] _sweepContacts = [];
     private CarState[] _startStates = [];
     private CarState[] _predictedStates = [];
+    private TrafficMotionPlan?[] _stepTrafficMotionPlans = [];
 
     public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
     {
@@ -112,7 +113,22 @@ public sealed class RaceSimulation
             carSnapshots[i] = RaceCarSnapshot.Capture(car, pose);
         }
 
-        RaceFrameSnapshot frame = new(RaceTimeSeconds, carSnapshots);
+        // Every source publishes into its own reusable buffer before any
+        // driver reads the frame. Sequential driver evaluation therefore
+        // cannot expose a partially updated opponent plan.
+        for (int i = 0; i < carCount; i++)
+        {
+            _stepTrafficMotionPlans[i] = _cars[i].Driver is
+                ITrafficMotionPlanSource source
+                    ? source.FreezeTrafficMotionPlan()
+                    : null;
+        }
+
+        RaceFrameSnapshot frame = new(
+            RaceTimeSeconds,
+            carSnapshots,
+            _stepTrafficMotionPlans
+        );
 
         // Driver evaluation is a read phase: every driver receives the exact same
         // pre-physics vehicle snapshot regardless of car insertion order.
@@ -214,6 +230,7 @@ public sealed class RaceSimulation
         Array.Resize(ref _sweepContacts, capacity);
         Array.Resize(ref _startStates, capacity);
         Array.Resize(ref _predictedStates, capacity);
+        Array.Resize(ref _stepTrafficMotionPlans, capacity);
 
         for (int i = previousCapacity; i < capacity; i++)
         {

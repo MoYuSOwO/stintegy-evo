@@ -7,8 +7,8 @@ using StintegyEVO.Core.Util;
 namespace StintegyEVO.Core.Drivers;
 
 /// <summary>
-/// Converts state-only opponent predictions into longitudinal constraints on
-/// an already selected ego path. No opponent driver or opponent plan is read.
+/// Converts frozen opponent motion predictions into longitudinal constraints
+/// on an already selected ego path, with state extrapolation as a fallback.
 /// </summary>
 internal static class TrafficConflictEvaluator
 {
@@ -58,6 +58,14 @@ internal static class TrafficConflictEvaluator
             arrivalTimes
         );
 
+        if (memory.OpponentId is not null &&
+            frame.FindTrafficMotionPlan(memory.OpponentId) is not null)
+        {
+            // The held constraint came from an older state-only estimate. A
+            // freshly published motion plan supersedes that estimate and is
+            // evaluated below from the same frozen frame.
+            memory.Clear();
+        }
         bool changed = ApplyHeldConstraint(
             config,
             track,
@@ -78,6 +86,9 @@ internal static class TrafficConflictEvaluator
             RaceCarSnapshot opponent = cars[opponentIndex];
             if (string.Equals(opponent.Id, ego.Id, StringComparison.Ordinal))
                 continue;
+
+            TrafficMotionPlan? opponentPlan =
+                frame.GetTrafficMotionPlan(opponentIndex);
 
             float currentDirectionDot = HeadingDot(
                 ego.HeadingRadians,
@@ -119,6 +130,7 @@ internal static class TrafficConflictEvaluator
                     in opponent,
                     speeds,
                     arrivalTimes,
+                    opponentPlan,
                     out PredictedConflict conflict
                 ))
             {
@@ -131,6 +143,7 @@ internal static class TrafficConflictEvaluator
                     in conflict,
                     speedLimits,
                     frame.RaceTimeSeconds,
+                    conflict.UsesPublishedMotion,
                     ref memory,
                     ref lastConstraint
                 );
@@ -149,6 +162,7 @@ internal static class TrafficConflictEvaluator
         in PredictedConflict conflict,
         float[] speedLimits,
         float raceTimeSeconds,
+        bool usesPublishedMotion,
         ref TrafficConstraintMemory memory,
         ref TrafficSpeedConstraint lastConstraint
     )
@@ -191,15 +205,22 @@ internal static class TrafficConflictEvaluator
         );
         if (RecordConstraint(in constraint, ref lastConstraint))
         {
-            memory.OpponentId = opponent.Id;
-            memory.Kind = conflict.Kind;
-            memory.HeldUntilSeconds = raceTimeSeconds +
-                                      config.TrafficConstraintHoldSeconds;
-            memory.RemainingDistanceMeters = constraint.PathDistanceMeters;
-            memory.TargetSpeedMetersPerSecond =
-                conflict.TargetSpeedMetersPerSecond;
-            memory.ConflictTimeSeconds = conflict.TimeSeconds;
-            memory.EgoPosition = ego.Position;
+            if (usesPublishedMotion)
+            {
+                memory.Clear();
+            }
+            else
+            {
+                memory.OpponentId = opponent.Id;
+                memory.Kind = conflict.Kind;
+                memory.HeldUntilSeconds = raceTimeSeconds +
+                                          config.TrafficConstraintHoldSeconds;
+                memory.RemainingDistanceMeters = constraint.PathDistanceMeters;
+                memory.TargetSpeedMetersPerSecond =
+                    conflict.TargetSpeedMetersPerSecond;
+                memory.ConflictTimeSeconds = conflict.TimeSeconds;
+                memory.EgoPosition = ego.Position;
+            }
         }
         return changed;
     }
@@ -372,6 +393,7 @@ internal static class TrafficConflictEvaluator
         in RaceCarSnapshot opponent,
         float[] speeds,
         float[] arrivalTimes,
+        TrafficMotionPlan? opponentPlan,
         out PredictedConflict conflict
     )
     {
@@ -393,7 +415,8 @@ internal static class TrafficConflictEvaluator
         PredictedTrafficPose opponentAtRangeStart = PredictOpponent(
             track,
             in opponent,
-            arrivalTimes[0]
+            arrivalTimes[0],
+            opponentPlan
         );
         while (rangeStart < lastIndex)
         {
@@ -404,7 +427,8 @@ internal static class TrafficConflictEvaluator
             PredictedTrafficPose opponentAtRangeEnd = PredictOpponent(
                 track,
                 in opponent,
-                arrivalTimes[rangeEnd]
+                arrivalTimes[rangeEnd],
+                opponentPlan
             );
             Vector2 relativeStart = opponentAtRangeStart.Position -
                                     path[rangeStart].Position;
@@ -431,6 +455,7 @@ internal static class TrafficConflictEvaluator
                             in opponent,
                             speeds,
                             arrivalTimes,
+                            opponentPlan,
                             i,
                             out conflict
                         ))
@@ -456,6 +481,7 @@ internal static class TrafficConflictEvaluator
         in RaceCarSnapshot opponent,
         float[] speeds,
         float[] arrivalTimes,
+        TrafficMotionPlan? opponentPlan,
         int index,
         out PredictedConflict conflict
     )
@@ -465,7 +491,8 @@ internal static class TrafficConflictEvaluator
         PredictedTrafficPose opponentPose = PredictOpponent(
             track,
             in opponent,
-            time
+            time,
+            opponentPlan
         );
         float longitudinalGrowth =
             LongitudinalUncertaintyGrowthMetersPerSecond * time;
@@ -515,7 +542,8 @@ internal static class TrafficConflictEvaluator
             speeds[index],
             kind == TrafficSpeedConstraintKind.Follow
                 ? opponentAlongSpeed
-                : 0f
+                : 0f,
+            opponentPose.UsesPublishedMotion
         );
         return true;
     }
@@ -567,15 +595,28 @@ internal static class TrafficConflictEvaluator
     private static PredictedTrafficPose PredictOpponent(
         TrackData track,
         in RaceCarSnapshot opponent,
-        float timeSeconds
+        float timeSeconds,
+        TrafficMotionPlan? opponentPlan
     )
     {
+        if (opponentPlan is not null &&
+            TryPredictFromPublishedPlan(
+                in opponent,
+                opponentPlan,
+                timeSeconds,
+                out PredictedTrafficPose plannedPose
+            ))
+        {
+            return plannedPose;
+        }
+
         if (timeSeconds <= 0f)
         {
             return new PredictedTrafficPose(
                 opponent.Position,
                 opponent.HeadingRadians,
-                opponent.Velocity
+                opponent.Velocity,
+                false
             );
         }
 
@@ -691,8 +732,58 @@ internal static class TrafficConflictEvaluator
         return new PredictedTrafficPose(
             position,
             heading,
-            predictedVelocity
+            predictedVelocity,
+            false
         );
+    }
+
+    private static bool TryPredictFromPublishedPlan(
+        in RaceCarSnapshot opponent,
+        TrafficMotionPlan plan,
+        float timeSeconds,
+        out PredictedTrafficPose pose
+    )
+    {
+        if (!plan.TrySample(
+                MathF.Max(0f, timeSeconds),
+                out TrafficMotionPlanPoint planned
+            ) ||
+            !plan.TrySample(0f, out TrafficMotionPlanPoint plannedStart))
+        {
+            pose = default;
+            return false;
+        }
+
+        float correctionWeight = Math.Clamp(
+            1f - timeSeconds / OpponentHeadingConvergenceSeconds,
+            0f,
+            1f
+        );
+        Vector2 position = planned.Position +
+                           (opponent.Position - plannedStart.Position) *
+                           correctionWeight;
+        float heading = MathHelper.NormalizeAngle(
+            planned.HeadingRadians +
+            MathHelper.NormalizeAngle(
+                opponent.HeadingRadians - plannedStart.HeadingRadians
+            ) * correctionWeight
+        );
+        Vector2 plannedVelocity = new(
+            MathF.Cos(planned.HeadingRadians) * planned.SpeedMetersPerSecond,
+            MathF.Sin(planned.HeadingRadians) * planned.SpeedMetersPerSecond
+        );
+        Vector2 velocity = Vector2.Lerp(
+            plannedVelocity,
+            opponent.Velocity,
+            correctionWeight
+        );
+        pose = new PredictedTrafficPose(
+            position,
+            heading,
+            velocity,
+            true
+        );
+        return true;
     }
 
     private static void IntegrateHeldAcceleration(
@@ -1014,7 +1105,8 @@ internal static class TrafficConflictEvaluator
     private readonly record struct PredictedTrafficPose(
         Vector2 Position,
         float HeadingRadians,
-        Vector2 Velocity
+        Vector2 Velocity,
+        bool UsesPublishedMotion
     );
 
     private readonly record struct PredictedConflict(
@@ -1022,6 +1114,7 @@ internal static class TrafficConflictEvaluator
         float PathDistanceMeters,
         float TimeSeconds,
         float EgoSpeedMetersPerSecond,
-        float TargetSpeedMetersPerSecond
+        float TargetSpeedMetersPerSecond,
+        bool UsesPublishedMotion
     );
 }
