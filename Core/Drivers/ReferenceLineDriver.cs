@@ -12,12 +12,13 @@ namespace StintegyEVO.Core.Drivers;
 /// that prediction back to the racing line, and replans speed over the rolling
 /// local horizon every frame.
 /// </summary>
-public sealed class ReferenceLineDriver : IRaceDriver
+public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
 {
     private readonly VehicleSpeedPlanner _speedPlanner;
     private readonly StanleyPathPredictor _pathPredictor = new();
     private readonly VehicleSpeedLookahead _referenceSpeedLookahead = new();
     private readonly PathPlanBuffer _currentPlan = new();
+    private readonly TrafficMotionPlan _publishedTrafficMotionPlan = new();
     private RaceCar? _runtimeCar;
     private DriverPerformanceState? _performance;
     private StabilityControlState _stabilityControlState;
@@ -246,6 +247,18 @@ public sealed class ReferenceLineDriver : IRaceDriver
         );
     }
 
+    TrafficMotionPlan? ITrafficMotionPlanSource.FreezeTrafficMotionPlan()
+    {
+        if (_currentPlan.Path.Count < 2)
+        {
+            _publishedTrafficMotionPlan.Clear();
+            return null;
+        }
+
+        _publishedTrafficMotionPlan.BuildFrom(_currentPlan.Path);
+        return _publishedTrafficMotionPlan;
+    }
+
     private void EvaluatePathCandidate(
         in RaceDriverFrameContext context,
         VehicleSpeedLookahead referenceLookahead,
@@ -352,6 +365,7 @@ public sealed class ReferenceLineDriver : IRaceDriver
             car.State.YawRateRadiansPerSecond
         );
         _trafficMemory.Clear();
+        _publishedTrafficMotionPlan.Clear();
     }
 
     private float ApplyCarControl(

@@ -273,6 +273,37 @@ public sealed class TrafficAvoidanceTests
     }
 
     [Fact]
+    public void IdenticalReferenceDriversLaunchWithoutTrafficAccordion()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceSimulation simulation = new(track);
+        RaceCar[] cars = new RaceCar[6];
+        for (int i = 0; i < cars.Length; i++)
+        {
+            cars[i] = CreateCar(
+                $"launch-{i + 1}",
+                track,
+                s: 160f - i * 8f,
+                d: 0f,
+                speed: 0f,
+                new ReferenceLineDriver()
+            );
+            simulation.AddCar(cars[i]);
+        }
+
+        for (int i = 0; i < 30; i++)
+            simulation.Step(Dt);
+
+        float leaderSpeed = cars[0].State.Speed;
+        float tailSpeed = cars[^1].State.Speed;
+        Assert.True(
+            tailSpeed >= leaderSpeed - 1f,
+            $"identical cars should launch together; leader={leaderSpeed * 3.6f:0.0} km/h, " +
+            $"tail={tailSpeed * 3.6f:0.0} km/h"
+        );
+    }
+
+    [Fact]
     public void PredictedRecoveryPathBrakesForObstacleOnReferenceLine()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
