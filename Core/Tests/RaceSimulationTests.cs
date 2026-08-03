@@ -10,6 +10,66 @@ namespace StintegyEVO.Core.Tests;
 public sealed class RaceSimulationTests
 {
     [Fact]
+    public void FirstDriverStepCollectsCurrentFramePlansBeforeControl()
+    {
+        TrackData track = BuildTrack();
+        CurrentFramePlanProbeDriver firstDriver = new("second");
+        CurrentFramePlanProbeDriver secondDriver = new("first");
+        RaceCar first = CreateRaceCar(
+            "first",
+            track,
+            track.Sample(12f),
+            speed: 12f,
+            firstDriver
+        );
+        RaceCar second = CreateRaceCar(
+            "second",
+            track,
+            track.Sample(42f),
+            speed: 24f,
+            secondDriver
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(first);
+        simulation.AddCar(second);
+
+        simulation.Step(1f / 120f);
+
+        Assert.Equal(1, firstDriver.PrepareCount);
+        Assert.Equal(1, secondDriver.PrepareCount);
+        Assert.True(firstDriver.SawOtherCurrentFramePlan);
+        Assert.True(secondDriver.SawOtherCurrentFramePlan);
+    }
+
+    [Fact]
+    public void ReferenceDriverPublishesAPlanOnTheFirstDriverStep()
+    {
+        TrackData track = BuildTrack();
+        RaceCar planned = CreateRaceCar(
+            "planned",
+            track,
+            track.Sample(12f),
+            speed: 12f,
+            new ReferenceLineDriver()
+        );
+        PlanObserverDriver observerDriver = new("planned");
+        RaceCar observer = CreateRaceCar(
+            "observer",
+            track,
+            track.Sample(80f),
+            speed: 10f,
+            observerDriver
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(planned);
+        simulation.AddCar(observer);
+
+        simulation.Step(1f / 120f);
+
+        Assert.True(observerDriver.SawObservedPlan);
+    }
+
+    [Fact]
     public void StepFeedsTrackContextToDriverAndUpdatesProgress()
     {
         TrackData track = BuildTrack();
@@ -727,6 +787,83 @@ public sealed class RaceSimulationTests
 
             ObservedSpeedMetersPerSecond = observed.SpeedMetersPerSecond;
             return new DriverInput(0f, observed.SpeedMetersPerSecond * 0.1f);
+        }
+    }
+
+    private sealed class CurrentFramePlanProbeDriver(string observedCarId) :
+        IRaceDriver,
+        ITrafficMotionPlanSource
+    {
+        private readonly VehiclePathPrediction _path = new();
+        private readonly TrafficMotionPlan _plan = new();
+
+        public int PrepareCount { get; private set; }
+        public bool SawOtherCurrentFramePlan { get; private set; }
+
+        public void PrepareTrafficMotionPlan(
+            in RaceDriverFrameContext context,
+            float dt
+        )
+        {
+            PrepareCount++;
+            _path.Reset(2);
+            Vector2 forward = context.Pose.Sample.Tangent;
+            float speed = context.Car.State.Speed;
+            _path.Add(new VehiclePathPredictionPoint(
+                0f,
+                context.Car.State.Position,
+                context.Car.State.VelocityHeading,
+                context.Pose.S,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                speed
+            ));
+            _path.Add(new VehiclePathPredictionPoint(
+                10f,
+                context.Car.State.Position + forward * 10f,
+                context.Car.State.VelocityHeading,
+                context.Track.WrapS(context.Pose.S + 10f),
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                speed
+            ));
+            _plan.BuildFrom(_path);
+        }
+
+        public TrafficMotionPlan? FreezeTrafficMotionPlan()
+        {
+            return _plan.Count > 0 ? _plan : null;
+        }
+
+        public DriverInput GetControl(
+            in RaceDriverFrameContext context,
+            float dt
+        )
+        {
+            SawOtherCurrentFramePlan =
+                context.Frame.FindTrafficMotionPlan(observedCarId) is not null;
+            return default;
+        }
+    }
+
+    private sealed class PlanObserverDriver(string observedCarId) : IRaceDriver
+    {
+        public bool SawObservedPlan { get; private set; }
+
+        public DriverInput GetControl(
+            in RaceDriverFrameContext context,
+            float dt
+        )
+        {
+            SawObservedPlan =
+                context.Frame.FindTrafficMotionPlan(observedCarId) is not null;
+            return default;
         }
     }
 

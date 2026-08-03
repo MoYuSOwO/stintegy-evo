@@ -149,5 +149,10 @@ internal sealed class TrafficMotionPlan
 /// </summary>
 internal interface ITrafficMotionPlanSource
 {
+    void PrepareTrafficMotionPlan(
+        in RaceDriverFrameContext context,
+        float dt
+    );
+
     TrafficMotionPlan? FreezeTrafficMotionPlan();
 }

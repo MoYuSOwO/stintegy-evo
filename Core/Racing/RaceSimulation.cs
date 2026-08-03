@@ -111,11 +111,36 @@ public sealed class RaceSimulation
             TrackPose pose = Track.Project(car.State.Position);
             _stepPoses[i] = pose;
             carSnapshots[i] = RaceCarSnapshot.Capture(car, pose);
+            _stepTrafficMotionPlans[i] = null;
         }
 
-        // Every source publishes into its own reusable buffer before any
-        // driver reads the frame. Sequential driver evaluation therefore
-        // cannot expose a partially updated opponent plan.
+        // Planning is a write-only phase over one frozen physical snapshot.
+        // No driver can read another driver's partially prepared plan.
+        RaceFrameSnapshot planningFrame = new(
+            RaceTimeSeconds,
+            carSnapshots,
+            _stepTrafficMotionPlans
+        );
+        for (int i = 0; i < carCount; i++)
+        {
+            RaceCar car = _cars[i];
+            if (car.Driver is not ITrafficMotionPlanSource source)
+                continue;
+
+            RaceDriverFrameContext planningContext = new(
+                car,
+                Track,
+                _stepPoses[i],
+                Environment,
+                RaceTimeSeconds,
+                planningFrame,
+                i
+            );
+            source.PrepareTrafficMotionPlan(in planningContext, dt);
+        }
+
+        // Barrier: only after every source has prepared may any submitted plan
+        // become visible to the shared decision frame.
         for (int i = 0; i < carCount; i++)
         {
             _stepTrafficMotionPlans[i] = _cars[i].Driver is
