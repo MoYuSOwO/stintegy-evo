@@ -11,6 +11,137 @@ namespace StintegyEVO.Core.Tests;
 public sealed class StanleyPathPredictorTests
 {
     [Fact]
+    public void TrackConstrainedOffsetStaysInsideEveryTrackSample()
+    {
+        TrackData track = BuildVariableWidthTrack();
+        TrackConstrainedLateralOffset profile = new();
+        profile.Prepare(track);
+
+        const float vehicleHalfWidth = 1f;
+        for (int i = 0; i < track.Length; i++)
+        {
+            TrackSample sample = track.Sample(i * TrackData.StepLength);
+            float offset = profile.Resolve(
+                track,
+                in sample,
+                tacticalOffsetMeters: 6f,
+                executionOffsetMeters: 0f,
+                vehicleHalfWidth
+            );
+            float maximumOffset = MathF.Max(
+                0f,
+                sample.HalfWidth -
+                sample.RefOffset -
+                vehicleHalfWidth -
+                0.3f
+            );
+
+            Assert.InRange(offset, 0f, maximumOffset + 1e-4f);
+        }
+    }
+
+    [Fact]
+    public void TrackConstrainedOffsetChangesSmoothlyAroundClosedLoop()
+    {
+        TrackData track = BuildVariableWidthTrack();
+        TrackConstrainedLateralOffset profile = new();
+        profile.Prepare(track);
+        float[] offsets = new float[track.Length];
+
+        for (int i = 0; i < track.Length; i++)
+        {
+            TrackSample sample = track.Sample(i * TrackData.StepLength);
+            offsets[i] = profile.Resolve(
+                track,
+                in sample,
+                tacticalOffsetMeters: 6f,
+                executionOffsetMeters: 0f,
+                vehicleHalfWidthMeters: 1f
+            );
+        }
+
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            float next = offsets[(i + 1) % offsets.Length];
+            Assert.InRange(MathF.Abs(next - offsets[i]), 0f, 0.0801f);
+        }
+    }
+
+    [Fact]
+    public void OffsetGeometryUsesTheResolvedTrackConstrainedPosition()
+    {
+        TrackData track = BuildVariableWidthTrack();
+        TrackConstrainedLateralOffset profile = new();
+        profile.Prepare(track);
+        TrackSample sample = track.Sample(25f);
+        float resolvedOffset = profile.Resolve(
+            track,
+            in sample,
+            tacticalOffsetMeters: 6f,
+            executionOffsetMeters: 0f,
+            vehicleHalfWidthMeters: 1f
+        );
+
+        TrackLateralTargetSample target = profile.SampleGeometry(
+            track,
+            sample.S,
+            tacticalOffsetMeters: 6f,
+            executionOffsetMeters: 0f,
+            vehicleHalfWidthMeters: 1f
+        );
+
+        Vector2 expectedPosition = sample.RefPosition +
+                                   sample.Normal * resolvedOffset;
+        Assert.InRange(
+            Vector2.Distance(target.Position, expectedPosition),
+            0f,
+            1e-4f
+        );
+        Assert.True(float.IsFinite(target.Heading));
+        Assert.True(float.IsFinite(target.Curvature));
+        Assert.Equal(resolvedOffset, target.OffsetMeters, 4);
+    }
+
+    [Fact]
+    public void PredictionConvergesToCommittedOffsetReference()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, speed: 25f, lateralOffset: 0f);
+        VehicleSpeedPlanningConfig config = new()
+        {
+            SpeedPlanningHorizonMeters = 600f
+        };
+        VehicleSpeedLookahead speedEstimate = ReferenceLookahead(
+            car,
+            track,
+            config
+        );
+        TrackConstrainedLateralOffset profile = new();
+        profile.Prepare(track);
+
+        VehiclePathPrediction prediction = PredictWithOffset(
+            car,
+            track,
+            speedEstimate,
+            config,
+            tacticalOffsetMeters: 2.5f,
+            profile
+        );
+
+        VehiclePathPredictionPoint terminal = prediction[prediction.Count - 1];
+        TrackPose terminalPose = track.Project(terminal.Position);
+        float expectedOffset = profile.Resolve(
+            track,
+            in terminalPose.Sample,
+            tacticalOffsetMeters: 2.5f,
+            executionOffsetMeters: 0f,
+            car.Collision.HalfWidthMeters
+        );
+        float actualOffset = terminalPose.D - terminalPose.Sample.RefOffset;
+        Assert.InRange(MathF.Abs(actualOffset - expectedOffset), 0f, 0.15f);
+    }
+
+    [Fact]
     public void ActiveStabilityCorrectionPersistsIntoPredictedPath()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -351,6 +482,44 @@ public sealed class StanleyPathPredictorTests
         );
     }
 
+    private static VehiclePathPrediction PredictWithOffset(
+        RaceCar car,
+        TrackData track,
+        VehicleSpeedLookahead speedEstimate,
+        VehicleSpeedPlanningConfig config,
+        float tacticalOffsetMeters,
+        TrackConstrainedLateralOffset profile
+    )
+    {
+        return new StanleyPathPredictor().Predict(
+            new VehiclePathPrediction(),
+            car,
+            track,
+            speedEstimate,
+            tacticalOffsetMeters,
+            profile,
+            executionOffsetMeters: 0f,
+            stanleyGain: 2f,
+            stanleySofteningSpeed: 4f,
+            headingGain: 1f,
+            curvaturePreviewTimeSeconds: 0.15f,
+            maximumCurvaturePreviewMeters: 6f,
+            horizonMeters: config.SpeedPlanningHorizonMeters,
+            stepMeters: config.PathPredictionStepMeters,
+            minimumDynamicMeters: config.MinimumDynamicPredictionMeters,
+            convergenceHoldMeters: config.PredictionConvergenceHoldMeters,
+            convergenceLateralErrorMeters:
+                config.PredictionConvergenceLateralErrorMeters,
+            convergenceHeadingErrorRadians:
+                config.PredictionConvergenceHeadingErrorRadians,
+            convergenceCurvatureError:
+                config.PredictionConvergenceCurvatureError,
+            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            initialCommandedCurvature: track.Project(car.State.Position)
+                .Sample.RefCurvature
+        );
+    }
+
     private static VehicleSpeedLookahead ReferenceLookahead(
         RaceCar car,
         TrackData track,
@@ -396,4 +565,20 @@ public sealed class StanleyPathPredictorTests
         StartingSurfaceTempC = 90f,
         StartingCoreTempC = 90f
     };
+
+    private static TrackData BuildVariableWidthTrack()
+    {
+        return new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 12f,
+                startLeftBuffer: 2f,
+                startRightBuffer: 2f
+            )
+            .AddStraight(40f, targetEndWidth: 8f)
+            .AddTurn(180f, 24f, targetEndWidth: 8f)
+            .AddStraight(40f, targetEndWidth: 12f)
+            .AddTurn(180f, 24f, targetEndWidth: 12f)
+            .CloseLoop()
+            .Build(new TrackGridConfig());
+    }
 }
