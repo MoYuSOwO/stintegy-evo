@@ -22,6 +22,7 @@ public sealed class RaceSimulation
     private CarState[] _startStates = [];
     private CarState[] _predictedStates = [];
     private TrafficMotionPlan?[] _stepTrafficMotionPlans = [];
+    private TrafficMotionPlan?[] _previousTrafficMotionPlans = [];
 
     public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
     {
@@ -115,11 +116,14 @@ public sealed class RaceSimulation
         }
 
         // Planning is a write-only phase over one frozen physical snapshot.
-        // No driver can read another driver's partially prepared plan.
+        // No driver can read another driver's partially prepared plan. The
+        // separate previous-plan buffers are stable snapshots captured after
+        // the preceding evaluation phase.
         RaceFrameSnapshot planningFrame = new(
             RaceTimeSeconds,
             carSnapshots,
-            _stepTrafficMotionPlans
+            _stepTrafficMotionPlans,
+            _previousTrafficMotionPlans
         );
         for (int i = 0; i < carCount; i++)
         {
@@ -178,6 +182,8 @@ public sealed class RaceSimulation
             if (_preStepContacts[i].HasValue)
                 car.LastBoundaryContact = _preStepContacts[i];
         }
+
+        CapturePreviousTrafficMotionPlans(carCount);
     }
 
     private void StepPhysicsSubstep(float dt)
@@ -256,11 +262,29 @@ public sealed class RaceSimulation
         Array.Resize(ref _startStates, capacity);
         Array.Resize(ref _predictedStates, capacity);
         Array.Resize(ref _stepTrafficMotionPlans, capacity);
+        Array.Resize(ref _previousTrafficMotionPlans, capacity);
 
         for (int i = previousCapacity; i < capacity; i++)
         {
             _startStates[i] = new CarState();
             _predictedStates[i] = new CarState();
+        }
+    }
+
+    private void CapturePreviousTrafficMotionPlans(int carCount)
+    {
+        for (int i = 0; i < carCount; i++)
+        {
+            TrafficMotionPlan? current = _stepTrafficMotionPlans[i];
+            if (current is null)
+            {
+                _previousTrafficMotionPlans[i]?.Clear();
+                continue;
+            }
+
+            TrafficMotionPlan snapshot =
+                _previousTrafficMotionPlans[i] ??= new TrafficMotionPlan();
+            snapshot.CopyFrom(current);
         }
     }
 

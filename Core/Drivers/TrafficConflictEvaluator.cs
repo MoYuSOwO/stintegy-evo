@@ -995,7 +995,7 @@ internal static class TrafficConflictEvaluator
         distance = MathF.Max(0f, distance);
     }
 
-    private static void FillArrivalTimes(
+    internal static void FillArrivalTimes(
         int count,
         float[] segmentLengths,
         float[] speeds,

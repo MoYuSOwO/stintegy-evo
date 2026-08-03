@@ -211,6 +211,7 @@ public sealed class VehicleSpeedPlanner
             egoSnapshotIndex: -1,
             in noTrafficMemory,
             out _,
+            out _,
             out _
         );
     }
@@ -235,12 +236,14 @@ public sealed class VehicleSpeedPlanner
             egoSnapshotIndex,
             in committedTrafficMemory,
             out TrafficConstraintMemory nextTrafficMemory,
-            out TrafficSpeedConstraint trafficConstraint
+            out TrafficSpeedConstraint trafficConstraint,
+            out TrafficConflictReport conflictReport
         );
         return new TrafficAwareSpeedPlan(
             speedPlan,
             trafficConstraint,
-            nextTrafficMemory
+            nextTrafficMemory,
+            conflictReport
         );
     }
 
@@ -253,7 +256,8 @@ public sealed class VehicleSpeedPlanner
         int egoSnapshotIndex,
         in TrafficConstraintMemory committedTrafficMemory,
         out TrafficConstraintMemory nextTrafficMemory,
-        out TrafficSpeedConstraint trafficConstraint
+        out TrafficSpeedConstraint trafficConstraint,
+        out TrafficConflictReport conflictReport
     )
     {
         ArgumentNullException.ThrowIfNull(destination);
@@ -274,6 +278,7 @@ public sealed class VehicleSpeedPlanner
         if (!trafficEnabled)
             evaluationMemory.Clear();
         nextTrafficMemory = evaluationMemory;
+        conflictReport = default;
         float[] curvatures = ArrayPool<float>.Shared.Rent(count);
         float[] segmentLengths = ArrayPool<float>.Shared.Rent(count);
         float[] speedLimits = ArrayPool<float>.Shared.Rent(count);
@@ -335,6 +340,18 @@ public sealed class VehicleSpeedPlanner
             );
             if (trafficEnabled)
             {
+                TrafficConflictEvaluator.FillArrivalTimes(
+                    count,
+                    segmentLengths,
+                    speeds,
+                    arrivalTimes
+                );
+                int reportIndex = TrafficReportEvaluationIndex(
+                    count,
+                    arrivalTimes,
+                    Config.TrafficPredictionHorizonSeconds
+                );
+                float freeArrivalTime = arrivalTimes[reportIndex];
                 for (int iteration = 0;
                      iteration < Config.TrafficConstraintIterations;
                      iteration++)
@@ -366,6 +383,18 @@ public sealed class VehicleSpeedPlanner
                         lateralAccelerationLimit
                     );
                 }
+                TrafficConflictEvaluator.FillArrivalTimes(
+                    count,
+                    segmentLengths,
+                    speeds,
+                    arrivalTimes
+                );
+                conflictReport = new TrafficConflictReport(
+                    trafficConstraint,
+                    path[reportIndex].DistanceMeters,
+                    freeArrivalTime,
+                    arrivalTimes[reportIndex]
+                );
             }
             float firstForwardReachable = segmentLengths[0] <=
                                           Config.MinimumSegmentLengthMeters
@@ -436,6 +465,30 @@ public sealed class VehicleSpeedPlanner
             if (arrivalTimes.Length > 0)
                 ArrayPool<float>.Shared.Return(arrivalTimes);
         }
+    }
+
+    private static int TrafficReportEvaluationIndex(
+        int count,
+        float[] arrivalTimes,
+        float horizonSeconds
+    )
+    {
+        int index = 0;
+        float horizon = MathF.Max(0f, horizonSeconds);
+        while (index + 1 < count &&
+               float.IsFinite(arrivalTimes[index + 1]) &&
+               arrivalTimes[index + 1] <= horizon)
+        {
+            index++;
+        }
+
+        if (index == 0 &&
+            count > 1 &&
+            float.IsFinite(arrivalTimes[1]))
+        {
+            return 1;
+        }
+        return index;
     }
 
     private float IntegrateForward(
