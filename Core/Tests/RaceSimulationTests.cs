@@ -9,6 +9,57 @@ namespace StintegyEVO.Core.Tests;
 
 public sealed class RaceSimulationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PlanningReadsThePreviousFrozenPlanWithoutSeeingCurrentPlans(
+        bool reverseOrder
+    )
+    {
+        TrackData track = BuildTrack();
+        PreviousFramePlanProbeDriver firstDriver = new("second");
+        PreviousFramePlanProbeDriver secondDriver = new("first");
+        RaceCar first = CreateRaceCar(
+            "first",
+            track,
+            track.Sample(12f),
+            speed: 12f,
+            firstDriver
+        );
+        RaceCar second = CreateRaceCar(
+            "second",
+            track,
+            track.Sample(42f),
+            speed: 24f,
+            secondDriver
+        );
+        RaceSimulation simulation = new(track);
+        if (reverseOrder)
+        {
+            simulation.AddCar(second);
+            simulation.AddCar(first);
+        }
+        else
+        {
+            simulation.AddCar(first);
+            simulation.AddCar(second);
+        }
+
+        simulation.Step(1f / 120f);
+        simulation.Step(1f / 120f);
+
+        Assert.Equal(2, firstDriver.PrepareCount);
+        Assert.Equal(2, secondDriver.PrepareCount);
+        Assert.Equal([false, false], firstDriver.SawCurrentPlanDuringPrepare);
+        Assert.Equal([false, false], secondDriver.SawCurrentPlanDuringPrepare);
+        Assert.Equal([null, 101f], firstDriver.PreviousPlanSpeedsDuringPrepare);
+        Assert.Equal([null, 101f], secondDriver.PreviousPlanSpeedsDuringPrepare);
+        Assert.Equal([101f, 102f], firstDriver.CurrentPlanSpeedsDuringControl);
+        Assert.Equal([101f, 102f], secondDriver.CurrentPlanSpeedsDuringControl);
+        Assert.Equal([false, false], firstDriver.SawPreviousPlanDuringControl);
+        Assert.Equal([false, false], secondDriver.SawPreviousPlanDuringControl);
+    }
+
     [Fact]
     public void FirstDriverStepCollectsCurrentFramePlansBeforeControl()
     {
@@ -898,6 +949,90 @@ public sealed class RaceSimulationTests
             SawOtherCurrentFramePlan =
                 context.Frame.FindTrafficMotionPlan(observedCarId) is not null;
             return default;
+        }
+    }
+
+    private sealed class PreviousFramePlanProbeDriver(string observedCarId) :
+        IRaceDriver,
+        ITrafficMotionPlanSource
+    {
+        private readonly VehiclePathPrediction _path = new();
+        private readonly TrafficMotionPlan _plan = new();
+
+        public int PrepareCount { get; private set; }
+        public List<bool> SawCurrentPlanDuringPrepare { get; } = [];
+        public List<float?> PreviousPlanSpeedsDuringPrepare { get; } = [];
+        public List<float?> CurrentPlanSpeedsDuringControl { get; } = [];
+        public List<bool> SawPreviousPlanDuringControl { get; } = [];
+
+        public void PrepareTrafficMotionPlan(
+            in RaceDriverFrameContext context,
+            float dt
+        )
+        {
+            PrepareCount++;
+            SawCurrentPlanDuringPrepare.Add(
+                context.Frame.FindTrafficMotionPlan(observedCarId) is not null
+            );
+            PreviousPlanSpeedsDuringPrepare.Add(StartSpeed(
+                context.Frame.FindPreviousTrafficMotionPlan(observedCarId)
+            ));
+
+            float markerSpeed = 100f + PrepareCount;
+            _path.Reset(2);
+            Vector2 forward = context.Pose.Sample.Tangent;
+            _path.Add(new VehiclePathPredictionPoint(
+                0f,
+                context.Car.State.Position,
+                context.Car.State.VelocityHeading,
+                context.Pose.S,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                markerSpeed
+            ));
+            _path.Add(new VehiclePathPredictionPoint(
+                10f,
+                context.Car.State.Position + forward * 10f,
+                context.Car.State.VelocityHeading,
+                context.Track.WrapS(context.Pose.S + 10f),
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                markerSpeed
+            ));
+            _plan.BuildFrom(_path);
+        }
+
+        public TrafficMotionPlan? FreezeTrafficMotionPlan()
+        {
+            return _plan.Count > 0 ? _plan : null;
+        }
+
+        public DriverInput GetControl(
+            in RaceDriverFrameContext context,
+            float dt
+        )
+        {
+            CurrentPlanSpeedsDuringControl.Add(StartSpeed(
+                context.Frame.FindTrafficMotionPlan(observedCarId)
+            ));
+            SawPreviousPlanDuringControl.Add(
+                context.Frame.FindPreviousTrafficMotionPlan(observedCarId) is not null
+            );
+            return default;
+        }
+
+        private static float? StartSpeed(TrafficMotionPlan? plan)
+        {
+            return plan is not null &&
+                   plan.TrySample(0f, out TrafficMotionPlanPoint start)
+                ? start.SpeedMetersPerSecond
+                : null;
         }
     }
 

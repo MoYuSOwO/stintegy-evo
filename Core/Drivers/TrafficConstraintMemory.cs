@@ -32,5 +32,6 @@ internal struct TrafficConstraintMemory
 internal readonly record struct TrafficAwareSpeedPlan(
     DynamicPathSpeedPlan SpeedPlan,
     TrafficSpeedConstraint TrafficConstraint,
-    TrafficConstraintMemory NextTrafficMemory
+    TrafficConstraintMemory NextTrafficMemory,
+    TrafficConflictReport ConflictReport
 );

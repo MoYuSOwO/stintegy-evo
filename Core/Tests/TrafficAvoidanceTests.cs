@@ -202,6 +202,71 @@ public sealed class TrafficAvoidanceTests
     }
 
     [Fact]
+    public void TrafficTimeLossBecomesAvailableToTacticsOnTheNextFrame()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        ReferenceLineDriver egoDriver = new();
+        RaceCar ego = CreateCar(
+            "reporting-ego",
+            track,
+            s: 100f,
+            d: 0f,
+            speed: 25f,
+            egoDriver
+        );
+        const float leadSpeed = 12f;
+        RaceCar lead = CreateCar(
+            "reporting-lead",
+            track,
+            s: 135f,
+            d: 0f,
+            speed: leadSpeed,
+            new FixedDriver(
+                new DriverInput(
+                    0f,
+                    0.18f + 0.00046f * leadSpeed * leadSpeed
+                )
+            )
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(ego);
+        simulation.AddCar(lead);
+
+        simulation.Step(Dt);
+
+        TrafficConflictReport firstReport =
+            egoDriver.LastTrafficConflictReport;
+        Assert.True(firstReport.Active);
+        Assert.Equal(lead.Id, firstReport.OpponentId);
+        Assert.True(firstReport.EvaluationDistanceMeters > 0f);
+        Assert.True(float.IsFinite(firstReport.FreeArrivalTimeSeconds));
+        Assert.True(float.IsFinite(firstReport.ConstrainedArrivalTimeSeconds));
+        Assert.True(firstReport.TimeLossSeconds > 0f);
+        Assert.Equal(
+            firstReport.TimeLossSeconds,
+            egoDriver.LastTelemetry.TrafficTimeLossSeconds
+        );
+        Assert.False(egoDriver.LastTacticalConflictReport.Active);
+        Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
+        Assert.Equal(
+            TacticalManeuverPhase.Observing,
+            egoDriver.LastTacticalPhase
+        );
+
+        simulation.Step(Dt);
+
+        Assert.Equal(
+            firstReport,
+            egoDriver.LastTacticalConflictReport
+        );
+        Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
+        Assert.Equal(
+            TacticalManeuverPhase.Observing,
+            egoDriver.LastTacticalPhase
+        );
+    }
+
+    [Fact]
     public void ParallelCarOutsideEgoPathDoesNotTriggerBraking()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -232,6 +297,8 @@ public sealed class TrafficAvoidanceTests
             TrafficSpeedConstraintKind.None,
             egoDriver.LastTelemetry.TrafficConstraintKind
         );
+        Assert.False(egoDriver.LastTrafficConflictReport.Active);
+        Assert.Equal(0f, egoDriver.LastTrafficConflictReport.TimeLossSeconds);
         Assert.True(ego.LastInput.DesiredAccel > 0f);
     }
 

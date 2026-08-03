@@ -19,10 +19,14 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     private readonly VehicleSpeedLookahead _referenceSpeedLookahead = new();
     private readonly PathPlanBuffer _currentPlan = new();
     private readonly TrafficMotionPlan _publishedTrafficMotionPlan = new();
+    private readonly TacticalManeuverPlanner _tacticalPlanner = new();
+    private readonly TrackConstrainedLateralOffset _tacticalOffsetProfile = new();
     private RaceCar? _runtimeCar;
     private DriverPerformanceState? _performance;
     private StabilityControlState _stabilityControlState;
     private TrafficConstraintMemory _trafficMemory;
+    private TrafficConflictReport _lastTrafficConflictReport;
+    private TacticalIntent _tacticalIntent;
     private bool _hasPreparedFrame;
     private PreparedReferenceLineFrame _preparedFrame;
 
@@ -52,6 +56,14 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         _currentPlan.SpeedLookahead;
     public VehiclePathPrediction CurrentPathPrediction => _currentPlan.Path;
     public ReferenceLineDriverTelemetry LastTelemetry { get; private set; }
+    internal TrafficConflictReport LastTrafficConflictReport =>
+        _lastTrafficConflictReport;
+    internal TrafficConflictReport LastTacticalConflictReport =>
+        _tacticalPlanner.LastObservedConflictReport;
+    internal float LastTacticalOffsetMeters =>
+        _tacticalIntent.TargetOffsetMeters;
+    internal TacticalManeuverPhase LastTacticalPhase =>
+        _tacticalPlanner.Phase;
 
     public void Initialize(in RaceDriverInitContext context)
     {
@@ -87,6 +99,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _currentPlan.SpeedPlan = trafficPlan.SpeedPlan;
             _currentPlan.TrafficConstraint = trafficPlan.TrafficConstraint;
             _currentPlan.NextTrafficMemory = trafficPlan.NextTrafficMemory;
+            _lastTrafficConflictReport = trafficPlan.ConflictReport;
         }
         else
         {
@@ -97,6 +110,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             );
             _currentPlan.TrafficConstraint = default;
             _currentPlan.NextTrafficMemory = default;
+            _lastTrafficConflictReport = default;
         }
         CommitSelectedPlan(_currentPlan);
         DynamicPathSpeedPlan dynamicPlan = _currentPlan.SpeedPlan;
@@ -174,6 +188,10 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             trafficConstraint.TargetSpeedMetersPerSecond,
             trafficConstraint.PredictedConflictTimeSeconds,
             trafficConstraint.CurrentClearanceMeters,
+            _lastTrafficConflictReport.EvaluationDistanceMeters,
+            _lastTrafficConflictReport.FreeArrivalTimeSeconds,
+            _lastTrafficConflictReport.ConstrainedArrivalTimeSeconds,
+            _lastTrafficConflictReport.TimeLossSeconds,
             prepared.ReferencePathPlan.TargetSpeed,
             speedReference.TargetSpeed,
             referenceAcceleration,
@@ -229,6 +247,10 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     )
     {
         UpdatePerformanceState(in context, dt);
+        _tacticalIntent = _tacticalPlanner.Update(
+            in context,
+            in _lastTrafficConflictReport
+        );
 
         RaceCar car = context.Car;
         CarState state = car.State;
@@ -237,20 +259,39 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         // The path controller follows the velocity direction. Body sideslip is
         // stabilized by the vehicle layer instead of turning into an abrupt
         // Stanley heading correction.
-        StanleyControlSample control = StanleyControlLaw.Sample(
-            context.Track,
-            state.Position,
-            state.VelocityHeading,
-            state.Speed,
-            wheelBase,
-            lateralTargetError,
-            StanleyGain,
-            StanleySofteningSpeed,
-            HeadingGain,
-            CurvaturePreviewTimeSeconds,
-            MaximumCurvaturePreviewMeters,
-            car.CarConfig.MaxCurvatureRequest
-        );
+        float tacticalOffsetMeters = _tacticalIntent.TargetOffsetMeters;
+        StanleyControlSample control = tacticalOffsetMeters == 0f
+            ? StanleyControlLaw.Sample(
+                context.Track,
+                state.Position,
+                state.VelocityHeading,
+                state.Speed,
+                wheelBase,
+                lateralTargetError,
+                StanleyGain,
+                StanleySofteningSpeed,
+                HeadingGain,
+                CurvaturePreviewTimeSeconds,
+                MaximumCurvaturePreviewMeters,
+                car.CarConfig.MaxCurvatureRequest
+            )
+            : StanleyControlLaw.Sample(
+                context.Track,
+                state.Position,
+                state.VelocityHeading,
+                state.Speed,
+                wheelBase,
+                car.Collision.HalfWidthMeters,
+                _tacticalOffsetProfile,
+                tacticalOffsetMeters,
+                lateralTargetError,
+                StanleyGain,
+                StanleySofteningSpeed,
+                HeadingGain,
+                CurvaturePreviewTimeSeconds,
+                MaximumCurvaturePreviewMeters,
+                car.CarConfig.MaxCurvatureRequest
+            );
         float desiredCurvature = control.DesiredCurvature;
         float controlCorrection = ApplyCarControl(
             state,
@@ -289,6 +330,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car,
             context.Track,
             referenceLookahead,
+            tacticalOffsetMeters,
             lateralTargetError,
             desiredCurvature,
             _currentPlan,
@@ -344,40 +386,72 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         RaceCar car,
         TrackData track,
         VehicleSpeedLookahead referenceLookahead,
-        float lateralTargetOffsetMeters,
+        float tacticalOffsetMeters,
+        float executionOffsetMeters,
         float initialCommandedCurvature,
         PathPlanBuffer destination,
         out float pathPredictionMilliseconds
     )
     {
         long predictionStartTimestamp = Stopwatch.GetTimestamp();
-        _pathPredictor.Predict(
-            destination.Path,
-            car,
-            track,
-            referenceLookahead,
-            lateralTargetOffsetMeters,
-            StanleyGain,
-            StanleySofteningSpeed,
-            HeadingGain,
-            CurvaturePreviewTimeSeconds,
-            MaximumCurvaturePreviewMeters,
-            _speedPlanner.Config.SpeedPlanningHorizonMeters,
-            _speedPlanner.Config.PathPredictionStepMeters,
-            _speedPlanner.Config.MinimumDynamicPredictionMeters,
-            _speedPlanner.Config.PredictionConvergenceHoldMeters,
-            _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
-            _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
-            _speedPlanner.Config.PredictionConvergenceCurvatureError,
-            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
-            initialCommandedCurvature,
-            new StabilityPredictionSeed(
-                _stabilityControlState,
-                _performance!.IsRecovering,
-                _performance.EffectiveControl,
-                _performance.ControlGainScale
-            )
+        StabilityPredictionSeed stabilitySeed = new(
+            _stabilityControlState,
+            _performance!.IsRecovering,
+            _performance.EffectiveControl,
+            _performance.ControlGainScale
         );
+        if (tacticalOffsetMeters == 0f)
+        {
+            _pathPredictor.Predict(
+                destination.Path,
+                car,
+                track,
+                referenceLookahead,
+                executionOffsetMeters,
+                StanleyGain,
+                StanleySofteningSpeed,
+                HeadingGain,
+                CurvaturePreviewTimeSeconds,
+                MaximumCurvaturePreviewMeters,
+                _speedPlanner.Config.SpeedPlanningHorizonMeters,
+                _speedPlanner.Config.PathPredictionStepMeters,
+                _speedPlanner.Config.MinimumDynamicPredictionMeters,
+                _speedPlanner.Config.PredictionConvergenceHoldMeters,
+                _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
+                _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
+                _speedPlanner.Config.PredictionConvergenceCurvatureError,
+                _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+                initialCommandedCurvature,
+                stabilitySeed
+            );
+        }
+        else
+        {
+            _pathPredictor.Predict(
+                destination.Path,
+                car,
+                track,
+                referenceLookahead,
+                tacticalOffsetMeters,
+                _tacticalOffsetProfile,
+                executionOffsetMeters,
+                StanleyGain,
+                StanleySofteningSpeed,
+                HeadingGain,
+                CurvaturePreviewTimeSeconds,
+                MaximumCurvaturePreviewMeters,
+                _speedPlanner.Config.SpeedPlanningHorizonMeters,
+                _speedPlanner.Config.PathPredictionStepMeters,
+                _speedPlanner.Config.MinimumDynamicPredictionMeters,
+                _speedPlanner.Config.PredictionConvergenceHoldMeters,
+                _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
+                _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
+                _speedPlanner.Config.PredictionConvergenceCurvatureError,
+                _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+                initialCommandedCurvature,
+                stabilitySeed
+            );
+        }
         pathPredictionMilliseconds = ElapsedMilliseconds(
             predictionStartTimestamp
         );
@@ -420,6 +494,9 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car.State.YawRateRadiansPerSecond
         );
         _trafficMemory.Clear();
+        _lastTrafficConflictReport = default;
+        _tacticalIntent = TacticalIntent.Keep;
+        _tacticalPlanner.Reset();
         _hasPreparedFrame = false;
         _preparedFrame = default;
         _publishedTrafficMotionPlan.Clear();

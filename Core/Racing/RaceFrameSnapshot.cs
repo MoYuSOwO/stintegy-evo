@@ -71,11 +71,21 @@ public readonly struct RaceFrameSnapshot
 {
     private readonly RaceCarSnapshot[]? _cars;
     private readonly TrafficMotionPlan?[]? _trafficMotionPlans;
+    private readonly TrafficMotionPlan?[]? _previousTrafficMotionPlans;
 
     internal RaceFrameSnapshot(
         float raceTimeSeconds,
         RaceCarSnapshot[] cars,
         TrafficMotionPlan?[] trafficMotionPlans
+    ) : this(raceTimeSeconds, cars, trafficMotionPlans, null)
+    {
+    }
+
+    internal RaceFrameSnapshot(
+        float raceTimeSeconds,
+        RaceCarSnapshot[] cars,
+        TrafficMotionPlan?[] trafficMotionPlans,
+        TrafficMotionPlan?[]? previousTrafficMotionPlans
     )
     {
         RaceTimeSeconds = raceTimeSeconds;
@@ -84,6 +94,7 @@ public readonly struct RaceFrameSnapshot
                               throw new ArgumentNullException(
                                   nameof(trafficMotionPlans)
                               );
+        _previousTrafficMotionPlans = previousTrafficMotionPlans;
     }
 
     public float RaceTimeSeconds { get; }
@@ -133,6 +144,19 @@ public readonly struct RaceFrameSnapshot
             : null;
     }
 
+    internal TrafficMotionPlan? GetPreviousTrafficMotionPlan(int carIndex)
+    {
+        if (_previousTrafficMotionPlans is null ||
+            (uint)carIndex >= (uint)Count ||
+            carIndex >= _previousTrafficMotionPlans.Length)
+        {
+            return null;
+        }
+        return _previousTrafficMotionPlans[carIndex] is { Count: > 0 } plan
+            ? plan
+            : null;
+    }
+
     internal TrafficMotionPlan? FindTrafficMotionPlan(string carId)
     {
         ArgumentNullException.ThrowIfNull(carId);
@@ -146,6 +170,31 @@ public readonly struct RaceFrameSnapshot
                 _trafficMotionPlans[i] is { Count: > 0 } plan)
             {
                 return plan;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Finds a simulation-owned snapshot of the car's preceding frozen plan.
+    /// This view is supplied only during the write-only planning phase; the
+    /// current-frame plan array remains hidden until the freeze barrier.
+    /// </summary>
+    internal TrafficMotionPlan? FindPreviousTrafficMotionPlan(string carId)
+    {
+        ArgumentNullException.ThrowIfNull(carId);
+        if (_cars is null || _previousTrafficMotionPlans is null)
+            return null;
+
+        int count = Math.Min(
+            _cars.Length,
+            _previousTrafficMotionPlans.Length
+        );
+        for (int i = 0; i < count; i++)
+        {
+            if (string.Equals(_cars[i].Id, carId, StringComparison.Ordinal))
+            {
+                return GetPreviousTrafficMotionPlan(i);
             }
         }
         return null;

@@ -28,6 +28,17 @@ internal sealed class TrafficMotionPlan
         Count = 0;
     }
 
+    public void CopyFrom(TrafficMotionPlan source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (ReferenceEquals(this, source))
+            return;
+
+        EnsureCapacity(source.Count);
+        Array.Copy(source._points, _points, source.Count);
+        Count = source.Count;
+    }
+
     public void BuildFrom(VehiclePathPrediction path)
     {
         BuildFromCore(path, speedPlan: null);
