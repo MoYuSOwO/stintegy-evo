@@ -11,6 +11,88 @@ namespace StintegyEVO.Core.Tests;
 public sealed class TrafficAvoidanceTests
 {
     private const float Dt = 1f / 60f;
+    private const int DefaultRosterSeed = 0x5345564F;
+
+    [Fact]
+    public void DefaultGridPairDoesNotTouchThroughFirstCorner()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        Random random = new(DefaultRosterSeed);
+        DriverProfile firstProfile = CreateDefaultGridProfile("grid-01", random);
+        DriverProfile secondProfile = CreateDefaultGridProfile("grid-02", random);
+        RaceCar first = CreateGridCar(
+            "grid-01",
+            track,
+            gridPosition: 1,
+            firstProfile
+        );
+        RaceCar second = CreateGridCar(
+            "grid-02",
+            track,
+            gridPosition: 2,
+            secondProfile
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(first);
+        simulation.AddCar(second);
+
+        float minimumClearance = float.PositiveInfinity;
+        float minimumClearanceTime = 0f;
+        float firstMaximumSpeed = 0f;
+        float secondMaximumSpeed = 0f;
+        float firstPlannedTrafficBrakingTime = float.PositiveInfinity;
+        float secondMinimumSpeedAfterLaunch = float.PositiveInfinity;
+        bool secondHasLaunched = false;
+        for (int i = 0; i < 15 * 60; i++)
+        {
+            simulation.Step(Dt);
+            float clearance = OrientedBodyClearance(first, second);
+            if (clearance < minimumClearance)
+            {
+                minimumClearance = clearance;
+                minimumClearanceTime = simulation.RaceTimeSeconds;
+            }
+            firstMaximumSpeed = MathF.Max(firstMaximumSpeed, first.State.Speed);
+            secondMaximumSpeed = MathF.Max(secondMaximumSpeed, second.State.Speed);
+            secondHasLaunched |= second.State.Speed > 10f;
+            if (secondHasLaunched)
+            {
+                secondMinimumSpeedAfterLaunch = MathF.Min(
+                    secondMinimumSpeedAfterLaunch,
+                    second.State.Speed
+                );
+            }
+            ReferenceLineDriver secondDriver =
+                (ReferenceLineDriver)second.Driver;
+            if (secondDriver.LastTelemetry.TrafficConstraintKind !=
+                    TrafficSpeedConstraintKind.None &&
+                secondDriver.LastTelemetry.ReferenceAcceleration < -0.5f)
+            {
+                firstPlannedTrafficBrakingTime = MathF.Min(
+                    firstPlannedTrafficBrakingTime,
+                    simulation.RaceTimeSeconds
+                );
+            }
+        }
+
+        Assert.True(firstMaximumSpeed > 10f, "the first grid car should launch normally");
+        Assert.True(secondMaximumSpeed > 10f, "the second grid car should launch normally");
+        Assert.True(
+            firstPlannedTrafficBrakingTime < 7.5f,
+            $"traffic braking should be planned before the old late-response window; " +
+            $"first planned braking was {firstPlannedTrafficBrakingTime:0.000} s"
+        );
+        Assert.True(
+            secondMinimumSpeedAfterLaunch > 5f,
+            $"the following car should yield without stopping; minimum speed after launch " +
+            $"was {secondMinimumSpeedAfterLaunch:0.00} m/s"
+        );
+        Assert.True(
+            minimumClearance >= 0.03f,
+            $"grid cars should retain clearance; minimum was {minimumClearance:0.000} m " +
+            $"at {minimumClearanceTime:0.000} s"
+        );
+    }
 
     [Fact]
     public void ReferenceDriverStopsBeforeStationaryCar()
@@ -419,6 +501,109 @@ public sealed class TrafficAvoidanceTests
                 Speed = speed,
                 BatterySoc = 0.8f
             }
+        );
+    }
+
+    private static RaceCar CreateGridCar(
+        string id,
+        TrackData track,
+        int gridPosition,
+        DriverProfile profile
+    )
+    {
+        Grid grid = track.Grids[gridPosition];
+        TrackSample sample = track.Sample(grid.S);
+        return new RaceCar(
+            id,
+            new CarConfig(),
+            new TireConfig
+            {
+                StartingSurfaceTempC = 86f,
+                StartingCoreTempC = 84f
+            },
+            new ReferenceLineDriver(profile),
+            new CarState
+            {
+                Position = grid.Position,
+                Heading = sample.RefHeading,
+                Speed = 0f,
+                BatterySoc = 0.82f
+            }
+        );
+    }
+
+    private static DriverProfile CreateDefaultGridProfile(
+        string id,
+        Random random
+    )
+    {
+        return new DriverProfile(
+            id,
+            new DriverAbilities
+            {
+                Pace = NextRating(random, 84f, 96f),
+                Consistency = NextRating(random, 82f, 96f),
+                CarControl = NextRating(random, 84f, 97f),
+                TireManagement = NextRating(random, 78f, 94f),
+                Adaptability = NextRating(random, 82f, 96f),
+                Reactions = NextRating(random, 82f, 97f),
+                Awareness = NextRating(random, 82f, 97f),
+                Overtaking = NextRating(random, 80f, 96f),
+                Defending = NextRating(random, 80f, 96f)
+            },
+            (ulong)random.NextInt64(1, long.MaxValue)
+        );
+    }
+
+    private static float NextRating(
+        Random random,
+        float minimum,
+        float maximum
+    )
+    {
+        return minimum + (float)random.NextDouble() * (maximum - minimum);
+    }
+
+    private static float OrientedBodyClearance(RaceCar first, RaceCar second)
+    {
+        CarBodyGeometry firstBody = CarBodyGeometry.FromState(
+            first.State,
+            first.Collision
+        );
+        CarBodyGeometry secondBody = CarBodyGeometry.FromState(
+            second.State,
+            second.Collision
+        );
+        float clearance = AxisClearance(
+            in firstBody,
+            in secondBody,
+            firstBody.Forward
+        );
+        clearance = MathF.Max(
+            clearance,
+            AxisClearance(in firstBody, in secondBody, firstBody.Left)
+        );
+        clearance = MathF.Max(
+            clearance,
+            AxisClearance(in firstBody, in secondBody, secondBody.Forward)
+        );
+        return MathF.Max(
+            clearance,
+            AxisClearance(in firstBody, in secondBody, secondBody.Left)
+        );
+    }
+
+    private static float AxisClearance(
+        in CarBodyGeometry first,
+        in CarBodyGeometry second,
+        Vector2 axis
+    )
+    {
+        first.ProjectOntoAxis(axis, out float firstMinimum, out float firstMaximum);
+        second.ProjectOntoAxis(axis, out float secondMinimum, out float secondMaximum);
+        return MathF.Max(
+            secondMinimum - firstMaximum,
+            firstMinimum - secondMaximum
         );
     }
 

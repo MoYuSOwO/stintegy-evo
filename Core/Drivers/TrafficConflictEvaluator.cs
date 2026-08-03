@@ -27,6 +27,8 @@ internal static class TrafficConflictEvaluator
     private const int ConflictSearchStride = 4;
     private const int PathProjectionSearchRadius = 16;
     private const float BroadphaseCurvePaddingMeters = 2f;
+    private const float ClearanceSearchStepSeconds = 0.1f;
+    private const int ClearanceRefinementIterations = 5;
 
     public static bool ApplyConstraints(
         VehicleSpeedPlanningConfig config,
@@ -112,16 +114,6 @@ internal static class TrafficConflictEvaluator
                 opponent.Position,
                 estimatedAlongDistance
             );
-            changed |= ApplyCloseFollowingConstraint(
-                config,
-                in ego,
-                in opponent,
-                in currentProjection,
-                currentDirectionDot,
-                speedLimits,
-                ref lastConstraint
-            );
-
             if (TryFindFirstConflict(
                     config,
                     track,
@@ -141,10 +133,26 @@ internal static class TrafficConflictEvaluator
                     in opponent,
                     in currentProjection,
                     in conflict,
+                    track,
+                    opponentPlan,
+                    segmentLengths,
+                    speeds,
                     speedLimits,
                     frame.RaceTimeSeconds,
                     conflict.UsesPublishedMotion,
                     ref memory,
+                    ref lastConstraint
+                );
+            }
+            else
+            {
+                changed |= ApplyCloseFollowingConstraint(
+                    config,
+                    in ego,
+                    in opponent,
+                    in currentProjection,
+                    currentDirectionDot,
+                    speedLimits,
                     ref lastConstraint
                 );
             }
@@ -160,6 +168,10 @@ internal static class TrafficConflictEvaluator
         in RaceCarSnapshot opponent,
         in PathProjection currentProjection,
         in PredictedConflict conflict,
+        TrackData track,
+        TrafficMotionPlan? opponentPlan,
+        float[] segmentLengths,
+        float[] speeds,
         float[] speedLimits,
         float raceTimeSeconds,
         bool usesPublishedMotion,
@@ -167,28 +179,66 @@ internal static class TrafficConflictEvaluator
         ref TrafficSpeedConstraint lastConstraint
     )
     {
-        float desiredGap = MathF.Max(
-            DesiredGap(config, conflict.EgoSpeedMetersPerSecond),
-            SafeStoppingGap(
+        int conflictIndex = IndexAtOrBefore(
+            path,
+            conflict.PathDistanceMeters
+        );
+        int constraintIndex = conflictIndex;
+        float targetSpeed = conflict.TargetSpeedMetersPerSecond;
+        TrafficSpeedConstraintKind appliedKind = conflict.Kind;
+        bool usesArrivalConstraint = false;
+        bool changed;
+        if (TryFindClearTime(
                 config,
+                track,
+                path[conflictIndex],
                 in ego,
                 in opponent,
-                conflict.EgoSpeedMetersPerSecond,
-                conflict.TargetSpeedMetersPerSecond
-            )
-        );
-        float constraintDistance = MathF.Max(
-            0f,
-            conflict.PathDistanceMeters - desiredGap
-        );
-        int constraintIndex = IndexAtOrBefore(path, constraintDistance);
-        bool changed = ApplySpeedConstraint(
-            conflict.Kind,
-            constraintIndex,
-            conflict.TargetSpeedMetersPerSecond,
-            speedLimits,
-            path.Count
-        );
+                conflict.TimeSeconds,
+                opponentPlan,
+                out float clearTimeSeconds
+            ))
+        {
+            float earliestArrivalTime = clearTimeSeconds +
+                                        config.TrafficTimeHeadwaySeconds;
+            usesArrivalConstraint = true;
+            changed = ApplyArrivalConstraint(
+                config,
+                conflictIndex,
+                earliestArrivalTime,
+                segmentLengths,
+                speeds,
+                speedLimits,
+                out targetSpeed
+            );
+        }
+        else
+        {
+            float desiredGap = MathF.Max(
+                DesiredGap(config, conflict.EgoSpeedMetersPerSecond),
+                SafeStoppingGap(
+                    config,
+                    in ego,
+                    in opponent,
+                    conflict.EgoSpeedMetersPerSecond,
+                    conflict.TargetSpeedMetersPerSecond
+                )
+            );
+            float constraintDistance = MathF.Max(
+                0f,
+                conflict.PathDistanceMeters - desiredGap
+            );
+            constraintIndex = IndexAtOrBefore(path, constraintDistance);
+            targetSpeed = 0f;
+            appliedKind = TrafficSpeedConstraintKind.Stop;
+            changed = ApplySpeedConstraint(
+                appliedKind,
+                constraintIndex,
+                targetSpeed,
+                speedLimits,
+                path.Count
+            );
+        }
 
         float currentClearance = CurrentClearance(
             in ego,
@@ -196,28 +246,28 @@ internal static class TrafficConflictEvaluator
             in currentProjection
         );
         TrafficSpeedConstraint constraint = new(
-            conflict.Kind,
+            appliedKind,
             opponent.Id,
             path[constraintIndex].DistanceMeters,
-            conflict.TargetSpeedMetersPerSecond,
+            targetSpeed,
             conflict.TimeSeconds,
             currentClearance
         );
         if (RecordConstraint(in constraint, ref lastConstraint))
         {
-            if (usesPublishedMotion)
+            if (usesPublishedMotion || usesArrivalConstraint)
             {
                 memory.Clear();
             }
             else
             {
                 memory.OpponentId = opponent.Id;
-                memory.Kind = conflict.Kind;
+                memory.Kind = constraint.Kind;
                 memory.HeldUntilSeconds = raceTimeSeconds +
                                           config.TrafficConstraintHoldSeconds;
                 memory.RemainingDistanceMeters = constraint.PathDistanceMeters;
                 memory.TargetSpeedMetersPerSecond =
-                    conflict.TargetSpeedMetersPerSecond;
+                    targetSpeed;
                 memory.ConflictTimeSeconds = conflict.TimeSeconds;
                 memory.EgoPosition = ego.Position;
             }
@@ -548,6 +598,127 @@ internal static class TrafficConflictEvaluator
         return true;
     }
 
+    private static bool TryFindClearTime(
+        VehicleSpeedPlanningConfig config,
+        TrackData track,
+        in VehiclePathPredictionPoint gate,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        float conflictTimeSeconds,
+        TrafficMotionPlan? opponentPlan,
+        out float clearTimeSeconds
+    )
+    {
+        if (opponentPlan is null &&
+            opponent.SpeedMetersPerSecond <
+            MovingSpeedThresholdMetersPerSecond &&
+            MathF.Abs(opponent.LongitudinalAccelMetersPerSecondSquared) < 0.1f)
+        {
+            clearTimeSeconds = 0f;
+            return false;
+        }
+
+        float lastSearchTime = config.TrafficPredictionHorizonSeconds;
+        if (opponentPlan is not null)
+        {
+            lastSearchTime = MathF.Min(
+                lastSearchTime,
+                opponentPlan.EndTimeSeconds
+            );
+        }
+        if (conflictTimeSeconds >= lastSearchTime)
+        {
+            clearTimeSeconds = 0f;
+            return false;
+        }
+
+        float occupiedTime = conflictTimeSeconds;
+        while (occupiedTime < lastSearchTime)
+        {
+            float candidateTime = MathF.Min(
+                occupiedTime + ClearanceSearchStepSeconds,
+                lastSearchTime
+            );
+            if (!BodiesOverlapAtGate(
+                    config,
+                    track,
+                    in gate,
+                    in ego,
+                    in opponent,
+                    candidateTime,
+                    opponentPlan
+                ))
+            {
+                float lower = occupiedTime;
+                float upper = candidateTime;
+                for (int i = 0; i < ClearanceRefinementIterations; i++)
+                {
+                    float middle = (lower + upper) * 0.5f;
+                    if (BodiesOverlapAtGate(
+                            config,
+                            track,
+                            in gate,
+                            in ego,
+                            in opponent,
+                            middle,
+                            opponentPlan
+                        ))
+                    {
+                        lower = middle;
+                    }
+                    else
+                    {
+                        upper = middle;
+                    }
+                }
+                clearTimeSeconds = upper;
+                return true;
+            }
+
+            if (candidateTime <= occupiedTime)
+                break;
+            occupiedTime = candidateTime;
+        }
+
+        clearTimeSeconds = 0f;
+        return false;
+    }
+
+    private static bool BodiesOverlapAtGate(
+        VehicleSpeedPlanningConfig config,
+        TrackData track,
+        in VehiclePathPredictionPoint gate,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        float timeSeconds,
+        TrafficMotionPlan? opponentPlan
+    )
+    {
+        PredictedTrafficPose opponentPose = PredictOpponent(
+            track,
+            in opponent,
+            timeSeconds,
+            opponentPlan
+        );
+        CarBodyGeometry egoBody = CarBodyGeometry.FromPose(
+            gate.Position,
+            gate.VelocityHeading,
+            ego.LengthMeters +
+            2f * config.TrafficLongitudinalSafetyMarginMeters,
+            ego.WidthMeters +
+            2f * config.TrafficLateralSafetyMarginMeters
+        );
+        CarBodyGeometry opponentBody = CarBodyGeometry.FromPose(
+            opponentPose.Position,
+            opponentPose.HeadingRadians,
+            opponent.LengthMeters +
+            2f * LongitudinalUncertaintyGrowthMetersPerSecond * timeSeconds,
+            opponent.WidthMeters +
+            2f * LateralUncertaintyGrowthMetersPerSecond * timeSeconds
+        );
+        return egoBody.Overlaps(in opponentBody);
+    }
+
     private static float BroadphaseRadius(
         VehicleSpeedPlanningConfig config,
         in RaceCarSnapshot ego,
@@ -844,6 +1015,89 @@ internal static class TrafficConflictEvaluator
             arrivalTimes[i] = arrivalTimes[i - 1] +
                               2f * segmentLengths[i - 1] / speedSum;
         }
+    }
+
+    private static bool ApplyArrivalConstraint(
+        VehicleSpeedPlanningConfig config,
+        int gateIndex,
+        float earliestArrivalTimeSeconds,
+        float[] segmentLengths,
+        float[] speeds,
+        float[] speedLimits,
+        out float targetSpeedMetersPerSecond
+    )
+    {
+        targetSpeedMetersPerSecond = speeds[Math.Max(0, gateIndex)];
+        if (gateIndex <= 0 ||
+            !float.IsFinite(earliestArrivalTimeSeconds) ||
+            earliestArrivalTimeSeconds <= 0f)
+        {
+            return false;
+        }
+
+        float baselineArrival = PrefixArrivalTime(
+            gateIndex,
+            segmentLengths,
+            speeds,
+            speedScale: 1f
+        );
+        if (baselineArrival >= earliestArrivalTimeSeconds - ConstraintEpsilon)
+            return false;
+
+        float slowerScale = 0f;
+        float fasterScale = 1f;
+        for (int iteration = 0;
+             iteration < config.TrafficArrivalSolveIterations;
+             iteration++)
+        {
+            float candidateScale = (slowerScale + fasterScale) * 0.5f;
+            float candidateArrival = PrefixArrivalTime(
+                gateIndex,
+                segmentLengths,
+                speeds,
+                candidateScale
+            );
+            if (candidateArrival >= earliestArrivalTimeSeconds)
+                slowerScale = candidateScale;
+            else
+                fasterScale = candidateScale;
+        }
+
+        bool changed = false;
+        for (int i = 1; i <= gateIndex; i++)
+        {
+            float scaledSpeed = MathF.Max(0f, speeds[i] * slowerScale);
+            if (scaledSpeed >= speedLimits[i] - ConstraintEpsilon)
+                continue;
+            speedLimits[i] = scaledSpeed;
+            changed = true;
+        }
+        targetSpeedMetersPerSecond = MathF.Max(
+            0f,
+            speeds[gateIndex] * slowerScale
+        );
+        return changed;
+    }
+
+    private static float PrefixArrivalTime(
+        int gateIndex,
+        float[] segmentLengths,
+        float[] speeds,
+        float speedScale
+    )
+    {
+        float time = 0f;
+        float previousSpeed = MathF.Max(0f, speeds[0]);
+        for (int i = 1; i <= gateIndex; i++)
+        {
+            float currentSpeed = MathF.Max(0f, speeds[i] * speedScale);
+            float speedSum = previousSpeed + currentSpeed;
+            if (speedSum <= 0.05f)
+                return float.PositiveInfinity;
+            time += 2f * segmentLengths[i - 1] / speedSum;
+            previousSpeed = currentSpeed;
+        }
+        return time;
     }
 
     private static bool ApplySpeedConstraint(

@@ -32,6 +32,9 @@ public sealed class VehicleSpeedPlanningConfig
     public float TrafficLongitudinalSafetyMarginMeters { get; init; } = 0.25f;
     public float TrafficConstraintHoldSeconds { get; init; } = 0.35f;
     public int TrafficConstraintIterations { get; init; } = 2;
+    // Cheap scalar iterations over the existing feasible speed profile. This
+    // does not rerun vehicle-physics integration inside the solve.
+    public int TrafficArrivalSolveIterations { get; init; } = 5;
     public float CurvatureEpsilon { get; init; } = 1e-4f;
     public float MinimumSegmentLengthMeters { get; init; } = 1e-4f;
     public float ConvergenceToleranceMetersPerSecond { get; init; } = 0.01f;
