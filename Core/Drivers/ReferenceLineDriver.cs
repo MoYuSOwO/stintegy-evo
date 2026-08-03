@@ -23,6 +23,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     private DriverPerformanceState? _performance;
     private StabilityControlState _stabilityControlState;
     private TrafficConstraintMemory _trafficMemory;
+    private bool _hasPreparedFrame;
+    private PreparedReferenceLineFrame _preparedFrame;
 
     public ReferenceLineDriver(
         VehicleSpeedPlanningConfig? speedPlanningConfig = null,
@@ -58,6 +60,174 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
 
     public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
     {
+        if (!_hasPreparedFrame ||
+            !ReferenceEquals(_runtimeCar, context.Car) ||
+            _preparedFrame.RaceTimeSeconds != context.RaceTimeSeconds)
+        {
+            PrepareCurrentFrame(in context, dt);
+        }
+
+        PreparedReferenceLineFrame prepared = _preparedFrame;
+        RaceCar car = context.Car;
+        CarState state = car.State;
+        DriverPerformanceState performance = _performance!;
+        long trafficPlanningStartTimestamp = Stopwatch.GetTimestamp();
+        if (context.HasFrameSnapshot)
+        {
+            RaceFrameSnapshot frame = context.Frame;
+            TrafficAwareSpeedPlan trafficPlan = _speedPlanner.PlanPredictedPath(
+                _currentPlan.SpeedLookahead,
+                car,
+                _currentPlan.Path,
+                context.Track,
+                in frame,
+                context.CarSnapshotIndex,
+                in _trafficMemory
+            );
+            _currentPlan.SpeedPlan = trafficPlan.SpeedPlan;
+            _currentPlan.TrafficConstraint = trafficPlan.TrafficConstraint;
+            _currentPlan.NextTrafficMemory = trafficPlan.NextTrafficMemory;
+        }
+        else
+        {
+            _currentPlan.SpeedPlan = _speedPlanner.PlanPredictedPath(
+                _currentPlan.SpeedLookahead,
+                car,
+                _currentPlan.Path
+            );
+            _currentPlan.TrafficConstraint = default;
+            _currentPlan.NextTrafficMemory = default;
+        }
+        CommitSelectedPlan(_currentPlan);
+        DynamicPathSpeedPlan dynamicPlan = _currentPlan.SpeedPlan;
+        TrafficSpeedConstraint trafficConstraint =
+            _currentPlan.TrafficConstraint;
+        VehicleSpeedPlanPoint speedReference = dynamicPlan.Current;
+        float rollingSpeedPlanningMilliseconds =
+            prepared.BaseSpeedPlanningMilliseconds +
+            ElapsedMilliseconds(trafficPlanningStartTimestamp);
+
+        float referenceAcceleration = speedReference.ReferenceAcceleration;
+        if (state.Speed > speedReference.TargetSpeed)
+            referenceAcceleration = MathF.Min(referenceAcceleration, 0f);
+        CarPerformanceLimits currentLimits = CarPhysics.EstimatePerformanceLimits(
+            state,
+            car.CarConfig,
+            car.TireConfig,
+            car.Strategy,
+            state.Speed,
+            prepared.DesiredCurvature,
+            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            referenceAcceleration
+        );
+        // The speed plan stores net vehicle acceleration, while DriverInput asks
+        // for axle acceleration before rolling, aero, and cornering losses.
+        float lossCompensationAcceleration = currentLimits.LossAcceleration;
+        float speedFeedbackAcceleration = SpeedGain *
+                                          (speedReference.TargetSpeed - state.Speed);
+        float desiredAcceleration = referenceAcceleration +
+                                    lossCompensationAcceleration +
+                                    speedFeedbackAcceleration;
+        float driveAccelerationLimit =
+            currentLimits.MaximumDriveAcceleration *
+            _speedPlanner.Config.DriveAccelerationUsage *
+            Math.Clamp(
+                performance.PaceEfficiency * performance.EstimatedGripScale,
+                0.8f,
+                1.05f
+            );
+        if (desiredAcceleration > 0f && prepared.ControlSeverity > 0f)
+        {
+            float retainedDriveAtFullSeverity = Lerp(
+                0.25f,
+                0.8f,
+                performance.EffectiveControl
+            );
+            desiredAcceleration *= 1f - prepared.ControlSeverity *
+                                   (1f - retainedDriveAtFullSeverity);
+        }
+        desiredAcceleration = Math.Clamp(
+            desiredAcceleration,
+            -car.CarConfig.MaxBrakeAccel * performance.PaceEfficiency,
+            driveAccelerationLimit
+        );
+
+        LastTelemetry = new ReferenceLineDriverTelemetry(
+            prepared.FrontPose.S,
+            prepared.LateralErrorMeters,
+            prepared.HeadingErrorRadians,
+            prepared.FrontSample.RefCurvature,
+            prepared.PreviewSample.RefCurvature,
+            prepared.DesiredCurvature,
+            prepared.CurvatureCorrection,
+            _currentPlan.Path.LengthMeters,
+            _currentPlan.Path.MaximumAbsoluteCommandedCurvature,
+            _currentPlan.Path.TerminalLateralErrorMeters,
+            _currentPlan.Path.DynamicPredictionLengthMeters,
+            _currentPlan.Path.JoinsReferenceLine,
+            _currentPlan.Path.ReferenceLineJoinCurvatureDelta,
+            prepared.PathPredictionMilliseconds,
+            rollingSpeedPlanningMilliseconds,
+            trafficConstraint.Kind,
+            trafficConstraint.OpponentId,
+            trafficConstraint.PathDistanceMeters,
+            trafficConstraint.TargetSpeedMetersPerSecond,
+            trafficConstraint.PredictedConflictTimeSeconds,
+            trafficConstraint.CurrentClearanceMeters,
+            prepared.ReferencePathPlan.TargetSpeed,
+            speedReference.TargetSpeed,
+            referenceAcceleration,
+            lossCompensationAcceleration,
+            speedFeedbackAcceleration,
+            driveAccelerationLimit,
+            desiredAcceleration,
+            Profile.Abilities.Pace,
+            Profile.Abilities.Consistency,
+            Profile.Abilities.CarControl,
+            Profile.Abilities.TireManagement,
+            Profile.Abilities.Adaptability,
+            performance.SessionForm,
+            performance.LapForm,
+            performance.SegmentForm,
+            performance.PlanningPace,
+            performance.EffectivePace,
+            performance.PaceEfficiency,
+            performance.EffectiveControl,
+            performance.EffectiveTireManagement,
+            performance.TireEnergyEfficiency,
+            performance.EffectiveAdaptability,
+            performance.ActualGrip,
+            performance.EstimatedGrip,
+            performance.EstimatedGripScale,
+            performance.BrakeMarkerErrorMeters,
+            prepared.LateralTargetErrorMeters,
+            performance.LocalSpeedErrorFraction,
+            performance.FrontBrakeBiasOffset,
+            prepared.ControlSeverity,
+            prepared.ControlCorrection,
+            performance.IsRecovering
+        );
+        _hasPreparedFrame = false;
+        return new DriverInput(
+            prepared.DesiredCurvature,
+            desiredAcceleration,
+            performance.FrontBrakeBiasOffset
+        );
+    }
+
+    void ITrafficMotionPlanSource.PrepareTrafficMotionPlan(
+        in RaceDriverFrameContext context,
+        float dt
+    )
+    {
+        PrepareCurrentFrame(in context, dt);
+    }
+
+    private void PrepareCurrentFrame(
+        in RaceDriverFrameContext context,
+        float dt
+    )
+    {
         UpdatePerformanceState(in context, dt);
 
         RaceCar car = context.Car;
@@ -81,11 +251,6 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             MaximumCurvaturePreviewMeters,
             car.CarConfig.MaxCurvatureRequest
         );
-        TrackPose frontPose = control.FrontPose;
-        TrackSample frontSample = control.FrontSample;
-        TrackSample previewSample = control.PreviewSample;
-        float lateralError = control.LateralErrorMeters;
-        float headingError = control.HeadingErrorRadians;
         float desiredCurvature = control.DesiredCurvature;
         float controlCorrection = ApplyCarControl(
             state,
@@ -94,8 +259,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             dt,
             out float controlSeverity
         );
-
-        float curvatureCorrection = desiredCurvature - previewSample.RefCurvature;
+        float curvatureCorrection =
+            desiredCurvature - control.PreviewSample.RefCurvature;
         float planningPace = Math.Clamp(
             _performance.PaceEfficiency *
             (1f + _performance.LocalSpeedErrorFraction),
@@ -107,149 +272,57 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _performance.EstimatedGripScale,
             _performance.FrontBrakeBiasOffset
         );
-        long speedPlanningStartTimestamp = Stopwatch.GetTimestamp();
+        long planningStartTimestamp = Stopwatch.GetTimestamp();
         VehicleSpeedLookahead referenceLookahead =
             _speedPlanner.PlanReferenceLookahead(
                 _referenceSpeedLookahead,
                 car,
                 context.Track,
-                frontPose.S + _performance.BrakeMarkerErrorMeters,
+                control.FrontPose.S + _performance.BrakeMarkerErrorMeters,
                 _speedPlanner.Config.SpeedPlanningHorizonMeters,
                 _speedPlanner.Config.PathPredictionStepMeters,
                 planningModifiers
             );
         VehicleSpeedPlanPoint referencePathPlan =
             referenceLookahead.Sample(0f);
-        EvaluatePathCandidate(
-            in context,
+        PredictPathCandidate(
+            car,
+            context.Track,
             referenceLookahead,
             lateralTargetError,
             desiredCurvature,
-            in _trafficMemory,
             _currentPlan,
             out float pathPredictionMilliseconds
         );
-        CommitSelectedPlan(_currentPlan);
-        DynamicPathSpeedPlan dynamicPlan = _currentPlan.SpeedPlan;
-        TrafficSpeedConstraint trafficConstraint =
-            _currentPlan.TrafficConstraint;
-        VehicleSpeedPlanPoint speedReference = dynamicPlan.Current;
-        float rollingSpeedPlanningMilliseconds = MathF.Max(
+        _currentPlan.TrafficConstraint = default;
+        _currentPlan.NextTrafficMemory = default;
+        float baseSpeedPlanningMilliseconds = MathF.Max(
             0f,
-            ElapsedMilliseconds(speedPlanningStartTimestamp) -
+            ElapsedMilliseconds(planningStartTimestamp) -
             pathPredictionMilliseconds
         );
-
-        float referenceAcceleration = speedReference.ReferenceAcceleration;
-        if (state.Speed > speedReference.TargetSpeed)
-            referenceAcceleration = MathF.Min(referenceAcceleration, 0f);
-        CarPerformanceLimits currentLimits = CarPhysics.EstimatePerformanceLimits(
-            state,
-            car.CarConfig,
-            car.TireConfig,
-            car.Strategy,
-            state.Speed,
-            desiredCurvature,
-            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
-            referenceAcceleration
-        );
-        // The speed plan stores net vehicle acceleration, while DriverInput asks
-        // for axle acceleration before rolling, aero, and cornering losses.
-        float lossCompensationAcceleration = currentLimits.LossAcceleration;
-        float speedFeedbackAcceleration = SpeedGain *
-                                          (speedReference.TargetSpeed - state.Speed);
-        float desiredAcceleration = referenceAcceleration +
-                                    lossCompensationAcceleration +
-                                    speedFeedbackAcceleration;
-        float driveAccelerationLimit =
-            currentLimits.MaximumDriveAcceleration *
-            _speedPlanner.Config.DriveAccelerationUsage *
-            Math.Clamp(
-                _performance.PaceEfficiency * _performance.EstimatedGripScale,
-                0.8f,
-                1.05f
-            );
-        if (desiredAcceleration > 0f && controlSeverity > 0f)
-        {
-            float retainedDriveAtFullSeverity = Lerp(
-                0.25f,
-                0.8f,
-                _performance.EffectiveControl
-            );
-            desiredAcceleration *= 1f - controlSeverity *
-                                   (1f - retainedDriveAtFullSeverity);
-        }
-        desiredAcceleration = Math.Clamp(
-            desiredAcceleration,
-            -car.CarConfig.MaxBrakeAccel * _performance.PaceEfficiency,
-            driveAccelerationLimit
-        );
-
-        LastTelemetry = new ReferenceLineDriverTelemetry(
-            frontPose.S,
-            lateralError,
-            headingError,
-            frontSample.RefCurvature,
-            previewSample.RefCurvature,
+        _preparedFrame = new PreparedReferenceLineFrame(
+            context.RaceTimeSeconds,
+            control.FrontPose,
+            control.FrontSample,
+            control.PreviewSample,
+            control.LateralErrorMeters,
+            control.HeadingErrorRadians,
             desiredCurvature,
             curvatureCorrection,
-            _currentPlan.Path.LengthMeters,
-            _currentPlan.Path.MaximumAbsoluteCommandedCurvature,
-            _currentPlan.Path.TerminalLateralErrorMeters,
-            _currentPlan.Path.DynamicPredictionLengthMeters,
-            _currentPlan.Path.JoinsReferenceLine,
-            _currentPlan.Path.ReferenceLineJoinCurvatureDelta,
-            pathPredictionMilliseconds,
-            rollingSpeedPlanningMilliseconds,
-            trafficConstraint.Kind,
-            trafficConstraint.OpponentId,
-            trafficConstraint.PathDistanceMeters,
-            trafficConstraint.TargetSpeedMetersPerSecond,
-            trafficConstraint.PredictedConflictTimeSeconds,
-            trafficConstraint.CurrentClearanceMeters,
-            referencePathPlan.TargetSpeed,
-            speedReference.TargetSpeed,
-            referenceAcceleration,
-            lossCompensationAcceleration,
-            speedFeedbackAcceleration,
-            driveAccelerationLimit,
-            desiredAcceleration,
-            Profile.Abilities.Pace,
-            Profile.Abilities.Consistency,
-            Profile.Abilities.CarControl,
-            Profile.Abilities.TireManagement,
-            Profile.Abilities.Adaptability,
-            _performance.SessionForm,
-            _performance.LapForm,
-            _performance.SegmentForm,
-            _performance.PlanningPace,
-            _performance.EffectivePace,
-            _performance.PaceEfficiency,
-            _performance.EffectiveControl,
-            _performance.EffectiveTireManagement,
-            _performance.TireEnergyEfficiency,
-            _performance.EffectiveAdaptability,
-            _performance.ActualGrip,
-            _performance.EstimatedGrip,
-            _performance.EstimatedGripScale,
-            _performance.BrakeMarkerErrorMeters,
-            lateralTargetError,
-            _performance.LocalSpeedErrorFraction,
-            _performance.FrontBrakeBiasOffset,
-            controlSeverity,
             controlCorrection,
-            _performance.IsRecovering
+            controlSeverity,
+            lateralTargetError,
+            referencePathPlan,
+            pathPredictionMilliseconds,
+            baseSpeedPlanningMilliseconds
         );
-        return new DriverInput(
-            desiredCurvature,
-            desiredAcceleration,
-            _performance.FrontBrakeBiasOffset
-        );
+        _hasPreparedFrame = true;
     }
 
     TrafficMotionPlan? ITrafficMotionPlanSource.FreezeTrafficMotionPlan()
     {
-        if (_currentPlan.Path.Count < 2)
+        if (!_hasPreparedFrame || _currentPlan.Path.Count < 2)
         {
             _publishedTrafficMotionPlan.Clear();
             return null;
@@ -259,22 +332,21 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         return _publishedTrafficMotionPlan;
     }
 
-    private void EvaluatePathCandidate(
-        in RaceDriverFrameContext context,
+    private void PredictPathCandidate(
+        RaceCar car,
+        TrackData track,
         VehicleSpeedLookahead referenceLookahead,
         float lateralTargetOffsetMeters,
         float initialCommandedCurvature,
-        in TrafficConstraintMemory committedTrafficMemory,
         PathPlanBuffer destination,
         out float pathPredictionMilliseconds
     )
     {
-        RaceCar car = context.Car;
         long predictionStartTimestamp = Stopwatch.GetTimestamp();
         _pathPredictor.Predict(
             destination.Path,
             car,
-            context.Track,
+            track,
             referenceLookahead,
             lateralTargetOffsetMeters,
             StanleyGain,
@@ -302,31 +374,6 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             predictionStartTimestamp
         );
 
-        if (context.HasFrameSnapshot)
-        {
-            RaceFrameSnapshot frame = context.Frame;
-            TrafficAwareSpeedPlan trafficPlan = _speedPlanner.PlanPredictedPath(
-                destination.SpeedLookahead,
-                car,
-                destination.Path,
-                context.Track,
-                in frame,
-                context.CarSnapshotIndex,
-                in committedTrafficMemory
-            );
-            destination.SpeedPlan = trafficPlan.SpeedPlan;
-            destination.TrafficConstraint = trafficPlan.TrafficConstraint;
-            destination.NextTrafficMemory = trafficPlan.NextTrafficMemory;
-            return;
-        }
-
-        destination.SpeedPlan = _speedPlanner.PlanPredictedPath(
-            destination.SpeedLookahead,
-            car,
-            destination.Path
-        );
-        destination.TrafficConstraint = default;
-        destination.NextTrafficMemory = default;
     }
 
     private void CommitSelectedPlan(PathPlanBuffer selectedPlan)
@@ -365,8 +412,27 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car.State.YawRateRadiansPerSecond
         );
         _trafficMemory.Clear();
+        _hasPreparedFrame = false;
+        _preparedFrame = default;
         _publishedTrafficMotionPlan.Clear();
     }
+
+    private readonly record struct PreparedReferenceLineFrame(
+        float RaceTimeSeconds,
+        TrackPose FrontPose,
+        TrackSample FrontSample,
+        TrackSample PreviewSample,
+        float LateralErrorMeters,
+        float HeadingErrorRadians,
+        float DesiredCurvature,
+        float CurvatureCorrection,
+        float ControlCorrection,
+        float ControlSeverity,
+        float LateralTargetErrorMeters,
+        VehicleSpeedPlanPoint ReferencePathPlan,
+        float PathPredictionMilliseconds,
+        float BaseSpeedPlanningMilliseconds
+    );
 
     private float ApplyCarControl(
         CarState state,
