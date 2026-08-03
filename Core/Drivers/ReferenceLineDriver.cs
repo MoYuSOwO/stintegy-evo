@@ -294,6 +294,11 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _currentPlan,
             out float pathPredictionMilliseconds
         );
+        _currentPlan.SpeedPlan = _speedPlanner.PlanPredictedPath(
+            _currentPlan.SpeedLookahead,
+            car,
+            _currentPlan.Path
+        );
         _currentPlan.TrafficConstraint = default;
         _currentPlan.NextTrafficMemory = default;
         float baseSpeedPlanningMilliseconds = MathF.Max(
@@ -328,7 +333,10 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             return null;
         }
 
-        _publishedTrafficMotionPlan.BuildFrom(_currentPlan.Path);
+        _publishedTrafficMotionPlan.BuildFrom(
+            _currentPlan.Path,
+            _currentPlan.SpeedLookahead
+        );
         return _publishedTrafficMotionPlan;
     }
 

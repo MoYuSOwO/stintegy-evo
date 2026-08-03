@@ -70,6 +70,55 @@ public sealed class RaceSimulationTests
     }
 
     [Fact]
+    public void ReferenceDriverPublishesItsPlannedPathSpeed()
+    {
+        TrackData track = BuildTrack();
+        TrackSample start = track.Sample(70f);
+        ReferenceLineDriver plannedDriver = new();
+        RaceCar planned = new(
+            "planned",
+            new CarConfig(),
+            WarmTires(),
+            plannedDriver,
+            new CarState
+            {
+                Position = start.Center + start.Normal * 3f,
+                Heading = start.RefHeading + 0.3f,
+                Speed = 40f,
+                BatterySoc = 0.8f
+            }
+        );
+        PlanObserverDriver observerDriver = new("planned");
+        RaceCar observer = CreateRaceCar(
+            "observer",
+            track,
+            track.Sample(300f),
+            speed: 10f,
+            observerDriver
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(planned);
+        simulation.AddCar(observer);
+
+        simulation.Step(1f / 120f);
+
+        float plannedStartSpeed =
+            plannedDriver.CurrentSpeedLookahead.Sample(0f).TargetSpeed;
+        Assert.True(
+            MathF.Abs(
+                plannedStartSpeed -
+                plannedDriver.CurrentPathPrediction[0].EstimatedSpeed
+            ) > 0.1f,
+            "the fixture must distinguish the path speed plan from the predictor seed"
+        );
+        Assert.Equal(
+            plannedStartSpeed,
+            observerDriver.ObservedPlanStartSpeedMetersPerSecond,
+            precision: 3
+        );
+    }
+
+    [Fact]
     public void StepFeedsTrackContextToDriverAndUpdatesProgress()
     {
         TrackData track = BuildTrack();
@@ -855,14 +904,22 @@ public sealed class RaceSimulationTests
     private sealed class PlanObserverDriver(string observedCarId) : IRaceDriver
     {
         public bool SawObservedPlan { get; private set; }
+        public float ObservedPlanStartSpeedMetersPerSecond { get; private set; }
 
         public DriverInput GetControl(
             in RaceDriverFrameContext context,
             float dt
         )
         {
-            SawObservedPlan =
-                context.Frame.FindTrafficMotionPlan(observedCarId) is not null;
+            TrafficMotionPlan? plan =
+                context.Frame.FindTrafficMotionPlan(observedCarId);
+            SawObservedPlan = plan is not null;
+            if (plan is not null &&
+                plan.TrySample(0f, out TrafficMotionPlanPoint start))
+            {
+                ObservedPlanStartSpeedMetersPerSecond =
+                    start.SpeedMetersPerSecond;
+            }
             return default;
         }
     }
