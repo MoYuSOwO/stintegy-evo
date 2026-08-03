@@ -30,6 +30,23 @@ internal sealed class TrafficMotionPlan
 
     public void BuildFrom(VehiclePathPrediction path)
     {
+        BuildFromCore(path, speedPlan: null);
+    }
+
+    public void BuildFrom(
+        VehiclePathPrediction path,
+        VehicleSpeedLookahead speedPlan
+    )
+    {
+        ArgumentNullException.ThrowIfNull(speedPlan);
+        BuildFromCore(path, speedPlan);
+    }
+
+    private void BuildFromCore(
+        VehiclePathPrediction path,
+        VehicleSpeedLookahead? speedPlan
+    )
+    {
         ArgumentNullException.ThrowIfNull(path);
         if (path.Count == 0)
         {
@@ -40,13 +57,13 @@ internal sealed class TrafficMotionPlan
         EnsureCapacity(path.Count);
         Count = 0;
         float time = 0f;
-        float previousSpeed = MathF.Max(0f, path[0].EstimatedSpeed);
+        float previousSpeed = PointSpeed(path[0], speedPlan);
         for (int i = 0; i < path.Count; i++)
         {
             VehiclePathPredictionPoint point = path[i];
             float speed = i == 0
                 ? previousSpeed
-                : MathF.Max(0f, point.EstimatedSpeed);
+                : PointSpeed(point, speedPlan);
             if (i > 0)
             {
                 float distance = Vector2.Distance(
@@ -68,6 +85,17 @@ internal sealed class TrafficMotionPlan
             );
             previousSpeed = speed;
         }
+    }
+
+    private static float PointSpeed(
+        in VehiclePathPredictionPoint point,
+        VehicleSpeedLookahead? speedPlan
+    )
+    {
+        float speed = speedPlan is null
+            ? point.EstimatedSpeed
+            : speedPlan.Sample(point.DistanceMeters).TargetSpeed;
+        return MathF.Max(0f, speed);
     }
 
     public bool TrySample(float timeSeconds, out TrafficMotionPlanPoint point)

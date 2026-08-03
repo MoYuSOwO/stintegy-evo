@@ -856,7 +856,8 @@ public sealed class VehicleSpeedPlanner
             config.TrafficLongitudinalSafetyMarginMeters < 0f ||
             !float.IsFinite(config.TrafficConstraintHoldSeconds) ||
             config.TrafficConstraintHoldSeconds < 0f ||
-            config.TrafficConstraintIterations < 1)
+            config.TrafficConstraintIterations < 1 ||
+            config.TrafficArrivalSolveIterations < 1)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(config),

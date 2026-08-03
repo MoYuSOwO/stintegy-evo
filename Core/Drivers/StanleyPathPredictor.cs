@@ -75,7 +75,119 @@ public sealed class StanleyPathPredictor
         RaceCar car,
         TrackData track,
         VehicleSpeedLookahead speedEstimate,
+        float tacticalOffsetMeters,
+        TrackConstrainedLateralOffset lateralOffsetProfile,
+        float executionOffsetMeters,
+        float stanleyGain,
+        float stanleySofteningSpeed,
+        float headingGain,
+        float curvaturePreviewTimeSeconds,
+        float maximumCurvaturePreviewMeters,
+        float horizonMeters,
+        float stepMeters,
+        float minimumDynamicMeters,
+        float convergenceHoldMeters,
+        float convergenceLateralErrorMeters,
+        float convergenceHeadingErrorRadians,
+        float convergenceCurvatureError,
+        float gripUsage,
+        float initialCommandedCurvature
+    )
+    {
+        ArgumentNullException.ThrowIfNull(car);
+        ArgumentNullException.ThrowIfNull(lateralOffsetProfile);
+        StabilityPredictionSeed stabilitySeed = new(
+            new StabilityControlState(
+                car.State.SideslipAngleRadians,
+                car.State.YawRateRadiansPerSecond
+            ),
+            IsRecovering: false,
+            EffectiveControl: 1f,
+            ControlGainScale: 1f
+        );
+        return Predict(
+            destination,
+            car,
+            track,
+            speedEstimate,
+            tacticalOffsetMeters,
+            lateralOffsetProfile,
+            executionOffsetMeters,
+            stanleyGain,
+            stanleySofteningSpeed,
+            headingGain,
+            curvaturePreviewTimeSeconds,
+            maximumCurvaturePreviewMeters,
+            horizonMeters,
+            stepMeters,
+            minimumDynamicMeters,
+            convergenceHoldMeters,
+            convergenceLateralErrorMeters,
+            convergenceHeadingErrorRadians,
+            convergenceCurvatureError,
+            gripUsage,
+            initialCommandedCurvature,
+            stabilitySeed
+        );
+    }
+
+    internal VehiclePathPrediction Predict(
+        VehiclePathPrediction destination,
+        RaceCar car,
+        TrackData track,
+        VehicleSpeedLookahead speedEstimate,
         float lateralTargetOffsetMeters,
+        float stanleyGain,
+        float stanleySofteningSpeed,
+        float headingGain,
+        float curvaturePreviewTimeSeconds,
+        float maximumCurvaturePreviewMeters,
+        float horizonMeters,
+        float stepMeters,
+        float minimumDynamicMeters,
+        float convergenceHoldMeters,
+        float convergenceLateralErrorMeters,
+        float convergenceHeadingErrorRadians,
+        float convergenceCurvatureError,
+        float gripUsage,
+        float initialCommandedCurvature,
+        StabilityPredictionSeed stabilitySeed
+    )
+    {
+        return Predict(
+            destination,
+            car,
+            track,
+            speedEstimate,
+            tacticalOffsetMeters: 0f,
+            lateralOffsetProfile: null,
+            executionOffsetMeters: lateralTargetOffsetMeters,
+            stanleyGain,
+            stanleySofteningSpeed,
+            headingGain,
+            curvaturePreviewTimeSeconds,
+            maximumCurvaturePreviewMeters,
+            horizonMeters,
+            stepMeters,
+            minimumDynamicMeters,
+            convergenceHoldMeters,
+            convergenceLateralErrorMeters,
+            convergenceHeadingErrorRadians,
+            convergenceCurvatureError,
+            gripUsage,
+            initialCommandedCurvature,
+            stabilitySeed
+        );
+    }
+
+    internal VehiclePathPrediction Predict(
+        VehiclePathPrediction destination,
+        RaceCar car,
+        TrackData track,
+        VehicleSpeedLookahead speedEstimate,
+        float tacticalOffsetMeters,
+        TrackConstrainedLateralOffset? lateralOffsetProfile,
+        float executionOffsetMeters,
         float stanleyGain,
         float stanleySofteningSpeed,
         float headingGain,
@@ -146,43 +258,72 @@ public sealed class StanleyPathPredictor
                 TrackSample referenceSample = track.Sample(
                     referenceLineCenterS + referenceDistance
                 );
-                float referenceCurvature = SamplePeakReferenceCurvature(
+                TrackLateralTargetSample target = SampleTargetGeometry(
                     track,
                     referenceSample.S,
-                    step * 0.5f
+                    lateralOffsetProfile,
+                    tacticalOffsetMeters,
+                    executionOffsetMeters,
+                    car.Collision.HalfWidthMeters
                 );
-                position = referenceSample.RefPosition +
-                           referenceSample.Normal * lateralTargetOffsetMeters;
-                velocityHeading = referenceSample.RefHeading;
+                float targetCurvature = SamplePeakTargetCurvature(
+                    track,
+                    referenceSample.S,
+                    step * 0.5f,
+                    lateralOffsetProfile,
+                    tacticalOffsetMeters,
+                    executionOffsetMeters,
+                    car.Collision.HalfWidthMeters
+                );
+                position = target.Position;
+                velocityHeading = target.Heading;
                 destination.Add(new VehiclePathPredictionPoint(
                     distance,
                     position,
                     velocityHeading,
                     referenceSample.S,
                     0f,
-                    referenceCurvature,
-                    referenceCurvature,
+                    targetCurvature,
+                    targetCurvature,
                     0f,
-                    referenceCurvature,
+                    targetCurvature,
                     estimatedSpeed
                 ));
                 continue;
             }
 
-            StanleyControlSample control = StanleyControlLaw.Sample(
-                track,
-                position,
-                velocityHeading,
-                estimatedSpeed,
-                wheelBase,
-                lateralTargetOffsetMeters,
-                stanleyGain,
-                stanleySofteningSpeed,
-                headingGain,
-                curvaturePreviewTimeSeconds,
-                maximumCurvaturePreviewMeters,
-                maximumCurvature
-            );
+            StanleyControlSample control = lateralOffsetProfile is null
+                ? StanleyControlLaw.Sample(
+                    track,
+                    position,
+                    velocityHeading,
+                    estimatedSpeed,
+                    wheelBase,
+                    executionOffsetMeters,
+                    stanleyGain,
+                    stanleySofteningSpeed,
+                    headingGain,
+                    curvaturePreviewTimeSeconds,
+                    maximumCurvaturePreviewMeters,
+                    maximumCurvature
+                )
+                : StanleyControlLaw.Sample(
+                    track,
+                    position,
+                    velocityHeading,
+                    estimatedSpeed,
+                    wheelBase,
+                    car.Collision.HalfWidthMeters,
+                    lateralOffsetProfile,
+                    tacticalOffsetMeters,
+                    executionOffsetMeters,
+                    stanleyGain,
+                    stanleySofteningSpeed,
+                    headingGain,
+                    curvaturePreviewTimeSeconds,
+                    maximumCurvaturePreviewMeters,
+                    maximumCurvature
+                );
             float commandedCurvature;
             float stabilityCurvatureCorrection;
             if (i == 0)
@@ -253,7 +394,7 @@ public sealed class StanleyPathPredictor
                 velocityHeading,
                 control.FrontPose.S,
                 control.LateralErrorMeters,
-                control.PreviewSample.RefCurvature,
+                control.TargetPreviewCurvature,
                 commandedCurvature,
                 stabilityCurvatureCorrection,
                 motionCurvature,
@@ -273,7 +414,7 @@ public sealed class StanleyPathPredictor
                 MathF.Max(convergenceHeadingErrorRadians, 0f) &&
                 MathF.Abs(
                     commandedCurvature -
-                    control.PreviewSample.RefCurvature
+                    control.TargetPreviewCurvature
                 ) <= MathF.Max(convergenceCurvatureError, 0f);
             convergedDistance = converged
                 ? convergedDistance + segmentLength
@@ -281,10 +422,14 @@ public sealed class StanleyPathPredictor
             if (convergedDistance >= MathF.Max(convergenceHoldMeters, 0f))
             {
                 TrackPose centerPose = track.Project(position);
-                float nextReferenceCurvature = SamplePeakReferenceCurvature(
+                float nextReferenceCurvature = SamplePeakTargetCurvature(
                     track,
                     centerPose.S + segmentLength,
-                    segmentLength * 0.5f
+                    segmentLength * 0.5f,
+                    lateralOffsetProfile,
+                    tacticalOffsetMeters,
+                    executionOffsetMeters,
+                    car.Collision.HalfWidthMeters
                 );
                 destination.MarkReferenceLineJoin(
                     distance,
@@ -388,20 +533,74 @@ public sealed class StanleyPathPredictor
         return Math.Clamp(target, lowerReachable, upperReachable);
     }
 
-    private static float SamplePeakReferenceCurvature(
+    private static float SamplePeakTargetCurvature(
         TrackData track,
         float s,
-        float radius
+        float radius,
+        TrackConstrainedLateralOffset? lateralOffsetProfile,
+        float tacticalOffsetMeters,
+        float executionOffsetMeters,
+        float vehicleHalfWidthMeters
     )
     {
-        float best = track.Sample(s).RefCurvature;
-        float before = track.Sample(s - radius).RefCurvature;
-        float after = track.Sample(s + radius).RefCurvature;
+        float best = SampleTargetGeometry(
+            track,
+            s,
+            lateralOffsetProfile,
+            tacticalOffsetMeters,
+            executionOffsetMeters,
+            vehicleHalfWidthMeters
+        ).Curvature;
+        float before = SampleTargetGeometry(
+            track,
+            s - radius,
+            lateralOffsetProfile,
+            tacticalOffsetMeters,
+            executionOffsetMeters,
+            vehicleHalfWidthMeters
+        ).Curvature;
+        float after = SampleTargetGeometry(
+            track,
+            s + radius,
+            lateralOffsetProfile,
+            tacticalOffsetMeters,
+            executionOffsetMeters,
+            vehicleHalfWidthMeters
+        ).Curvature;
         if (MathF.Abs(before) > MathF.Abs(best))
             best = before;
         if (MathF.Abs(after) > MathF.Abs(best))
             best = after;
         return best;
+    }
+
+    private static TrackLateralTargetSample SampleTargetGeometry(
+        TrackData track,
+        float s,
+        TrackConstrainedLateralOffset? lateralOffsetProfile,
+        float tacticalOffsetMeters,
+        float executionOffsetMeters,
+        float vehicleHalfWidthMeters
+    )
+    {
+        if (lateralOffsetProfile is not null)
+        {
+            return lateralOffsetProfile.SampleGeometry(
+                track,
+                s,
+                tacticalOffsetMeters,
+                executionOffsetMeters,
+                vehicleHalfWidthMeters
+            );
+        }
+
+        TrackSample sample = track.Sample(s);
+        return new TrackLateralTargetSample(
+            sample.RefPosition + sample.Normal * executionOffsetMeters,
+            sample.RefHeading,
+            sample.RefCurvature,
+            executionOffsetMeters
+        );
     }
 
     private static float EstimateMotionCurvature(

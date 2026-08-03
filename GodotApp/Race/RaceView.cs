@@ -22,9 +22,9 @@ public partial class RaceView : Node2D
     [Export] public Camera2D? Camera { get; set; }
     [Export] public bool ShowFrameStats { get; set; } = true;
     [Export] public bool ExportCsvTelemetry { get; set; }
-    [Export] public bool EnableTrafficAvoidanceDemo { get; set; } = true;
-    [Export] public float TrafficDemoLeadSpeedKph { get; set; } = 45f;
-    [Export] public float TrafficDemoCameraZoom { get; set; } = 3f;
+
+    private const int DefaultGridCarCount = 20;
+    private const int DefaultRosterSeed = 0x5345564F;
 
     private readonly List<CarView> _carViews = [];
     private readonly Label _telemetryLabel = new()
@@ -34,7 +34,6 @@ public partial class RaceView : Node2D
     };
     private RaceSimulation? _simulation;
     private RaceCar? _playerCar;
-    private RaceCar? _demoLeadCar;
     private RaceCsvTelemetryRecorder? _csvTelemetry;
     private FrameTimeMonitor? _frameTimeMonitor;
 
@@ -55,39 +54,7 @@ public partial class RaceView : Node2D
         TrackRenderer.Initialize(track);
         ConfigureCamera(track);
         CreateHud();
-
-        if (EnableTrafficAvoidanceDemo)
-        {
-            float leadSpeed = MathF.Max(5f, TrafficDemoLeadSpeedKph / 3.6f);
-            _demoLeadCar = AddRaceCar(
-                id: "pace-car",
-                track,
-                start: track.Grids[1],
-                new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Save),
-                Color.FromHtml("#4aa8ff"),
-                new SpeedLimitedReferenceDriver(leadSpeed),
-                initialSpeedMetersPerSecond: leadSpeed
-            );
-            _playerCar = AddRaceCar(
-                id: "player",
-                track,
-                start: track.Grids[5],
-                new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Normal),
-                Color.FromHtml("#ff5d73"),
-                initialSpeedMetersPerSecond: 25f
-            );
-        }
-        else
-        {
-            _playerCar = AddRaceCar(
-                id: "player",
-                track,
-                start: track.Grids[1],
-                new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Normal),
-                Color.FromHtml("#ff5d73")
-            );
-        }
-        UpdateCamera();
+        CreateDefaultGrid(track);
         if (ShowFrameStats)
         {
             _frameTimeMonitor = new FrameTimeMonitor();
@@ -116,7 +83,6 @@ public partial class RaceView : Node2D
             );
         foreach (CarView view in _carViews)
             view.SyncFromCore();
-        UpdateCamera();
         RefreshTelemetry();
     }
 
@@ -184,6 +150,63 @@ public partial class RaceView : Node2D
         return car;
     }
 
+    private void CreateDefaultGrid(TrackData track)
+    {
+        Random random = new(DefaultRosterSeed);
+        int carCount = Math.Min(DefaultGridCarCount, track.StartingGridCount);
+        for (int gridPosition = 1; gridPosition <= carCount; gridPosition++)
+        {
+            string id = $"grid-{gridPosition:D2}";
+            DriverProfile profile = new(
+                id,
+                CreateDriverAbilities(random),
+                (ulong)random.NextInt64(1, long.MaxValue)
+            );
+            Color color = gridPosition == 1
+                ? Color.FromHtml("#ff5d73")
+                : Color.FromHsv(
+                    (float)random.NextDouble(),
+                    0.68f,
+                    0.95f
+                );
+            RaceCar car = AddRaceCar(
+                id,
+                track,
+                track.Grids[gridPosition],
+                CarStrategy.Default,
+                color,
+                new ReferenceLineDriver(profile)
+            );
+            _playerCar ??= car;
+        }
+
+        GD.Print(
+            $"Default grid: cars={carCount}, seed={DefaultRosterSeed}, " +
+            "strategy=Normal/Normal"
+        );
+    }
+
+    private static DriverAbilities CreateDriverAbilities(Random random)
+    {
+        return new DriverAbilities
+        {
+            Pace = NextRating(random, 84f, 96f),
+            Consistency = NextRating(random, 82f, 96f),
+            CarControl = NextRating(random, 84f, 97f),
+            TireManagement = NextRating(random, 78f, 94f),
+            Adaptability = NextRating(random, 82f, 96f),
+            Reactions = NextRating(random, 82f, 97f),
+            Awareness = NextRating(random, 82f, 97f),
+            Overtaking = NextRating(random, 80f, 96f),
+            Defending = NextRating(random, 80f, 96f)
+        };
+    }
+
+    private static float NextRating(Random random, float minimum, float maximum)
+    {
+        return minimum + (float)random.NextDouble() * (maximum - minimum);
+    }
+
     private void CreateHud()
     {
         CanvasLayer layer = new() { Layer = 90 };
@@ -210,12 +233,9 @@ public partial class RaceView : Node2D
         float frontTemp = (state.FrontLeft.SurfaceTempC + state.FrontRight.SurfaceTempC) * 0.5f;
         float rearTemp = (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
         string trafficStatus = TrafficStatus(_playerCar);
-        string demoStatus = _demoLeadCar == null
-            ? string.Empty
-            : $"   Blue {_demoLeadCar.State.Speed * 3.6f:0} km/h";
         _telemetryLabel.Text =
-            $"STINTEGYEVO  race {_simulation.RaceTimeSeconds:0.0}s  lap {_playerCar.Progress.Lap + 1}\n" +
-            $"Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%{demoStatus}\n" +
+            $"STINTEGYEVO  race {_simulation.RaceTimeSeconds:0.0}s  lap {_playerCar.Progress.Lap + 1}  cars {_simulation.Cars.Count}\n" +
+            $"{_playerCar.Id}  Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%\n" +
             $"{trafficStatus}\n" +
             $"Tire {_playerCar.Strategy.TireMode}   Battery {_playerCar.Strategy.BatteryMode}\n" +
             $"Air {_simulation.Environment.AirTempC:0} C   Track {_simulation.Environment.TrackTempC:0} C\n" +
@@ -234,7 +254,7 @@ public partial class RaceView : Node2D
 
         ReferenceLineDriverTelemetry telemetry = driver.LastTelemetry;
         if (telemetry.TrafficConstraintKind == TrafficSpeedConstraintKind.None)
-            return "Traffic CLEAR   Catch the blue pace car";
+            return "Traffic CLEAR";
 
         return
             $"Traffic {telemetry.TrafficConstraintKind.ToString().ToUpperInvariant()} " +
@@ -294,47 +314,4 @@ public partial class RaceView : Node2D
         Camera.Zoom = GVector2.One * zoom;
     }
 
-    private void UpdateCamera()
-    {
-        if (!EnableTrafficAvoidanceDemo || Camera == null || _playerCar == null)
-            return;
-
-        Camera.Position = _playerCar.State.Position.ToGodot();
-        Camera.Zoom = GVector2.One * MathF.Max(0.25f, TrafficDemoCameraZoom);
-    }
-
-    private sealed class SpeedLimitedReferenceDriver(
-        float speedLimitMetersPerSecond
-    ) : IRaceDriver
-    {
-        private const float SpeedGain = 2.5f;
-        private readonly ReferenceLineDriver _inner = new();
-        private readonly float _speedLimitMetersPerSecond = MathF.Max(
-            1f,
-            speedLimitMetersPerSecond
-        );
-
-        public float TireEnergyEfficiency => _inner.TireEnergyEfficiency;
-
-        public void Initialize(in RaceDriverInitContext context)
-        {
-            _inner.Initialize(in context);
-        }
-
-        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
-        {
-            DriverInput input = _inner.GetControl(in context, dt);
-            float speedLimitedAcceleration =
-                SpeedGain *
-                (_speedLimitMetersPerSecond - context.Car.State.Speed) +
-                context.Car.State.Telemetry.LossAccel;
-            return input with
-            {
-                DesiredAccel = MathF.Min(
-                    input.DesiredAccel,
-                    speedLimitedAcceleration
-                )
-            };
-        }
-    }
 }
