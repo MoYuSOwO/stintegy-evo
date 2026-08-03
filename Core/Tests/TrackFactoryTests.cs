@@ -28,6 +28,41 @@ public sealed class TrackFactoryTests
     }
 
     [Fact]
+    public void CloseLoopKeepsTheSeamAtTheTrackSamplingInterval()
+    {
+        TrackData track = new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 18f,
+                startLeftBuffer: 5f,
+                startRightBuffer: 5f,
+                refLineSolver: CenterLineRefLineSolver.Instance
+            )
+            .AddStraight(550f)
+            .AddTurn(-180f, 20f, 25f)
+            .AddStraight(120f, 18f)
+            .AddTurn(45f, 30f)
+            .AddTurn(-45f, 30f)
+            .AddStraight(5f)
+            .AddTurn(-45f, 30f)
+            .AddTurn(45f, 30f)
+            .AddStraight(500f, 12f)
+            .AddTurn(-180f, 80f, 12f)
+            .AddStraight(20f)
+            .AddTurn(-90f, 15f)
+            .CloseLoop()
+            .Build(default);
+
+        for (float s = 0f; s < track.LengthMeters; s += TrackData.StepLength)
+        {
+            float segmentLength = Vector2.Distance(
+                track.Sample(s).Center,
+                track.Sample(s + TrackData.StepLength).Center
+            );
+            Assert.InRange(segmentLength, 0.95f, 1.05f);
+        }
+    }
+
+    [Fact]
     public void SilverstoneUsesPublishedArenaGrandPrixGeometry()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();

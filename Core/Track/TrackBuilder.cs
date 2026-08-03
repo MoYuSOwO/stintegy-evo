@@ -746,37 +746,87 @@ public class TrackBuilder
             totalTrueLength += Vector2.Distance(highResPoints[i], highResPoints[i + 1]);
         }
 
-        float distanceWalked = 0f;
-        float currentTargetDist = TrackData.StepLength;
-
-        for (int i = 0; i < highResPoints.Count - 1; i++)
+        List<BuilderNode> closedLoop = new(nodes.Count + highResPoints.Count - 1);
+        closedLoop.AddRange(nodes);
+        float closingDistance = 0f;
+        for (int i = 1; i < highResPoints.Count; i++)
         {
-            Vector2 segmentStart = highResPoints[i];
-            Vector2 segmentEnd = highResPoints[i + 1];
-            float segmentLength = Vector2.Distance(segmentStart, segmentEnd);
-
-            while (distanceWalked + segmentLength >= currentTargetDist && currentTargetDist < totalTrueLength)
-            {
-                float remainDist = currentTargetDist - distanceWalked;
-                float lerpFactor = remainDist / segmentLength;
-
-                Vector2 exactPos = Lerp(segmentStart, segmentEnd, lerpFactor);
-
-                float t = currentTargetDist / totalTrueLength;
-                float easeT = SmoothStep(0f, 1f, t);
-
-                float width = Lerp(endNode.Width, startNode.Width, easeT);
-                float leftBuffer = Lerp(endNode.LeftBuffer, startNode.LeftBuffer, easeT);
-                float rightBuffer = Lerp(endNode.RightBuffer, startNode.RightBuffer, easeT);
-
-                nodes.Add(new BuilderNode(exactPos, width, leftBuffer, rightBuffer));
-
-                currentTargetDist += TrackData.StepLength;
-            }
-            distanceWalked += segmentLength;
+            closingDistance += Vector2.Distance(
+                highResPoints[i - 1],
+                highResPoints[i]
+            );
+            float easeT = SmoothStep(0f, 1f, closingDistance / totalTrueLength);
+            closedLoop.Add(
+                new BuilderNode(
+                    highResPoints[i],
+                    Lerp(endNode.Width, startNode.Width, easeT),
+                    Lerp(endNode.LeftBuffer, startNode.LeftBuffer, easeT),
+                    Lerp(endNode.RightBuffer, startNode.RightBuffer, easeT)
+                )
+            );
         }
 
+        ResampleClosedLoop(closedLoop);
+
         return this;
+    }
+
+    private void ResampleClosedLoop(IReadOnlyList<BuilderNode> closedLoop)
+    {
+        float totalLength = 0f;
+        for (int i = 0; i < closedLoop.Count - 1; i++)
+        {
+            totalLength += Vector2.Distance(
+                closedLoop[i].Center,
+                closedLoop[i + 1].Center
+            );
+        }
+
+        int sampleCount = Math.Max(
+            3,
+            (int)MathF.Round(totalLength / TrackData.StepLength)
+        );
+        float sampleSpacing = totalLength / sampleCount;
+        List<BuilderNode> samples = new(sampleCount);
+        int segmentIndex = 0;
+        float segmentStartDistance = 0f;
+        float segmentLength = Vector2.Distance(
+            closedLoop[0].Center,
+            closedLoop[1].Center
+        );
+
+        for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++)
+        {
+            float targetDistance = sampleIndex * sampleSpacing;
+            while (
+                segmentStartDistance + segmentLength < targetDistance &&
+                segmentIndex < closedLoop.Count - 2
+            )
+            {
+                segmentStartDistance += segmentLength;
+                segmentIndex++;
+                segmentLength = Vector2.Distance(
+                    closedLoop[segmentIndex].Center,
+                    closedLoop[segmentIndex + 1].Center
+                );
+            }
+
+            BuilderNode start = closedLoop[segmentIndex];
+            BuilderNode end = closedLoop[segmentIndex + 1];
+            float t = (targetDistance - segmentStartDistance) /
+                      Math.Max(segmentLength, 1e-5f);
+            samples.Add(
+                new BuilderNode(
+                    Vector2.Lerp(start.Center, end.Center, t),
+                    Lerp(start.Width, end.Width, t),
+                    Lerp(start.LeftBuffer, end.LeftBuffer, t),
+                    Lerp(start.RightBuffer, end.RightBuffer, t)
+                )
+            );
+        }
+
+        nodes.Clear();
+        nodes.AddRange(samples);
     }
 
     public TrackData Build(TrackGridConfig startingConfig)
