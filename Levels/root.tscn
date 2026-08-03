@@ -8,9 +8,6 @@ script = ExtResource("1_race")
 TrackRenderer = NodePath("Track")
 Camera = NodePath("Camera2D")
 ShowFrameStats = true
-EnableTrafficAvoidanceDemo = true
-TrafficDemoLeadSpeedKph = 45.0
-TrafficDemoCameraZoom = 3.0
 
 [node name="Track" type="Node2D" parent="."]
 script = ExtResource("2_track")
