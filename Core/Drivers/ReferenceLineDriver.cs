@@ -133,7 +133,9 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             state.Speed,
             prepared.DesiredCurvature,
             _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
-            referenceAcceleration
+            referenceAcceleration,
+            frontBrakeBiasOffset: 0f,
+            corneringEfficiency: performance.PaceEfficiency
         );
         // The speed plan stores net vehicle acceleration, while DriverInput asks
         // for axle acceleration before rolling, aero, and cornering losses.
@@ -567,7 +569,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy)
+            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            corneringEfficiency: _performance?.PaceEfficiency ?? 1f
         );
         return MathF.Max(limits.LateralAccelerationLimit, 1e-3f);
     }

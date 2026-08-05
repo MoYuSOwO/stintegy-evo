@@ -151,7 +151,7 @@ public sealed class VehicleSpeedPlanner
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
             float lateralAccelerationLimit =
                 baseLimits.LateralAccelerationLimit *
-                _driverModifiers.CombinedConfidence;
+                _driverModifiers.EstimatedGripScale;
             for (int i = 0; i < count; i++)
             {
                 float distance = i * planningStep;
@@ -295,7 +295,7 @@ public sealed class VehicleSpeedPlanner
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
             float lateralAccelerationLimit =
                 baseLimits.LateralAccelerationLimit *
-                _driverModifiers.CombinedConfidence;
+                _driverModifiers.EstimatedGripScale;
 
             float maximumAbsoluteCurvature = 0f;
             for (int i = 0; i < count; i++)
@@ -639,7 +639,8 @@ public sealed class VehicleSpeedPlanner
             curvature,
             Config.GetAccelerationUsage(_planningStrategy),
             assumedLongitudinalAcceleration,
-            _driverModifiers.FrontBrakeBiasOffset
+            _driverModifiers.FrontBrakeBiasOffset,
+            _driverModifiers.PaceEfficiency
         );
     }
 
@@ -735,7 +736,8 @@ public sealed class VehicleSpeedPlanner
             _planningStrategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.GetAccelerationUsage(_planningStrategy)
+            gripUsage: Config.GetAccelerationUsage(_planningStrategy),
+            corneringEfficiency: _driverModifiers.PaceEfficiency
         );
     }
 

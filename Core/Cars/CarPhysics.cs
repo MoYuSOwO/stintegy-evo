@@ -27,7 +27,8 @@ public static class CarPhysics
         float curvature,
         float gripUsage = 1f,
         float assumedLongitudinalAcceleration = 0f,
-        float frontBrakeBiasOffset = 0f
+        float frontBrakeBiasOffset = 0f,
+        float corneringEfficiency = 1f
     )
     {
         float lateralAcceleration = speed * speed * curvature;
@@ -55,10 +56,19 @@ public static class CarPhysics
         float rearLateralLimit = rearDemandShare <= Epsilon
             ? float.PositiveInfinity
             : rearGrip / rearDemandShare;
-        float lateralLimit = Math.Min(frontLateralLimit, rearLateralLimit);
+        float extraction = Math.Clamp(corneringEfficiency, 0.05f, 1f);
+        float lateralLimit =
+            Math.Min(frontLateralLimit, rearLateralLimit) * extraction;
 
-        float frontLateral = lateralAcceleration * frontDemandShare;
-        float rearLateral = lateralAcceleration * rearDemandShare;
+        // What the corner costs the tyre, which is not what the corner is
+        // worth to the car. A driver who only gets part of the cornering out
+        // of a tyre still spends the tyre on all of it, so the grip left over
+        // for braking has to be measured against the bill, not the benefit.
+        // Charging the smaller number here is what let a plan brake as though
+        // it were still on the straight while the car was already at the limit.
+        float chargedLateralAcceleration = lateralAcceleration / extraction;
+        float frontLateral = chargedLateralAcceleration * frontDemandShare;
+        float rearLateral = chargedLateralAcceleration * rearDemandShare;
         float frontLongitudinal = RemainingLongitudinalGrip(
             frontGrip,
             frontLateral
