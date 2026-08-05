@@ -204,18 +204,25 @@ public static class CarPhysics
             );
         }
 
-        AxleResult front = ResolveAxle(config, frontLatRequest, frontLongRequest, frontGrip);
-        AxleResult rear = ResolveAxle(config, rearLatRequest, rearLongRequest, rearGrip);
+        float corneringEfficiency = Math.Clamp(input.CorneringEfficiency, 0.05f, 1f);
+        AxleResult front = ResolveAxle(
+            config, frontLatRequest, frontLongRequest, frontGrip, corneringEfficiency);
+        AxleResult rear = ResolveAxle(
+            config, rearLatRequest, rearLongRequest, rearGrip, corneringEfficiency);
 
         float actualLateralAccel = front.LateralAccel + rear.LateralAccel;
         float driveAccelActual = Math.Max(0f, front.LongitudinalAccel) + Math.Max(0f, rear.LongitudinalAccel);
         float brakeAccelActual = Math.Max(0f, -front.LongitudinalAccel) + Math.Max(0f, -rear.LongitudinalAccel);
         float axleLongitudinalAccel = front.LongitudinalAccel + rear.LongitudinalAccel;
 
-        float frontLateralUse = SafeUse(front.LateralAccel, frontGrip);
-        float rearLateralUse = SafeUse(rear.LateralAccel, rearGrip);
-        float frontLongitudinalUse = SafeUse(front.LongitudinalAccel, frontGrip);
-        float rearLongitudinalUse = SafeUse(rear.LongitudinalAccel, rearGrip);
+        // What the tyre was worked, not what came out of it. A driver who
+        // wastes part of the cornering still spent the tyre on all of it, and
+        // charging the wear on the smaller number would hand the slower driver
+        // longer-lasting tyres for being slow.
+        float frontLateralUse = front.LateralUse;
+        float rearLateralUse = rear.LateralUse;
+        float frontLongitudinalUse = front.LongitudinalUse;
+        float rearLongitudinalUse = rear.LongitudinalUse;
         float lateralUse = Math.Abs(actualLateralAccel) / totalGrip;
         float overLimit = Math.Max(front.OverLimit, rear.OverLimit);
         float actualYawAcceleration = CalculateYawAcceleration(
@@ -547,17 +554,39 @@ public static class CarPhysics
         return Math.Clamp(optimalFrontShare + finiteOffset, 0f, 1f);
     }
 
+    /// <summary>
+    /// What an axle actually delivers of what it was asked for, and how much
+    /// of itself it spent doing so.
+    ///
+    /// The same corner costs one driver more tyre than another. Where the
+    /// difference goes is not modelled in detail - it is line, hands, the
+    /// hundred small things - only that it is spent: a driver who extracts
+    /// nine tenths of what the tyre offers reaches the same corner speed
+    /// having used a ninth more of it, and runs out of tyre that much sooner.
+    ///
+    /// The force itself is not discounted here. What the driver can reach at
+    /// all is already lower, because the speed plan is drawn against the same
+    /// figure, and taking it off the delivered force as well would charge the
+    /// discount twice: the car would be planned to a corner speed it then
+    /// could not hold, and would understeer wide of the line all lap.
+    ///
+    /// Only cornering. Applying the same discount to braking and driving would
+    /// say that a slower driver cannot use the brakes, which is a different
+    /// claim and a wrong one, and on a straight it would say nothing at all
+    /// because the car is limited by its battery there and not by its tyres.
+    /// </summary>
     private static AxleResult ResolveAxle(
         CarConfig config,
         float lateralRequest,
         float longitudinalRequest,
-        float grip
+        float grip,
+        float corneringEfficiency = 1f
     )
     {
         if (grip <= Epsilon)
             return default;
 
-        float lateralUse = lateralRequest / grip;
+        float lateralUse = lateralRequest / (grip * corneringEfficiency);
         float longitudinalUse = longitudinalRequest / grip;
         float combinedUse = MathF.Sqrt(lateralUse * lateralUse + longitudinalUse * longitudinalUse);
 
@@ -566,7 +595,9 @@ public static class CarPhysics
                 lateralRequest,
                 longitudinalRequest,
                 Math.Max(0f, combinedUse - 1f),
-                combinedUse
+                combinedUse,
+                MathF.Abs(lateralUse),
+                MathF.Abs(longitudinalUse)
             );
 
         float overLimit = combinedUse - 1f;
@@ -576,7 +607,9 @@ public static class CarPhysics
             lateralRequest * scale,
             longitudinalRequest * scale,
             overLimit,
-            combinedUse
+            combinedUse,
+            MathF.Abs(lateralUse),
+            MathF.Abs(longitudinalUse)
         );
     }
 
@@ -1016,11 +1049,6 @@ public static class CarPhysics
                Math.Clamp(wearGrip, MinimumWearGripFactor, 1f);
     }
 
-    private static float SafeUse(float accel, float grip)
-    {
-        return grip <= Epsilon ? 0f : Math.Abs(accel) / grip;
-    }
-
     private static float Lerp(float from, float to, float weight)
     {
         return from + (to - from) * Math.Clamp(weight, 0f, 1f);
@@ -1038,7 +1066,9 @@ public static class CarPhysics
         float LateralAccel,
         float LongitudinalAccel,
         float OverLimit,
-        float CombinedRequest
+        float CombinedRequest,
+        float LateralUse,
+        float LongitudinalUse
     );
 
     private readonly record struct WheelLoads(

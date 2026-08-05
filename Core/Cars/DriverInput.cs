@@ -51,5 +51,6 @@ public readonly record struct CarPhysicsStepInput(
     CarStrategy Strategy,
     float AirTempC,
     float TrackTempC = 35f,
-    float TireEnergyEfficiency = 1f
+    float TireEnergyEfficiency = 1f,
+    float CorneringEfficiency = 1f
 );

@@ -13,6 +13,19 @@ public interface IRaceDriver
     /// </summary>
     float TireEnergyEfficiency => 1f;
 
+    /// <summary>
+    /// How much of the cornering the tyres are being asked for actually
+    /// reaches the road, from this driver.
+    ///
+    /// Not how hard the driver decides to push, which is a strategy setting.
+    /// This is what is left over after the way they push: the line taken, the
+    /// steadiness of hand, how much of the tyre's work goes into turning the
+    /// car and how much goes into scrubbing it sideways. One driver asked for
+    /// nine tenths of a tyre gets nine tenths of a corner out of it; another
+    /// asked for the same gets less, and the tyre is no less worn for it.
+    /// </summary>
+    float CorneringEfficiency => 1f;
+
     void Initialize(in RaceDriverInitContext context)
     {
     }

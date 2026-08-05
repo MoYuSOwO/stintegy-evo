@@ -15,6 +15,7 @@ public sealed class RaceSimulation
     private readonly List<RaceCar> _cars = [];
     private DriverInput[] _stepInputs = [];
     private float[] _stepTireEnergyEfficiencies = [];
+    private float[] _stepCorneringEfficiencies = [];
     private CarStrategy[] _stepStrategies = [];
     private TrackPose[] _stepPoses = [];
     private TrackBoundaryContact?[] _preStepContacts = [];
@@ -180,6 +181,7 @@ public sealed class RaceSimulation
             _stepInputs[i] = input;
             _stepStrategies[i] = car.Strategy;
             _stepTireEnergyEfficiencies[i] = car.Driver.TireEnergyEfficiency;
+            _stepCorneringEfficiencies[i] = car.Driver.CorneringEfficiency;
             car.LastInput = input;
             if (_preStepContacts[i].HasValue)
                 car.LastBoundaryContact = _preStepContacts[i];
@@ -285,7 +287,8 @@ public sealed class RaceSimulation
                 _stepStrategies[i],
                 Environment.AirTempC,
                 Environment.TrackTempC,
-                _stepTireEnergyEfficiencies[i]
+                _stepTireEnergyEfficiencies[i],
+                _stepCorneringEfficiencies[i]
             );
 
             CarState startState = _startStates[i];
@@ -335,6 +338,7 @@ public sealed class RaceSimulation
         int capacity = Math.Max(required, Math.Max(4, previousCapacity * 2));
         Array.Resize(ref _stepInputs, capacity);
         Array.Resize(ref _stepTireEnergyEfficiencies, capacity);
+        Array.Resize(ref _stepCorneringEfficiencies, capacity);
         Array.Resize(ref _stepStrategies, capacity);
         Array.Resize(ref _stepPoses, capacity);
         Array.Resize(ref _preStepContacts, capacity);
