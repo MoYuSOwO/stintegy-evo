@@ -265,17 +265,17 @@ public sealed class TrafficAvoidanceTests
 
         simulation.Step(Dt);
 
-        // The report reached the racecraft, and the racecraft acted on it:
-        // held up behind a much slower car with open road beside it, the
-        // driver commits to a move rather than remaining an observer. The
-        // planner used to be a no-op foundation, and this used to assert its
-        // inertness; the inertness was the placeholder, not the contract.
+        // The report reaches the racecraft on the next frame, which is what
+        // this is here to pin. The driver stays on the racing line with it:
+        // the car ahead is thirty-five metres away, and being held up that far
+        // back is a reason to close, not to pull out. It goes wide when it
+        // arrives, which is a different test.
         Assert.Equal(
             firstReport,
             egoDriver.LastTacticalConflictReport
         );
-        Assert.NotEqual(0f, egoDriver.LastTacticalOffsetMeters);
-        Assert.NotEqual(
+        Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
+        Assert.Equal(
             TacticalManeuverPhase.Observing,
             egoDriver.LastTacticalPhase
         );
@@ -596,6 +596,12 @@ public sealed class TrafficAvoidanceTests
         );
     }
 
+    /// <summary>
+    /// A grid car with racecraft switched off, because these are the tests
+    /// that pin the layer underneath it: with manoeuvres on, a car offered
+    /// space goes around rather than braking, which is the point of racecraft
+    /// and the subject of its own tests.
+    /// </summary>
     private static RaceCar CreateGridCar(
         string id,
         TrackData track,
@@ -613,7 +619,10 @@ public sealed class TrafficAvoidanceTests
                 StartingSurfaceTempC = 86f,
                 StartingCoreTempC = 84f
             },
-            new ReferenceLineDriver(profile),
+            new ReferenceLineDriver(null, profile)
+            {
+                EnableTacticalManeuvers = false
+            },
             new CarState
             {
                 Position = grid.Position,

@@ -63,6 +63,23 @@ internal sealed class TacticalManeuverPlanner
     /// <summary>Offset below which the car counts as back on the racing line.</summary>
     private const float ReturnedOffsetMeters = 0.2f;
 
+    /// <summary>
+    /// Gap, nose to tail, inside which a move may be started.
+    ///
+    /// Being held up is not on its own a reason to pull out. The following
+    /// constraint reaches roughly a second of road ahead, so a car is held up
+    /// from the moment it arrives in the wake - and the answer to arriving in
+    /// the wake is to close up, because the racing line is the quicker road
+    /// and every metre spent beside it is a metre given away. Pulling out
+    /// there is self-defeating, and measurably so: aimed wide at a gap of 24 m
+    /// the car promptly lost ground, and the gap grew to 33 m while it sat out
+    /// there. It has to be close enough that the move can be finished, which
+    /// means within a couple of car lengths, on the gearbox, where a driver
+    /// would go.
+    /// </summary>
+    private const float AttackRangeMeters = 12f;
+
+
 
     /// <summary>
     /// Step the asked-for offset is rounded to.
@@ -105,8 +122,15 @@ internal sealed class TacticalManeuverPlanner
         if (_passing is not null && IsPast(in context, _passing))
             _passing = null;
 
+        // Nothing abandons an attempt that is under way. Every rule tried for
+        // it watched the gap, and the gap is too noisy to read: the two cars
+        // brake and accelerate at different points, so it swings by ten metres
+        // a corner, and alongside it passes through zero. Rules tight enough
+        // to end a stalled attempt fired on the swing instead and ended every
+        // attempt, stalled or not. Being past is the one signal that means
+        // what it says.
         if (_passing is null && _heldUp)
-            _passing = BlockerAhead(in context);
+            _passing = BlockerWithinRange(in context);
 
         if (_passing is null)
         {
@@ -212,8 +236,15 @@ internal sealed class TacticalManeuverPlanner
     private static float Quantise(float offsetMeters) =>
         MathF.Round(offsetMeters / OffsetQuantumMeters) * OffsetQuantumMeters;
 
-    /// <summary>The nearest slower car ahead, which is the one in the way.</summary>
-    private static string? BlockerAhead(in RaceDriverFrameContext context)
+    /// <summary>
+    /// The car in the way, if the ego is close enough to do anything about it.
+    ///
+    /// Speed is not compared. A car that has been caught is by then matching
+    /// the pace of the one in front - that is what being held up means - so
+    /// asking whether it is currently slower answers no just when the answer
+    /// matters most.
+    /// </summary>
+    private static string? BlockerWithinRange(in RaceDriverFrameContext context)
     {
         RaceCarSnapshot ego = context.CarSnapshot;
         string? nearest = null;
@@ -222,11 +253,10 @@ internal sealed class TacticalManeuverPlanner
         {
             if (string.Equals(other.Id, ego.Id, StringComparison.Ordinal))
                 continue;
-            if (other.SpeedMetersPerSecond >= ego.SpeedMetersPerSecond)
-                continue;
 
-            float gap = context.Track.WrapS(other.TrackS - ego.TrackS);
-            if (gap <= 0f || gap >= nearestGap)
+            float gap = context.Track.WrapS(other.TrackS - ego.TrackS) -
+                        (ego.LengthMeters + other.LengthMeters) * 0.5f;
+            if (gap <= 0f || gap > AttackRangeMeters || gap >= nearestGap)
                 continue;
 
             nearestGap = gap;
