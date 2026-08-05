@@ -20,6 +20,24 @@ public sealed class CarState
     public float FilteredLongitudinalAccel { get; set; }
     public float FilteredLateralAccel { get; set; }
 
+    /// <summary>
+    /// How deeply the car is sitting in the hole another car punches in the
+    /// air, from nothing to fully inside it.
+    ///
+    /// This lives on the car rather than being worked out where it is used
+    /// because two very different things read it. The physics needs it to know
+    /// what the car is doing now; the speed planner needs it to know what the
+    /// car could do next, and the planner is handed a state, not a grid. Put
+    /// here, a car that has caught a tow plans on having it, which is the whole
+    /// point: the run to the corner is quicker, so the road in front becomes
+    /// somewhere a pass can be made, without anything in the racecraft being
+    /// told that a tow exists.
+    ///
+    /// Set once a frame from one frozen picture of where every car is, so it
+    /// does not depend on the order the cars are stepped in.
+    /// </summary>
+    public float DraftFactor { get; set; }
+
     public TireState FrontLeft { get; } = new();
     public TireState FrontRight { get; } = new();
     public TireState RearLeft { get; } = new();
@@ -73,6 +91,7 @@ public sealed class CarState
             BatterySoc = BatterySoc,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
+            DraftFactor = DraftFactor,
             Telemetry = Telemetry
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
@@ -92,6 +111,7 @@ public sealed class CarState
         BatterySoc = other.BatterySoc;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
+        DraftFactor = other.DraftFactor;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);

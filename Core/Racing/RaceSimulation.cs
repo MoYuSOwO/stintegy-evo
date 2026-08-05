@@ -115,6 +115,8 @@ public sealed class RaceSimulation
             _stepTrafficMotionPlans[i] = null;
         }
 
+        ApplyDraft(carSnapshots);
+
         // Planning is a write-only phase over one frozen physical snapshot.
         // No driver can read another driver's partially prepared plan. The
         // separate previous-plan buffers are stable snapshots captured after
@@ -184,6 +186,69 @@ public sealed class RaceSimulation
         }
 
         CapturePreviousTrafficMotionPlans(carCount);
+    }
+
+    /// <summary>Longest tow a car can still feel, nose to tail.</summary>
+    private const float DraftReachMeters = 60f;
+
+    /// <summary>
+    /// Sideways room inside which the tow is whole. Beyond it the car is
+    /// leaning out of the hole in the air and the tow fades, gone by twice
+    /// this. Set from the width of a car, because that is what the hole is
+    /// the width of.
+    /// </summary>
+    private const float DraftLateralReachMeters = 1.6f;
+
+    /// <summary>
+    /// How deeply each car is sitting in somebody else's wake.
+    ///
+    /// Read from one finished picture of the grid and written back to the cars
+    /// before any of them plans anything, so a car's tow does not depend on
+    /// where it sits in the list. A car takes the strongest tow on offer
+    /// rather than adding up several: two cars in line ahead punch one hole in
+    /// the air, not two.
+    /// </summary>
+    private void ApplyDraft(RaceCarSnapshot[] snapshots)
+    {
+        int carCount = snapshots.Length;
+        for (int i = 0; i < carCount; i++)
+        {
+            RaceCarSnapshot ego = snapshots[i];
+            float strongest = 0f;
+            for (int j = 0; j < carCount; j++)
+            {
+                if (j == i)
+                    continue;
+
+                RaceCarSnapshot other = snapshots[j];
+                float along = Track.WrapS(other.TrackS - ego.TrackS);
+                if (along > Track.LengthMeters * 0.5f)
+                    along -= Track.LengthMeters;
+
+                float gap = along - (ego.LengthMeters + other.LengthMeters) * 0.5f;
+                if (gap <= 0f || gap >= DraftReachMeters)
+                    continue;
+
+                // A car pointed the other way punches its hole the other way.
+                if (MathF.Cos(other.VelocityHeadingRadians -
+                              ego.VelocityHeadingRadians) <= 0.5f)
+                {
+                    continue;
+                }
+
+                float behind = 1f - gap / DraftReachMeters;
+                float sideways = MathF.Abs(other.TrackD - ego.TrackD);
+                float aligned = sideways <= DraftLateralReachMeters
+                    ? 1f
+                    : MathF.Max(
+                        0f,
+                        1f - (sideways - DraftLateralReachMeters) /
+                        DraftLateralReachMeters
+                    );
+                strongest = MathF.Max(strongest, behind * aligned);
+            }
+            _cars[i].State.DraftFactor = strongest;
+        }
     }
 
     private void StepPhysicsSubstep(float dt)

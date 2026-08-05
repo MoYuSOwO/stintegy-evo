@@ -96,7 +96,12 @@ public static class CarPhysics
             )
         );
         float lateralUse = Math.Abs(lateralAcceleration) / Math.Max(frontGrip + rearGrip, Epsilon);
-        float loss = CalculateLossAccel(config, speed, lateralUse);
+        float loss = CalculateLossAccel(
+            config,
+            speed,
+            lateralUse,
+            state.DraftFactor
+        );
 
         return new CarPerformanceLimits(
             Math.Max(0f, lateralLimit),
@@ -228,8 +233,12 @@ public static class CarPhysics
             actualLateralAccel,
             state.SideslipAngleRadians
         );
-        float lossAccel = CalculateLossAccel(config, state.Speed, lateralUse) +
-                          sideslipLossAccel;
+        float lossAccel = CalculateLossAccel(
+            config,
+            state.Speed,
+            lateralUse,
+            state.DraftFactor
+        ) + sideslipLossAccel;
         float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
 
         float oldSpeed = state.Speed;
@@ -684,14 +693,28 @@ public static class CarPhysics
         return Math.Clamp(Math.Abs(actual) / absoluteRequest, 0f, 1f);
     }
 
-    private static float CalculateLossAccel(CarConfig config, float speed, float lateralUse)
+    /// <summary>
+    /// What the car gives back to the air, the road and its own tyres.
+    ///
+    /// Only the part that is fought against the air is reduced by running in
+    /// another car's wake. Rolling resistance does not care what is in front,
+    /// and the tyre scrub of cornering is not an air loss at all.
+    /// </summary>
+    private static float CalculateLossAccel(
+        CarConfig config,
+        float speed,
+        float lateralUse,
+        float draftFactor
+    )
     {
         if (speed <= 0.01f)
             return 0f;
 
+        float draft = Math.Clamp(draftFactor, 0f, 1f) *
+                      Math.Clamp(config.DraftDragReduction, 0f, 1f);
         return
             config.RollingDragAccel +
-            config.AeroDragAccelPerSpeedSquared * speed * speed +
+            config.AeroDragAccelPerSpeedSquared * speed * speed * (1f - draft) +
             config.CorneringScrubAccel * lateralUse * lateralUse;
     }
 

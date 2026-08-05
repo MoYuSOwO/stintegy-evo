@@ -31,6 +31,19 @@ public sealed class CarConfig
 
     public float RollingDragAccel { get; init; } = 0.18f;
     public float AeroDragAccelPerSpeedSquared { get; init; } = 0.00046f;
+
+    /// <summary>
+    /// Share of the car's own air resistance that disappears when it is fully
+    /// inside another car's wake.
+    ///
+    /// Zero leaves the car aerodynamically alone on the circuit however close
+    /// it gets. A quarter is worth about four tenths of a second a lap to a
+    /// car sitting right behind another, and turns the run to a slow corner
+    /// into somewhere a pass can be made: measured on the long approach to the
+    /// Shanghai hairpin, a towed car carries four metres a second more over
+    /// nine hundred metres, where two car lengths only asks for one.
+    /// </summary>
+    public float DraftDragReduction { get; init; } = 0.25f;
     public float CorneringScrubAccel { get; init; } = 1.15f;
     public float OverLimitMinGripEfficiency { get; init; } = 0.8f;
     public float OverLimitCostCap { get; init; } = 2.5f;
