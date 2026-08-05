@@ -98,6 +98,15 @@ internal sealed class TacticalManeuverPlanner
     /// </summary>
     private const float DeltaSmoothingMeters = 60f;
 
+    /// <summary>
+    /// Road over which an established attempt is judged, on the sign of the
+    /// change alone and never on its size. A sign survives noise a threshold
+    /// does not: what jitter is left is as likely to fall as to rise and
+    /// cancels over the window, while one car genuinely catching another does
+    /// not.
+    /// </summary>
+    private const float ProgressWindowMeters = 100f;
+
 
     private bool _heldUp;
     private float _clearRunMeters;
@@ -108,6 +117,9 @@ internal sealed class TacticalManeuverPlanner
     private float _movedFromS;
     private bool _hasMovedAnchor;
     private float _movedThisFrame;
+    private bool _established;
+    private float _windowMeters;
+    private float _windowStartDelta = float.NaN;
 
     /// <summary>
     /// Seconds the ego is behind the car in front, or NaN with clear road.
@@ -151,6 +163,52 @@ internal sealed class TacticalManeuverPlanner
         if (_passing is not null && IsPast(in context, _passing))
             _passing = null;
 
+        // Judging an attempt only once the car is actually on the line it
+        // chose.
+        //
+        // Every earlier rule started the clock at the moment of commitment,
+        // and all of them killed the overtake they were meant to police -
+        // ground given back, falling out of attack range, and this same figure
+        // over a hundred, two hundred, three hundred and five hundred metres.
+        // The reason was always the same: moving across costs time before it
+        // saves any, so the stretch of road spent getting there reads as
+        // losing whether the move is going to work or not, and judging it
+        // there condemns it there. Waiting until the car has arrived leaves
+        // the transient out of the reckoning and asks the only fair question -
+        // now that I am here, am I getting by?
+        if (_passing is not null)
+        {
+            float actual = context.Pose.D - context.Pose.Sample.RefOffset;
+            if (!_established &&
+                MathF.Abs(actual - _offsetMeters) <= ReturnedOffsetMeters)
+            {
+                _established = true;
+                _windowMeters = 0f;
+                _windowStartDelta = SmoothedDeltaSeconds;
+            }
+
+            if (_established && !float.IsNaN(_windowStartDelta))
+            {
+                _windowMeters += MovedSince(in context);
+                if (_windowMeters >= ProgressWindowMeters)
+                {
+                    bool gaining = SmoothedDeltaSeconds < _windowStartDelta;
+                    _windowMeters = 0f;
+                    _windowStartDelta = SmoothedDeltaSeconds;
+                    if (!gaining)
+                    {
+                        // Out of line the car is the slower of the two, so an
+                        // attempt that has stopped gaining is one that is
+                        // losing. Dropping back in is not giving up: the wake
+                        // is the quicker road, the car closes again, and the
+                        // next attempt starts where this one did.
+                        _passing = null;
+                        _established = false;
+                    }
+                }
+            }
+        }
+
         // Nothing abandons an attempt once it is under way, and not for want
         // of trying: ground given back, falling out of attack range, and the
         // time-behind figure compared end to end over a hundred, two hundred,
@@ -161,7 +219,14 @@ internal sealed class TacticalManeuverPlanner
         // the move is going to work or not - judging it there condemns it
         // there. Being past remains the only signal that means what it says.
         if (_passing is null && _heldUp)
+        {
             _passing = BlockerWithinRange(in context);
+            if (_passing is not null)
+            {
+                _established = false;
+                _windowStartDelta = float.NaN;
+            }
+        }
 
         if (_passing is null)
         {
@@ -213,6 +278,9 @@ internal sealed class TacticalManeuverPlanner
         _passing = null;
         _hasMovedAnchor = false;
         _movedThisFrame = 0f;
+        _established = false;
+        _windowMeters = 0f;
+        _windowStartDelta = float.NaN;
         DeltaSeconds = float.NaN;
         SmoothedDeltaSeconds = float.NaN;
     }
