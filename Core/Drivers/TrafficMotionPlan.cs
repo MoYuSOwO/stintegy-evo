@@ -109,6 +109,46 @@ internal sealed class TrafficMotionPlan
         return MathF.Max(0f, speed);
     }
 
+    /// <summary>
+    /// When this plan expects to have travelled a given distance.
+    ///
+    /// This is what turns a gap in metres into a gap in seconds. Two cars a
+    /// fixed distance apart are never at the same point of the road, so one is
+    /// braking while the other accelerates, and the distance between them
+    /// swings by ten metres a corner without either gaining anything. Asking
+    /// instead how long it takes to reach where the other car is now compares
+    /// them at the same point of the road, and the swing cancels: the answer
+    /// moves only when one car is genuinely quicker than the other over the
+    /// same ground. It is the figure a pit wall reads as +0.3.
+    /// </summary>
+    public bool TryTimeToTravel(float distanceMeters, out float seconds)
+    {
+        seconds = 0f;
+        if (Count < 2 || distanceMeters < 0f)
+            return false;
+
+        float travelled = 0f;
+        for (int i = 1; i < Count; i++)
+        {
+            float step = Vector2.Distance(
+                _points[i - 1].Position,
+                _points[i].Position
+            );
+            if (travelled + step >= distanceMeters)
+            {
+                float t = step > 1e-4f
+                    ? (distanceMeters - travelled) / step
+                    : 1f;
+                seconds = _points[i - 1].TimeSeconds +
+                          (_points[i].TimeSeconds - _points[i - 1].TimeSeconds) *
+                          Math.Clamp(t, 0f, 1f);
+                return true;
+            }
+            travelled += step;
+        }
+        return false;
+    }
+
     public bool TrySample(float timeSeconds, out TrafficMotionPlanPoint point)
     {
         if (Count == 0 || timeSeconds < 0f || timeSeconds > EndTimeSeconds)

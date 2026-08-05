@@ -79,6 +79,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         _tacticalIntent.TargetOffsetMeters;
     internal TacticalManeuverPhase LastTacticalPhase =>
         _tacticalPlanner.Phase;
+    internal float LastDeltaSeconds => _tacticalPlanner.DeltaSeconds;
 
     public void Initialize(in RaceDriverInitContext context)
     {

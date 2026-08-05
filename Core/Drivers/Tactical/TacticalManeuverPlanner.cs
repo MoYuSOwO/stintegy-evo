@@ -100,6 +100,11 @@ internal sealed class TacticalManeuverPlanner
     private float _offsetMeters;
     private string? _passing;
 
+    /// <summary>
+    /// Seconds the ego is behind the car in front, or NaN with clear road.
+    /// </summary>
+    public float DeltaSeconds { get; private set; } = float.NaN;
+
     public TrafficConflictReport LastObservedConflictReport { get; private set; }
 
     public TacticalManeuverPhase Phase { get; private set; } =
@@ -117,6 +122,7 @@ internal sealed class TacticalManeuverPlanner
             return TacticalIntent.Keep;
         }
 
+        DeltaSeconds = MeasureDelta(in context);
         UpdateHeldUp(in context, in previousConflictReport);
 
         if (_passing is not null && IsPast(in context, _passing))
@@ -244,6 +250,35 @@ internal sealed class TacticalManeuverPlanner
     /// asking whether it is currently slower answers no just when the answer
     /// matters most.
     /// </summary>
+    /// <summary>
+    /// How far behind the nearest car ahead the ego is, in seconds: the time
+    /// its own plan says it needs to cover the ground between them.
+    /// </summary>
+    private static float MeasureDelta(in RaceDriverFrameContext context)
+    {
+        RaceCarSnapshot ego = context.CarSnapshot;
+        float nearest = float.PositiveInfinity;
+        foreach (RaceCarSnapshot other in context.Frame.Cars)
+        {
+            if (string.Equals(other.Id, ego.Id, StringComparison.Ordinal))
+                continue;
+
+            float gap = context.Track.WrapS(other.TrackS - ego.TrackS) -
+                        (ego.LengthMeters + other.LengthMeters) * 0.5f;
+            if (gap > 0f && gap < nearest)
+                nearest = gap;
+        }
+        if (!float.IsFinite(nearest))
+            return float.NaN;
+
+        TrafficMotionPlan? mine =
+            context.Frame.GetPreviousTrafficMotionPlan(context.CarSnapshotIndex);
+        return mine is not null &&
+               mine.TryTimeToTravel(nearest, out float seconds)
+            ? seconds
+            : float.NaN;
+    }
+
     private static string? BlockerWithinRange(in RaceDriverFrameContext context)
     {
         RaceCarSnapshot ego = context.CarSnapshot;
