@@ -80,6 +80,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     internal TacticalManeuverPhase LastTacticalPhase =>
         _tacticalPlanner.Phase;
     internal float LastDeltaSeconds => _tacticalPlanner.DeltaSeconds;
+    internal float LastSmoothedDeltaSeconds =>
+        _tacticalPlanner.SmoothedDeltaSeconds;
 
     public void Initialize(in RaceDriverInitContext context)
     {

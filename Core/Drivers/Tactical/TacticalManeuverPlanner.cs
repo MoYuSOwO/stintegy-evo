@@ -93,17 +93,36 @@ internal sealed class TacticalManeuverPlanner
     /// </summary>
     private const float OffsetQuantumMeters = 0.5f;
 
+    /// <summary>
+    /// Distance over which the delta measurement is averaged.
+    /// </summary>
+    private const float DeltaSmoothingMeters = 60f;
+
     private bool _heldUp;
     private float _clearRunMeters;
     private float _lastS;
     private bool _hasLastS;
     private float _offsetMeters;
     private string? _passing;
+    private float _movedFromS;
+    private bool _hasMovedAnchor;
 
     /// <summary>
     /// Seconds the ego is behind the car in front, or NaN with clear road.
     /// </summary>
     public float DeltaSeconds { get; private set; } = float.NaN;
+
+    /// <summary>
+    /// The same figure with the replanning jitter taken out of it.
+    ///
+    /// The raw number is rebuilt from scratch every frame, so it carries the
+    /// noise of the plan it came from - about five per cent of itself twice a
+    /// second, which is the same order as the thing worth reading. Averaging
+    /// it over distance rather than over time keeps it honest when the car is
+    /// slow, and separates the two by their scale: the jitter lives in metres
+    /// and whether one car is catching another lives in hundreds of them.
+    /// </summary>
+    public float SmoothedDeltaSeconds { get; private set; } = float.NaN;
 
     public TrafficConflictReport LastObservedConflictReport { get; private set; }
 
@@ -123,6 +142,7 @@ internal sealed class TacticalManeuverPlanner
         }
 
         DeltaSeconds = MeasureDelta(in context);
+        UpdateSmoothedDelta(MovedSince(in context));
         UpdateHeldUp(in context, in previousConflictReport);
 
         if (_passing is not null && IsPast(in context, _passing))
@@ -186,6 +206,9 @@ internal sealed class TacticalManeuverPlanner
         _hasLastS = false;
         _offsetMeters = 0f;
         _passing = null;
+        _hasMovedAnchor = false;
+        DeltaSeconds = float.NaN;
+        SmoothedDeltaSeconds = float.NaN;
     }
 
     /// <summary>
@@ -250,6 +273,33 @@ internal sealed class TacticalManeuverPlanner
     /// asking whether it is currently slower answers no just when the answer
     /// matters most.
     /// </summary>
+    private float MovedSince(in RaceDriverFrameContext context)
+    {
+        float s = context.Pose.S;
+        float moved = _hasMovedAnchor ? context.Track.WrapS(s - _movedFromS) : 0f;
+        _movedFromS = s;
+        _hasMovedAnchor = true;
+        return moved < 0f || moved > DeltaSmoothingMeters ? 0f : moved;
+    }
+
+    private void UpdateSmoothedDelta(float movedMeters)
+    {
+        if (float.IsNaN(DeltaSeconds))
+        {
+            SmoothedDeltaSeconds = float.NaN;
+            return;
+        }
+
+        if (float.IsNaN(SmoothedDeltaSeconds))
+        {
+            SmoothedDeltaSeconds = DeltaSeconds;
+            return;
+        }
+
+        float weight = 1f - MathF.Exp(-movedMeters / DeltaSmoothingMeters);
+        SmoothedDeltaSeconds += (DeltaSeconds - SmoothedDeltaSeconds) * weight;
+    }
+
     /// <summary>
     /// How far behind the nearest car ahead the ego is, in seconds: the time
     /// its own plan says it needs to cover the ground between them.
