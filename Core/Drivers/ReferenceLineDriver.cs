@@ -148,11 +148,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         float driveAccelerationLimit =
             currentLimits.MaximumDriveAcceleration *
             _speedPlanner.Config.DriveAccelerationUsage *
-            Math.Clamp(
-                performance.PaceEfficiency * performance.EstimatedGripScale,
-                0.8f,
-                1.05f
-            );
+            performance.EstimatedGripScale;
         if (desiredAcceleration > 0f && prepared.ControlSeverity > 0f)
         {
             float retainedDriveAtFullSeverity = Lerp(
@@ -165,7 +161,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         }
         desiredAcceleration = Math.Clamp(
             desiredAcceleration,
-            -car.CarConfig.MaxBrakeAccel * performance.PaceEfficiency,
+            -car.CarConfig.MaxBrakeAccel,
             driveAccelerationLimit
         );
 
@@ -305,15 +301,14 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         );
         float curvatureCorrection =
             desiredCurvature - control.PreviewSample.RefCurvature;
-        float planningPace = Math.Clamp(
-            _performance.PaceEfficiency *
-            (1f + _performance.LocalSpeedErrorFraction),
-            0.8f,
-            1.05f
-        );
+        // Pace goes in untouched, because the car is discounted by exactly
+        // this and the plan has to be the lap the car can drive. Misjudging a
+        // corner's speed is an error, not a limit, so it sits with the other
+        // error rather than being smuggled in as less pace.
         DriverPlanningModifiers planningModifiers = new(
-            planningPace,
-            _performance.EstimatedGripScale,
+            _performance.PaceEfficiency,
+            _performance.EstimatedGripScale *
+            (1f + _performance.LocalSpeedErrorFraction),
             _performance.FrontBrakeBiasOffset
         );
         long planningStartTimestamp = Stopwatch.GetTimestamp();

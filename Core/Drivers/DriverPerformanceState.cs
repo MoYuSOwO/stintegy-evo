@@ -44,8 +44,22 @@ internal sealed class DriverPerformanceState
     public float EffectiveControl { get; private set; } = 1f;
     public float EffectiveTireManagement { get; private set; } = 0.8f;
     public float EffectiveAdaptability { get; private set; } = 1f;
-    public float PaceEfficiency => Lerp(0.86f, 1f, EffectivePace);
-    public float PlanningPaceEfficiency => Lerp(0.86f, 1f, PlanningPace);
+    /// <summary>
+    /// The share of a corner this driver gets back out of the tyres.
+    ///
+    /// The bottom of the range is what sets how much a rating is worth, and it
+    /// is set from lap time rather than from anything about a tyre, because lap
+    /// time is the only part of it anybody can check. Across the whole scale it
+    /// is two per cent, which on a hundred second circuit is a couple of
+    /// seconds: about the spread of a real single-seater grid from the front
+    /// row to the back, and a little more than a set of tyres is worth, so a
+    /// good driver is an advantage without being the whole race.
+    ///
+    /// Worth remembering when handing out ratings that this is the full scale.
+    /// A grid drawn from a narrow band of it will be a grid of drivers nobody
+    /// can tell apart.
+    /// </summary>
+    public float PaceEfficiency => Lerp(0.95f, 1f, EffectivePace);
     public float BrakeMarkerErrorMeters { get; private set; }
     public float LateralTargetErrorMeters { get; private set; }
     public float LocalSpeedErrorFraction { get; private set; }

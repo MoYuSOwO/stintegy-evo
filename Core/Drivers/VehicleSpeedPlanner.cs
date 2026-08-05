@@ -580,7 +580,7 @@ public sealed class VehicleSpeedPlanner
             );
             float drive = limits.MaximumDriveAcceleration *
                           Config.DriveAccelerationUsage *
-                          _driverModifiers.CombinedConfidence;
+                          _driverModifiers.EstimatedGripScale;
             float next = Math.Max(0f, drive - limits.LossAcceleration);
             if (MathF.Abs(next - acceleration) < 1e-3f)
             {
@@ -610,7 +610,7 @@ public sealed class VehicleSpeedPlanner
             );
             float brake = limits.MaximumBrakeDeceleration *
                           Config.BrakeDecelerationUsage *
-                          _driverModifiers.CombinedConfidence;
+                          _driverModifiers.EstimatedGripScale;
             float next = Math.Max(0f, brake + limits.LossAcceleration);
             if (MathF.Abs(next - deceleration) < 1e-3f)
             {
@@ -809,7 +809,7 @@ public sealed class VehicleSpeedPlanner
     {
         DriverPlanningModifiers normalizedModifiers = new(
             Math.Clamp(driverModifiers.PaceEfficiency, 0.8f, 1f),
-            Math.Clamp(driverModifiers.EstimatedGripScale, 0.9f, 1.1f),
+            Math.Clamp(driverModifiers.EstimatedGripScale, 0.88f, 1.12f),
             float.IsFinite(driverModifiers.FrontBrakeBiasOffset)
                 ? Math.Clamp(driverModifiers.FrontBrakeBiasOffset, -0.25f, 0.25f)
                 : 0f
@@ -850,7 +850,8 @@ public sealed class VehicleSpeedPlanner
         int hash = 17;
         hash = CombineHash(hash, car.Strategy.GetHashCode());
         hash = CombineHash(hash, Quantize(car.State.BatterySoc, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.CombinedConfidence, 0.005f));
+        hash = CombineHash(hash, Quantize(modifiers.PaceEfficiency, 0.005f));
+        hash = CombineHash(hash, Quantize(modifiers.EstimatedGripScale, 0.005f));
         hash = CombineHash(hash, Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f));
         hash = AddTireState(hash, car.State.FrontLeft);
         hash = AddTireState(hash, car.State.FrontRight);
