@@ -45,7 +45,6 @@ internal sealed class DriverPerformanceState
     public float EffectiveTireManagement { get; private set; } = 0.8f;
     public float EffectiveAdaptability { get; private set; } = 1f;
     public float PaceEfficiency => Lerp(0.86f, 1f, EffectivePace);
-    public float PlanningPaceEfficiency => Lerp(0.86f, 1f, PlanningPace);
     public float BrakeMarkerErrorMeters { get; private set; }
     public float LateralTargetErrorMeters { get; private set; }
     public float LocalSpeedErrorFraction { get; private set; }
