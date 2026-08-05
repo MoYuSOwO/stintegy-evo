@@ -98,7 +98,12 @@ public sealed class TrafficAvoidanceTests
     public void ReferenceDriverStopsBeforeStationaryCar()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
-        ReferenceLineDriver egoDriver = new();
+        // Manoeuvres off: this pins the safety layer itself. With them on,
+        // a car offered space goes around instead, which is its own test.
+        ReferenceLineDriver egoDriver = new()
+        {
+            EnableTacticalManeuvers = false
+        };
         RaceCar ego = CreateCar(
             "ego",
             track,
@@ -151,7 +156,12 @@ public sealed class TrafficAvoidanceTests
     public void ReferenceDriverMatchesSlowerCarWithoutContact()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
-        ReferenceLineDriver egoDriver = new();
+        // Manoeuvres off: this pins the safety layer itself. With them on,
+        // a car offered space goes around instead, which is its own test.
+        ReferenceLineDriver egoDriver = new()
+        {
+            EnableTacticalManeuvers = false
+        };
         RaceCar ego = CreateCar(
             "ego",
             track,
@@ -255,12 +265,17 @@ public sealed class TrafficAvoidanceTests
 
         simulation.Step(Dt);
 
+        // The report reached the racecraft, and the racecraft acted on it:
+        // held up behind a much slower car with open road beside it, the
+        // driver commits to a move rather than remaining an observer. The
+        // planner used to be a no-op foundation, and this used to assert its
+        // inertness; the inertness was the placeholder, not the contract.
         Assert.Equal(
             firstReport,
             egoDriver.LastTacticalConflictReport
         );
-        Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
-        Assert.Equal(
+        Assert.NotEqual(0f, egoDriver.LastTacticalOffsetMeters);
+        Assert.NotEqual(
             TacticalManeuverPhase.Observing,
             egoDriver.LastTacticalPhase
         );
@@ -378,7 +393,12 @@ public sealed class TrafficAvoidanceTests
     public void ReferenceDriverRespondsToLeadCarEmergencyBraking()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
-        ReferenceLineDriver egoDriver = new();
+        // Manoeuvres off: this pins the safety layer itself. With them on,
+        // a car offered space goes around instead, which is its own test.
+        ReferenceLineDriver egoDriver = new()
+        {
+            EnableTacticalManeuvers = false
+        };
         RaceCar ego = CreateCar(
             "ego",
             track,
@@ -456,7 +476,12 @@ public sealed class TrafficAvoidanceTests
     public void PredictedRecoveryPathBrakesForObstacleOnReferenceLine()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
-        ReferenceLineDriver egoDriver = new();
+        // Manoeuvres off: this pins the safety layer itself. With them on,
+        // a car offered space goes around instead, which is its own test.
+        ReferenceLineDriver egoDriver = new()
+        {
+            EnableTacticalManeuvers = false
+        };
         RaceCar ego = CreateCar(
             "ego",
             track,

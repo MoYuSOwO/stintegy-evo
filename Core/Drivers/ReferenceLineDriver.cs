@@ -44,6 +44,21 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     }
 
     public float SpeedGain { get; init; } = 2.5f;
+
+    /// <summary>
+    /// Whether the driver acts on its racecraft, or merely observes.
+    ///
+    /// The layers underneath - following, braking, stopping behind a blocked
+    /// road - are the ground everything else stands on, and they have to stay
+    /// testable on their own: with manoeuvres on, a car offered space goes
+    /// around an obstacle instead of stopping behind it, which is the point,
+    /// but it means the pure safety behaviour can no longer be reached from a
+    /// test. Race control wants the same switch, because a safety car or a
+    /// pit entry is precisely a stretch where racecraft is not permitted. The
+    /// planner still runs and still watches either way, so switching back on
+    /// mid-race resumes from a current picture rather than a cold one.
+    /// </summary>
+    internal bool EnableTacticalManeuvers { get; init; } = true;
     public float StanleyGain { get; init; } = 2f;
     public float StanleySofteningSpeed { get; init; } = 4f;
     public float HeadingGain { get; init; } = 1f;
@@ -247,10 +262,11 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     )
     {
         UpdatePerformanceState(in context, dt);
-        _tacticalIntent = _tacticalPlanner.Update(
+        TacticalIntent intent = _tacticalPlanner.Update(
             in context,
             in _lastTrafficConflictReport
         );
+        _tacticalIntent = EnableTacticalManeuvers ? intent : TacticalIntent.Keep;
 
         RaceCar car = context.Car;
         CarState state = car.State;
