@@ -151,7 +151,7 @@ public sealed class VehicleSpeedPlanner
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
             float lateralAccelerationLimit =
                 baseLimits.LateralAccelerationLimit *
-                _driverModifiers.LateralConfidence;
+                _driverModifiers.CombinedConfidence;
             for (int i = 0; i < count; i++)
             {
                 float distance = i * planningStep;
@@ -295,7 +295,7 @@ public sealed class VehicleSpeedPlanner
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
             float lateralAccelerationLimit =
                 baseLimits.LateralAccelerationLimit *
-                _driverModifiers.LateralConfidence;
+                _driverModifiers.CombinedConfidence;
 
             float maximumAbsoluteCurvature = 0f;
             for (int i = 0; i < count; i++)
@@ -580,7 +580,7 @@ public sealed class VehicleSpeedPlanner
             );
             float drive = limits.MaximumDriveAcceleration *
                           Config.DriveAccelerationUsage *
-                          _driverModifiers.LongitudinalConfidence;
+                          _driverModifiers.CombinedConfidence;
             float next = Math.Max(0f, drive - limits.LossAcceleration);
             if (MathF.Abs(next - acceleration) < 1e-3f)
             {
@@ -610,7 +610,7 @@ public sealed class VehicleSpeedPlanner
             );
             float brake = limits.MaximumBrakeDeceleration *
                           Config.BrakeDecelerationUsage *
-                          _driverModifiers.LongitudinalConfidence;
+                          _driverModifiers.CombinedConfidence;
             float next = Math.Max(0f, brake + limits.LossAcceleration);
             if (MathF.Abs(next - deceleration) < 1e-3f)
             {
@@ -807,7 +807,7 @@ public sealed class VehicleSpeedPlanner
     {
         DriverPlanningModifiers normalizedModifiers = new(
             Math.Clamp(driverModifiers.PaceEfficiency, 0.8f, 1f),
-            Math.Clamp(driverModifiers.EstimationScale, 0.88f, 1.12f),
+            Math.Clamp(driverModifiers.EstimatedGripScale, 0.9f, 1.1f),
             float.IsFinite(driverModifiers.FrontBrakeBiasOffset)
                 ? Math.Clamp(driverModifiers.FrontBrakeBiasOffset, -0.25f, 0.25f)
                 : 0f
@@ -848,8 +848,7 @@ public sealed class VehicleSpeedPlanner
         int hash = 17;
         hash = CombineHash(hash, car.Strategy.GetHashCode());
         hash = CombineHash(hash, Quantize(car.State.BatterySoc, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.PaceEfficiency, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.EstimationScale, 0.005f));
+        hash = CombineHash(hash, Quantize(modifiers.CombinedConfidence, 0.005f));
         hash = CombineHash(hash, Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f));
         hash = AddTireState(hash, car.State.FrontLeft);
         hash = AddTireState(hash, car.State.FrontRight);
