@@ -34,7 +34,8 @@ public static class CarPhysics
         WheelLoads loads = CalculateWheelLoads(
             config,
             assumedLongitudinalAcceleration,
-            lateralAcceleration
+            lateralAcceleration,
+            speed
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
@@ -96,7 +97,12 @@ public static class CarPhysics
             )
         );
         float lateralUse = Math.Abs(lateralAcceleration) / Math.Max(frontGrip + rearGrip, Epsilon);
-        float loss = CalculateLossAccel(config, speed, lateralUse);
+        float loss = CalculateLossAccel(
+            config,
+            speed,
+            lateralUse,
+            state.AirVelocityDeficit
+        );
 
         return new CarPerformanceLimits(
             Math.Max(0f, lateralLimit),
@@ -228,8 +234,12 @@ public static class CarPhysics
             actualLateralAccel,
             state.SideslipAngleRadians
         );
-        float lossAccel = CalculateLossAccel(config, state.Speed, lateralUse) +
-                          sideslipLossAccel;
+        float lossAccel = CalculateLossAccel(
+            config,
+            state.Speed,
+            lateralUse,
+            state.AirVelocityDeficit
+        ) + sideslipLossAccel;
         float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
 
         float oldSpeed = state.Speed;
@@ -684,14 +694,34 @@ public static class CarPhysics
         return Math.Clamp(Math.Abs(actual) / absoluteRequest, 0f, 1f);
     }
 
-    private static float CalculateLossAccel(CarConfig config, float speed, float lateralUse)
+    /// <summary>
+    /// What the car gives back to the air, the road and its own tyres.
+    ///
+    /// Air resistance is fought against the air the car is moving through and
+    /// not against the ground, so a car whose air is already being dragged
+    /// along by somebody in front meets less wind and pays the square of what
+    /// is left. Writing it as a share of drag removed instead would be writing
+    /// down the answer; written this way the squaring is the reason a tow is
+    /// worth so much more at a car length than at ten.
+    ///
+    /// Only that part is reduced. Rolling resistance does not care what is in
+    /// front, and the tyre scrub of cornering is not an air loss at all.
+    /// </summary>
+    private static float CalculateLossAccel(
+        CarConfig config,
+        float speed,
+        float lateralUse,
+        float airVelocityDeficit
+    )
     {
         if (speed <= 0.01f)
             return 0f;
 
+        float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
         return
             config.RollingDragAccel +
-            config.AeroDragAccelPerSpeedSquared * speed * speed +
+            config.AeroDragAccelPerSpeedSquared * speed * speed *
+            metAir * metAir +
             config.CorneringScrubAccel * lateralUse * lateralUse;
     }
 
@@ -876,17 +906,36 @@ public static class CarPhysics
         return CalculateWheelLoads(
             config,
             state.FilteredLongitudinalAccel,
-            state.FilteredLateralAccel
+            state.FilteredLateralAccel,
+            state.Speed
         );
     }
 
+    /// <summary>
+    /// What each tyre is being pressed into the road with.
+    ///
+    /// Weight, plus what the air is pushing down with, moved about by
+    /// accelerating, braking and cornering. The air's share is the reason a
+    /// quick corner is worth more than a slow one of the same radius, and
+    /// leaving it out makes every corner the same corner: measured against
+    /// published lap times, a circuit whose character is its fast corners came
+    /// out slower than one whose character is a long straight, which is the
+    /// wrong way round.
+    ///
+    /// Downforce is shared front to rear in the same proportion as weight.
+    /// Real cars are trimmed away from that, and that trim is a setup choice
+    /// this model does not offer yet.
+    /// </summary>
     private static WheelLoads CalculateWheelLoads(
         CarConfig config,
         float longitudinalAcceleration,
-        float lateralAcceleration
+        float lateralAcceleration,
+        float speed
     )
     {
-        float totalLoad = config.MassKg * Gravity;
+        float downforceAcceleration = config.DownforceAccelPerSpeedSquared *
+                                      speed * speed;
+        float totalLoad = config.MassKg * (Gravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
         frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);
