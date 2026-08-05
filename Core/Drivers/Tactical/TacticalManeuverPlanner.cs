@@ -98,6 +98,7 @@ internal sealed class TacticalManeuverPlanner
     /// </summary>
     private const float DeltaSmoothingMeters = 60f;
 
+
     private bool _heldUp;
     private float _clearRunMeters;
     private float _lastS;
@@ -106,6 +107,7 @@ internal sealed class TacticalManeuverPlanner
     private string? _passing;
     private float _movedFromS;
     private bool _hasMovedAnchor;
+    private float _movedThisFrame;
 
     /// <summary>
     /// Seconds the ego is behind the car in front, or NaN with clear road.
@@ -141,20 +143,23 @@ internal sealed class TacticalManeuverPlanner
             return TacticalIntent.Keep;
         }
 
-        DeltaSeconds = MeasureDelta(in context);
+        _movedThisFrame = float.NaN;
+        DeltaSeconds = MeasureDelta(in context, _passing);
         UpdateSmoothedDelta(MovedSince(in context));
         UpdateHeldUp(in context, in previousConflictReport);
 
         if (_passing is not null && IsPast(in context, _passing))
             _passing = null;
 
-        // Nothing abandons an attempt that is under way. Every rule tried for
-        // it watched the gap, and the gap is too noisy to read: the two cars
-        // brake and accelerate at different points, so it swings by ten metres
-        // a corner, and alongside it passes through zero. Rules tight enough
-        // to end a stalled attempt fired on the swing instead and ended every
-        // attempt, stalled or not. Being past is the one signal that means
-        // what it says.
+        // Nothing abandons an attempt once it is under way, and not for want
+        // of trying: ground given back, falling out of attack range, and the
+        // time-behind figure compared end to end over a hundred, two hundred,
+        // three hundred and five hundred metres were all driven, and every one
+        // of them killed the overtake it was meant to police. The reason is
+        // the same each time. Pulling out costs time before it saves any, so
+        // the first stretch after committing always reads as losing, whether
+        // the move is going to work or not - judging it there condemns it
+        // there. Being past remains the only signal that means what it says.
         if (_passing is null && _heldUp)
             _passing = BlockerWithinRange(in context);
 
@@ -207,6 +212,7 @@ internal sealed class TacticalManeuverPlanner
         _offsetMeters = 0f;
         _passing = null;
         _hasMovedAnchor = false;
+        _movedThisFrame = 0f;
         DeltaSeconds = float.NaN;
         SmoothedDeltaSeconds = float.NaN;
     }
@@ -275,11 +281,15 @@ internal sealed class TacticalManeuverPlanner
     /// </summary>
     private float MovedSince(in RaceDriverFrameContext context)
     {
+        if (!float.IsNaN(_movedThisFrame))
+            return _movedThisFrame;
+
         float s = context.Pose.S;
         float moved = _hasMovedAnchor ? context.Track.WrapS(s - _movedFromS) : 0f;
         _movedFromS = s;
         _hasMovedAnchor = true;
-        return moved < 0f || moved > DeltaSmoothingMeters ? 0f : moved;
+        _movedThisFrame = moved < 0f || moved > DeltaSmoothingMeters ? 0f : moved;
+        return _movedThisFrame;
     }
 
     private void UpdateSmoothedDelta(float movedMeters)
@@ -301,32 +311,73 @@ internal sealed class TacticalManeuverPlanner
     }
 
     /// <summary>
-    /// How far behind the nearest car ahead the ego is, in seconds: the time
-    /// its own plan says it needs to cover the ground between them.
+    /// How far behind another car the ego is, in seconds: the time its own
+    /// plan says it needs to cover the ground between them. Negative once the
+    /// ego is in front.
+    ///
+    /// While a move is under way this follows the car being passed and not
+    /// merely whoever is nearest ahead, and that matters more than it sounds.
+    /// Asked about the nearest car ahead, the measurement goes blind at the
+    /// exact moment a move is working: alongside, there is no car ahead to
+    /// report, so the figure vanishes and any judgement resting on it resets.
+    /// Only the phases where the ego is still stuck get judged, which condemns
+    /// every attempt at the point it starts to succeed.
     /// </summary>
-    private static float MeasureDelta(in RaceDriverFrameContext context)
+    private static float MeasureDelta(
+        in RaceDriverFrameContext context,
+        string? target
+    )
     {
         RaceCarSnapshot ego = context.CarSnapshot;
-        float nearest = float.PositiveInfinity;
-        foreach (RaceCarSnapshot other in context.Frame.Cars)
+        float gap = float.NaN;
+        if (target is not null &&
+            context.Frame.TryGetCar(target, out RaceCarSnapshot chosen))
         {
-            if (string.Equals(other.Id, ego.Id, StringComparison.Ordinal))
-                continue;
-
-            float gap = context.Track.WrapS(other.TrackS - ego.TrackS) -
-                        (ego.LengthMeters + other.LengthMeters) * 0.5f;
-            if (gap > 0f && gap < nearest)
-                nearest = gap;
+            gap = SignedGap(in context, in ego, in chosen);
         }
-        if (!float.IsFinite(nearest))
+        else
+        {
+            float nearest = float.PositiveInfinity;
+            foreach (RaceCarSnapshot other in context.Frame.Cars)
+            {
+                if (string.Equals(other.Id, ego.Id, StringComparison.Ordinal))
+                    continue;
+
+                float ahead = SignedGap(in context, in ego, in other);
+                if (ahead > 0f && ahead < nearest)
+                    nearest = ahead;
+            }
+            if (float.IsFinite(nearest))
+                gap = nearest;
+        }
+
+        if (float.IsNaN(gap))
             return float.NaN;
+        if (gap <= 0f)
+        {
+            // In front: the same figure with the sign that says so, taken at
+            // the speed the car is doing rather than from a plan that only
+            // runs forwards.
+            return gap / MathF.Max(ego.SpeedMetersPerSecond, 1f);
+        }
 
         TrafficMotionPlan? mine =
             context.Frame.GetPreviousTrafficMotionPlan(context.CarSnapshotIndex);
-        return mine is not null &&
-               mine.TryTimeToTravel(nearest, out float seconds)
+        return mine is not null && mine.TryTimeToTravel(gap, out float seconds)
             ? seconds
-            : float.NaN;
+            : gap / MathF.Max(ego.SpeedMetersPerSecond, 1f);
+    }
+
+    private static float SignedGap(
+        in RaceDriverFrameContext context,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot other
+    )
+    {
+        float along = context.Track.WrapS(other.TrackS - ego.TrackS);
+        if (along > context.Track.LengthMeters * 0.5f)
+            along -= context.Track.LengthMeters;
+        return along - (ego.LengthMeters + other.LengthMeters) * 0.5f;
     }
 
     private static string? BlockerWithinRange(in RaceDriverFrameContext context)
