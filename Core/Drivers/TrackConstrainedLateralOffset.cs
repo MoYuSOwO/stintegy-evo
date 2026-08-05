@@ -25,7 +25,7 @@ internal sealed class TrackConstrainedLateralOffset
     /// racing line cost 11.8% of the distance covered without this and 0.8%
     /// with it.
     /// </summary>
-    private const int SmoothingPasses = 400;
+    private const int SmoothingPasses = 3000;
 
     private TrackData? _track;
     private float _requestedOffsetMeters = float.NaN;
