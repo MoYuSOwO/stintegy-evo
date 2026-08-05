@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Core.Util;
@@ -26,6 +27,28 @@ internal sealed class TrackConstrainedLateralOffset
     /// with it.
     /// </summary>
     private const int SmoothingPasses = 3000;
+
+    /// <summary>
+    /// Finished profiles, shared by every car on the circuit.
+    ///
+    /// Building one is the most expensive thing the racecraft does - the whole
+    /// lap is laid out and then walked over several thousand times - and it is
+    /// paid whenever a car asks for an offset it was not already holding. Yet
+    /// nothing in the answer belongs to the car that asked. The table is the
+    /// road's reply to "if I want to run this far off the line, where will you
+    /// let me", and the only thing about the car that enters it is how wide it
+    /// is. Twenty cars racing each other ask the same handful of questions over
+    /// and over: measured over twenty seconds of a full grid, three hundred and
+    /// thirty two builds between them had forty one distinct answers.
+    ///
+    /// Sharing them costs a copy of the table on a change of offset, against a
+    /// build that is four orders of magnitude dearer. A car of a width nobody
+    /// has raced yet simply builds its own and leaves it here for the next one.
+    /// </summary>
+    private static readonly Dictionary<(float Offset, float HalfWidth), float[]>
+        SharedProfiles = [];
+
+    private static TrackData? _sharedProfilesTrack;
 
     private TrackData? _track;
     private float _requestedOffsetMeters = float.NaN;
@@ -167,6 +190,27 @@ internal sealed class TrackConstrainedLateralOffset
         }
 
         Prepare(track);
+        (float, float) key = (requestedOffsetMeters, vehicleHalfWidthMeters);
+        lock (SharedProfiles)
+        {
+            if (!ReferenceEquals(track, _sharedProfilesTrack))
+            {
+                // A profile is the shape of one circuit and means nothing on
+                // another, and holding the tables of a circuit nobody is racing
+                // on holds the circuit itself alive with them.
+                SharedProfiles.Clear();
+                _sharedProfilesTrack = track;
+            }
+            else if (SharedProfiles.TryGetValue(key, out float[]? shared))
+            {
+                Array.Copy(shared, _offsetByMeter, _offsetByMeter.Length);
+                _track = track;
+                _requestedOffsetMeters = requestedOffsetMeters;
+                _vehicleHalfWidthMeters = vehicleHalfWidthMeters;
+                return;
+            }
+        }
+
         int minimumIndex = 0;
         float minimumMagnitude = float.PositiveInfinity;
         for (int i = 0; i < _offsetByMeter.Length; i++)
@@ -192,6 +236,18 @@ internal sealed class TrackConstrainedLateralOffset
         {
             for (int i = 0; i < _offsetByMeter.Length; i++)
                 _offsetByMeter[i] = -_offsetByMeter[i];
+        }
+
+        // Kept as a copy: the working table is rewritten in place by the next
+        // build, and a stored profile has to stay the answer it was. Two
+        // circuits being driven at once would otherwise file one's answers
+        // under the other's name, and the build is left outside the lock
+        // because two cars racing to compute the same table is only wasteful,
+        // while holding a lock across it would make every other car wait.
+        lock (SharedProfiles)
+        {
+            if (ReferenceEquals(track, _sharedProfilesTrack))
+                SharedProfiles[key] = (float[])_offsetByMeter.Clone();
         }
 
         _track = track;
