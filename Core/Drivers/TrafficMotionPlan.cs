@@ -149,6 +149,43 @@ internal sealed class TrafficMotionPlan
         return false;
     }
 
+    /// <summary>
+    /// How far this plan expects to have travelled after a given time.
+    ///
+    /// The mirror of asking when a distance is reached, and the one needed to
+    /// place two cars against each other at a corner: the follower knows how
+    /// long it will take to get there, and what settles the move is where the
+    /// car in front will be by then. Comparing instead how long each takes to
+    /// cover the same number of metres compares two different pieces of road,
+    /// because the car in front starts further along.
+    /// </summary>
+    public bool TryDistanceTravelled(float seconds, out float meters)
+    {
+        meters = 0f;
+        if (Count < 2 || seconds < 0f)
+            return false;
+
+        float travelled = 0f;
+        for (int i = 1; i < Count; i++)
+        {
+            float step = Vector2.Distance(
+                _points[i - 1].Position,
+                _points[i].Position
+            );
+            float span = _points[i].TimeSeconds - _points[i - 1].TimeSeconds;
+            if (_points[i].TimeSeconds >= seconds)
+            {
+                float t = span > 1e-5f
+                    ? (seconds - _points[i - 1].TimeSeconds) / span
+                    : 1f;
+                meters = travelled + step * Math.Clamp(t, 0f, 1f);
+                return true;
+            }
+            travelled += step;
+        }
+        return false;
+    }
+
     public bool TrySample(float timeSeconds, out TrafficMotionPlanPoint point)
     {
         if (Count == 0 || timeSeconds < 0f || timeSeconds > EndTimeSeconds)

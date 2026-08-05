@@ -8,38 +8,73 @@ namespace StintegyEVO.Core.Drivers;
 /// Decides where on the road the car wants to be, and hands that out as a
 /// single offset from the racing line.
 ///
-/// An overtake is a manoeuvre with a life of its own rather than a line chosen
-/// afresh every frame. It begins because the car is being held up, holds its
-/// side while it develops, and ends when the car is past - and none of those
-/// depend on predicting whether the pass will come off. That prediction cannot
-/// honestly be made: whether a move works turns on the seconds after the cars
-/// are alongside, on who brakes later and who gets the better exit, and none
-/// of that exists in a projection taken from behind. A decision gated on a
-/// number that cannot be computed does not come out cautious, it comes out
-/// unstable - out, back, out, back, paying for the move each way and
-/// finishing nothing.
+/// Two halves, and keeping them apart is the whole design.
 ///
-/// What is worth knowing is cheap. Holding three metres off the racing line
-/// costs a few tenths of a per cent of a lap, because the inside of one corner
-/// is the outside of the next, so any car with a real pace advantage can
-/// afford to go and look. The planner therefore never weighs the cost of
-/// going. It asks whether the car is being held up, and whether there is room.
+/// The calculation answers only what a car is capable of, and never starts
+/// anything: how long the run to the next corner takes at this car's pace, how
+/// long it takes at the pace of the car in front, and therefore whether the
+/// ground between them can be made up before the corner arrives. Both figures
+/// come from the same speed planner the cars are steering to, so worn tyres, a
+/// flat battery and a tow are already in them. Nothing is measured and so
+/// nothing is noisy.
+///
+/// The rules answer what a driver does with that, and they are ordinary
+/// racecraft:
+///
+///   1. Your rival is the car immediately in front. Being quicker than someone
+///      four places up is not a reason to do anything.
+///   2. If you cannot afford the next place, queue. Sit in the tow on the
+///      racing line and wait. This is most of a race and it is not a failure.
+///   3. Pull out at the braking zone, not before. A straight is for closing up,
+///      not for driving beside somebody.
+///   4. If the room beside them is taken, queue instead. Two abreast, not three.
+///   5. The corner settles it. Alongside by the apex and the place is yours;
+///      not alongside and you drop back in rather than fight through it.
+///
+/// The rules are what stops a grid of twenty deciding to overtake at once. On
+/// the run to the first corner every car is as quick as the one in front, so
+/// rule 2 puts the entire field in a queue, which is what a start looks like.
+///
+/// What this replaces judged an attempt by watching whether the gap was
+/// closing. In a queue every car is going the same speed, so the true change is
+/// zero and its sign is the noise on the measurement: measured, a coin toss
+/// called off ninety six attempts in a hundred.
 /// </summary>
 internal sealed class TacticalManeuverPlanner
 {
     /// <summary>
+    /// How far ahead a car still counts as the one being followed. Beyond this
+    /// there is nothing to plan a move on: the road between will have changed
+    /// before it is reached.
+    /// </summary>
+    private const float RivalReachMeters = 200f;
+
+    /// <summary>
+    /// Speed a corner has to take out of the car before it is somewhere a pass
+    /// can be made. A gentle kink slows nobody enough to be passed at, and
+    /// treating one as an opportunity is how a car ends up beside another on a
+    /// piece of road neither of them was going to lose time on.
+    /// </summary>
+    private const float PassableSpeedDropMetersPerSecond = 8f;
+
+    /// <summary>
+    /// Road used to move across before the braking point.
+    ///
+    /// Not a decision, a measurement of the machinery: the offset profile is
+    /// bounded to eight centimetres of lateral movement per metre travelled, so
+    /// three metres of offset needs about forty metres of road. Committing any
+    /// later means arriving at the corner still moving sideways.
+    /// </summary>
+    private const float CommitLeadMeters = 40f;
+
+    /// <summary>
     /// Gap between car bodies before a stretch of road counts as usable.
     ///
-    /// This has to clear the speed planner's own following margin with room
-    /// for the other car to wander, not merely fit the bodywork. Aimed just
-    /// past the bodies, the ego sits within a wobble of the traffic layer's
-    /// overlap band, and both cars are wandering: the one being passed by
-    /// its half metre, the ego by its own tracking error. Every time the
-    /// bands touch, the constraint bites and the ego brakes mid-pass -
-    /// measured, that bled a seven per cent pace advantage down to nothing
-    /// and turned the overtake into minutes of running alongside. The traffic layer still enforces safety on the
-    /// path actually driven; this only keeps the planner from aiming
-    /// somewhere it can already see will keep tripping it.
+    /// This has to clear the speed planner's own following margin with room for
+    /// the other car to wander, not merely fit the bodywork. Aimed just past the
+    /// bodies, the ego sits within a wobble of the traffic layer's overlap band,
+    /// and every time the bands touch the constraint bites and the ego brakes
+    /// mid-pass.
     /// </summary>
     private const float LateralClearanceMeters = 1.4f;
 
@@ -52,388 +87,405 @@ internal sealed class TacticalManeuverPlanner
     /// </summary>
     private const float ClearAheadMeters = 2f;
 
-    /// <summary>
-    /// Clear running that ends a spell of being held up. Long enough that the
-    /// following constraint letting go for a moment does not read as open
-    /// road: it bites as the gap closes and releases as it opens, so a car
-    /// holding station behind a slower one trips it several times a second.
-    /// </summary>
-    private const float ClearRunToReleaseMeters = 40f;
-
     /// <summary>Offset below which the car counts as back on the racing line.</summary>
     private const float ReturnedOffsetMeters = 0.2f;
 
     /// <summary>
-    /// Gap, nose to tail, inside which a move may be started.
-    ///
-    /// Being held up is not on its own a reason to pull out. The following
-    /// constraint reaches roughly a second of road ahead, so a car is held up
-    /// from the moment it arrives in the wake - and the answer to arriving in
-    /// the wake is to close up, because the racing line is the quicker road
-    /// and every metre spent beside it is a metre given away. Pulling out
-    /// there is self-defeating, and measurably so: aimed wide at a gap of 24 m
-    /// the car promptly lost ground, and the gap grew to 33 m while it sat out
-    /// there. It has to be close enough that the move can be finished, which
-    /// means within a couple of car lengths, on the gearbox, where a driver
-    /// would go.
-    /// </summary>
-    private const float AttackRangeMeters = 12f;
-
-
-
-    /// <summary>
     /// Step the asked-for offset is rounded to.
     ///
-    /// The room beside another car moves a little every frame as it breathes
-    /// on its own line, and passing that straight through would have the
-    /// target twitching continuously. The controller would chase it, and the
-    /// profile that expands one offset into a line along the track is rebuilt
-    /// whenever the number changes at all. Rounding costs a few centimetres of
-    /// precision the car cannot steer to anyway.
+    /// The room beside another car moves a little every frame as it breathes on
+    /// its own line, and passing that straight through would have the target
+    /// twitching continuously. The controller would chase it, and the profile
+    /// that expands one offset into a line along the track is rebuilt whenever
+    /// the number changes at all. Rounding costs a few centimetres of precision
+    /// the car cannot steer to anyway.
     /// </summary>
     private const float OffsetQuantumMeters = 0.5f;
 
-    /// <summary>
-    /// Distance over which the delta measurement is averaged.
-    /// </summary>
-    private const float DeltaSmoothingMeters = 60f;
-
-    /// <summary>
-    /// Road over which an established attempt is judged, on the sign of the
-    /// change alone and never on its size. A sign survives noise a threshold
-    /// does not: what jitter is left is as likely to fall as to rise and
-    /// cancels over the window, while one car genuinely catching another does
-    /// not.
-    /// </summary>
-    private const float ProgressWindowMeters = 100f;
-
-
-    private bool _heldUp;
-    private float _clearRunMeters;
-    private float _lastS;
-    private bool _hasLastS;
+    private string? _rival;
     private float _offsetMeters;
-    private string? _passing;
-    private float _movedFromS;
-    private bool _hasMovedAnchor;
-    private float _movedThisFrame;
-    private bool _established;
-    private float _windowMeters;
-    private float _windowStartDelta = float.NaN;
+    private bool _committed;
 
     /// <summary>
-    /// Seconds the ego is behind the car in front, or NaN with clear road.
-    /// </summary>
-    public float DeltaSeconds { get; private set; } = float.NaN;
-
-    /// <summary>
-    /// The same figure with the replanning jitter taken out of it.
+    /// Where on the track the corner this move is aimed at sits.
     ///
-    /// The raw number is rebuilt from scratch every frame, so it carries the
-    /// noise of the plan it came from - about five per cent of itself twice a
-    /// second, which is the same order as the thing worth reading. Averaging
-    /// it over distance rather than over time keeps it honest when the car is
-    /// slow, and separates the two by their scale: the jitter lives in metres
-    /// and whether one car is catching another lives in hundreds of them.
+    /// Held as a place on the road and not as a distance ahead, because the
+    /// distance ahead is the thing that changes: a braking zone is over a
+    /// hundred metres long, so a corner still being far away says nothing
+    /// about whether this move has run its course. Only passing the corner
+    /// does, and passing it is a fact about where the car is.
     /// </summary>
-    public float SmoothedDeltaSeconds { get; private set; } = float.NaN;
+    private float _committedApexS = float.NaN;
 
-    public TrafficConflictReport LastObservedConflictReport { get; private set; }
+    /// <summary>
+    /// The corner this car is currently working towards, as a place on the
+    /// road rather than a distance ahead.
+    ///
+    /// Picking it afresh every frame does not survive contact with the speed
+    /// plan it is read from: two corners close together both sit near the
+    /// threshold of being worth passing at, so the answer flickers between
+    /// them from one frame to the next and the reckoning flickers with it -
+    /// measured, the distance to the corner alternated between three hundred
+    /// and six hundred metres and the verdict alternated with it. A driver
+    /// picks the corner and keeps it, so this does too, until it is behind.
+    /// </summary>
+    private float _targetApexS = float.NaN;
 
     public TacticalManeuverPhase Phase { get; private set; } =
-        TacticalManeuverPhase.Observing;
+        TacticalManeuverPhase.Clear;
+
+    /// <summary>Seconds of road that has to be made up to draw level.</summary>
+    public float TimeGapSeconds { get; private set; } = float.NaN;
+
+    /// <summary>
+    /// Seconds this car would take out of its rival over the run to the next
+    /// corner, on pace alone. A move is affordable when this covers the gap.
+    /// </summary>
+    public float RunGainSeconds { get; private set; } = float.NaN;
+
+    public float NextApexMeters { get; private set; } = float.NaN;
 
     public TacticalIntent Update(
         in RaceDriverFrameContext context,
-        in TrafficConflictReport previousConflictReport
+        VehicleSpeedLookahead ownPace
     )
     {
-        LastObservedConflictReport = previousConflictReport;
+        ArgumentNullException.ThrowIfNull(ownPace);
+        TimeGapSeconds = float.NaN;
+        RunGainSeconds = float.NaN;
+        NextApexMeters = float.NaN;
         if (!context.HasFrameSnapshot)
         {
             Reset();
             return TacticalIntent.Keep;
         }
 
-        _movedThisFrame = float.NaN;
-        DeltaSeconds = MeasureDelta(in context, _passing);
-        UpdateSmoothedDelta(MovedSince(in context));
-        UpdateHeldUp(in context, in previousConflictReport);
+        // Rule 1: the rival is whoever is immediately in front.
+        if (!TryFindRival(in context, out RaceCarSnapshot rival, out int rivalIndex))
+            return Release();
 
-        if (_passing is not null && IsPast(in context, _passing))
-            _passing = null;
+        if (!string.Equals(_rival, rival.Id, StringComparison.Ordinal))
+        {
+            _rival = rival.Id;
+            _committed = false;
+            _committedApexS = float.NaN;
+            _targetApexS = float.NaN;
+        }
 
-        // Judging an attempt only once the car is actually on the line it
-        // chose.
+        if (_committed && IsPast(in context, in rival))
+        {
+            _committed = false;
+            _committedApexS = float.NaN;
+            return Queue();
+        }
+
+        bool haveCorner = TryTakeAim(
+            in context,
+            ownPace,
+            out float apexMeters,
+            out float brakeMeters
+        );
+        if (haveCorner)
+            NextApexMeters = apexMeters;
+
+        RaceCarSnapshot ego = context.CarSnapshot;
+        float gap = SignedGap(in context, in ego, in rival);
+
+        // Once the move is under way it is not re-argued every frame. The road
+        // beside another car opens and closes constantly as both cars work, and
+        // an attempt dropped on the first closed frame is retaken on the next
+        // open one, which is how a car crosses the whole track and arrives
+        // nowhere.
+        if (_committed)
+        {
+            // Rule 5. The corner settles it, and only once the corner has been
+            // reached: level with the other car and the place is taken, still
+            // behind and the car drops back in rather than running side by
+            // side through a corner it has not earned. Overlapping bodywork
+            // keeps the move alive past the apex, because straightening back
+            // onto the racing line with a car alongside is not an option.
+            if (HasPassedCommittedApex(in context) && gap > 0f)
+            {
+                _committed = false;
+                _committedApexS = float.NaN;
+                _offsetMeters = 0f;
+                Phase = TacticalManeuverPhase.Yielding;
+                return TacticalIntent.Keep;
+            }
+
+            return Reach(in context, in rival, hold: true);
+        }
+
+        if (!haveCorner)
+            return Queue();
+
+        // The calculation: can this car cover the ground before the corner?
+        if (gap <= 0f)
+            return Reach(in context, in rival, hold: false);
+
+        // Rule 3. A straight is for closing up, so until the braking zone the
+        // answer is the same whatever the sums say: sit behind, take the tow.
         //
-        // Every earlier rule started the clock at the moment of commitment,
-        // and all of them killed the overtake they were meant to police -
-        // ground given back, falling out of attack range, and this same figure
-        // over a hundred, two hundred, three hundred and five hundred metres.
-        // The reason was always the same: moving across costs time before it
-        // saves any, so the stretch of road spent getting there reads as
-        // losing whether the move is going to work or not, and judging it
-        // there condemns it there. Waiting until the car has arrived leaves
-        // the transient out of the reckoning and asks the only fair question -
-        // now that I am here, am I getting by?
-        if (_passing is not null)
+        // Waiting is not only what a driver does, it is the only place the
+        // question can be answered honestly. A car queueing behind another is
+        // running at the other car's pace and not its own, so any reckoning
+        // made half a kilometre out is done with a pace this car will not be
+        // holding - measured, that made a corner five hundred metres away look
+        // comfortably winnable and the same corner unwinnable once it arrived.
+        // At the braking point the road left is road both cars are about to
+        // cover flat out, and the comparison means something.
+        if (brakeMeters > CommitLeadMeters)
         {
-            float actual = context.Pose.D - context.Pose.Sample.RefOffset;
-            if (!_established &&
-                MathF.Abs(actual - _offsetMeters) <= ReturnedOffsetMeters)
-            {
-                _established = true;
-                _windowMeters = 0f;
-                _windowStartDelta = SmoothedDeltaSeconds;
-            }
-
-            if (_established && !float.IsNaN(_windowStartDelta))
-            {
-                _windowMeters += MovedSince(in context);
-                if (_windowMeters >= ProgressWindowMeters)
-                {
-                    bool gaining = SmoothedDeltaSeconds < _windowStartDelta;
-                    _windowMeters = 0f;
-                    _windowStartDelta = SmoothedDeltaSeconds;
-                    if (!gaining)
-                    {
-                        // Out of line the car is the slower of the two, so an
-                        // attempt that has stopped gaining is one that is
-                        // losing. Dropping back in is not giving up: the wake
-                        // is the quicker road, the car closes again, and the
-                        // next attempt starts where this one did.
-                        _passing = null;
-                        _established = false;
-                    }
-                }
-            }
-        }
-
-        // Nothing abandons an attempt once it is under way, and not for want
-        // of trying: ground given back, falling out of attack range, and the
-        // time-behind figure compared end to end over a hundred, two hundred,
-        // three hundred and five hundred metres were all driven, and every one
-        // of them killed the overtake it was meant to police. The reason is
-        // the same each time. Pulling out costs time before it saves any, so
-        // the first stretch after committing always reads as losing, whether
-        // the move is going to work or not - judging it there condemns it
-        // there. Being past remains the only signal that means what it says.
-        if (_passing is null && _heldUp)
-        {
-            _passing = BlockerWithinRange(in context);
-            if (_passing is not null)
-            {
-                _established = false;
-                _windowStartDelta = float.NaN;
-            }
-        }
-
-        if (_passing is null)
-        {
-            // Nothing to go around. The racing line is the fastest line there
-            // is, so wanting to be back on it needs no reason and no rule to
-            // send the car home: the offset goes to zero and the existing
-            // profile eases the car across.
             _offsetMeters = 0f;
-            Phase = MathF.Abs(context.Pose.D - context.Pose.Sample.RefOffset) <=
-                    ReturnedOffsetMeters
-                ? TacticalManeuverPhase.Observing
-                : TacticalManeuverPhase.Returning;
+            Phase = TacticalManeuverPhase.Preparing;
             return TacticalIntent.Keep;
         }
 
-        bool committing = Phase is TacticalManeuverPhase.Observing
-            or TacticalManeuverPhase.Anticipating
-            or TacticalManeuverPhase.Returning;
-        if (!TryFindRoom(in context, _passing, committing, out float target))
+        // Rule 2, asked at the braking point: where will the two cars be at the
+        // corner? This one takes so long to reach it, the other covers so much
+        // ground in that time, and what is left between them settles whether
+        // there is anything here worth leaving the racing line for.
+        float myRun = TimeOver(ownPace, apexMeters);
+        TrafficMotionPlan? rivalPace =
+            context.Frame.GetPreviousTrafficMotionPlan(rivalIndex);
+        if (rivalPace is null ||
+            !rivalPace.TryDistanceTravelled(myRun, out float theirRun))
         {
-            // No room this frame. That is a reason to stop going further out,
-            // not to call the move off: the road beside another car closes and
-            // opens constantly as both cars work, and a manoeuvre abandoned on
-            // the first closed frame is re-decided on the next open one, which
-            // is how a car ends up crossing the whole track behind the one it
-            // was passing and arriving nowhere. The side and the car being
-            // passed are kept; only the reaching stops.
-            Phase = _offsetMeters == 0f
-                ? TacticalManeuverPhase.Anticipating
-                : TacticalManeuverPhase.Executing;
-            return new TacticalIntent(_offsetMeters);
+            return Queue();
         }
 
-        _offsetMeters = Quantise(target);
-        Phase = committing
-            ? TacticalManeuverPhase.Committed
-            : TacticalManeuverPhase.Executing;
-        return new TacticalIntent(_offsetMeters);
+        float gapAtCorner = gap + theirRun - apexMeters;
+        TimeGapSeconds = gap;
+        RunGainSeconds = gapAtCorner;
+        if (gapAtCorner > 0f)
+            return Queue();
+
+        return Reach(in context, in rival, hold: false);
     }
 
     public void Reset()
     {
-        LastObservedConflictReport = default;
-        Phase = TacticalManeuverPhase.Observing;
-        _heldUp = false;
-        _clearRunMeters = 0f;
-        _hasLastS = false;
+        Phase = TacticalManeuverPhase.Clear;
+        _rival = null;
         _offsetMeters = 0f;
-        _passing = null;
-        _hasMovedAnchor = false;
-        _movedThisFrame = 0f;
-        _established = false;
-        _windowMeters = 0f;
-        _windowStartDelta = float.NaN;
-        DeltaSeconds = float.NaN;
-        SmoothedDeltaSeconds = float.NaN;
+        _committed = false;
+        _committedApexS = float.NaN;
+        _targetApexS = float.NaN;
+        TimeGapSeconds = float.NaN;
+        RunGainSeconds = float.NaN;
+        NextApexMeters = float.NaN;
     }
 
-    /// <summary>
-    /// Whether the car is running at its own pace or somebody else's.
-    ///
-    /// The speed planner already answers this on the way past: it times the
-    /// path on geometry alone, then again with the traffic applied, and the
-    /// difference is what the car in front is costing. Nothing else is being
-    /// held up - a car far enough ahead never enters the constraint at all, so
-    /// the two times come out equal however slow it is, and no following
-    /// distance has to be chosen.
-    ///
-    /// It is latched because the constraint that produces it is a proximity
-    /// test. A car holding station behind a slower one closes to the gap,
-    /// eases, drifts out of it and closes again, so the reading is compromised
-    /// on one frame and clear on the next while the road tells one continuous
-    /// story.
-    /// </summary>
-    private void UpdateHeldUp(
+    /// <summary>Rule 4, and the act of going: take the room or queue for it.</summary>
+    private TacticalIntent Reach(
         in RaceDriverFrameContext context,
-        in TrafficConflictReport report
+        in RaceCarSnapshot rival,
+        bool hold
     )
     {
-        float s = context.Pose.S;
-        float moved = _hasLastS ? context.Track.WrapS(s - _lastS) : 0f;
-        _lastS = s;
-        _hasLastS = true;
-        if (moved < 0f || moved > ClearRunToReleaseMeters)
-            moved = 0f;
-
-        float free = report.FreeArrivalTimeSeconds;
-        float constrained = report.ConstrainedArrivalTimeSeconds;
-        bool compromised = float.IsFinite(free) &&
-                           (!float.IsFinite(constrained) ||
-                            constrained > free + 1e-3f);
-        if (compromised)
+        if (!TryFindRoom(in context, in rival, !_committed, out float target))
         {
-            _heldUp = true;
-            _clearRunMeters = 0f;
-            return;
+            if (!hold)
+                return Queue();
+
+            // Room closed mid-move. Stop reaching further out, keep the side.
+            return new TacticalIntent(_offsetMeters);
         }
 
-        if (!_heldUp)
-            return;
-
-        _clearRunMeters += moved;
-        if (_clearRunMeters >= ClearRunToReleaseMeters)
+        _offsetMeters = Quantise(target);
+        if (!_committed)
         {
-            _heldUp = false;
-            _clearRunMeters = 0f;
+            _committed = true;
+            _committedApexS = float.IsNaN(NextApexMeters)
+                ? float.NaN
+                : context.Track.WrapS(context.Pose.S + NextApexMeters);
         }
-    }
-
-    private static float Quantise(float offsetMeters) =>
-        MathF.Round(offsetMeters / OffsetQuantumMeters) * OffsetQuantumMeters;
-
-    /// <summary>
-    /// The car in the way, if the ego is close enough to do anything about it.
-    ///
-    /// Speed is not compared. A car that has been caught is by then matching
-    /// the pace of the one in front - that is what being held up means - so
-    /// asking whether it is currently slower answers no just when the answer
-    /// matters most.
-    /// </summary>
-    private float MovedSince(in RaceDriverFrameContext context)
-    {
-        if (!float.IsNaN(_movedThisFrame))
-            return _movedThisFrame;
-
-        float s = context.Pose.S;
-        float moved = _hasMovedAnchor ? context.Track.WrapS(s - _movedFromS) : 0f;
-        _movedFromS = s;
-        _hasMovedAnchor = true;
-        _movedThisFrame = moved < 0f || moved > DeltaSmoothingMeters ? 0f : moved;
-        return _movedThisFrame;
-    }
-
-    private void UpdateSmoothedDelta(float movedMeters)
-    {
-        if (float.IsNaN(DeltaSeconds))
-        {
-            SmoothedDeltaSeconds = float.NaN;
-            return;
-        }
-
-        if (float.IsNaN(SmoothedDeltaSeconds))
-        {
-            SmoothedDeltaSeconds = DeltaSeconds;
-            return;
-        }
-
-        float weight = 1f - MathF.Exp(-movedMeters / DeltaSmoothingMeters);
-        SmoothedDeltaSeconds += (DeltaSeconds - SmoothedDeltaSeconds) * weight;
+        Phase = TacticalManeuverPhase.Committed;
+        return new TacticalIntent(_offsetMeters);
     }
 
     /// <summary>
-    /// How far behind another car the ego is, in seconds: the time its own
-    /// plan says it needs to cover the ground between them. Negative once the
-    /// ego is in front.
-    ///
-    /// While a move is under way this follows the car being passed and not
-    /// merely whoever is nearest ahead, and that matters more than it sounds.
-    /// Asked about the nearest car ahead, the measurement goes blind at the
-    /// exact moment a move is working: alongside, there is no car ahead to
-    /// report, so the figure vanishes and any judgement resting on it resets.
-    /// Only the phases where the ego is still stuck get judged, which condemns
-    /// every attempt at the point it starts to succeed.
+    /// Sit behind on the racing line. Wanting to be on the quickest road needs
+    /// no reason: the offset goes to zero and the profile eases the car back.
     /// </summary>
-    private static float MeasureDelta(
+    private TacticalIntent Queue()
+    {
+        _offsetMeters = 0f;
+        Phase = TacticalManeuverPhase.Following;
+        return TacticalIntent.Keep;
+    }
+
+    private TacticalIntent Release()
+    {
+        _offsetMeters = 0f;
+        _committed = false;
+        _committedApexS = float.NaN;
+        Phase = TacticalManeuverPhase.Clear;
+        return TacticalIntent.Keep;
+    }
+
+    /// <summary>Whether the corner this move was aimed at is behind the car.</summary>
+    private bool HasPassedCommittedApex(in RaceDriverFrameContext context)
+    {
+        if (float.IsNaN(_committedApexS))
+            return true;
+
+        float ahead = context.Track.WrapS(_committedApexS - context.Pose.S);
+        return ahead > context.Track.LengthMeters * 0.5f;
+    }
+
+    /// <summary>
+    /// The next place the road takes enough speed out of the car to pass there,
+    /// read off the plan the car is already steering to rather than a table
+    /// worked out in advance. Everything that decides where a car brakes - its
+    /// tyres, its battery, the tow it is sitting in - is in that plan and is
+    /// current, so nothing has to be recomputed when any of it changes.
+    /// </summary>
+    /// <summary>
+    /// The corner being worked towards and how far off it is, holding onto the
+    /// one already chosen for as long as it is still in front.
+    /// </summary>
+    private bool TryTakeAim(
         in RaceDriverFrameContext context,
-        string? target
+        VehicleSpeedLookahead pace,
+        out float apexMeters,
+        out float brakeMeters
     )
     {
-        RaceCarSnapshot ego = context.CarSnapshot;
-        float gap = float.NaN;
-        if (target is not null &&
-            context.Frame.TryGetCar(target, out RaceCarSnapshot chosen))
+        if (!float.IsNaN(_targetApexS))
         {
-            gap = SignedGap(in context, in ego, in chosen);
-        }
-        else
-        {
-            float nearest = float.PositiveInfinity;
-            foreach (RaceCarSnapshot other in context.Frame.Cars)
+            float ahead = context.Track.WrapS(_targetApexS - context.Pose.S);
+            if (ahead < context.Track.LengthMeters * 0.5f && ahead <= pace.LengthMeters)
             {
-                if (string.Equals(other.Id, ego.Id, StringComparison.Ordinal))
-                    continue;
-
-                float ahead = SignedGap(in context, in ego, in other);
-                if (ahead > 0f && ahead < nearest)
-                    nearest = ahead;
+                apexMeters = ahead;
+                brakeMeters = BrakePointFor(pace, ahead);
+                return true;
             }
-            if (float.IsFinite(nearest))
-                gap = nearest;
+            _targetApexS = float.NaN;
         }
 
-        if (float.IsNaN(gap))
-            return float.NaN;
-        if (gap <= 0f)
+        if (!TryFindNextCorner(pace, out apexMeters, out brakeMeters))
+            return false;
+
+        _targetApexS = context.Track.WrapS(context.Pose.S + apexMeters);
+        return true;
+    }
+
+    /// <summary>
+    /// Where the car is quickest on the run in to a corner it has already
+    /// chosen, which is where it starts braking and so where it may pull out.
+    /// </summary>
+    private static float BrakePointFor(VehicleSpeedLookahead pace, float apexMeters)
+    {
+        if (pace.Count < 2 || pace.StepLengthMeters <= 0f)
+            return apexMeters;
+
+        int apexIndex = Math.Min(
+            (int)MathF.Round(apexMeters / pace.StepLengthMeters),
+            pace.Count - 1
+        );
+        int peakIndex = 0;
+        float peak = float.NegativeInfinity;
+        for (int i = 0; i <= apexIndex; i++)
         {
-            // In front: the same figure with the sign that says so, taken at
-            // the speed the car is doing rather than from a plan that only
-            // runs forwards.
-            return gap / MathF.Max(ego.SpeedMetersPerSecond, 1f);
-        }
+            if (pace[i].TargetSpeed <= peak)
+                continue;
 
-        TrafficMotionPlan? mine =
-            context.Frame.GetPreviousTrafficMotionPlan(context.CarSnapshotIndex);
-        return mine is not null && mine.TryTimeToTravel(gap, out float seconds)
-            ? seconds
-            : gap / MathF.Max(ego.SpeedMetersPerSecond, 1f);
+            peak = pace[i].TargetSpeed;
+            peakIndex = i;
+        }
+        return peakIndex * pace.StepLengthMeters;
+    }
+
+    private static bool TryFindNextCorner(
+        VehicleSpeedLookahead pace,
+        out float apexMeters,
+        out float brakeMeters
+    )
+    {
+        apexMeters = float.NaN;
+        brakeMeters = float.NaN;
+        if (pace.Count < 3 || pace.StepLengthMeters <= 0f)
+            return false;
+
+        float peak = pace[0].TargetSpeed;
+        int peakIndex = 0;
+        for (int i = 1; i < pace.Count; i++)
+        {
+            float speed = pace[i].TargetSpeed;
+            if (speed > peak)
+            {
+                peak = speed;
+                peakIndex = i;
+                continue;
+            }
+
+            if (peak - speed < PassableSpeedDropMetersPerSecond)
+                continue;
+
+            int bottom = i;
+            while (bottom + 1 < pace.Count &&
+                   pace[bottom + 1].TargetSpeed <= pace[bottom].TargetSpeed)
+            {
+                bottom++;
+            }
+
+            apexMeters = bottom * pace.StepLengthMeters;
+            brakeMeters = peakIndex * pace.StepLengthMeters;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Seconds this plan needs to cover a stretch of road.</summary>
+    private static float TimeOver(VehicleSpeedLookahead pace, float distanceMeters)
+    {
+        if (pace.Count < 2 || distanceMeters <= 0f)
+            return 0f;
+
+        float step = MathF.Max(pace.StepLengthMeters, 0.25f);
+        float seconds = 0f;
+        for (float travelled = 0f; travelled < distanceMeters; travelled += step)
+        {
+            float span = MathF.Min(step, distanceMeters - travelled);
+            float speed = MathF.Max(
+                pace.Sample(travelled + span * 0.5f).TargetSpeed,
+                1f
+            );
+            seconds += span / speed;
+        }
+        return seconds;
+    }
+
+    private static bool TryFindRival(
+        in RaceDriverFrameContext context,
+        out RaceCarSnapshot rival,
+        out int rivalIndex
+    )
+    {
+        rival = default;
+        rivalIndex = -1;
+        RaceCarSnapshot ego = context.CarSnapshot;
+        float nearest = float.PositiveInfinity;
+        for (int i = 0; i < context.Frame.Count; i++)
+        {
+            if (i == context.CarSnapshotIndex)
+                continue;
+
+            RaceCarSnapshot other = context.Frame[i];
+            float gap = SignedGap(in context, in ego, in other);
+            if (gap <= -other.LengthMeters ||
+                gap > RivalReachMeters ||
+                gap >= nearest)
+            {
+                continue;
+            }
+
+            nearest = gap;
+            rival = other;
+            rivalIndex = i;
+        }
+        return rivalIndex >= 0;
     }
 
     private static float SignedGap(
@@ -448,38 +500,19 @@ internal sealed class TacticalManeuverPlanner
         return along - (ego.LengthMeters + other.LengthMeters) * 0.5f;
     }
 
-    private static string? BlockerWithinRange(in RaceDriverFrameContext context)
+    private static float Quantise(float offsetMeters) =>
+        MathF.Round(offsetMeters / OffsetQuantumMeters) * OffsetQuantumMeters;
+
+    private static bool IsPast(
+        in RaceDriverFrameContext context,
+        in RaceCarSnapshot rival
+    )
     {
         RaceCarSnapshot ego = context.CarSnapshot;
-        string? nearest = null;
-        float nearestGap = float.PositiveInfinity;
-        foreach (RaceCarSnapshot other in context.Frame.Cars)
-        {
-            if (string.Equals(other.Id, ego.Id, StringComparison.Ordinal))
-                continue;
-
-            float gap = context.Track.WrapS(other.TrackS - ego.TrackS) -
-                        (ego.LengthMeters + other.LengthMeters) * 0.5f;
-            if (gap <= 0f || gap > AttackRangeMeters || gap >= nearestGap)
-                continue;
-
-            nearestGap = gap;
-            nearest = other.Id;
-        }
-        return nearest;
-    }
-
-    private static bool IsPast(in RaceDriverFrameContext context, string blocker)
-    {
-        if (!context.Frame.TryGetCar(blocker, out RaceCarSnapshot other))
-            return true;
-
-        RaceCarSnapshot ego = context.CarSnapshot;
-        float ahead = context.Track.WrapS(ego.TrackS - other.TrackS);
-        float clear = (ego.LengthMeters + other.LengthMeters) * 0.5f +
+        float ahead = context.Track.WrapS(ego.TrackS - rival.TrackS);
+        float clear = (ego.LengthMeters + rival.LengthMeters) * 0.5f +
                       ClearAheadMeters;
-        return ahead > clear &&
-               ahead < context.Track.LengthMeters * 0.5f;
+        return ahead > clear && ahead < context.Track.LengthMeters * 0.5f;
     }
 
     /// <summary>
@@ -489,8 +522,8 @@ internal sealed class TacticalManeuverPlanner
     /// Every car between the ego and the one it is going around denies a span
     /// of road, and what those spans leave is what can be driven. A second car
     /// sitting where the ego was heading simply closes that side, so the other
-    /// is taken instead - or neither is, and the ego stays where it is. That
-    /// is the answer a driver reaches looking at the same road.
+    /// is taken instead - or neither is, and the ego queues. That is rule 4,
+    /// and it is what keeps a braking zone to two cars wide.
     ///
     /// Once the move is under way the side is not reconsidered. Changing sides
     /// means crossing the track behind the car being passed, which is slower
@@ -498,15 +531,12 @@ internal sealed class TacticalManeuverPlanner
     /// </summary>
     private bool TryFindRoom(
         in RaceDriverFrameContext context,
-        string blocker,
+        in RaceCarSnapshot ahead,
         bool mayChooseSide,
         out float targetOffsetMeters
     )
     {
         targetOffsetMeters = 0f;
-        if (!context.Frame.TryGetCar(blocker, out RaceCarSnapshot ahead))
-            return false;
-
         RaceCarSnapshot ego = context.CarSnapshot;
         TrackData track = context.Track;
         TrackSample at = track.Sample(ahead.TrackS);

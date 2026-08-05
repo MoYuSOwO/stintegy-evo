@@ -212,7 +212,7 @@ public sealed class TrafficAvoidanceTests
     }
 
     [Fact]
-    public void TrafficTimeLossBecomesAvailableToTacticsOnTheNextFrame()
+    public void ACarCaughtWellBackClosesUpInsteadOfPullingOut()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         ReferenceLineDriver egoDriver = new();
@@ -256,27 +256,19 @@ public sealed class TrafficAvoidanceTests
             firstReport.TimeLossSeconds,
             egoDriver.LastTelemetry.TrafficTimeLossSeconds
         );
-        Assert.False(egoDriver.LastTacticalConflictReport.Active);
         Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
-        Assert.Equal(
-            TacticalManeuverPhase.Observing,
-            egoDriver.LastTacticalPhase
-        );
 
         simulation.Step(Dt);
 
-        // The report reaches the racecraft on the next frame, which is what
-        // this is here to pin. The driver stays on the racing line with it:
-        // the car ahead is thirty-five metres away, and being held up that far
-        // back is a reason to close, not to pull out. It goes wide when it
-        // arrives, which is a different test.
-        Assert.Equal(
-            firstReport,
-            egoDriver.LastTacticalConflictReport
-        );
+        // Losing time to the car in front is not on its own a reason to pull
+        // out, and this is where that is pinned. The car ahead is thirty-five
+        // metres away on a circuit with nothing slow enough to pass at, so the
+        // quickest road available is the racing line and the driver stays on
+        // it. Queueing is the ordinary state of a car in traffic; going is the
+        // exception, and it needs somewhere to go.
         Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
         Assert.Equal(
-            TacticalManeuverPhase.Observing,
+            TacticalManeuverPhase.Following,
             egoDriver.LastTacticalPhase
         );
     }

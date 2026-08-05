@@ -73,15 +73,13 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     public ReferenceLineDriverTelemetry LastTelemetry { get; private set; }
     internal TrafficConflictReport LastTrafficConflictReport =>
         _lastTrafficConflictReport;
-    internal TrafficConflictReport LastTacticalConflictReport =>
-        _tacticalPlanner.LastObservedConflictReport;
     internal float LastTacticalOffsetMeters =>
         _tacticalIntent.TargetOffsetMeters;
     internal TacticalManeuverPhase LastTacticalPhase =>
         _tacticalPlanner.Phase;
-    internal float LastDeltaSeconds => _tacticalPlanner.DeltaSeconds;
-    internal float LastSmoothedDeltaSeconds =>
-        _tacticalPlanner.SmoothedDeltaSeconds;
+    internal float LastTimeGapSeconds => _tacticalPlanner.TimeGapSeconds;
+    internal float LastRunGainSeconds => _tacticalPlanner.RunGainSeconds;
+    internal float LastNextApexMeters => _tacticalPlanner.NextApexMeters;
 
     public void Initialize(in RaceDriverInitContext context)
     {
@@ -265,9 +263,12 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     )
     {
         UpdatePerformanceState(in context, dt);
+        // The planner is handed the pace this car could hold on a clear road,
+        // which is the previous frame's: it is rebuilt below, and a frame of
+        // road at racing speed is under a metre.
         TacticalIntent intent = _tacticalPlanner.Update(
             in context,
-            in _lastTrafficConflictReport
+            _referenceSpeedLookahead
         );
         _tacticalIntent = EnableTacticalManeuvers ? intent : TacticalIntent.Keep;
 
