@@ -66,17 +66,29 @@ public sealed class CarConfig
     public float DownforceAccelPerSpeedSquared { get; init; } = 0.0035f;
 
     /// <summary>
-    /// Share of the car's own air resistance that disappears when it is fully
-    /// inside another car's wake.
+    /// How much of its own speed the air is still carrying directly behind
+    /// this car, as a fraction, before any of it has been left behind.
     ///
-    /// Zero leaves the car aerodynamically alone on the circuit however close
-    /// it gets. A quarter is worth about four tenths of a second a lap to a
-    /// car sitting right behind another, and turns the run to a slow corner
-    /// into somewhere a pass can be made: measured on the long approach to the
-    /// Shanghai hairpin, a towed car carries four metres a second more over
-    /// nine hundred metres, where two car lengths only asks for one.
+    /// This is the size of the hole the car punches, and it is written as a
+    /// speed rather than as a share of drag because that is what it physically
+    /// is. Drag is fought against the air the car is moving through, not
+    /// against the ground: a car in air already travelling at a fifth of its
+    /// speed meets four fifths of the wind, and pays the square of that.
+    ///
+    /// Zero leaves the car alone on the circuit however close it gets.
+    ///
+    /// The default is set from the one figure about a tow that can be checked
+    /// without a wind tunnel: what it is worth at the end of a long straight,
+    /// which for these cars is ten to fifteen km/h. Top speed goes as the cube
+    /// root of the drag, so that is a tenth of it escaped at a couple of car
+    /// lengths and no more.
+    ///
+    /// Deliberately not the far larger reductions quoted for drafting, which
+    /// belong to cars with their wheels covered and no wings to lose. An open
+    /// wheeled car following closely gives up downforce as it gains slipstream,
+    /// and the tow that survives is the modest one.
     /// </summary>
-    public float DraftDragReduction { get; init; } = 0.25f;
+    public float WakeVelocityDeficit { get; init; } = 0.11f;
     public float CorneringScrubAccel { get; init; } = 1.15f;
     public float OverLimitMinGripEfficiency { get; init; } = 0.8f;
     public float OverLimitCostCap { get; init; } = 2.5f;

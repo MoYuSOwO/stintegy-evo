@@ -21,8 +21,8 @@ public sealed class CarState
     public float FilteredLateralAccel { get; set; }
 
     /// <summary>
-    /// How deeply the car is sitting in the hole another car punches in the
-    /// air, from nothing to fully inside it.
+    /// How much of its own speed the air around this car is already carrying,
+    /// because a car in front has dragged it along.
     ///
     /// This lives on the car rather than being worked out where it is used
     /// because two very different things read it. The physics needs it to know
@@ -36,7 +36,7 @@ public sealed class CarState
     /// Set once a frame from one frozen picture of where every car is, so it
     /// does not depend on the order the cars are stepped in.
     /// </summary>
-    public float DraftFactor { get; set; }
+    public float AirVelocityDeficit { get; set; }
 
     public TireState FrontLeft { get; } = new();
     public TireState FrontRight { get; } = new();
@@ -91,7 +91,7 @@ public sealed class CarState
             BatterySoc = BatterySoc,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
-            DraftFactor = DraftFactor,
+            AirVelocityDeficit = AirVelocityDeficit,
             Telemetry = Telemetry
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
@@ -111,7 +111,7 @@ public sealed class CarState
         BatterySoc = other.BatterySoc;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
-        DraftFactor = other.DraftFactor;
+        AirVelocityDeficit = other.AirVelocityDeficit;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);

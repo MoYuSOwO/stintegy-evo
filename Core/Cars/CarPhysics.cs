@@ -101,7 +101,7 @@ public static class CarPhysics
             config,
             speed,
             lateralUse,
-            state.DraftFactor
+            state.AirVelocityDeficit
         );
 
         return new CarPerformanceLimits(
@@ -238,7 +238,7 @@ public static class CarPhysics
             config,
             state.Speed,
             lateralUse,
-            state.DraftFactor
+            state.AirVelocityDeficit
         ) + sideslipLossAccel;
         float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
 
@@ -697,25 +697,31 @@ public static class CarPhysics
     /// <summary>
     /// What the car gives back to the air, the road and its own tyres.
     ///
-    /// Only the part that is fought against the air is reduced by running in
-    /// another car's wake. Rolling resistance does not care what is in front,
-    /// and the tyre scrub of cornering is not an air loss at all.
+    /// Air resistance is fought against the air the car is moving through and
+    /// not against the ground, so a car whose air is already being dragged
+    /// along by somebody in front meets less wind and pays the square of what
+    /// is left. Writing it as a share of drag removed instead would be writing
+    /// down the answer; written this way the squaring is the reason a tow is
+    /// worth so much more at a car length than at ten.
+    ///
+    /// Only that part is reduced. Rolling resistance does not care what is in
+    /// front, and the tyre scrub of cornering is not an air loss at all.
     /// </summary>
     private static float CalculateLossAccel(
         CarConfig config,
         float speed,
         float lateralUse,
-        float draftFactor
+        float airVelocityDeficit
     )
     {
         if (speed <= 0.01f)
             return 0f;
 
-        float draft = Math.Clamp(draftFactor, 0f, 1f) *
-                      Math.Clamp(config.DraftDragReduction, 0f, 1f);
+        float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
         return
             config.RollingDragAccel +
-            config.AeroDragAccelPerSpeedSquared * speed * speed * (1f - draft) +
+            config.AeroDragAccelPerSpeedSquared * speed * speed *
+            metAir * metAir +
             config.CorneringScrubAccel * lateralUse * lateralUse;
     }
 

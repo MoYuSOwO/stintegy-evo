@@ -188,25 +188,38 @@ public sealed class RaceSimulation
         CapturePreviousTrafficMotionPlans(carCount);
     }
 
-    /// <summary>Longest tow a car can still feel, nose to tail.</summary>
-    private const float DraftReachMeters = 60f;
-
     /// <summary>
-    /// Sideways room inside which the tow is whole. Beyond it the car is
-    /// leaning out of the hole in the air and the tow fades, gone by twice
-    /// this. Set from the width of a car, because that is what the hole is
-    /// the width of.
-    /// </summary>
-    private const float DraftLateralReachMeters = 1.6f;
-
-    /// <summary>
-    /// How deeply each car is sitting in somebody else's wake.
+    /// Distance behind a car at which the air it has dragged along has given
+    /// back half the speed it had.
     ///
-    /// Read from one finished picture of the grid and written back to the cars
-    /// before any of them plans anything, so a car's tow does not depend on
-    /// where it sits in the list. A car takes the strongest tow on offer
-    /// rather than adding up several: two cars in line ahead punch one hole in
-    /// the air, not two.
+    /// A wake does not fade evenly. It is torn apart quickest right behind the
+    /// car where the shear is fiercest, so most of a tow is gone within a few
+    /// car lengths and what is left trails off slowly. Straight-line fading
+    /// gets this backwards at both ends: it hands a car fifty metres back half
+    /// the tow, when the truth there is nearer a seventh of it, and racecraft
+    /// reading that believes it can close on a straight where it cannot.
+    /// </summary>
+    private const float WakeHalfDistanceMeters = 11f;
+
+    /// <summary>
+    /// How fast the wake widens with distance, as a half angle. A turbulent
+    /// wake spreads into a cone of a few degrees, which is why sitting exactly
+    /// behind matters when close and matters much less far back: the hole is
+    /// narrow and strong at a car length and broad and weak at fifty metres.
+    /// </summary>
+    private const float WakeSpreadPerMeter = 0.123f;
+
+    /// <summary>Beyond this there is nothing left worth computing.</summary>
+    private const float WakeReachMeters = 80f;
+
+    /// <summary>
+    /// How much of its own speed each car's air is already carrying, because
+    /// somebody in front has dragged it along.
+    ///
+    /// Read from one finished picture of the grid and written back before any
+    /// car plans anything, so a car's tow does not depend on where it sits in
+    /// the list. A car takes the strongest wake on offer rather than adding up
+    /// several: two cars in line ahead punch one hole in the air, not two.
     /// </summary>
     private void ApplyDraft(RaceCarSnapshot[] snapshots)
     {
@@ -226,7 +239,7 @@ public sealed class RaceSimulation
                     along -= Track.LengthMeters;
 
                 float gap = along - (ego.LengthMeters + other.LengthMeters) * 0.5f;
-                if (gap <= 0f || gap >= DraftReachMeters)
+                if (gap <= 0f || gap >= WakeReachMeters)
                     continue;
 
                 // A car pointed the other way punches its hole the other way.
@@ -236,18 +249,20 @@ public sealed class RaceSimulation
                     continue;
                 }
 
-                float behind = 1f - gap / DraftReachMeters;
-                float sideways = MathF.Abs(other.TrackD - ego.TrackD);
-                float aligned = sideways <= DraftLateralReachMeters
-                    ? 1f
-                    : MathF.Max(
-                        0f,
-                        1f - (sideways - DraftLateralReachMeters) /
-                        DraftLateralReachMeters
-                    );
-                strongest = MathF.Max(strongest, behind * aligned);
+                float deficit = _cars[j].CarConfig.WakeVelocityDeficit /
+                                (1f + gap / WakeHalfDistanceMeters);
+
+                // Across the wake the deficit falls away from the middle, and
+                // the middle is wider the further back it is read.
+                float halfWidth = other.WidthMeters * 0.5f +
+                                  gap * WakeSpreadPerMeter;
+                float sideways = MathF.Abs(other.TrackD - ego.TrackD) /
+                                 MathF.Max(halfWidth, 0.1f);
+                deficit *= MathF.Exp(-sideways * sideways);
+
+                strongest = MathF.Max(strongest, deficit);
             }
-            _cars[i].State.DraftFactor = strongest;
+            _cars[i].State.AirVelocityDeficit = strongest;
         }
     }
 
