@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
@@ -131,15 +132,62 @@ public sealed class ReferenceLineDriverTests
     }
 
     [Fact]
-    public void DriverBrakesForTightCurveAhead()
+    /// <summary>
+    /// Arriving at a hairpin faster than it can be taken asks for the brakes,
+    /// and arriving slower than that does not.
+    ///
+    /// Both halves, because only the pair says anything. A single speed picked
+    /// as fast enough for one car stops being fast enough the moment the car
+    /// is given more grip, and the test then passes or fails on how quick the
+    /// car is rather than on whether it brakes for corners. The speeds here are
+    /// read off what this car can actually carry through this corner, so the
+    /// question stays the same question on any car.
+    /// </summary>
+    public void DriverBrakesForACurveItCannotCarryItsSpeedThrough()
     {
         TrackData track = BuildTrack();
-        ReferenceLineDriver driver = new();
-        RaceDriverFrameContext context = CreateContext(track, driver, s: 55f, speed: 35f);
+        float apexCurvature = 0f;
+        for (float s = 80f; s <= 160f; s += 1f)
+        {
+            apexCurvature = MathF.Max(
+                apexCurvature,
+                MathF.Abs(track.Sample(s).RefCurvature)
+            );
+        }
 
-        DriverInput input = driver.GetControl(in context, 1f / 60f);
+        VehicleSpeedPlanner planner = new();
+        ReferenceLineDriver measuring = new();
+        RaceDriverFrameContext measuringContext =
+            CreateContext(track, measuring, s: 55f, speed: 35f);
+        float throughTheCorner = planner.EstimateLateralSpeedLimit(
+            measuringContext.Car,
+            apexCurvature
+        );
 
-        Assert.True(input.DesiredAccel < 0f, "high speed before the hairpin should request braking");
+        // Far enough over that the twenty five metres of road left cannot
+        // absorb the difference. A smaller margin proves nothing: a car with
+        // four g of braking genuinely does not need to lift yet, and a test
+        // that insists it should is testing the car's brakes, not its
+        // willingness to use them.
+        ReferenceLineDriver tooFast = new();
+        DriverInput braking = tooFast.GetControl(
+            CreateContext(track, tooFast, s: 55f, speed: throughTheCorner * 3f),
+            1f / 60f
+        );
+        Assert.True(
+            braking.DesiredAccel < 0f,
+            "arriving above what the hairpin will take should request braking"
+        );
+
+        ReferenceLineDriver withinIt = new();
+        DriverInput settled = withinIt.GetControl(
+            CreateContext(track, withinIt, s: 55f, speed: throughTheCorner * 0.6f),
+            1f / 60f
+        );
+        Assert.True(
+            settled.DesiredAccel > braking.DesiredAccel,
+            "arriving below it should not ask for as much braking"
+        );
     }
 
     [Fact]
