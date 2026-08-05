@@ -115,72 +115,9 @@ internal sealed class TrackConstrainedLateralOffset
         return new TrackLateralTargetSample(
             centerPosition,
             MathF.Atan2(tangent.Y, tangent.X),
-            OffsetCurvature(
-                track,
-                s,
-                in center,
-                beforeOffset,
-                centerOffset,
-                afterOffset,
-                geometryRadiusMeters
-            ),
+            MathHelper.Curvature(beforePosition, centerPosition, afterPosition),
             centerOffset
         );
-    }
-
-    /// <summary>
-    /// Curvature of the offset line, derived rather than measured.
-    ///
-    /// Fitting a circle through three sampled positions works on the racing
-    /// line and fails beside it. An offset point is the reference point plus
-    /// the track normal times the offset, so every wobble in the normal is
-    /// multiplied by how far out the line sits, and taking a second derivative
-    /// from positions multiplies it again. The racing line escapes this
-    /// because its curvature is smoothed once when the track is built and read
-    /// back, not recomputed from coordinates. Measured, the error averaged
-    /// 0.0011 1/m but reached 0.035 - larger than any corner on the circuit,
-    /// and inverted - so the speed planner met a hairpin that was not there
-    /// several times a lap and braked for it. That alone cost 12% of the
-    /// distance covered, at one metre of offset as much as at three, which is
-    /// what gave it away: geometry charges for how far out the line is, and
-    /// this charged for merely being off the line at all.
-    ///
-    /// For a line at offset d(s) from a reference of curvature k, writing
-    /// a = 1 - k*d and b = d', the Frenet frame gives
-    ///   k_off = (a*(k*a + d'') - b*(a' - k*b)) / (a^2 + b^2)^(3/2)
-    /// Everything on the right is known exactly except k', which enters only
-    /// through a' and multiplied by b, so a coarse difference is enough. The
-    /// offset's own derivatives come from the profile, which is slew-limited
-    /// and therefore far better behaved than sampled positions.
-    /// </summary>
-    private static float OffsetCurvature(
-        TrackData track,
-        float s,
-        in TrackSample center,
-        float beforeOffset,
-        float centerOffset,
-        float afterOffset,
-        float radiusMeters
-    )
-    {
-        float curvature = center.RefCurvature;
-        float first = (afterOffset - beforeOffset) / (2f * radiusMeters);
-        float second = (afterOffset - 2f * centerOffset + beforeOffset) /
-                       (radiusMeters * radiusMeters);
-        float curvatureRate = (
-            track.Sample(s + radiusMeters).RefCurvature -
-            track.Sample(s - radiusMeters).RefCurvature
-        ) / (2f * radiusMeters);
-
-        float a = 1f - curvature * centerOffset;
-        float b = first;
-        float aRate = -curvatureRate * centerOffset - curvature * first;
-        float denominator = MathF.Pow(a * a + b * b, 1.5f);
-        if (denominator < 1e-6f)
-            return curvature;
-
-        return (a * (curvature * a + second) - b * (aRate - curvature * b)) /
-               denominator;
     }
 
     internal static float ClampAtSample(
