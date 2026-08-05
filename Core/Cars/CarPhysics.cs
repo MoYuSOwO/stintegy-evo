@@ -34,7 +34,8 @@ public static class CarPhysics
         WheelLoads loads = CalculateWheelLoads(
             config,
             assumedLongitudinalAcceleration,
-            lateralAcceleration
+            lateralAcceleration,
+            speed
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
@@ -899,17 +900,36 @@ public static class CarPhysics
         return CalculateWheelLoads(
             config,
             state.FilteredLongitudinalAccel,
-            state.FilteredLateralAccel
+            state.FilteredLateralAccel,
+            state.Speed
         );
     }
 
+    /// <summary>
+    /// What each tyre is being pressed into the road with.
+    ///
+    /// Weight, plus what the air is pushing down with, moved about by
+    /// accelerating, braking and cornering. The air's share is the reason a
+    /// quick corner is worth more than a slow one of the same radius, and
+    /// leaving it out makes every corner the same corner: measured against
+    /// published lap times, a circuit whose character is its fast corners came
+    /// out slower than one whose character is a long straight, which is the
+    /// wrong way round.
+    ///
+    /// Downforce is shared front to rear in the same proportion as weight.
+    /// Real cars are trimmed away from that, and that trim is a setup choice
+    /// this model does not offer yet.
+    /// </summary>
     private static WheelLoads CalculateWheelLoads(
         CarConfig config,
         float longitudinalAcceleration,
-        float lateralAcceleration
+        float lateralAcceleration,
+        float speed
     )
     {
-        float totalLoad = config.MassKg * Gravity;
+        float downforceAcceleration = config.DownforceAccelPerSpeedSquared *
+                                      speed * speed;
+        float totalLoad = config.MassKg * (Gravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
         frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);

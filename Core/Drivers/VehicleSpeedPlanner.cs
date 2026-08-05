@@ -18,6 +18,7 @@ public sealed class VehicleSpeedPlanner
     private const float PerformanceCacheCurvatureStep = 0.001f;
     private const float InitialMaximumSpeedSearchMetersPerSecond = 50f;
     private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
+    private const float GravityMetersPerSecondSquared = 9.80665f;
     private const int MaximumSpeedSolveIterations = 12;
     private readonly Dictionary<long, float> _driveAccelerationCache = new(16_384);
     private readonly Dictionary<long, float> _brakeDecelerationCache = new(16_384);
@@ -29,6 +30,7 @@ public sealed class VehicleSpeedPlanner
     private int _planningStateSignature;
     private bool _hasPlanningStateSignature;
     private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
+    private float _planningDownforceAccelPerSpeedSquared;
     private DriverPlanningModifiers _driverModifiers = DriverPlanningModifiers.Neutral;
 
     public VehicleSpeedPlanner(VehicleSpeedPlanningConfig? config = null)
@@ -41,6 +43,8 @@ public sealed class VehicleSpeedPlanner
     public float EstimateLateralSpeedLimit(RaceCar car, float curvature)
     {
         ArgumentNullException.ThrowIfNull(car);
+        _planningDownforceAccelPerSpeedSquared =
+            MathF.Max(0f, car.CarConfig.DownforceAccelPerSpeedSquared);
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             car.State,
             car.CarConfig,
@@ -657,6 +661,27 @@ public sealed class VehicleSpeedPlanner
         return limits.MaximumDriveAcceleration - limits.LossAcceleration;
     }
 
+    /// <summary>
+    /// How fast a corner of this curvature can be taken.
+    ///
+    /// The limit handed in is what the tyres will bear standing still, and it
+    /// is not what they will bear at speed: the air presses the car down, the
+    /// load rises with the square of the speed, and grip rises with the load.
+    /// Tyre grip in this model does not care how hard it is being pressed, so
+    /// the limit is exactly proportional to the load and the whole thing has a
+    /// closed form. Cornering asks for v*v*k and the tyres offer
+    /// a0 * (1 + C*v*v/g), so
+    ///
+    ///     v*v * (k - a0*C/g) = a0
+    ///
+    /// and where the bracket runs out the corner is flat: the wings are
+    /// gaining grip at least as fast as the corner is asking for it, and the
+    /// only thing left holding the car back is how fast it can go at all. That
+    /// is a real car's behaviour and it is the whole character of a quick
+    /// circuit. Without it every corner is worth the same as a slow one of the
+    /// same radius, and a lap of Silverstone came out slower than a lap of
+    /// Shanghai, which is the wrong way round by some distance.
+    /// </summary>
     private float LateralSpeedLimit(
         float curvature,
         float lateralAccelerationLimit,
@@ -666,9 +691,18 @@ public sealed class VehicleSpeedPlanner
         float absoluteCurvature = MathF.Abs(curvature);
         if (absoluteCurvature <= Config.CurvatureEpsilon)
             return maximumSpeedMetersPerSecond;
+
+        float standingLimit = Math.Max(0f, lateralAccelerationLimit);
+        float curvatureTheAirPaysFor = standingLimit *
+                                       _planningDownforceAccelPerSpeedSquared /
+                                       GravityMetersPerSecondSquared;
+        float curvatureLeft = absoluteCurvature - curvatureTheAirPaysFor;
+        if (curvatureLeft <= 0f)
+            return maximumSpeedMetersPerSecond;
+
         return MathF.Min(
             maximumSpeedMetersPerSecond,
-            MathF.Sqrt(Math.Max(0f, lateralAccelerationLimit) / absoluteCurvature)
+            MathF.Sqrt(standingLimit / curvatureLeft)
         );
     }
 
@@ -792,6 +826,8 @@ public sealed class VehicleSpeedPlanner
         }
 
         _planningCar = car;
+        _planningDownforceAccelPerSpeedSquared =
+            MathF.Max(0f, car.CarConfig.DownforceAccelPerSpeedSquared);
         _planningTireConfig = car.TireConfig;
         _planningState ??= new CarState();
         _planningState.CopyFrom(car.State);

@@ -14,7 +14,19 @@ public sealed class CarConfig
 
     public float MaxCurvatureRequest { get; init; } = 0.32f;
     public float MaxDriveAcceleration { get; init; } = 12f;
-    public float MaxBrakeAccel { get; init; } = 12f;
+    /// <summary>
+    /// What the brakes themselves can do, before the tyres are asked whether
+    /// they will take it.
+    ///
+    /// Raised from 1.2g when downforce arrived, because it had quietly become
+    /// the thing that stopped the car. With wings the tyres will bear five g at
+    /// speed, and a cap below that means the model brakes like a road car at
+    /// the one moment a racing car does not. Calibrated with the wings and the
+    /// drag together against published lap times: the three test circuits land
+    /// within one per cent, cornering settles at 3.5g, braking at 4.1g and top
+    /// speed at 301 km/h, all of which is where a Formula 2 car lives.
+    /// </summary>
+    public float MaxBrakeAccel { get; init; } = 40f;
     public float TractionControlActivationUse { get; init; } = 0.99f;
     public float TractionControlStrength { get; init; } = 0.65f;
     public float MinPowerSpeed { get; init; } = 8f;
@@ -30,7 +42,28 @@ public sealed class CarConfig
     public float AttackDrivePowerLimitWatts { get; init; } = 455000f;
 
     public float RollingDragAccel { get; init; } = 0.18f;
-    public float AeroDragAccelPerSpeedSquared { get; init; } = 0.00046f;
+    public float AeroDragAccelPerSpeedSquared { get; init; } = 0.0009f;
+
+    /// <summary>
+    /// Downforce, as the acceleration it would add to gravity, per squared
+    /// metre per second.
+    ///
+    /// Written this way because that is how it is used: the wheels are pressed
+    /// down by weight and by air, and only their sum matters to the tyre. It
+    /// also makes the number readable - multiplied by the square of a speed it
+    /// gives an acceleration to set beside 9.81, so a car making its own weight
+    /// in downforce at fifty metres a second is carrying a coefficient of about
+    /// four thousandths.
+    ///
+    /// Zero is a car with no wings at all, which is what the model had before
+    /// this existed: grip that does not care how fast the car is going, so a
+    /// fast corner is worth no more than a slow one of the same radius.
+    ///
+    /// The default is a Formula 2 car, and the drag beside it was raised to
+    /// suit: a lift to drag ratio of about four, which is where real
+    /// single-seaters sit, and 301 km/h down the longest straight.
+    /// </summary>
+    public float DownforceAccelPerSpeedSquared { get; init; } = 0.0035f;
 
     /// <summary>
     /// Share of the car's own air resistance that disappears when it is fully
