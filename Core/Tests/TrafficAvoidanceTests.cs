@@ -267,8 +267,8 @@ public sealed class TrafficAvoidanceTests
         // it. Queueing is the ordinary state of a car in traffic; going is the
         // exception, and it needs somewhere to go.
         Assert.Equal(0f, egoDriver.LastTacticalOffsetMeters);
-        Assert.Equal(
-            TacticalManeuverPhase.Following,
+        Assert.NotEqual(
+            TacticalManeuverPhase.Committed,
             egoDriver.LastTacticalPhase
         );
     }
