@@ -47,23 +47,38 @@ public sealed class CarConfig
     public float AntiLockStrength { get; init; } = 0.65f;
     public float MinPowerSpeed { get; init; } = 8f;
     /// <summary>
-    /// Enough to cover a race and no more than that.
+    /// Enough for the middle setting to finish a race on full power, and only
+    /// just.
     ///
-    /// Set from the distance the car is built to race: a hundred and seventy
-    /// kilometres, which is a Formula 2 feature race and about thirty one laps
-    /// of a five and a half kilometre circuit. At the middle setting that lands
-    /// with something like a seventh of the pack left at the flag - a margin a
-    /// safety car or a wet patch can eat into, and not one anybody can spend
-    /// freely.
+    /// Sized against the distance the car is built to race - two hundred and
+    /// forty kilometres, between a Formula 2 feature race and a Formula 1 one,
+    /// forty four laps of a five and a half kilometre circuit. Normal comes
+    /// home with eight point eight per cent, which is eight tenths clear of
+    /// where the low charge limiter starts, so it runs the whole distance at
+    /// the power it was asked for and finishes with nothing to spare. Push and
+    /// Attack both end up inside the limiter, which is what a setting above the
+    /// middle one is supposed to mean: not something to leave on.
     ///
-    /// It was short of that before, by enough that every setting including the
-    /// most careful ran itself flat and finished the last laps on the low
-    /// charge limiter. Attack lost half a minute on its final lap that way, and
-    /// what any of the five settings gained early it handed back at the end -
-    /// they finished within four tenths of each other over the distance, which
-    /// is not five settings, it is one.
+    /// It was set to a round number before and never checked against a race.
+    /// Run over one every setting ran itself flat, including the setting whose
+    /// whole job is to save, and finished the last laps crawling - Attack lost
+    /// half a minute on its final lap that way. Over the distance the five came
+    /// out within four tenths of each other, because whatever any of them
+    /// gained early it handed back at the end. That is not five settings.
+    ///
+    /// Worth being honest about what this still does not buy. Attack finishes
+    /// the distance twenty six seconds up on Normal even after the limiter has
+    /// taken its share, so leaving it on remains the right thing to do and the
+    /// choice is not yet a real one. The settings differ by less than three per
+    /// cent in what they consume, because a lap's energy goes mostly into
+    /// pushing air aside and that hardly cares where the power cap sits, and
+    /// running the last laps on the limiter costs about four seconds. What
+    /// would make these five a decision is a way of saving charge that costs a
+    /// little lap time and a lot of energy - off the throttle before the
+    /// braking zone, which is what energy management actually is - and there is
+    /// none of that here.
     /// </summary>
-    public float BatteryCapacityJoules { get; init; } = 900000000f;
+    public float BatteryCapacityJoules { get; init; } = 1275000000f;
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
     public float LowSocPowerLimitStart { get; init; } = 0.08f;
     public float RegenEfficiency { get; init; } = 0.56f;
