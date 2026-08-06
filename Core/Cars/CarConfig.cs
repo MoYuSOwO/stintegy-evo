@@ -46,7 +46,24 @@ public sealed class CarConfig
     public float AntiLockActivationUse { get; init; } = 0.99f;
     public float AntiLockStrength { get; init; } = 0.65f;
     public float MinPowerSpeed { get; init; } = 8f;
-    public float BatteryCapacityJoules { get; init; } = 830000000f;
+    /// <summary>
+    /// Enough to cover a race and no more than that.
+    ///
+    /// Set from the distance the car is built to race: a hundred and seventy
+    /// kilometres, which is a Formula 2 feature race and about thirty one laps
+    /// of a five and a half kilometre circuit. At the middle setting that lands
+    /// with something like a seventh of the pack left at the flag - a margin a
+    /// safety car or a wet patch can eat into, and not one anybody can spend
+    /// freely.
+    ///
+    /// It was short of that before, by enough that every setting including the
+    /// most careful ran itself flat and finished the last laps on the low
+    /// charge limiter. Attack lost half a minute on its final lap that way, and
+    /// what any of the five settings gained early it handed back at the end -
+    /// they finished within four tenths of each other over the distance, which
+    /// is not five settings, it is one.
+    /// </summary>
+    public float BatteryCapacityJoules { get; init; } = 900000000f;
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
     public float LowSocPowerLimitStart { get; init; } = 0.08f;
     public float RegenEfficiency { get; init; } = 0.56f;
