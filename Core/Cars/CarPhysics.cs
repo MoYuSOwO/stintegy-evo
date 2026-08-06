@@ -498,9 +498,19 @@ public static class CarPhysics
         if (state.BatterySoc <= 0f)
             return 0f;
 
-        float socFactor = state.BatterySoc >= config.LowSocPowerLimitStart
-            ? 1f
-            : state.BatterySoc / Math.Max(config.LowSocPowerLimitStart, Epsilon);
+        float socFactor = 1f;
+        if (state.BatterySoc < config.LowSocPowerLimitStart)
+        {
+            socFactor = MathF.Pow(
+                Math.Clamp(
+                    state.BatterySoc /
+                    Math.Max(config.LowSocPowerLimitStart, Epsilon),
+                    0f,
+                    1f
+                ),
+                MathF.Max(config.LowSocPowerFalloffExponent, 1f)
+            );
+        }
 
         float forceLimitedAccel = config.MaxDriveAcceleration;
         float powerLimitedAccel =

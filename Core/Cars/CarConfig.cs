@@ -78,9 +78,29 @@ public sealed class CarConfig
     /// braking zone, which is what energy management actually is - and there is
     /// none of that here.
     /// </summary>
-    public float BatteryCapacityJoules { get; init; } = 1275000000f;
+    public float BatteryCapacityJoules { get; init; } = 1470000000f;
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
-    public float LowSocPowerLimitStart { get; init; } = 0.08f;
+    /// <summary>
+    /// The charge below which the pack stops being able to give what it is
+    /// asked for, and how sharply it falls away underneath.
+    ///
+    /// A racing battery does not empty like a bucket. Its voltage sags as the
+    /// charge goes, so the power it can deliver goes with it, gently at first
+    /// and then not gently at all - and the last of it is never released,
+    /// because taking a cell that low ruins it. So the useful bottom of the
+    /// pack is well above zero, and a car that plans to use everything is
+    /// planning on charge that was never there.
+    ///
+    /// Which makes this the price of overspending, and it has to be a real
+    /// price. Taken away as a straight line from a low starting point, it was
+    /// not one: a car that finished a race on a quarter of what it should have
+    /// had still enjoyed most of its power the whole way, and running the tank
+    /// dry cost about four seconds against the twenty six that spending it
+    /// bought. Squared, and starting where a real pack starts to fade, missing
+    /// by a little costs a little and missing by a lot costs the race.
+    /// </summary>
+    public float LowSocPowerLimitStart { get; init; } = 0.20f;
+    public float LowSocPowerFalloffExponent { get; init; } = 2f;
     public float RegenEfficiency { get; init; } = 0.56f;
     public float RegenPowerCapWatts { get; init; } = 260000f;
     public float SaveDrivePowerLimitWatts { get; init; } = 372000f;
