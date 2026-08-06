@@ -16,6 +16,16 @@ internal sealed class DriverPerformanceState
     private const float MaximumSegmentBrakeJitterFraction = 0.035f;
     private const float MaximumBrakeBiasErrorFraction = 0.07f;
 
+    /// <summary>
+    /// Where a driver settles an axle once they have felt it go past what it
+    /// has, for no feel for the limit at all and for all of it. One sits over
+    /// and hands most of the excess to the tyre to sort out; the other comes
+    /// back and rides the limit itself.
+    /// </summary>
+    private const float LimitSettleUseWithNoFeel = 1.06f;
+    private const float LimitSettleUseWithEveryFeel = 1.00f;
+    private const float MaximumLimitSettleJitter = 0.05f;
+
     private readonly DriverAbilities _abilities;
     private readonly DriverRandom _random;
     private int _lap = int.MinValue;
@@ -26,6 +36,7 @@ internal sealed class DriverPerformanceState
     private float _lapBrakeBiasFraction;
     private float _targetFrontBrakeBiasOffset;
     private float _gripEstimateBias;
+    private float _targetLimitSettleUse = 1f;
     private bool _gripInitialized;
 
     public DriverPerformanceState(DriverProfile profile, string carId)
@@ -63,6 +74,20 @@ internal sealed class DriverPerformanceState
     public float BrakeMarkerErrorMeters { get; private set; }
     public float LateralTargetErrorMeters { get; private set; }
     public float LocalSpeedErrorFraction { get; private set; }
+
+    /// <summary>
+    /// How far over its limit this driver is leaving an axle once they have
+    /// caught it, right now.
+    ///
+    /// Not one figure for a rating, because catching a car at the limit is not
+    /// something anybody does the same way twice. The rating sets where it sits
+    /// on average and how far it wanders: a great driver's barely leaves the
+    /// limit, a poor one's swings from a decent save to no save at all. Which
+    /// is also where a great driver's occasional lapse comes from - when this
+    /// lands above what the axle is actually being asked for, nothing is given
+    /// back, because they did not feel it in time.
+    /// </summary>
+    public float LimitSettleUse { get; private set; } = 1f;
     public float FrontBrakeBiasOffset { get; private set; }
     public float EstimatedGrip { get; private set; }
     public float EstimatedGripScale { get; private set; } = 1f;
@@ -83,6 +108,7 @@ internal sealed class DriverPerformanceState
         ActualGrip = MathF.Max(actualGrip, 1e-3f);
         EstimatedGrip = ActualGrip;
         EstimatedGripScale = 1f;
+        LimitSettleUse = _targetLimitSettleUse;
         _gripInitialized = true;
     }
 
@@ -111,6 +137,7 @@ internal sealed class DriverPerformanceState
         BrakeMarkerErrorMeters = Lerp(BrakeMarkerErrorMeters, _targetBrakeMarkerErrorMeters, response);
         LateralTargetErrorMeters = Lerp(LateralTargetErrorMeters, _targetLateralErrorMeters, response);
         LocalSpeedErrorFraction = Lerp(LocalSpeedErrorFraction, _targetLocalSpeedErrorFraction, response);
+        LimitSettleUse = Lerp(LimitSettleUse, _targetLimitSettleUse, response);
         FrontBrakeBiasOffset = Lerp(
             FrontBrakeBiasOffset,
             _targetFrontBrakeBiasOffset,
@@ -172,7 +199,22 @@ internal sealed class DriverPerformanceState
         _targetLateralErrorMeters = _random.NextNormal() * 0.25f * consistencyError;
         _targetLocalSpeedErrorFraction = _random.NextNormal() * 0.012f * consistencyError;
 
-        float brakeControlError = MathF.Pow(1f - EffectiveControl, 1.25f);
+        float limitControlError = MathF.Pow(1f - EffectiveControl, 1.25f);
+        _targetLimitSettleUse = Math.Clamp(
+            Lerp(
+                LimitSettleUseWithNoFeel,
+                LimitSettleUseWithEveryFeel,
+                EffectiveControl
+            ) +
+            _random.NextNormal() *
+            MaximumLimitSettleJitter *
+            limitControlError *
+            Lerp(0.4f, 1f, consistencyError),
+            0.97f,
+            1.15f
+        );
+
+        float brakeControlError = limitControlError;
         float brakeJitterScale = Lerp(0.2f, 1f, consistencyError);
         _targetFrontBrakeBiasOffset = Math.Clamp(
             _lapBrakeBiasFraction +

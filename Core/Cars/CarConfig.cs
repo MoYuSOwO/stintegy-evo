@@ -107,7 +107,7 @@ public sealed class CarConfig
     public float WakeVelocityDeficit { get; init; } = 0.11f;
     public float CorneringScrubAccel { get; init; } = 1.15f;
     public float OverLimitMinGripEfficiency { get; init; } = 0.8f;
-    public float OverLimitCostCap { get; init; } = 2.5f;
+    public float OverLimitCostCap { get; init; } = 0.2f;
 
     public float LoadTransferResponse { get; init; } = 8f;
     public float MinimumWheelLoadShare { get; init; } = 0.08f;

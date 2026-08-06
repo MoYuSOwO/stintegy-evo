@@ -53,6 +53,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     public DriverProfile Profile { get; }
     public float TireEnergyEfficiency => _performance?.TireEnergyEfficiency ?? 1f;
     public float CorneringEfficiency => _performance?.PaceEfficiency ?? 1f;
+    public float LimitSettleUse =>
+        _performance?.LimitSettleUse ?? float.PositiveInfinity;
     public VehicleSpeedLookahead CurrentSpeedLookahead =>
         _currentPlan.SpeedLookahead;
     public VehiclePathPrediction CurrentPathPrediction => _currentPlan.Path;

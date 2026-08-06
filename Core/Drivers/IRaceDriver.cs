@@ -26,6 +26,21 @@ public interface IRaceDriver
     /// </summary>
     float CorneringEfficiency => 1f;
 
+    /// <summary>
+    /// The share of an axle's grip this driver leaves it at once they have
+    /// felt it go past what it has.
+    ///
+    /// Asking a tyre for more than it holds is not something a driver keeps
+    /// doing; they feel it and give some of it back, and how much comes back
+    /// is what separates one pair of hands from another. Whatever is still
+    /// over when they are done is the tyre's problem, and the tyre answers it
+    /// by returning less than it was asked for.
+    ///
+    /// Infinity is a driver who never feels it and gives nothing back, which
+    /// is how this behaved before anybody did.
+    /// </summary>
+    float LimitSettleUse => float.PositiveInfinity;
+
     void Initialize(in RaceDriverInitContext context)
     {
     }

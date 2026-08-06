@@ -219,10 +219,13 @@ public static class CarPhysics
         }
 
         float corneringEfficiency = Math.Clamp(input.CorneringEfficiency, 0.05f, 1f);
+        float limitSettleUse = MathF.Max(input.LimitSettleUse, 0.5f);
         AxleResult front = ResolveAxle(
-            config, frontLatRequest, frontLongRequest, frontGrip, corneringEfficiency);
+            config, frontLatRequest, frontLongRequest, frontGrip,
+            corneringEfficiency, limitSettleUse);
         AxleResult rear = ResolveAxle(
-            config, rearLatRequest, rearLongRequest, rearGrip, corneringEfficiency);
+            config, rearLatRequest, rearLongRequest, rearGrip,
+            corneringEfficiency, limitSettleUse);
 
         float actualLateralAccel = front.LateralAccel + rear.LateralAccel;
         float driveAccelActual = Math.Max(0f, front.LongitudinalAccel) + Math.Max(0f, rear.LongitudinalAccel);
@@ -622,7 +625,8 @@ public static class CarPhysics
         float lateralRequest,
         float longitudinalRequest,
         float grip,
-        float corneringEfficiency = 1f
+        float corneringEfficiency = 1f,
+        float limitSettleUse = float.PositiveInfinity
     )
     {
         if (grip <= Epsilon)
@@ -631,6 +635,23 @@ public static class CarPhysics
         float lateralUse = lateralRequest / (grip * corneringEfficiency);
         float longitudinalUse = longitudinalRequest / grip;
         float combinedUse = MathF.Sqrt(lateralUse * lateralUse + longitudinalUse * longitudinalUse);
+
+        // Asked for more than the axle holds, the driver gets first go at
+        // putting it right, and only what they leave behind reaches the tyre.
+        // Here rather than anywhere in the driver because this is where the
+        // number they are reacting to exists: one axle's share of one axle's
+        // grip, which is the thing that actually lets go. Worked out from what
+        // the whole car is doing, the loose end averages away against the end
+        // that is fine, and the driver never feels the one that matters.
+        if (combinedUse > 1f && limitSettleUse < combinedUse)
+        {
+            float given = limitSettleUse / combinedUse;
+            lateralRequest *= given;
+            longitudinalRequest *= given;
+            lateralUse *= given;
+            longitudinalUse *= given;
+            combinedUse = limitSettleUse;
+        }
 
         if (combinedUse <= 1f)
             return new AxleResult(
