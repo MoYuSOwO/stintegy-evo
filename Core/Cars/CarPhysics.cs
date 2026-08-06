@@ -122,6 +122,60 @@ public static class CarPhysics
         );
     }
 
+    /// <summary>
+    /// Only how hard the car will corner, at a speed, round a curvature, with
+    /// the weight where a given longitudinal acceleration puts it.
+    ///
+    /// The same figure the full estimate returns, and reached the same way, but
+    /// without the drive limit, the brake distribution or the losses beside it.
+    /// A speed plan that wants to know whether a corner survives the braking it
+    /// is planning has to ask this once per point of the horizon, every frame,
+    /// for every car, and everything the full answer carries is thrown away
+    /// unread - including the battery model, which is the dearest part of it.
+    /// </summary>
+    internal static float EstimateLateralAccelerationLimit(
+        CarState state,
+        CarConfig config,
+        TireConfig tires,
+        float speed,
+        float curvature,
+        float gripUsage,
+        float assumedLongitudinalAcceleration,
+        float corneringEfficiency
+    )
+    {
+        WheelLoads loads = CalculateWheelLoads(
+            config,
+            assumedLongitudinalAcceleration,
+            speed * speed * curvature,
+            speed
+        );
+        float usage = Math.Clamp(gripUsage, 0.05f, 1f);
+        float mass = Math.Max(config.MassKg, Epsilon);
+        float frontGrip = (
+            loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
+            loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
+        ) / mass * usage;
+        float rearGrip = (
+            loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
+            loads.RearRight * CalculateTireMu(tires, state.RearRight)
+        ) / mass * usage;
+
+        float frontDemandShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
+        float rearDemandShare = 1f - frontDemandShare;
+        float frontLimit = frontDemandShare <= Epsilon
+            ? float.PositiveInfinity
+            : frontGrip / frontDemandShare;
+        float rearLimit = rearDemandShare <= Epsilon
+            ? float.PositiveInfinity
+            : rearGrip / rearDemandShare;
+        return MathF.Max(
+            0f,
+            MathF.Min(frontLimit, rearLimit) *
+            Math.Clamp(corneringEfficiency, 0.05f, 1f)
+        );
+    }
+
     public static void Step(
         CarState state,
         CarConfig config,

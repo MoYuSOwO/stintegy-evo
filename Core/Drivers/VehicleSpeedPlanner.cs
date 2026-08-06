@@ -31,6 +31,8 @@ public sealed class VehicleSpeedPlanner
     private bool _hasPlanningStateSignature;
     private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
     private float _planningDownforceAccelPerSpeedSquared;
+    private const int LoadTransferPasses = 3;
+
     private DriverPlanningModifiers _driverModifiers = DriverPlanningModifiers.Neutral;
 
     public VehicleSpeedPlanner(VehicleSpeedPlanningConfig? config = null)
@@ -751,25 +753,122 @@ public sealed class VehicleSpeedPlanner
         float lateralAccelerationLimit
     )
     {
-        ApplyBackwardOpenPass(
-            car,
-            curvatures,
-            count,
-            segmentLengths,
-            speedLimits,
-            speeds,
-            lateralAccelerationLimit
-        );
-        speeds[0] = MathF.Min(speeds[0], MathF.Max(0f, car.State.Speed));
-        ApplyForwardOpenPass(
-            car,
-            curvatures,
-            count,
-            segmentLengths,
-            speedLimits,
-            speeds,
-            lateralAccelerationLimit
-        );
+        for (int pass = 0; pass < LoadTransferPasses; pass++)
+        {
+            ApplyBackwardOpenPass(
+                car,
+                curvatures,
+                count,
+                segmentLengths,
+                speedLimits,
+                speeds,
+                lateralAccelerationLimit
+            );
+            speeds[0] = MathF.Min(speeds[0], MathF.Max(0f, car.State.Speed));
+            // Kept for the last time round only. Tightening a corner and
+            // running the braking back from it can only lower speeds, and what
+            // the forward pass settles - how fast the car can be going here
+            // having accelerated from where it actually is - does not change
+            // when a point further along is lowered. Running it every time
+            // round was most of what the extra passes cost.
+            bool settled = pass == LoadTransferPasses - 1 ||
+                           !TightenCornersForTheBrakingIntoThem(
+                               car,
+                               curvatures,
+                               count,
+                               segmentLengths,
+                               speeds,
+                               speedLimits
+                           );
+            if (!settled)
+                continue;
+
+            ApplyForwardOpenPass(
+                car,
+                curvatures,
+                count,
+                segmentLengths,
+                speedLimits,
+                speeds,
+                lateralAccelerationLimit
+            );
+            break;
+        }
+    }
+
+    /// <summary>
+    /// Brings each corner speed down to what the car can still hold while it is
+    /// braking for that corner.
+    ///
+    /// The friction budget was being charged one way only. Cornering took grip
+    /// away from the brakes, correctly; braking took nothing away from the
+    /// cornering, which is wrong, and wrong in the place it costs most. Braking
+    /// moves weight off the rear, and the rear is the axle that runs out of
+    /// cornering first, because the share of the corner it has to carry is
+    /// fixed by where the mass sits and cannot move with the load - the car
+    /// would turn on its own if it did.
+    ///
+    /// So the corner speed and the braking that reaches it decide each other,
+    /// and the chain has to be run more than once to settle them. Only ever
+    /// lowers a limit, so the passes converge downwards instead of chasing each
+    /// other, and it stops early once a pass changes nothing.
+    ///
+    /// This is what a driver does by feel and calls trail braking: on the
+    /// brakes earlier, off them as the corner arrives, because there is not
+    /// enough of the rear axle for all of both.
+    /// </summary>
+    private bool TightenCornersForTheBrakingIntoThem(
+        RaceCar car,
+        float[] curvatures,
+        int count,
+        float[] segmentLengths,
+        float[] speeds,
+        float[] speedLimits
+    )
+    {
+        CarState state = _planningState ?? car.State;
+        float gripUsage = Config.GetAccelerationUsage(_planningStrategy);
+        bool changed = false;
+        for (int i = 0; i < count - 1; i++)
+        {
+            float absoluteCurvature = MathF.Abs(curvatures[i]);
+            if (absoluteCurvature <= 1e-4f || segmentLengths[i] <= 1e-5f)
+                continue;
+
+            float longitudinal = (
+                speeds[i + 1] * speeds[i + 1] - speeds[i] * speeds[i]
+            ) / (2f * segmentLengths[i]);
+            if (longitudinal >= 0f)
+                continue;
+
+            float lateral = CarPhysics.EstimateLateralAccelerationLimit(
+                state,
+                car.CarConfig,
+                car.TireConfig,
+                speeds[i],
+                curvatures[i],
+                gripUsage,
+                longitudinal,
+                _driverModifiers.PaceEfficiency
+            ) * _driverModifiers.EstimatedGripScale;
+            if (lateral <= 0f)
+                continue;
+
+            // Turned straight into a speed rather than through the standing
+            // form, because this limit already carries the downforce of the
+            // speed it was asked at and the standing form would add the wings
+            // a second time.
+            float holdable = MathF.Sqrt(lateral / absoluteCurvature);
+            if (holdable >=
+                speedLimits[i] - Config.ConvergenceToleranceMetersPerSecond)
+            {
+                continue;
+            }
+
+            speedLimits[i] = holdable;
+            changed = true;
+        }
+        return changed;
     }
 
     private static void FillLookahead(

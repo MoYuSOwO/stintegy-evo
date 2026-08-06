@@ -39,7 +39,7 @@ public sealed class TireConfig
 
     public float LateralHeatRate { get; init; } = 1.15f;
     public float LongitudinalHeatRate { get; init; } = 0.80f;
-    public float NearLimitHeatGain { get; init; } = 4.0f;
+    public float NearLimitHeatGain { get; init; } = 1.5f;
 
     public float LateralWearRate { get; init; } = 0.00055f;
     public float LongitudinalWearRate { get; init; } = 0.000146f;
