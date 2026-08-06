@@ -193,9 +193,13 @@ public static class CarPhysics
                 out float frontBrake,
                 out float rearBrake
             );
+            frontBrake = ApplyAntiLock(
+                config, frontLatRequest, frontBrake, frontGrip);
+            rearBrake = ApplyAntiLock(
+                config, rearLatRequest, rearBrake, rearGrip);
             frontLongRequest = -frontBrake;
             rearLongRequest = -rearBrake;
-            requestedLongitudinalAccel = -brakeRequest;
+            requestedLongitudinalAccel = -(frontBrake + rearBrake);
         }
 
         float tractionControlCutAccel = 0f;
@@ -453,6 +457,34 @@ public static class CarPhysics
     {
         float remainingSquared = grip * grip - lateralAcceleration * lateralAcceleration;
         return MathF.Sqrt(Math.Max(0f, remainingSquared));
+    }
+
+    /// <summary>
+    /// Holds an axle's brakes back before the tyre gives up, the mirror of the
+    /// traction control below and written the same way so the pair can be read
+    /// together.
+    /// </summary>
+    private static float ApplyAntiLock(
+        CarConfig config,
+        float lateralRequest,
+        float brakeRequest,
+        float grip
+    )
+    {
+        float strength = Math.Clamp(config.AntiLockStrength, 0f, 1f);
+        if (brakeRequest <= 0f || grip <= Epsilon || strength <= 0f)
+            return brakeRequest;
+
+        float activationUse = Math.Clamp(
+            config.AntiLockActivationUse,
+            0.05f,
+            1f
+        );
+        float available = RemainingLongitudinalGrip(
+            grip * activationUse,
+            lateralRequest
+        );
+        return Lerp(brakeRequest, Math.Min(brakeRequest, available), strength);
     }
 
     private static float ApplyRearTractionControl(

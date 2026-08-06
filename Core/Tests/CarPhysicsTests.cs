@@ -258,8 +258,12 @@ public sealed class CarPhysicsTests
             1f / 60f
         );
 
+        // The anti-lock takes most of the excess a bad split creates, so what
+        // the bias costs is mainly braking the car never gets rather than a
+        // tyre driven past what it has. Only most, though: some is still there,
+        // and the balanced car has none of it.
         Assert.InRange(optimal.Telemetry.OverLimit, 0f, 1e-5f);
-        Assert.True(frontBiased.Telemetry.OverLimit > 0.02f);
+        Assert.True(frontBiased.Telemetry.OverLimit > 1e-3f);
         Assert.True(
             frontBiased.Telemetry.ActualLongitudinalAccel >
             optimal.Telemetry.ActualLongitudinalAccel + 0.1f,

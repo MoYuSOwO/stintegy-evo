@@ -29,6 +29,22 @@ public sealed class CarConfig
     public float MaxBrakeAccel { get; init; } = 40f;
     public float TractionControlActivationUse { get; init; } = 0.99f;
     public float TractionControlStrength { get; init; } = 0.65f;
+
+    /// <summary>
+    /// Where the anti-lock starts holding the brakes back, and how much of the
+    /// excess it takes away, in the same terms as the traction control beside
+    /// it. Both axles, because both of them lock.
+    ///
+    /// Strength deliberately short of one: what it removes is braking the car
+    /// does not get back, so an anti-lock that held the tyre exactly at its
+    /// limit would be leaving the corner entry to a system that cannot see the
+    /// corner. Taking most of the excess and no more lets the driver keep
+    /// asking for slightly too much, which is what they do.
+    ///
+    /// Zero switches it off.
+    /// </summary>
+    public float AntiLockActivationUse { get; init; } = 0.99f;
+    public float AntiLockStrength { get; init; } = 0.65f;
     public float MinPowerSpeed { get; init; } = 8f;
     public float BatteryCapacityJoules { get; init; } = 830000000f;
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
