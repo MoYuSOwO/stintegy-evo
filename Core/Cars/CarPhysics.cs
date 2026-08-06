@@ -905,14 +905,8 @@ public static class CarPhysics
             0f,
             1f - Epsilon
         );
-        // Measured against cornering alone, not against everything the tyre is
-        // doing. Braking takes a tyre close to its limit whatever discipline
-        // the driver has been asked for, so a gauge that counted it would read
-        // the same for a car being nursed and a car being thrown at the corner
-        // - which is the whole distinction this is here to make. The heat of
-        // hard braking is already charged, by the longitudinal term.
         float nearLimitProgress = Math.Clamp(
-            (normalizedLateralUse - nearLimitHeatStart) /
+            (combinedUse - nearLimitHeatStart) /
             Math.Max(1f - nearLimitHeatStart, Epsilon),
             0f,
             1f
@@ -953,8 +947,23 @@ public static class CarPhysics
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
         ) * dt;
+        // The carcass makes its own heat by flexing, so without somewhere to put
+        // it the only way out is backwards through the tread, and it has to
+        // stand hotter than the tread for that to happen - permanently, by an
+        // amount nothing the driver does can change. It does have somewhere to
+        // put it: the rim, which is metal and has air moving over it, and the
+        // gas inside the tyre. Both are stood in for here by the outside air.
+        //
+        // Far slower than the tread, which is lying on the road inside its own
+        // hurricane. On its own this path takes something like twenty minutes,
+        // against the tread's forty seconds, which is what makes a soaked
+        // carcass something a stint has to live with rather than something a
+        // straight fixes.
+        float coreToAir = TireConfig.CoreAirCoolingRate *
+                          airCoolingMultiplier *
+                          (tire.CoreTempC - airTempC);
         tire.CoreTempC += (
-            rollingCoreHeat + surfaceToCore
+            rollingCoreHeat + surfaceToCore - coreToAir
         ) / TireConfig.CoreHeatCapacityRatio * dt;
 
         float tempWearFactor = 1f + Math.Max(0f, tire.SurfaceTempC - tires.HotWearStartTempC) * tires.HotWearSlope;

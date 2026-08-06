@@ -969,7 +969,7 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void IsolatedCoreDoesNotExchangeHeatDirectlyWithAmbientAir()
+    public void CoreShedsHeatToTheAirFarMoreSlowlyThanTheTread()
     {
         CarConfig car = new();
         TireConfig tires = new()
@@ -979,21 +979,24 @@ public sealed class CarPhysicsTests
         };
         CarState state = CreateState(speed: 0f, batterySoc: 0.8f, tires);
 
-        CarPhysics.Step(
+        StepMany(
             state,
             car,
             tires,
-            new CarPhysicsStepInput(
-                new DriverInput(0f, 0f),
-                CarStrategy.Default,
-                AirTempC: 25f,
-                TrackTempC: 25f
-            ),
-            1f / 60f
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            steps: 60
         );
 
-        Assert.True(AverageSurfaceTemp(state) < 100f);
-        Assert.Equal(100f, AverageCoreTemp(state), precision: 4);
+        float treadDrop = 100f - AverageSurfaceTemp(state);
+        float coreDrop = 100f - AverageCoreTemp(state);
+        // The carcass is not sealed - it reaches the outside through the rim
+        // and the gas inside - but it is buried, and the tread it is buried
+        // under is lying on the road inside its own hurricane. Both cool; only
+        // one of them cools at a rate a straight is long enough to notice.
+        Assert.True(treadDrop > 0f);
+        Assert.True(coreDrop > 0f);
+        Assert.True(treadDrop > coreDrop * 10f);
     }
 
     [Fact]
