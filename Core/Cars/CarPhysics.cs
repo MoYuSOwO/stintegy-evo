@@ -905,8 +905,14 @@ public static class CarPhysics
             0f,
             1f - Epsilon
         );
+        // Measured against cornering alone, not against everything the tyre is
+        // doing. Braking takes a tyre close to its limit whatever discipline
+        // the driver has been asked for, so a gauge that counted it would read
+        // the same for a car being nursed and a car being thrown at the corner
+        // - which is the whole distinction this is here to make. The heat of
+        // hard braking is already charged, by the longitudinal term.
         float nearLimitProgress = Math.Clamp(
-            (combinedUse - nearLimitHeatStart) /
+            (normalizedLateralUse - nearLimitHeatStart) /
             Math.Max(1f - nearLimitHeatStart, Epsilon),
             0f,
             1f

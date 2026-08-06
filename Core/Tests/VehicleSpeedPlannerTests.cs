@@ -40,10 +40,14 @@ public sealed class VehicleSpeedPlannerTests
         Assert.InRange(between, light, normal);
         Assert.Equal((light + normal) * 0.5f, between, precision: 4);
 
+        // Somewhere the named settings do not land, so it is the custom value
+        // coming back and not one of them. Taken from the ends rather than
+        // written down, because where those ends sit is a calibration.
+        float betweenNamedSettings = (normal + push) * 0.5f;
         Assert.Equal(
-            0.972f,
+            betweenNamedSettings,
             config.GetAccelerationUsage(
-                CarStrategy.Default.WithTireGripUsage(0.972f)
+                CarStrategy.Default.WithTireGripUsage(betweenNamedSettings)
             )
         );
     }

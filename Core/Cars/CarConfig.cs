@@ -51,11 +51,11 @@ public sealed class CarConfig
     public float LowSocPowerLimitStart { get; init; } = 0.08f;
     public float RegenEfficiency { get; init; } = 0.56f;
     public float RegenPowerCapWatts { get; init; } = 260000f;
-    public float SaveDrivePowerLimitWatts { get; init; } = 330000f;
-    public float EcoDrivePowerLimitWatts { get; init; } = 360000f;
+    public float SaveDrivePowerLimitWatts { get; init; } = 372000f;
+    public float EcoDrivePowerLimitWatts { get; init; } = 381000f;
     public float NormalDrivePowerLimitWatts { get; init; } = 390000f;
-    public float PushDrivePowerLimitWatts { get; init; } = 420000f;
-    public float AttackDrivePowerLimitWatts { get; init; } = 455000f;
+    public float PushDrivePowerLimitWatts { get; init; } = 400000f;
+    public float AttackDrivePowerLimitWatts { get; init; } = 409000f;
 
     public float RollingDragAccel { get; init; } = 0.18f;
     public float AeroDragAccelPerSpeedSquared { get; init; } = 0.0009f;

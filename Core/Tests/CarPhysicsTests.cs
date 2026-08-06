@@ -670,11 +670,20 @@ public sealed class CarPhysicsTests
         CarState middleIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState highIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState hot = CreateState(speed: 30f, batterySoc: 0.8f, tires);
-        SetTireTemps(cold, surfaceTempC: 75f, coreTempC: 90f);
-        SetTireTemps(lowIdeal, surfaceTempC: 85f, coreTempC: 90f);
-        SetTireTemps(middleIdeal, surfaceTempC: 100f, coreTempC: 90f);
-        SetTireTemps(highIdeal, surfaceTempC: 115f, coreTempC: 90f);
-        SetTireTemps(hot, surfaceTempC: 125f, coreTempC: 90f);
+        // Read off the compound rather than written down, so moving the window
+        // moves the test with it instead of leaving it asserting about a band
+        // no tyre has any more.
+        float bandLow = tires.IdealSurfaceTempLowC;
+        float bandHigh = tires.IdealSurfaceTempHighC;
+        SetTireTemps(cold, surfaceTempC: bandLow - 10f, coreTempC: 90f);
+        SetTireTemps(lowIdeal, surfaceTempC: bandLow, coreTempC: 90f);
+        SetTireTemps(
+            middleIdeal,
+            surfaceTempC: (bandLow + bandHigh) * 0.5f,
+            coreTempC: 90f
+        );
+        SetTireTemps(highIdeal, surfaceTempC: bandHigh, coreTempC: 90f);
+        SetTireTemps(hot, surfaceTempC: bandHigh + 10f, coreTempC: 90f);
 
         foreach (CarState state in new[]
                  {
@@ -997,12 +1006,22 @@ public sealed class CarPhysicsTests
             StartingCoreTempC = 70f
         };
         CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
+        // Working the tyre hard enough that the tread actually heats: the point
+        // is which of the two follows the other, and a corner the tyre strolls
+        // through leaves nothing for either of them to follow.
+        float curvature = CurvatureForGripShare(
+            state,
+            car,
+            tires,
+            CarStrategy.Default,
+            0.9f
+        );
 
         StepMany(
             state,
             car,
             tires,
-            new DriverInput(0.012f, 0f),
+            new DriverInput(curvature, 0f),
             CarStrategy.Default,
             steps: 120
         );
