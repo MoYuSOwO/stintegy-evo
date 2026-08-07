@@ -48,7 +48,7 @@ public sealed class VehicleSpeedPlanner
     public float EstimateLateralSpeedLimit(RaceCar car, float curvature)
     {
         ArgumentNullException.ThrowIfNull(car);
-        _planningDownforceAccelPerSpeedSquared =
+        float downforceAccelPerSpeedSquared =
             CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
                 car.State,
                 car.CarConfig
@@ -65,7 +65,8 @@ public sealed class VehicleSpeedPlanner
         return LateralSpeedLimit(
             curvature,
             limits.LateralAccelerationLimit,
-            EstimateMaximumSpeedMetersPerSecond(car)
+            EstimateMaximumSpeedMetersPerSecond(car),
+            downforceAccelPerSpeedSquared
         );
     }
 
@@ -172,7 +173,8 @@ public sealed class VehicleSpeedPlanner
                 speedLimits[i] = LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
+                    _planningMaximumSpeedMetersPerSecond,
+                    _planningDownforceAccelPerSpeedSquared
                 );
                 speeds[i] = speedLimits[i];
                 if (i > 0)
@@ -367,7 +369,8 @@ public sealed class VehicleSpeedPlanner
                     float lateralLimit = LateralSpeedLimit(
                         planningCurvature,
                         lateralAccelerationLimit,
-                        _planningMaximumSpeedMetersPerSecond
+                        _planningMaximumSpeedMetersPerSecond,
+                        _planningDownforceAccelPerSpeedSquared
                     );
                     speedLimits[i] = lateralLimit;
                     speeds[i] = speedLimits[i];
@@ -583,7 +586,8 @@ public sealed class VehicleSpeedPlanner
                 LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
+                    _planningMaximumSpeedMetersPerSecond,
+                    _planningDownforceAccelPerSpeedSquared
                 ),
                 MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * midpointAcceleration * stepDistance))
             );
@@ -617,7 +621,8 @@ public sealed class VehicleSpeedPlanner
                 LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
+                    _planningMaximumSpeedMetersPerSecond,
+                    _planningDownforceAccelPerSpeedSquared
                 ),
                 MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * midpointDeceleration * stepDistance))
             );
@@ -749,7 +754,8 @@ public sealed class VehicleSpeedPlanner
     private float LateralSpeedLimit(
         float curvature,
         float lateralAccelerationLimit,
-        float maximumSpeedMetersPerSecond
+        float maximumSpeedMetersPerSecond,
+        float downforceAccelPerSpeedSquared
     )
     {
         float absoluteCurvature = MathF.Abs(curvature);
@@ -758,7 +764,7 @@ public sealed class VehicleSpeedPlanner
 
         float standingLimit = Math.Max(0f, lateralAccelerationLimit);
         float curvatureTheAirPaysFor = standingLimit *
-                                       _planningDownforceAccelPerSpeedSquared /
+                                       downforceAccelPerSpeedSquared /
                                        GravityMetersPerSecondSquared;
         float curvatureLeft = absoluteCurvature - curvatureTheAirPaysFor;
         if (curvatureLeft <= 0f)

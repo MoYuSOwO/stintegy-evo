@@ -238,6 +238,44 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
+    public void LateralSpeedLimitQueryDoesNotChangeAnExistingPlanningSnapshot()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar plannedCar = CreateCar(track, CarStrategy.Default);
+        RaceCar queriedCar = CreateCar(
+            track,
+            CarStrategy.Default,
+            new CarConfig { DownforceAccelPerSpeedSquared = 0f }
+        );
+        VehicleSpeedPlanner planner = new();
+        VehicleSpeedLookahead beforeQuery = ReferenceLookahead(
+            planner,
+            plannedCar,
+            track
+        );
+
+        planner.EstimateLateralSpeedLimit(
+            queriedCar,
+            curvature: 0.01f
+        );
+        VehicleSpeedLookahead afterQuery = ReferenceLookahead(
+            planner,
+            plannedCar,
+            track
+        );
+
+        Assert.Equal(beforeQuery.Count, afterQuery.Count);
+        for (int i = 0; i < beforeQuery.Count; i++)
+        {
+            Assert.Equal(
+                beforeQuery[i].TargetSpeed,
+                afterQuery[i].TargetSpeed,
+                precision: 5
+            );
+        }
+    }
+
+    [Fact]
     public void ReferenceLookaheadRefreshesWhenWakeDownforceLossChanges()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
