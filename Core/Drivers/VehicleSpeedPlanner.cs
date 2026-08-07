@@ -1,6 +1,5 @@
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -20,14 +19,16 @@ public sealed class VehicleSpeedPlanner
     private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
     private const float GravityMetersPerSecondSquared = 9.80665f;
     private const int MaximumSpeedSolveIterations = 12;
-    private readonly Dictionary<long, float> _driveAccelerationCache = new(16_384);
-    private readonly Dictionary<long, float> _brakeDecelerationCache = new(16_384);
+    private readonly PerformanceLookupCache _driveAccelerationCache = new();
+    private readonly PerformanceLookupCache _brakeDecelerationCache = new();
     private readonly CarState _optimisticState = new();
+    private readonly PreparedPathSpeedPlan _preparedFreePathPlan = new();
     private RaceCar? _planningCar;
     private CarState? _planningState;
     private TireConfig? _planningTireConfig;
     private CarStrategy _planningStrategy;
     private int _planningStateSignature;
+    private long _planningSnapshotGeneration;
     private bool _hasPlanningStateSignature;
     private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
     private float _planningDownforceAccelPerSpeedSquared;
@@ -212,6 +213,31 @@ public sealed class VehicleSpeedPlanner
             car,
             path,
             destination,
+            capturePreparedFreePlan: false,
+            usePreparedFreePlan: false,
+            track: null,
+            frame: default,
+            egoSnapshotIndex: -1,
+            in noTrafficMemory,
+            out _,
+            out _,
+            out _
+        );
+    }
+
+    internal DynamicPathSpeedPlan PreparePredictedPathForTraffic(
+        VehicleSpeedLookahead destination,
+        RaceCar car,
+        VehiclePathPrediction path
+    )
+    {
+        TrafficConstraintMemory noTrafficMemory = default;
+        return PlanPredictedPathCore(
+            car,
+            path,
+            destination,
+            capturePreparedFreePlan: true,
+            usePreparedFreePlan: false,
             track: null,
             frame: default,
             egoSnapshotIndex: -1,
@@ -237,6 +263,8 @@ public sealed class VehicleSpeedPlanner
             car,
             path,
             destination,
+            capturePreparedFreePlan: false,
+            usePreparedFreePlan: true,
             track,
             frame,
             egoSnapshotIndex,
@@ -257,6 +285,8 @@ public sealed class VehicleSpeedPlanner
         RaceCar car,
         VehiclePathPrediction path,
         VehicleSpeedLookahead destination,
+        bool capturePreparedFreePlan,
+        bool usePreparedFreePlan,
         TrackData? track,
         RaceFrameSnapshot frame,
         int egoSnapshotIndex,
@@ -300,50 +330,76 @@ public sealed class VehicleSpeedPlanner
                 _driverModifiers.EstimatedGripScale;
 
             float maximumAbsoluteCurvature = 0f;
-            for (int i = 0; i < count; i++)
+            bool restoredPreparedFreePlan = usePreparedFreePlan &&
+                _preparedFreePathPlan.TryRestore(
+                    path,
+                    _planningSnapshotGeneration,
+                    curvatures,
+                    segmentLengths,
+                    speedLimits,
+                    speeds,
+                    out maximumAbsoluteCurvature
+                );
+            if (!restoredPreparedFreePlan)
             {
-                VehiclePathPredictionPoint point = path[i];
-                float planningCurvature = point.CommandedCurvature;
-                if (i == 0)
+                maximumAbsoluteCurvature = 0f;
+                for (int i = 0; i < count; i++)
                 {
-                    planningCurvature = GreaterMagnitude(
+                    VehiclePathPredictionPoint point = path[i];
+                    float planningCurvature = point.CommandedCurvature;
+                    if (i == 0)
+                    {
+                        planningCurvature = GreaterMagnitude(
+                            planningCurvature,
+                            car.State.Telemetry.ActualCurvature
+                        );
+                    }
+                    maximumAbsoluteCurvature = MathF.Max(
+                        maximumAbsoluteCurvature,
+                        MathF.Abs(planningCurvature)
+                    );
+                    curvatures[i] = planningCurvature;
+                    float lateralLimit = LateralSpeedLimit(
                         planningCurvature,
-                        car.State.Telemetry.ActualCurvature
+                        lateralAccelerationLimit,
+                        _planningMaximumSpeedMetersPerSecond
+                    );
+                    speedLimits[i] = lateralLimit;
+                    speeds[i] = speedLimits[i];
+                    if (i == 0)
+                        continue;
+
+                    segmentLengths[i - 1] = MathF.Max(
+                        0f,
+                        point.DistanceMeters - path[i - 1].DistanceMeters
                     );
                 }
-                maximumAbsoluteCurvature = MathF.Max(
-                    maximumAbsoluteCurvature,
-                    MathF.Abs(planningCurvature)
-                );
-                curvatures[i] = planningCurvature;
-                float lateralLimit = LateralSpeedLimit(
-                    planningCurvature,
-                    lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
-                );
-                speedLimits[i] = lateralLimit;
-                speeds[i] = speedLimits[i];
-                if (i == 0)
-                    continue;
 
-                segmentLengths[i - 1] = MathF.Max(
-                    0f,
-                    point.DistanceMeters - path[i - 1].DistanceMeters
+                // This is an acyclic/open chain. One backward pass propagates all future
+                // braking constraints to the start, then one forward pass propagates the
+                // actual entry speed and acceleration reachability to the end.
+                PlanOpenChain(
+                    car,
+                    curvatures,
+                    count,
+                    segmentLengths,
+                    speedLimits,
+                    speeds,
+                    lateralAccelerationLimit
                 );
+                if (capturePreparedFreePlan)
+                {
+                    _preparedFreePathPlan.Capture(
+                        path,
+                        _planningSnapshotGeneration,
+                        curvatures,
+                        segmentLengths,
+                        speedLimits,
+                        speeds,
+                        maximumAbsoluteCurvature
+                    );
+                }
             }
-
-            // This is an acyclic/open chain. One backward pass propagates all future
-            // braking constraints to the start, then one forward pass propagates the
-            // actual entry speed and acceleration reachability to the end.
-            PlanOpenChain(
-                car,
-                curvatures,
-                count,
-                segmentLengths,
-                speedLimits,
-                speeds,
-                lateralAccelerationLimit
-            );
             if (trafficEnabled)
             {
                 TrafficConflictEvaluator.FillArrivalTimes(
@@ -586,12 +642,12 @@ public sealed class VehicleSpeedPlanner
             float next = Math.Max(0f, drive - limits.LossAcceleration);
             if (MathF.Abs(next - acceleration) < 1e-3f)
             {
-                _driveAccelerationCache[cacheKey] = next;
+                _driveAccelerationCache.Set(cacheKey, next);
                 return next;
             }
             acceleration = next;
         }
-        _driveAccelerationCache[cacheKey] = acceleration;
+        _driveAccelerationCache.Set(cacheKey, acceleration);
         return acceleration;
     }
 
@@ -616,12 +672,12 @@ public sealed class VehicleSpeedPlanner
             float next = Math.Max(0f, brake + limits.LossAcceleration);
             if (MathF.Abs(next - deceleration) < 1e-3f)
             {
-                _brakeDecelerationCache[cacheKey] = next;
+                _brakeDecelerationCache.Set(cacheKey, next);
                 return next;
             }
             deceleration = next;
         }
-        _brakeDecelerationCache[cacheKey] = deceleration;
+        _brakeDecelerationCache.Set(cacheKey, deceleration);
         return deceleration;
     }
 
@@ -906,6 +962,12 @@ public sealed class VehicleSpeedPlanner
         DriverPlanningModifiers driverModifiers
     )
     {
+        _planningSnapshotGeneration = unchecked(
+            _planningSnapshotGeneration + 1
+        );
+        if (_planningSnapshotGeneration == 0)
+            _planningSnapshotGeneration = 1;
+
         DriverPlanningModifiers normalizedModifiers = new(
             Math.Clamp(driverModifiers.PaceEfficiency, 0.8f, 1f),
             Math.Clamp(driverModifiers.EstimatedGripScale, 0.88f, 1.12f),

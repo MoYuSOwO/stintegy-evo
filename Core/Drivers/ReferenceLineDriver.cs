@@ -336,7 +336,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _currentPlan,
             out float pathPredictionMilliseconds
         );
-        _currentPlan.SpeedPlan = _speedPlanner.PlanPredictedPath(
+        _currentPlan.SpeedPlan = _speedPlanner.PreparePredictedPathForTraffic(
             _currentPlan.SpeedLookahead,
             car,
             _currentPlan.Path

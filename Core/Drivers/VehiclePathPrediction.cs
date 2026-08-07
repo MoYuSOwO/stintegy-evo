@@ -26,6 +26,7 @@ public sealed class VehiclePathPrediction
     private VehiclePathPredictionPoint[] _points = [];
 
     public int Count { get; private set; }
+    internal int Generation { get; private set; }
     public float LengthMeters { get; private set; }
     public float MaximumAbsoluteCommandedCurvature { get; private set; }
     public float MaximumAbsoluteCurvatureCorrection { get; private set; }
@@ -59,6 +60,7 @@ public sealed class VehiclePathPrediction
         JoinsReferenceLine = false;
         ReferenceLineJoinDistanceMeters = 0f;
         ReferenceLineJoinCurvatureDelta = 0f;
+        Generation = unchecked(Generation + 1);
     }
 
     internal void Add(in VehiclePathPredictionPoint point)
