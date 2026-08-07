@@ -16,6 +16,7 @@ public sealed class VehicleSpeedPlanner
 {
     private const float PerformanceCacheSpeedStepMetersPerSecond = 0.25f;
     private const float PerformanceCacheCurvatureStep = 0.001f;
+    private const float WakeStateStep = 0.0025f;
     private const float InitialMaximumSpeedSearchMetersPerSecond = 50f;
     private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
     private const float GravityMetersPerSecondSquared = 9.80665f;
@@ -28,9 +29,9 @@ public sealed class VehicleSpeedPlanner
     private CarState? _planningState;
     private TireConfig? _planningTireConfig;
     private CarStrategy _planningStrategy;
-    private int _planningStateSignature;
+    private PerformanceStateKey _planningStateKey;
     private long _planningSnapshotGeneration;
-    private bool _hasPlanningStateSignature;
+    private bool _hasPlanningStateKey;
     private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
     private float _planningDownforceAccelPerSpeedSquared;
     private const int LoadTransferPasses = 3;
@@ -48,7 +49,10 @@ public sealed class VehicleSpeedPlanner
     {
         ArgumentNullException.ThrowIfNull(car);
         _planningDownforceAccelPerSpeedSquared =
-            MathF.Max(0f, car.CarConfig.DownforceAccelPerSpeedSquared);
+            CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+                car.State,
+                car.CarConfig
+            );
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             car.State,
             car.CarConfig,
@@ -976,63 +980,88 @@ public sealed class VehicleSpeedPlanner
                 ? Math.Clamp(driverModifiers.FrontBrakeBiasOffset, -0.25f, 0.25f)
                 : 0f
         );
-        int signature = PerformanceStateSignature(
+        PerformanceStateKey stateKey = BuildPerformanceStateKey(
             car,
             normalizedModifiers
         );
         if (ReferenceEquals(_planningCar, car) &&
             ReferenceEquals(_planningTireConfig, car.TireConfig) &&
             _planningStrategy == car.Strategy &&
-            _hasPlanningStateSignature &&
-            _planningStateSignature == signature)
+            _hasPlanningStateKey &&
+            _planningStateKey == stateKey)
         {
             return;
         }
 
         _planningCar = car;
         _planningDownforceAccelPerSpeedSquared =
-            MathF.Max(0f, car.CarConfig.DownforceAccelPerSpeedSquared);
+            CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+                car.State,
+                car.CarConfig
+            );
         _planningTireConfig = car.TireConfig;
         _planningState ??= new CarState();
         _planningState.CopyFrom(car.State);
         _planningStrategy = car.Strategy;
         _driverModifiers = normalizedModifiers;
-        _planningStateSignature = signature;
-        _hasPlanningStateSignature = true;
+        _planningStateKey = stateKey;
+        _hasPlanningStateKey = true;
         _planningMaximumSpeedMetersPerSecond = EstimateMaximumSpeedMetersPerSecond(car);
         _driveAccelerationCache.Clear();
         _brakeDecelerationCache.Clear();
     }
 
-    private static int PerformanceStateSignature(
+    private static PerformanceStateKey BuildPerformanceStateKey(
         RaceCar car,
         DriverPlanningModifiers modifiers
     )
     {
-        int hash = 17;
-        hash = CombineHash(hash, car.Strategy.GetHashCode());
-        hash = CombineHash(hash, Quantize(car.State.BatterySoc, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.PaceEfficiency, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.EstimatedGripScale, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f));
-        hash = AddTireState(hash, car.State.FrontLeft);
-        hash = AddTireState(hash, car.State.FrontRight);
-        hash = AddTireState(hash, car.State.RearLeft);
-        return AddTireState(hash, car.State.RearRight);
+        return new PerformanceStateKey(
+            car.Strategy,
+            Quantize(car.State.BatterySoc, 0.005f),
+            Quantize(car.State.AirVelocityDeficit, WakeStateStep),
+            Quantize(car.State.WakeDownforceLoss, WakeStateStep),
+            Quantize(modifiers.PaceEfficiency, 0.005f),
+            Quantize(modifiers.EstimatedGripScale, 0.005f),
+            Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f),
+            BuildTireStateKey(car.State.FrontLeft),
+            BuildTireStateKey(car.State.FrontRight),
+            BuildTireStateKey(car.State.RearLeft),
+            BuildTireStateKey(car.State.RearRight)
+        );
     }
 
-    private static int AddTireState(int hash, TireState tire)
+    private static TireStateKey BuildTireStateKey(TireState tire)
     {
-        hash = CombineHash(hash, Quantize(tire.SurfaceTempC, 1f));
-        hash = CombineHash(hash, Quantize(tire.CoreTempC, 1f));
-        return CombineHash(hash, Quantize(tire.Wear, 0.005f));
+        return new TireStateKey(
+            Quantize(tire.SurfaceTempC, 1f),
+            Quantize(tire.CoreTempC, 1f),
+            Quantize(tire.Wear, 0.005f)
+        );
     }
 
     private static int Quantize(float value, float step) =>
         (int)MathF.Round(value / step);
 
-    private static int CombineHash(int hash, int value) =>
-        unchecked(hash * 31 + value);
+    private readonly record struct TireStateKey(
+        int SurfaceTemperature,
+        int CoreTemperature,
+        int Wear
+    );
+
+    private readonly record struct PerformanceStateKey(
+        CarStrategy Strategy,
+        int BatterySoc,
+        int AirVelocityDeficit,
+        int WakeDownforceLoss,
+        int PaceEfficiency,
+        int EstimatedGripScale,
+        int FrontBrakeBiasOffset,
+        TireStateKey FrontLeft,
+        TireStateKey FrontRight,
+        TireStateKey RearLeft,
+        TireStateKey RearRight
+    );
 
     private void EnsurePlanningSnapshot(RaceCar car)
     {

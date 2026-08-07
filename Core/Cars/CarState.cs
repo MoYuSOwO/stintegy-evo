@@ -38,6 +38,13 @@ public sealed class CarState
     /// </summary>
     public float AirVelocityDeficit { get; set; }
 
+    /// <summary>
+    /// Additional fraction of aerodynamic downforce made unavailable by the
+    /// turbulent and rotating part of a leading car's wake. The loss caused
+    /// directly by reduced air speed is not included here.
+    /// </summary>
+    public float WakeDownforceLoss { get; set; }
+
     public TireState FrontLeft { get; } = new();
     public TireState FrontRight { get; } = new();
     public TireState RearLeft { get; } = new();
@@ -57,6 +64,8 @@ public sealed class CarState
         BatterySoc = Math.Clamp(BatterySoc, 0f, 1f);
         Heading = MathHelper.NormalizeAngle(Heading);
         SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
+        AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
+        WakeDownforceLoss = Math.Clamp(WakeDownforceLoss, 0f, 1f);
     }
 
     public TireState GetTire(WheelId wheel)
@@ -92,6 +101,7 @@ public sealed class CarState
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
             AirVelocityDeficit = AirVelocityDeficit,
+            WakeDownforceLoss = WakeDownforceLoss,
             Telemetry = Telemetry
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
@@ -112,6 +122,7 @@ public sealed class CarState
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
         AirVelocityDeficit = other.AirVelocityDeficit;
+        WakeDownforceLoss = other.WakeDownforceLoss;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);

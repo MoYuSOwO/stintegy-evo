@@ -117,7 +117,7 @@ public sealed class RaceSimulation
             _stepTrafficMotionPlans[i] = null;
         }
 
-        ApplyDraft(carSnapshots);
+        ApplyWakeEffects(carSnapshots);
 
         // Planning is a write-only phase over one frozen physical snapshot.
         // No driver can read another driver's partially prepared plan. The
@@ -206,6 +206,20 @@ public sealed class RaceSimulation
     private const float WakeHalfDistanceMeters = 11f;
 
     /// <summary>
+    /// The rotating, unsteady part of the wake outlives more of its close-range
+    /// strength than the useful tow. This is deliberately still finite and
+    /// shares the same cutoff: it is a second response to one wake, not a
+    /// second invisible object trailing the car.
+    /// </summary>
+    private const float DirtyAirHalfDistanceMeters = 24f;
+
+    /// <summary>
+    /// Downforce recovers quickly once a car moves sideways out of the wake;
+    /// experiments find it recovers faster laterally than drag.
+    /// </summary>
+    private const float DirtyAirLateralRecovery = 2f;
+
+    /// <summary>
     /// How fast the wake widens with distance, as a half angle. A turbulent
     /// wake spreads into a cone of a few degrees, which is why sitting exactly
     /// behind matters when close and matters much less far back: the hole is
@@ -225,13 +239,14 @@ public sealed class RaceSimulation
     /// the list. A car takes the strongest wake on offer rather than adding up
     /// several: two cars in line ahead punch one hole in the air, not two.
     /// </summary>
-    private void ApplyDraft(RaceCarSnapshot[] snapshots)
+    private void ApplyWakeEffects(RaceCarSnapshot[] snapshots)
     {
         int carCount = snapshots.Length;
         for (int i = 0; i < carCount; i++)
         {
             RaceCarSnapshot ego = snapshots[i];
-            float strongest = 0f;
+            float strongestTow = 0f;
+            float strongestDirtyAir = 0f;
             for (int j = 0; j < carCount; j++)
             {
                 if (j == i)
@@ -253,8 +268,11 @@ public sealed class RaceSimulation
                     continue;
                 }
 
-                float deficit = _cars[j].CarConfig.WakeVelocityDeficit /
+                CarConfig wakeCar = _cars[j].CarConfig;
+                float deficit = wakeCar.WakeVelocityDeficit /
                                 (1f + gap / WakeHalfDistanceMeters);
+                float downforceLoss = wakeCar.WakeDownforceDisruption /
+                                      (1f + gap / DirtyAirHalfDistanceMeters);
 
                 // Across the wake the deficit falls away from the middle, and
                 // the middle is wider the further back it is read.
@@ -263,10 +281,18 @@ public sealed class RaceSimulation
                 float sideways = MathF.Abs(other.TrackD - ego.TrackD) /
                                  MathF.Max(halfWidth, 0.1f);
                 deficit *= MathF.Exp(-sideways * sideways);
+                downforceLoss *= MathF.Exp(
+                    -DirtyAirLateralRecovery * sideways * sideways
+                );
 
-                strongest = MathF.Max(strongest, deficit);
+                strongestTow = MathF.Max(strongestTow, deficit);
+                strongestDirtyAir = MathF.Max(
+                    strongestDirtyAir,
+                    downforceLoss
+                );
             }
-            _cars[i].State.AirVelocityDeficit = strongest;
+            _cars[i].State.AirVelocityDeficit = strongestTow;
+            _cars[i].State.WakeDownforceLoss = strongestDirtyAir;
         }
     }
 

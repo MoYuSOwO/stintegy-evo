@@ -837,6 +837,116 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void WakeDownforceLossReducesHighSpeedLateralLimit()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState dirtyAir = cleanAir.Clone();
+        dirtyAir.WakeDownforceLoss = 0.1f;
+
+        CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
+            cleanAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: cleanAir.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits dirtyLimits = CarPhysics.EstimatePerformanceLimits(
+            dirtyAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: dirtyAir.Speed,
+            curvature: 0f
+        );
+
+        Assert.True(
+            dirtyLimits.LateralAccelerationLimit <
+            cleanLimits.LateralAccelerationLimit,
+            "turbulent wake must remove some of the high-speed aero grip"
+        );
+    }
+
+    [Fact]
+    public void AirVelocityDeficitAlsoReducesHighSpeedLateralLimit()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState lowEnergyWake = cleanAir.Clone();
+        lowEnergyWake.AirVelocityDeficit = 0.08f;
+
+        CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
+            cleanAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: cleanAir.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits wakeLimits = CarPhysics.EstimatePerformanceLimits(
+            lowEnergyWake,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: lowEnergyWake.Speed,
+            curvature: 0f
+        );
+
+        Assert.True(
+            wakeLimits.LateralAccelerationLimit <
+            cleanLimits.LateralAccelerationLimit,
+            "lower dynamic pressure must reduce drag and downforce together"
+        );
+    }
+
+    [Fact]
+    public void AirVelocityDeficitReducesHighSpeedAeroLoss()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState tow = cleanAir.Clone();
+        tow.AirVelocityDeficit = 0.08f;
+
+        CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
+            cleanAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: cleanAir.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits towLimits = CarPhysics.EstimatePerformanceLimits(
+            tow,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: tow.Speed,
+            curvature: 0f
+        );
+
+        Assert.True(
+            towLimits.LossAcceleration < cleanLimits.LossAcceleration,
+            "the follower should still gain straight-line tow while losing aero grip"
+        );
+    }
+
+    [Fact]
     public void CorneringScrubSlowsCarEvenWithoutBrakeRequest()
     {
         CarConfig car = new();
@@ -1058,6 +1168,119 @@ public sealed class CarPhysicsTests
         Assert.True(
             AverageSurfaceTemp(fast) < AverageSurfaceTemp(parked),
             "fast straight-line running should increase air cooling at the tire surface"
+        );
+    }
+
+    [Fact]
+    public void AirVelocityDeficitReducesForcedTireCooling()
+    {
+        // Hold every source of heat and every ground-speed effect equal. The
+        // only physical difference is how much air the following tyre meets.
+        CarConfig car = new()
+        {
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f
+        };
+        TireConfig tires = WarmTires();
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState wake = cleanAir.Clone();
+        wake.AirVelocityDeficit = 0.08f;
+        SetTireTemps(cleanAir, surfaceTempC: 112f, coreTempC: 104f);
+        SetTireTemps(wake, surfaceTempC: 112f, coreTempC: 104f);
+        CarPhysicsStepInput input = new(
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            AirTempC: 25f,
+            TrackTempC: 112f
+        );
+
+        for (int step = 0; step < 10 * 60; step++)
+        {
+            cleanAir.Speed = 55f;
+            wake.Speed = 55f;
+            CarPhysics.Step(cleanAir, car, tires, input, 1f / 60f);
+            CarPhysics.Step(wake, car, tires, input, 1f / 60f);
+        }
+
+        Assert.True(
+            AverageSurfaceTemp(wake) > AverageSurfaceTemp(cleanAir),
+            "a tyre meeting less air at the same ground speed must retain more tread heat"
+        );
+        Assert.True(
+            AverageCoreTemp(wake) > AverageCoreTemp(cleanAir),
+            "reduced forced convection must also slow the much smaller core-to-air path"
+        );
+    }
+
+    [Fact]
+    public void WakeDownforceLossAddsOnlyCorneringSurfaceHeat()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState cleanCorner = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState dirtyCorner = cleanCorner.Clone();
+        dirtyCorner.WakeDownforceLoss = 0.08f;
+        float cleanCurvature = CurvatureForGripShare(
+            cleanCorner,
+            car,
+            tires,
+            share: 0.7f
+        );
+        float dirtyCurvature = CurvatureForGripShare(
+            dirtyCorner,
+            car,
+            tires,
+            share: 0.7f
+        );
+        SetSteadyYawRate(cleanCorner, cleanCurvature);
+        SetSteadyYawRate(dirtyCorner, dirtyCurvature);
+
+        CarState cleanStraight = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState dirtyStraight = cleanStraight.Clone();
+        dirtyStraight.WakeDownforceLoss = 0.08f;
+        CarPhysicsStepInput cleanCornerInput = PhysicsInput(
+            new DriverInput(cleanCurvature, 0f)
+        );
+        CarPhysicsStepInput dirtyCornerInput = PhysicsInput(
+            new DriverInput(dirtyCurvature, 0f)
+        );
+        CarPhysicsStepInput straightInput = PhysicsInput(
+            new DriverInput(0f, 0f)
+        );
+
+        for (int step = 0; step < 10 * 60; step++)
+        {
+            cleanCorner.Speed = 55f;
+            dirtyCorner.Speed = 55f;
+            cleanStraight.Speed = 55f;
+            dirtyStraight.Speed = 55f;
+            CarPhysics.Step(
+                cleanCorner,
+                car,
+                tires,
+                cleanCornerInput,
+                1f / 60f
+            );
+            CarPhysics.Step(
+                dirtyCorner,
+                car,
+                tires,
+                dirtyCornerInput,
+                1f / 60f
+            );
+            CarPhysics.Step(cleanStraight, car, tires, straightInput, 1f / 60f);
+            CarPhysics.Step(dirtyStraight, car, tires, straightInput, 1f / 60f);
+        }
+
+        Assert.True(
+            AverageSurfaceTemp(dirtyCorner) > AverageSurfaceTemp(cleanCorner),
+            "unresolved micro-slip in a loaded dirty-air corner must leave tread heat"
+        );
+        Assert.True(
+            AverageSurfaceTemp(dirtyStraight) <=
+            AverageSurfaceTemp(cleanStraight),
+            "turbulent downforce loss alone must not invent heat on a straight"
         );
     }
 

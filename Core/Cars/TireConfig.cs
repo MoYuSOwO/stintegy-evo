@@ -11,6 +11,10 @@ public sealed class TireConfig
     public const float NearLimitHeatStartUse = 0.96f;
     public const float OverLimitHeatRate = 6f;
     public const float SideslipHeatRate = 4f;
+    // The reduced-order tyre has no local slip velocity. This small tread-only
+    // term stands in for the micro-slip caused by working a tyre in aerodynamically
+    // unsteady air, and vanishes unless the tyre is doing lateral work.
+    public const float WakeCorneringHeatRate = 4f;
     public const float RollingSurfaceHeatRate = 1f;
     public const float RollingCoreHeatRate = 0.35f;
     public const float RollingHeatReferenceSpeedMps = 30f;

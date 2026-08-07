@@ -18,6 +18,19 @@ public static class CarPhysics
     private const float DynamicYawMinimumSpeed = 5f;
     private const float DynamicYawBlendRange = 5f;
     private const float SideslipEnergyLossScale = 1f;
+
+    internal static float EffectiveDownforceAccelPerSpeedSquared(
+        CarState state,
+        CarConfig config
+    )
+    {
+        return EffectiveDownforceAccelPerSpeedSquared(
+            config,
+            state.AirVelocityDeficit,
+            state.WakeDownforceLoss
+        );
+    }
+
     internal static CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
         CarConfig config,
@@ -36,7 +49,9 @@ public static class CarPhysics
             config,
             assumedLongitudinalAcceleration,
             lateralAcceleration,
-            speed
+            speed,
+            state.AirVelocityDeficit,
+            state.WakeDownforceLoss
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
@@ -148,7 +163,9 @@ public static class CarPhysics
             config,
             assumedLongitudinalAcceleration,
             speed * speed * curvature,
-            speed
+            speed,
+            state.AirVelocityDeficit,
+            state.WakeDownforceLoss
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float mass = Math.Max(config.MassKg, Epsilon);
@@ -383,6 +400,14 @@ public static class CarPhysics
 
         float costedFrontOverLimit = CostedOverLimit(config, front.OverLimit);
         float costedRearOverLimit = CostedOverLimit(config, rear.OverLimit);
+        float coolingAirSpeed = averageSpeed *
+                                (
+                                    1f - Math.Clamp(
+                                        state.AirVelocityDeficit,
+                                        0f,
+                                        1f
+                                    )
+                                );
         UpdateTires(
             state.FrontLeft,
             config,
@@ -394,6 +419,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
+            coolingAirSpeed,
+            state.WakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -408,6 +435,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
+            coolingAirSpeed,
+            state.WakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -422,6 +451,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
+            coolingAirSpeed,
+            state.WakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -436,6 +467,8 @@ public static class CarPhysics
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
+            coolingAirSpeed,
+            state.WakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -952,6 +985,8 @@ public static class CarPhysics
         float airTempC,
         float trackTempC,
         float speed,
+        float coolingAirSpeed,
+        float wakeDownforceLoss,
         float dt,
         float tireEnergyEfficiency
     )
@@ -1013,15 +1048,27 @@ public static class CarPhysics
         float directionalHeat =
             tires.LateralHeatRate * normalizedLateralUse * normalizedLateralUse +
             tires.LongitudinalHeatRate * longitudinalHeatUse;
+        float wakeCorneringHeat = TireConfig.WakeCorneringHeatRate *
+                                   Math.Clamp(
+                                       wakeDownforceLoss,
+                                       0f,
+                                       0.1f
+                                   ) *
+                                   normalizedLateralUse *
+                                   normalizedLateralUse *
+                                   tireWorkSpeedMultiplier;
         float surfaceHeat =
             tireWorkSpeedMultiplier * slipHeatMultiplier *
             directionalHeat * driverSensitiveEnergyFactor +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
-            TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio;
+            TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio +
+            wakeCorneringHeat;
         surfaceHeat *= loadScale;
         surfaceHeat += rollingSurfaceHeat;
 
-        float airCoolingMultiplier = CalculateAirCoolingMultiplier(speed);
+        float airCoolingMultiplier = CalculateAirCoolingMultiplier(
+            coolingAirSpeed
+        );
         float surfaceToAir = TireConfig.SurfaceCoolingRate * airCoolingMultiplier * (tire.SurfaceTempC - airTempC);
         float surfaceToTrack = TireConfig.TrackSurfaceTransferRate *
                                (tire.SurfaceTempC - trackTempC);
@@ -1082,7 +1129,9 @@ public static class CarPhysics
             config,
             state.FilteredLongitudinalAccel,
             state.FilteredLateralAccel,
-            state.Speed
+            state.Speed,
+            state.AirVelocityDeficit,
+            state.WakeDownforceLoss
         );
     }
 
@@ -1105,11 +1154,16 @@ public static class CarPhysics
         CarConfig config,
         float longitudinalAcceleration,
         float lateralAcceleration,
-        float speed
+        float speed,
+        float airVelocityDeficit,
+        float wakeDownforceLoss
     )
     {
-        float downforceAcceleration = config.DownforceAccelPerSpeedSquared *
-                                      speed * speed;
+        float downforceAcceleration = EffectiveDownforceAccelPerSpeedSquared(
+            config,
+            airVelocityDeficit,
+            wakeDownforceLoss
+        ) * speed * speed;
         float totalLoad = config.MassKg * (Gravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
         frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
@@ -1133,6 +1187,22 @@ public static class CarPhysics
             Math.Max(fr, minWheelLoad),
             Math.Max(rl, minWheelLoad),
             Math.Max(rr, minWheelLoad)
+        );
+    }
+
+    private static float EffectiveDownforceAccelPerSpeedSquared(
+        CarConfig config,
+        float airVelocityDeficit,
+        float wakeDownforceLoss
+    )
+    {
+        float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
+        float usableDownforce = 1f - Math.Clamp(wakeDownforceLoss, 0f, 1f);
+        return MathF.Max(
+            0f,
+            config.DownforceAccelPerSpeedSquared *
+            metAir * metAir *
+            usableDownforce
         );
     }
 

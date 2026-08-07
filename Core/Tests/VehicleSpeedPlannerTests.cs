@@ -187,6 +187,83 @@ public sealed class VehicleSpeedPlannerTests
     }
 
     [Fact]
+    public void ReferenceLookaheadRefreshesWhenAirVelocityDeficitChanges()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedPlanner planner = new();
+        VehicleSpeedLookahead cleanAir = ReferenceLookahead(planner, car, track);
+
+        car.State.AirVelocityDeficit = 0.08f;
+        VehicleSpeedLookahead tow = ReferenceLookahead(planner, car, track);
+
+        float maximumDifference = 0f;
+        for (int i = 0; i < cleanAir.Count; i++)
+        {
+            maximumDifference = MathF.Max(
+                maximumDifference,
+                MathF.Abs(cleanAir[i].TargetSpeed - tow[i].TargetSpeed)
+            );
+        }
+
+        Assert.True(
+            maximumDifference > 0.01f,
+            "entering a tow must invalidate the cached planning snapshot"
+        );
+    }
+
+    [Fact]
+    public void LateralSpeedLimitUsesWakeReducedDownforce()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedPlanner planner = new();
+        const float highSpeedCurvature = 0.01f;
+        float cleanAirLimit = planner.EstimateLateralSpeedLimit(
+            car,
+            highSpeedCurvature
+        );
+
+        car.State.AirVelocityDeficit = 0.06f;
+        car.State.WakeDownforceLoss = 0.06f;
+        float dirtyAirLimit = planner.EstimateLateralSpeedLimit(
+            car,
+            highSpeedCurvature
+        );
+
+        Assert.True(
+            dirtyAirLimit < cleanAirLimit - 0.1f,
+            "the speed plan must not carry clean-air corner speed into dirty air"
+        );
+    }
+
+    [Fact]
+    public void ReferenceLookaheadRefreshesWhenWakeDownforceLossChanges()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar car = CreateCar(track, CarStrategy.Default);
+        VehicleSpeedPlanner planner = new();
+        VehicleSpeedLookahead cleanAir = ReferenceLookahead(planner, car, track);
+
+        car.State.WakeDownforceLoss = 0.08f;
+        VehicleSpeedLookahead dirtyAir = ReferenceLookahead(planner, car, track);
+
+        float maximumDifference = 0f;
+        for (int i = 0; i < cleanAir.Count; i++)
+        {
+            maximumDifference = MathF.Max(
+                maximumDifference,
+                MathF.Abs(cleanAir[i].TargetSpeed - dirtyAir[i].TargetSpeed)
+            );
+        }
+
+        Assert.True(
+            maximumDifference > 0.01f,
+            "entering dirty air must invalidate the cached planning snapshot"
+        );
+    }
+
+    [Fact]
     public void ReferenceAccelerationMatchesAdjacentLookaheadSpeed()
     {
         TrackData track = TrackFactory.SimpleTestTrack();

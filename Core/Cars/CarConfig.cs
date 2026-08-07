@@ -157,6 +157,19 @@ public sealed class CarConfig
     /// and the tow that survives is the modest one.
     /// </summary>
     public float WakeVelocityDeficit { get; init; } = 0.11f;
+
+    /// <summary>
+    /// Additional share of downforce which the car's turbulent wake can make
+    /// unusable for a following car at zero separation.
+    ///
+    /// The low-energy part of the wake already removes downforce through its
+    /// reduced air speed. This is only the remainder: vortices and changing
+    /// flow direction upsetting surfaces which still see some air. Keeping it
+    /// separate lets that disturbance fade more slowly down the road without
+    /// pretending the straight-line tow remains equally strong.
+    /// </summary>
+    public float WakeDownforceDisruption { get; init; } = 0.08f;
+
     public float CorneringScrubAccel { get; init; } = 1.15f;
     public float OverLimitMinGripEfficiency { get; init; } = 0.8f;
     public float OverLimitCostCap { get; init; } = 0.2f;
