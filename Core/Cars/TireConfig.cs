@@ -8,7 +8,7 @@ public sealed class TireConfig
     public const float TireWorkReferenceSpeedMps = 30f;
     public const float MaximumTireWorkSpeedMultiplier = 1.5f;
     public const float LongitudinalHeatExponent = 4f;
-    public const float NearLimitHeatStartUse = 0.96f;
+    public const float NearLimitHeatStartUse = 0.99f;
     public const float OverLimitHeatRate = 6f;
     public const float SideslipHeatRate = 4f;
     // The reduced-order tyre has no local slip velocity. This small tread-only
@@ -41,9 +41,17 @@ public sealed class TireConfig
     public float WearCliffStart { get; init; } = 0.70f;
     public float WearCliffGripLoss { get; init; } = 0.15f;
 
-    public float LateralHeatRate { get; init; } = 1.15f;
-    public float LongitudinalHeatRate { get; init; } = 0.80f;
-    public float NearLimitHeatGain { get; init; } = 1.5f;
+    public float LateralHeatRate { get; init; } = 0.70f;
+    public float LongitudinalHeatRate { get; init; } = 0.55f;
+    /// <summary>
+    /// Extra tread heat at the edge of the friction circle.
+    ///
+    /// The reduced-order tyre has no local slip ratio or slip velocity, so
+    /// this is a bounded stand-in for the partial sliding that appears just
+    /// before the axle saturates. It is additive: reaching the threshold must
+    /// not multiply all of the ordinary cornering and traction heat.
+    /// </summary>
+    public float NearLimitHeatRate { get; init; } = 1.50f;
 
     public float LateralWearRate { get; init; } = 0.00055f;
     public float LongitudinalWearRate { get; init; } = 0.000146f;

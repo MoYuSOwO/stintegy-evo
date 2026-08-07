@@ -1019,37 +1019,91 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void CombinedNearLimitUseAmplifiesExistingSlipHeatOnce()
+    public void CombinedNearLimitUseAddsPartialSlipHeat()
     {
         CarConfig car = new();
         TireConfig baselineTires = new()
         {
             StartingSurfaceTempC = 90f,
             StartingCoreTempC = 90f,
-            NearLimitHeatGain = 0f
+            NearLimitHeatRate = 0f
         };
-        TireConfig amplifiedTires = new()
+        TireConfig partialSlipTires = new()
         {
             StartingSurfaceTempC = 90f,
             StartingCoreTempC = 90f,
-            NearLimitHeatGain = 2f
+            NearLimitHeatRate = 0.5f
         };
         CarState baseline = CreateState(speed: 38f, batterySoc: 0.8f, baselineTires);
-        CarState amplified = CreateState(speed: 38f, batterySoc: 0.8f, amplifiedTires);
+        CarState withPartialSlip = CreateState(
+            speed: 38f, batterySoc: 0.8f, partialSlipTires);
         // Near the limit, which is the condition the extra heat is about.
         float curvature = CurvatureForGripShare(
-            baseline, car, baselineTires, 0.85f);
+            baseline, car, baselineTires, 0.9f);
         float drive = DriveForShare(
-            baseline, car, baselineTires, CarStrategy.Default, curvature, 0.6f);
+            baseline, car, baselineTires, CarStrategy.Default, curvature, 0.8f);
         DriverInput input = new(curvature, drive);
 
         StepMany(baseline, car, baselineTires, input, CarStrategy.Default, steps: 120);
-        StepMany(amplified, car, amplifiedTires, input, CarStrategy.Default, steps: 120);
+        StepMany(
+            withPartialSlip,
+            car,
+            partialSlipTires,
+            input,
+            CarStrategy.Default,
+            steps: 120
+        );
 
         Assert.True(
-            AverageSurfaceTemp(amplified) > AverageSurfaceTemp(baseline),
-            "combined friction-circle use should multiply the existing directional slip heat"
+            AverageSurfaceTemp(withPartialSlip) > AverageSurfaceTemp(baseline),
+            "combined friction-circle use should add partial-slip heat"
         );
+    }
+
+    [Fact]
+    public void NearLimitPartialSlipHeatDoesNotMultiplyDirectionalHeat()
+    {
+        CarConfig car = new();
+        TireConfig lowBase = NearLimitTires(
+            lateralHeatRate: 0.25f, partialSlipHeatRate: 0f);
+        TireConfig lowAdded = NearLimitTires(
+            lateralHeatRate: 0.25f, partialSlipHeatRate: 0.5f);
+        TireConfig highBase = NearLimitTires(
+            lateralHeatRate: 4f, partialSlipHeatRate: 0f);
+        TireConfig highAdded = NearLimitTires(
+            lateralHeatRate: 4f, partialSlipHeatRate: 0.5f);
+        CarState lowBaseState = CreateState(speed: 38f, batterySoc: 0.8f, lowBase);
+        CarState lowAddedState = CreateState(speed: 38f, batterySoc: 0.8f, lowAdded);
+        CarState highBaseState = CreateState(speed: 38f, batterySoc: 0.8f, highBase);
+        CarState highAddedState = CreateState(speed: 38f, batterySoc: 0.8f, highAdded);
+        float curvature = CurvatureForGripShare(
+            lowBaseState, car, lowBase, 0.995f);
+        DriverInput input = new(curvature, 0f);
+
+        StepMany(lowBaseState, car, lowBase, input, CarStrategy.Default, steps: 1);
+        StepMany(lowAddedState, car, lowAdded, input, CarStrategy.Default, steps: 1);
+        StepMany(highBaseState, car, highBase, input, CarStrategy.Default, steps: 1);
+        StepMany(highAddedState, car, highAdded, input, CarStrategy.Default, steps: 1);
+
+        float lowExtra = AverageSurfaceTemp(lowAddedState) - AverageSurfaceTemp(lowBaseState);
+        float highExtra = AverageSurfaceTemp(highAddedState) - AverageSurfaceTemp(highBaseState);
+        Assert.True(lowExtra > 0f);
+        Assert.InRange(highExtra / lowExtra, 0.95f, 1.05f);
+    }
+
+    private static TireConfig NearLimitTires(
+        float lateralHeatRate,
+        float partialSlipHeatRate
+    )
+    {
+        return new TireConfig
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = lateralHeatRate,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = partialSlipHeatRate
+        };
     }
 
     [Fact]

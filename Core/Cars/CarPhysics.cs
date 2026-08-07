@@ -1034,8 +1034,8 @@ public static class CarPhysics
         float nearLimitSmoothStep =
             nearLimitProgress * nearLimitProgress *
             (3f - 2f * nearLimitProgress);
-        float slipHeatMultiplier =
-            1f + Math.Max(0f, tires.NearLimitHeatGain) * nearLimitSmoothStep;
+        float partialSlipHeat = Math.Max(0f, tires.NearLimitHeatRate) *
+                                nearLimitSmoothStep * nearLimitSmoothStep;
         float rollingHeatSpeedFactor = Math.Max(0f, speed) /
                                        (
                                            Math.Max(0f, speed) +
@@ -1058,8 +1058,9 @@ public static class CarPhysics
                                    normalizedLateralUse *
                                    tireWorkSpeedMultiplier;
         float surfaceHeat =
-            tireWorkSpeedMultiplier * slipHeatMultiplier *
-            directionalHeat * driverSensitiveEnergyFactor +
+            tireWorkSpeedMultiplier *
+            (directionalHeat + partialSlipHeat) *
+            driverSensitiveEnergyFactor +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio +
             wakeCorneringHeat;
