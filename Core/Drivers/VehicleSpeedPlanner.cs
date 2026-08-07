@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -19,8 +20,8 @@ public sealed class VehicleSpeedPlanner
     private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
     private const float GravityMetersPerSecondSquared = 9.80665f;
     private const int MaximumSpeedSolveIterations = 12;
-    private readonly PerformanceLookupCache _driveAccelerationCache = new();
-    private readonly PerformanceLookupCache _brakeDecelerationCache = new();
+    private readonly Dictionary<long, float> _driveAccelerationCache = new(16_384);
+    private readonly Dictionary<long, float> _brakeDecelerationCache = new(16_384);
     private readonly CarState _optimisticState = new();
     private readonly PreparedPathSpeedPlan _preparedFreePathPlan = new();
     private RaceCar? _planningCar;
@@ -642,12 +643,12 @@ public sealed class VehicleSpeedPlanner
             float next = Math.Max(0f, drive - limits.LossAcceleration);
             if (MathF.Abs(next - acceleration) < 1e-3f)
             {
-                _driveAccelerationCache.Set(cacheKey, next);
+                _driveAccelerationCache[cacheKey] = next;
                 return next;
             }
             acceleration = next;
         }
-        _driveAccelerationCache.Set(cacheKey, acceleration);
+        _driveAccelerationCache[cacheKey] = acceleration;
         return acceleration;
     }
 
@@ -672,12 +673,12 @@ public sealed class VehicleSpeedPlanner
             float next = Math.Max(0f, brake + limits.LossAcceleration);
             if (MathF.Abs(next - deceleration) < 1e-3f)
             {
-                _brakeDecelerationCache.Set(cacheKey, next);
+                _brakeDecelerationCache[cacheKey] = next;
                 return next;
             }
             deceleration = next;
         }
-        _brakeDecelerationCache.Set(cacheKey, deceleration);
+        _brakeDecelerationCache[cacheKey] = deceleration;
         return deceleration;
     }
 
