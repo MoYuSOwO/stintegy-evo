@@ -5,10 +5,10 @@ namespace StintegyEVO.Core.Drivers;
 public sealed class VehicleSpeedPlanningConfig
 {
     public float MaximumSpeedEstimateMultiplier { get; init; } = 1.08f;
-    public float ProtectAccelerationUsage { get; init; } = 0.95f;
-    public float LightAccelerationUsage { get; init; } = 0.955f;
-    public float NormalAccelerationUsage { get; init; } = 0.96f;
-    public float PushAccelerationUsage { get; init; } = 0.98f;
+    public float ProtectAccelerationUsage { get; init; } = 0.955f;
+    public float LightAccelerationUsage { get; init; } = 0.966f;
+    public float NormalAccelerationUsage { get; init; } = 0.977f;
+    public float PushAccelerationUsage { get; init; } = 0.9885f;
     public float AttackAccelerationUsage { get; init; } = 1f;
     // Driver confidence in the estimated longitudinal limit. The same value
     // shapes the planned profile and caps real-time acceleration requests.

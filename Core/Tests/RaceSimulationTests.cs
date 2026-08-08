@@ -9,6 +9,46 @@ namespace StintegyEVO.Core.Tests;
 
 public sealed class RaceSimulationTests
 {
+    [Fact]
+    public void DirtyAirRetainsMoreOfItsCloseRangeEffectThanTheTowFartherBack()
+    {
+        (float closeTow, float closeDirtyAir) = MeasureWake(
+            centerSeparationMeters: 12f,
+            lateralOffsetMeters: 0f
+        );
+        (float farTow, float farDirtyAir) = MeasureWake(
+            centerSeparationMeters: 45f,
+            lateralOffsetMeters: 0f
+        );
+
+        Assert.True(closeTow > farTow && farTow > 0f);
+        Assert.True(closeDirtyAir > farDirtyAir && farDirtyAir > 0f);
+        Assert.True(
+            farDirtyAir / closeDirtyAir > farTow / closeTow,
+            "dirty-air disturbance should decay more slowly than straight-line tow"
+        );
+    }
+
+    [Fact]
+    public void MovingSidewaysRecoversDownforceFasterThanItLosesTheTow()
+    {
+        (float centeredTow, float centeredDirtyAir) = MeasureWake(
+            centerSeparationMeters: 12f,
+            lateralOffsetMeters: 0f
+        );
+        (float offsetTow, float offsetDirtyAir) = MeasureWake(
+            centerSeparationMeters: 12f,
+            lateralOffsetMeters: 3f
+        );
+
+        Assert.True(offsetTow < centeredTow);
+        Assert.True(offsetDirtyAir < centeredDirtyAir);
+        Assert.True(
+            offsetDirtyAir / centeredDirtyAir < offsetTow / centeredTow,
+            "leaving the wake sideways should restore downforce especially quickly"
+        );
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -741,6 +781,41 @@ public sealed class RaceSimulationTests
                 BatterySoc = 0.8f
             },
             collision
+        );
+    }
+
+    private static (float Tow, float DirtyAir) MeasureWake(
+        float centerSeparationMeters,
+        float lateralOffsetMeters
+    )
+    {
+        TrackData track = BuildTrack();
+        const float followerS = 10f;
+        TrackSample followerStart = track.Sample(followerS);
+        RaceCar follower = CreateRaceCar(
+            "wake-follower",
+            track,
+            followerStart,
+            speed: 30f,
+            new FixedDriver(default)
+        );
+        follower.State.Position += followerStart.Normal * lateralOffsetMeters;
+        RaceCar leader = CreateRaceCar(
+            "wake-leader",
+            track,
+            track.Sample(followerS + centerSeparationMeters),
+            speed: 30f,
+            new FixedDriver(default)
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(follower);
+        simulation.AddCar(leader);
+
+        simulation.Step(1f / 120f);
+
+        return (
+            follower.State.AirVelocityDeficit,
+            follower.State.WakeDownforceLoss
         );
     }
 

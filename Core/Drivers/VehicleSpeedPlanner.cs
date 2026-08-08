@@ -16,19 +16,26 @@ public sealed class VehicleSpeedPlanner
 {
     private const float PerformanceCacheSpeedStepMetersPerSecond = 0.25f;
     private const float PerformanceCacheCurvatureStep = 0.001f;
+    private const float WakeStateStep = 0.0025f;
     private const float InitialMaximumSpeedSearchMetersPerSecond = 50f;
     private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
+    private const float GravityMetersPerSecondSquared = 9.80665f;
     private const int MaximumSpeedSolveIterations = 12;
     private readonly Dictionary<long, float> _driveAccelerationCache = new(16_384);
     private readonly Dictionary<long, float> _brakeDecelerationCache = new(16_384);
     private readonly CarState _optimisticState = new();
+    private readonly PreparedPathSpeedPlan _preparedFreePathPlan = new();
     private RaceCar? _planningCar;
     private CarState? _planningState;
     private TireConfig? _planningTireConfig;
     private CarStrategy _planningStrategy;
-    private int _planningStateSignature;
-    private bool _hasPlanningStateSignature;
+    private PerformanceStateKey _planningStateKey;
+    private long _planningSnapshotGeneration;
+    private bool _hasPlanningStateKey;
     private float _planningMaximumSpeedMetersPerSecond = NumericalMaximumSpeedMetersPerSecond;
+    private float _planningDownforceAccelPerSpeedSquared;
+    private const int LoadTransferPasses = 3;
+
     private DriverPlanningModifiers _driverModifiers = DriverPlanningModifiers.Neutral;
 
     public VehicleSpeedPlanner(VehicleSpeedPlanningConfig? config = null)
@@ -41,6 +48,11 @@ public sealed class VehicleSpeedPlanner
     public float EstimateLateralSpeedLimit(RaceCar car, float curvature)
     {
         ArgumentNullException.ThrowIfNull(car);
+        float downforceAccelPerSpeedSquared =
+            CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+                car.State,
+                car.CarConfig
+            );
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             car.State,
             car.CarConfig,
@@ -53,7 +65,8 @@ public sealed class VehicleSpeedPlanner
         return LateralSpeedLimit(
             curvature,
             limits.LateralAccelerationLimit,
-            EstimateMaximumSpeedMetersPerSecond(car)
+            EstimateMaximumSpeedMetersPerSecond(car),
+            downforceAccelPerSpeedSquared
         );
     }
 
@@ -147,7 +160,7 @@ public sealed class VehicleSpeedPlanner
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
             float lateralAccelerationLimit =
                 baseLimits.LateralAccelerationLimit *
-                _driverModifiers.CombinedConfidence;
+                _driverModifiers.EstimatedGripScale;
             for (int i = 0; i < count; i++)
             {
                 float distance = i * planningStep;
@@ -160,7 +173,8 @@ public sealed class VehicleSpeedPlanner
                 speedLimits[i] = LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
+                    _planningMaximumSpeedMetersPerSecond,
+                    _planningDownforceAccelPerSpeedSquared
                 );
                 speeds[i] = speedLimits[i];
                 if (i > 0)
@@ -206,6 +220,31 @@ public sealed class VehicleSpeedPlanner
             car,
             path,
             destination,
+            capturePreparedFreePlan: false,
+            usePreparedFreePlan: false,
+            track: null,
+            frame: default,
+            egoSnapshotIndex: -1,
+            in noTrafficMemory,
+            out _,
+            out _,
+            out _
+        );
+    }
+
+    internal DynamicPathSpeedPlan PreparePredictedPathForTraffic(
+        VehicleSpeedLookahead destination,
+        RaceCar car,
+        VehiclePathPrediction path
+    )
+    {
+        TrafficConstraintMemory noTrafficMemory = default;
+        return PlanPredictedPathCore(
+            car,
+            path,
+            destination,
+            capturePreparedFreePlan: true,
+            usePreparedFreePlan: false,
             track: null,
             frame: default,
             egoSnapshotIndex: -1,
@@ -231,6 +270,8 @@ public sealed class VehicleSpeedPlanner
             car,
             path,
             destination,
+            capturePreparedFreePlan: false,
+            usePreparedFreePlan: true,
             track,
             frame,
             egoSnapshotIndex,
@@ -251,6 +292,8 @@ public sealed class VehicleSpeedPlanner
         RaceCar car,
         VehiclePathPrediction path,
         VehicleSpeedLookahead destination,
+        bool capturePreparedFreePlan,
+        bool usePreparedFreePlan,
         TrackData? track,
         RaceFrameSnapshot frame,
         int egoSnapshotIndex,
@@ -291,53 +334,80 @@ public sealed class VehicleSpeedPlanner
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
             float lateralAccelerationLimit =
                 baseLimits.LateralAccelerationLimit *
-                _driverModifiers.CombinedConfidence;
+                _driverModifiers.EstimatedGripScale;
 
             float maximumAbsoluteCurvature = 0f;
-            for (int i = 0; i < count; i++)
+            bool restoredPreparedFreePlan = usePreparedFreePlan &&
+                _preparedFreePathPlan.TryRestore(
+                    path,
+                    _planningSnapshotGeneration,
+                    curvatures,
+                    segmentLengths,
+                    speedLimits,
+                    speeds,
+                    out maximumAbsoluteCurvature
+                );
+            if (!restoredPreparedFreePlan)
             {
-                VehiclePathPredictionPoint point = path[i];
-                float planningCurvature = point.CommandedCurvature;
-                if (i == 0)
+                maximumAbsoluteCurvature = 0f;
+                for (int i = 0; i < count; i++)
                 {
-                    planningCurvature = GreaterMagnitude(
+                    VehiclePathPredictionPoint point = path[i];
+                    float planningCurvature = point.CommandedCurvature;
+                    if (i == 0)
+                    {
+                        planningCurvature = GreaterMagnitude(
+                            planningCurvature,
+                            car.State.Telemetry.ActualCurvature
+                        );
+                    }
+                    maximumAbsoluteCurvature = MathF.Max(
+                        maximumAbsoluteCurvature,
+                        MathF.Abs(planningCurvature)
+                    );
+                    curvatures[i] = planningCurvature;
+                    float lateralLimit = LateralSpeedLimit(
                         planningCurvature,
-                        car.State.Telemetry.ActualCurvature
+                        lateralAccelerationLimit,
+                        _planningMaximumSpeedMetersPerSecond,
+                        _planningDownforceAccelPerSpeedSquared
+                    );
+                    speedLimits[i] = lateralLimit;
+                    speeds[i] = speedLimits[i];
+                    if (i == 0)
+                        continue;
+
+                    segmentLengths[i - 1] = MathF.Max(
+                        0f,
+                        point.DistanceMeters - path[i - 1].DistanceMeters
                     );
                 }
-                maximumAbsoluteCurvature = MathF.Max(
-                    maximumAbsoluteCurvature,
-                    MathF.Abs(planningCurvature)
-                );
-                curvatures[i] = planningCurvature;
-                float lateralLimit = LateralSpeedLimit(
-                    planningCurvature,
-                    lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
-                );
-                speedLimits[i] = lateralLimit;
-                speeds[i] = speedLimits[i];
-                if (i == 0)
-                    continue;
 
-                segmentLengths[i - 1] = MathF.Max(
-                    0f,
-                    point.DistanceMeters - path[i - 1].DistanceMeters
+                // This is an acyclic/open chain. One backward pass propagates all future
+                // braking constraints to the start, then one forward pass propagates the
+                // actual entry speed and acceleration reachability to the end.
+                PlanOpenChain(
+                    car,
+                    curvatures,
+                    count,
+                    segmentLengths,
+                    speedLimits,
+                    speeds,
+                    lateralAccelerationLimit
                 );
+                if (capturePreparedFreePlan)
+                {
+                    _preparedFreePathPlan.Capture(
+                        path,
+                        _planningSnapshotGeneration,
+                        curvatures,
+                        segmentLengths,
+                        speedLimits,
+                        speeds,
+                        maximumAbsoluteCurvature
+                    );
+                }
             }
-
-            // This is an acyclic/open chain. One backward pass propagates all future
-            // braking constraints to the start, then one forward pass propagates the
-            // actual entry speed and acceleration reachability to the end.
-            PlanOpenChain(
-                car,
-                curvatures,
-                count,
-                segmentLengths,
-                speedLimits,
-                speeds,
-                lateralAccelerationLimit
-            );
             if (trafficEnabled)
             {
                 TrafficConflictEvaluator.FillArrivalTimes(
@@ -516,7 +586,8 @@ public sealed class VehicleSpeedPlanner
                 LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
+                    _planningMaximumSpeedMetersPerSecond,
+                    _planningDownforceAccelPerSpeedSquared
                 ),
                 MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * midpointAcceleration * stepDistance))
             );
@@ -550,7 +621,8 @@ public sealed class VehicleSpeedPlanner
                 LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
-                    _planningMaximumSpeedMetersPerSecond
+                    _planningMaximumSpeedMetersPerSecond,
+                    _planningDownforceAccelPerSpeedSquared
                 ),
                 MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * midpointDeceleration * stepDistance))
             );
@@ -576,7 +648,7 @@ public sealed class VehicleSpeedPlanner
             );
             float drive = limits.MaximumDriveAcceleration *
                           Config.DriveAccelerationUsage *
-                          _driverModifiers.CombinedConfidence;
+                          _driverModifiers.EstimatedGripScale;
             float next = Math.Max(0f, drive - limits.LossAcceleration);
             if (MathF.Abs(next - acceleration) < 1e-3f)
             {
@@ -606,7 +678,7 @@ public sealed class VehicleSpeedPlanner
             );
             float brake = limits.MaximumBrakeDeceleration *
                           Config.BrakeDecelerationUsage *
-                          _driverModifiers.CombinedConfidence;
+                          _driverModifiers.EstimatedGripScale;
             float next = Math.Max(0f, brake + limits.LossAcceleration);
             if (MathF.Abs(next - deceleration) < 1e-3f)
             {
@@ -635,7 +707,8 @@ public sealed class VehicleSpeedPlanner
             curvature,
             Config.GetAccelerationUsage(_planningStrategy),
             assumedLongitudinalAcceleration,
-            _driverModifiers.FrontBrakeBiasOffset
+            _driverModifiers.FrontBrakeBiasOffset,
+            _driverModifiers.PaceEfficiency
         );
     }
 
@@ -657,18 +730,49 @@ public sealed class VehicleSpeedPlanner
         return limits.MaximumDriveAcceleration - limits.LossAcceleration;
     }
 
+    /// <summary>
+    /// How fast a corner of this curvature can be taken.
+    ///
+    /// The limit handed in is what the tyres will bear standing still, and it
+    /// is not what they will bear at speed: the air presses the car down, the
+    /// load rises with the square of the speed, and grip rises with the load.
+    /// Tyre grip in this model does not care how hard it is being pressed, so
+    /// the limit is exactly proportional to the load and the whole thing has a
+    /// closed form. Cornering asks for v*v*k and the tyres offer
+    /// a0 * (1 + C*v*v/g), so
+    ///
+    ///     v*v * (k - a0*C/g) = a0
+    ///
+    /// and where the bracket runs out the corner is flat: the wings are
+    /// gaining grip at least as fast as the corner is asking for it, and the
+    /// only thing left holding the car back is how fast it can go at all. That
+    /// is a real car's behaviour and it is the whole character of a quick
+    /// circuit. Without it every corner is worth the same as a slow one of the
+    /// same radius, and a lap of Silverstone came out slower than a lap of
+    /// Shanghai, which is the wrong way round by some distance.
+    /// </summary>
     private float LateralSpeedLimit(
         float curvature,
         float lateralAccelerationLimit,
-        float maximumSpeedMetersPerSecond
+        float maximumSpeedMetersPerSecond,
+        float downforceAccelPerSpeedSquared
     )
     {
         float absoluteCurvature = MathF.Abs(curvature);
         if (absoluteCurvature <= Config.CurvatureEpsilon)
             return maximumSpeedMetersPerSecond;
+
+        float standingLimit = Math.Max(0f, lateralAccelerationLimit);
+        float curvatureTheAirPaysFor = standingLimit *
+                                       downforceAccelPerSpeedSquared /
+                                       GravityMetersPerSecondSquared;
+        float curvatureLeft = absoluteCurvature - curvatureTheAirPaysFor;
+        if (curvatureLeft <= 0f)
+            return maximumSpeedMetersPerSecond;
+
         return MathF.Min(
             maximumSpeedMetersPerSecond,
-            MathF.Sqrt(Math.Max(0f, lateralAccelerationLimit) / absoluteCurvature)
+            MathF.Sqrt(standingLimit / curvatureLeft)
         );
     }
 
@@ -701,7 +805,8 @@ public sealed class VehicleSpeedPlanner
             _planningStrategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.GetAccelerationUsage(_planningStrategy)
+            gripUsage: Config.GetAccelerationUsage(_planningStrategy),
+            corneringEfficiency: _driverModifiers.PaceEfficiency
         );
     }
 
@@ -715,25 +820,122 @@ public sealed class VehicleSpeedPlanner
         float lateralAccelerationLimit
     )
     {
-        ApplyBackwardOpenPass(
-            car,
-            curvatures,
-            count,
-            segmentLengths,
-            speedLimits,
-            speeds,
-            lateralAccelerationLimit
-        );
-        speeds[0] = MathF.Min(speeds[0], MathF.Max(0f, car.State.Speed));
-        ApplyForwardOpenPass(
-            car,
-            curvatures,
-            count,
-            segmentLengths,
-            speedLimits,
-            speeds,
-            lateralAccelerationLimit
-        );
+        for (int pass = 0; pass < LoadTransferPasses; pass++)
+        {
+            ApplyBackwardOpenPass(
+                car,
+                curvatures,
+                count,
+                segmentLengths,
+                speedLimits,
+                speeds,
+                lateralAccelerationLimit
+            );
+            speeds[0] = MathF.Min(speeds[0], MathF.Max(0f, car.State.Speed));
+            // Kept for the last time round only. Tightening a corner and
+            // running the braking back from it can only lower speeds, and what
+            // the forward pass settles - how fast the car can be going here
+            // having accelerated from where it actually is - does not change
+            // when a point further along is lowered. Running it every time
+            // round was most of what the extra passes cost.
+            bool settled = pass == LoadTransferPasses - 1 ||
+                           !TightenCornersForTheBrakingIntoThem(
+                               car,
+                               curvatures,
+                               count,
+                               segmentLengths,
+                               speeds,
+                               speedLimits
+                           );
+            if (!settled)
+                continue;
+
+            ApplyForwardOpenPass(
+                car,
+                curvatures,
+                count,
+                segmentLengths,
+                speedLimits,
+                speeds,
+                lateralAccelerationLimit
+            );
+            break;
+        }
+    }
+
+    /// <summary>
+    /// Brings each corner speed down to what the car can still hold while it is
+    /// braking for that corner.
+    ///
+    /// The friction budget was being charged one way only. Cornering took grip
+    /// away from the brakes, correctly; braking took nothing away from the
+    /// cornering, which is wrong, and wrong in the place it costs most. Braking
+    /// moves weight off the rear, and the rear is the axle that runs out of
+    /// cornering first, because the share of the corner it has to carry is
+    /// fixed by where the mass sits and cannot move with the load - the car
+    /// would turn on its own if it did.
+    ///
+    /// So the corner speed and the braking that reaches it decide each other,
+    /// and the chain has to be run more than once to settle them. Only ever
+    /// lowers a limit, so the passes converge downwards instead of chasing each
+    /// other, and it stops early once a pass changes nothing.
+    ///
+    /// This is what a driver does by feel and calls trail braking: on the
+    /// brakes earlier, off them as the corner arrives, because there is not
+    /// enough of the rear axle for all of both.
+    /// </summary>
+    private bool TightenCornersForTheBrakingIntoThem(
+        RaceCar car,
+        float[] curvatures,
+        int count,
+        float[] segmentLengths,
+        float[] speeds,
+        float[] speedLimits
+    )
+    {
+        CarState state = _planningState ?? car.State;
+        float gripUsage = Config.GetAccelerationUsage(_planningStrategy);
+        bool changed = false;
+        for (int i = 0; i < count - 1; i++)
+        {
+            float absoluteCurvature = MathF.Abs(curvatures[i]);
+            if (absoluteCurvature <= 1e-4f || segmentLengths[i] <= 1e-5f)
+                continue;
+
+            float longitudinal = (
+                speeds[i + 1] * speeds[i + 1] - speeds[i] * speeds[i]
+            ) / (2f * segmentLengths[i]);
+            if (longitudinal >= 0f)
+                continue;
+
+            float lateral = CarPhysics.EstimateLateralAccelerationLimit(
+                state,
+                car.CarConfig,
+                car.TireConfig,
+                speeds[i],
+                curvatures[i],
+                gripUsage,
+                longitudinal,
+                _driverModifiers.PaceEfficiency
+            ) * _driverModifiers.EstimatedGripScale;
+            if (lateral <= 0f)
+                continue;
+
+            // Turned straight into a speed rather than through the standing
+            // form, because this limit already carries the downforce of the
+            // speed it was asked at and the standing form would add the wings
+            // a second time.
+            float holdable = MathF.Sqrt(lateral / absoluteCurvature);
+            if (holdable >=
+                speedLimits[i] - Config.ConvergenceToleranceMetersPerSecond)
+            {
+                continue;
+            }
+
+            speedLimits[i] = holdable;
+            changed = true;
+        }
+        return changed;
     }
 
     private static void FillLookahead(
@@ -771,67 +973,101 @@ public sealed class VehicleSpeedPlanner
         DriverPlanningModifiers driverModifiers
     )
     {
+        _planningSnapshotGeneration = unchecked(
+            _planningSnapshotGeneration + 1
+        );
+        if (_planningSnapshotGeneration == 0)
+            _planningSnapshotGeneration = 1;
+
         DriverPlanningModifiers normalizedModifiers = new(
             Math.Clamp(driverModifiers.PaceEfficiency, 0.8f, 1f),
-            Math.Clamp(driverModifiers.EstimatedGripScale, 0.9f, 1.1f),
+            Math.Clamp(driverModifiers.EstimatedGripScale, 0.88f, 1.12f),
             float.IsFinite(driverModifiers.FrontBrakeBiasOffset)
                 ? Math.Clamp(driverModifiers.FrontBrakeBiasOffset, -0.25f, 0.25f)
                 : 0f
         );
-        int signature = PerformanceStateSignature(
+        PerformanceStateKey stateKey = BuildPerformanceStateKey(
             car,
             normalizedModifiers
         );
         if (ReferenceEquals(_planningCar, car) &&
             ReferenceEquals(_planningTireConfig, car.TireConfig) &&
             _planningStrategy == car.Strategy &&
-            _hasPlanningStateSignature &&
-            _planningStateSignature == signature)
+            _hasPlanningStateKey &&
+            _planningStateKey == stateKey)
         {
             return;
         }
 
         _planningCar = car;
+        _planningDownforceAccelPerSpeedSquared =
+            CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+                car.State,
+                car.CarConfig
+            );
         _planningTireConfig = car.TireConfig;
         _planningState ??= new CarState();
         _planningState.CopyFrom(car.State);
         _planningStrategy = car.Strategy;
         _driverModifiers = normalizedModifiers;
-        _planningStateSignature = signature;
-        _hasPlanningStateSignature = true;
+        _planningStateKey = stateKey;
+        _hasPlanningStateKey = true;
         _planningMaximumSpeedMetersPerSecond = EstimateMaximumSpeedMetersPerSecond(car);
         _driveAccelerationCache.Clear();
         _brakeDecelerationCache.Clear();
     }
 
-    private static int PerformanceStateSignature(
+    private static PerformanceStateKey BuildPerformanceStateKey(
         RaceCar car,
         DriverPlanningModifiers modifiers
     )
     {
-        int hash = 17;
-        hash = CombineHash(hash, car.Strategy.GetHashCode());
-        hash = CombineHash(hash, Quantize(car.State.BatterySoc, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.CombinedConfidence, 0.005f));
-        hash = CombineHash(hash, Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f));
-        hash = AddTireState(hash, car.State.FrontLeft);
-        hash = AddTireState(hash, car.State.FrontRight);
-        hash = AddTireState(hash, car.State.RearLeft);
-        return AddTireState(hash, car.State.RearRight);
+        return new PerformanceStateKey(
+            car.Strategy,
+            Quantize(car.State.BatterySoc, 0.005f),
+            Quantize(car.State.AirVelocityDeficit, WakeStateStep),
+            Quantize(car.State.WakeDownforceLoss, WakeStateStep),
+            Quantize(modifiers.PaceEfficiency, 0.005f),
+            Quantize(modifiers.EstimatedGripScale, 0.005f),
+            Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f),
+            BuildTireStateKey(car.State.FrontLeft),
+            BuildTireStateKey(car.State.FrontRight),
+            BuildTireStateKey(car.State.RearLeft),
+            BuildTireStateKey(car.State.RearRight)
+        );
     }
 
-    private static int AddTireState(int hash, TireState tire)
+    private static TireStateKey BuildTireStateKey(TireState tire)
     {
-        hash = CombineHash(hash, Quantize(tire.SurfaceTempC, 1f));
-        hash = CombineHash(hash, Quantize(tire.CoreTempC, 1f));
-        return CombineHash(hash, Quantize(tire.Wear, 0.005f));
+        return new TireStateKey(
+            Quantize(tire.SurfaceTempC, 1f),
+            Quantize(tire.CoreTempC, 1f),
+            Quantize(tire.Wear, 0.005f)
+        );
     }
 
     private static int Quantize(float value, float step) =>
         (int)MathF.Round(value / step);
 
-    private static int CombineHash(int hash, int value) =>
-        unchecked(hash * 31 + value);
+    private readonly record struct TireStateKey(
+        int SurfaceTemperature,
+        int CoreTemperature,
+        int Wear
+    );
+
+    private readonly record struct PerformanceStateKey(
+        CarStrategy Strategy,
+        int BatterySoc,
+        int AirVelocityDeficit,
+        int WakeDownforceLoss,
+        int PaceEfficiency,
+        int EstimatedGripScale,
+        int FrontBrakeBiasOffset,
+        TireStateKey FrontLeft,
+        TireStateKey FrontRight,
+        TireStateKey RearLeft,
+        TireStateKey RearRight
+    );
 
     private void EnsurePlanningSnapshot(RaceCar car)
     {

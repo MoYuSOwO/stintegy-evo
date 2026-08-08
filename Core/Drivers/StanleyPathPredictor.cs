@@ -620,7 +620,8 @@ public sealed class StanleyPathPredictor
             car.Strategy,
             speed,
             commandedCurvature,
-            gripUsage
+            gripUsage,
+            corneringEfficiency: car.Driver.CorneringEfficiency
         );
         float achievableMagnitude = limits.LateralAccelerationLimit /
                                     MathF.Max(speed * speed, 1e-4f);

@@ -20,6 +20,31 @@ public sealed class CarState
     public float FilteredLongitudinalAccel { get; set; }
     public float FilteredLateralAccel { get; set; }
 
+    /// <summary>
+    /// How much of its own speed the air around this car is already carrying,
+    /// because a car in front has dragged it along.
+    ///
+    /// This lives on the car rather than being worked out where it is used
+    /// because two very different things read it. The physics needs it to know
+    /// what the car is doing now; the speed planner needs it to know what the
+    /// car could do next, and the planner is handed a state, not a grid. Put
+    /// here, a car that has caught a tow plans on having it, which is the whole
+    /// point: the run to the corner is quicker, so the road in front becomes
+    /// somewhere a pass can be made, without anything in the racecraft being
+    /// told that a tow exists.
+    ///
+    /// Set once a frame from one frozen picture of where every car is, so it
+    /// does not depend on the order the cars are stepped in.
+    /// </summary>
+    public float AirVelocityDeficit { get; set; }
+
+    /// <summary>
+    /// Additional fraction of aerodynamic downforce made unavailable by the
+    /// turbulent and rotating part of a leading car's wake. The loss caused
+    /// directly by reduced air speed is not included here.
+    /// </summary>
+    public float WakeDownforceLoss { get; set; }
+
     public TireState FrontLeft { get; } = new();
     public TireState FrontRight { get; } = new();
     public TireState RearLeft { get; } = new();
@@ -39,6 +64,8 @@ public sealed class CarState
         BatterySoc = Math.Clamp(BatterySoc, 0f, 1f);
         Heading = MathHelper.NormalizeAngle(Heading);
         SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
+        AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
+        WakeDownforceLoss = Math.Clamp(WakeDownforceLoss, 0f, 1f);
     }
 
     public TireState GetTire(WheelId wheel)
@@ -73,6 +100,8 @@ public sealed class CarState
             BatterySoc = BatterySoc,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
+            AirVelocityDeficit = AirVelocityDeficit,
+            WakeDownforceLoss = WakeDownforceLoss,
             Telemetry = Telemetry
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
@@ -92,6 +121,8 @@ public sealed class CarState
         BatterySoc = other.BatterySoc;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
+        AirVelocityDeficit = other.AirVelocityDeficit;
+        WakeDownforceLoss = other.WakeDownforceLoss;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);

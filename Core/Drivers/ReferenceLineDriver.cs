@@ -52,6 +52,9 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
 
     public DriverProfile Profile { get; }
     public float TireEnergyEfficiency => _performance?.TireEnergyEfficiency ?? 1f;
+    public float CorneringEfficiency => _performance?.PaceEfficiency ?? 1f;
+    public float LimitSettleUse =>
+        _performance?.LimitSettleUse ?? float.PositiveInfinity;
     public VehicleSpeedLookahead CurrentSpeedLookahead =>
         _currentPlan.SpeedLookahead;
     public VehiclePathPrediction CurrentPathPrediction => _currentPlan.Path;
@@ -132,7 +135,9 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             state.Speed,
             prepared.DesiredCurvature,
             _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
-            referenceAcceleration
+            referenceAcceleration,
+            frontBrakeBiasOffset: 0f,
+            corneringEfficiency: performance.PaceEfficiency
         );
         // The speed plan stores net vehicle acceleration, while DriverInput asks
         // for axle acceleration before rolling, aero, and cornering losses.
@@ -145,11 +150,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         float driveAccelerationLimit =
             currentLimits.MaximumDriveAcceleration *
             _speedPlanner.Config.DriveAccelerationUsage *
-            Math.Clamp(
-                performance.PaceEfficiency * performance.EstimatedGripScale,
-                0.8f,
-                1.05f
-            );
+            performance.EstimatedGripScale;
         if (desiredAcceleration > 0f && prepared.ControlSeverity > 0f)
         {
             float retainedDriveAtFullSeverity = Lerp(
@@ -162,7 +163,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         }
         desiredAcceleration = Math.Clamp(
             desiredAcceleration,
-            -car.CarConfig.MaxBrakeAccel * performance.PaceEfficiency,
+            -car.CarConfig.MaxBrakeAccel,
             driveAccelerationLimit
         );
 
@@ -302,15 +303,14 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         );
         float curvatureCorrection =
             desiredCurvature - control.PreviewSample.RefCurvature;
-        float planningPace = Math.Clamp(
-            _performance.PaceEfficiency *
-            (1f + _performance.LocalSpeedErrorFraction),
-            0.8f,
-            1.05f
-        );
+        // Pace goes in untouched, because the car is discounted by exactly
+        // this and the plan has to be the lap the car can drive. Misjudging a
+        // corner's speed is an error, not a limit, so it sits with the other
+        // error rather than being smuggled in as less pace.
         DriverPlanningModifiers planningModifiers = new(
-            planningPace,
-            _performance.EstimatedGripScale,
+            _performance.PaceEfficiency,
+            _performance.EstimatedGripScale *
+            (1f + _performance.LocalSpeedErrorFraction),
             _performance.FrontBrakeBiasOffset
         );
         long planningStartTimestamp = Stopwatch.GetTimestamp();
@@ -336,7 +336,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _currentPlan,
             out float pathPredictionMilliseconds
         );
-        _currentPlan.SpeedPlan = _speedPlanner.PlanPredictedPath(
+        _currentPlan.SpeedPlan = _speedPlanner.PreparePredictedPathForTraffic(
             _currentPlan.SpeedLookahead,
             car,
             _currentPlan.Path
@@ -566,7 +566,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy)
+            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            corneringEfficiency: _performance?.PaceEfficiency ?? 1f
         );
         return MathF.Max(limits.LateralAccelerationLimit, 1e-3f);
     }

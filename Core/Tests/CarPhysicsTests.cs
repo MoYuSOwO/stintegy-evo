@@ -1,3 +1,4 @@
+using System;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
@@ -155,22 +156,26 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        SetSteadyYawRate(cornering, 0.012f);
-        SetSteadyYawRate(powered, 0.012f);
         CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        // Most of the grip spent on the corner, so asking for drive on top of
+        // it has to come out of the same circle.
+        float curvature = CurvatureForGripShare(cornering, car, tires, attack, 0.9f);
+        SetSteadyYawRate(cornering, curvature);
+        SetSteadyYawRate(powered, curvature);
+        float drive = DriveForShare(powered, car, tires, attack, curvature, 1.5f);
 
         CarPhysics.Step(
             cornering,
             car,
             tires,
-            PhysicsInput(new DriverInput(0.012f, 0f), attack),
+            PhysicsInput(new DriverInput(curvature, 0f), attack),
             1f / 60f
         );
         CarPhysics.Step(
             powered,
             car,
             tires,
-            PhysicsInput(new DriverInput(0.012f, 7f), attack),
+            PhysicsInput(new DriverInput(curvature, drive), attack),
             1f / 60f
         );
 
@@ -228,24 +233,37 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState optimal = CreateState(speed: 25f, batterySoc: 0.9f, tires);
         CarState frontBiased = CreateState(speed: 25f, batterySoc: 0.9f, tires);
+        // Braking hard enough into a corner that both axles are working, so a
+        // split that favours one of them has to leave the other with grip
+        // nobody is using.
+        float curvature = CurvatureForGripShare(optimal, car, tires, 0.55f);
+        // Just under, not over: braking pitches load forward, so the estimate
+        // taken level is a little optimistic and asking for all of it puts the
+        // balanced car over the limit too, which is the thing being contrasted.
+        float brake = BrakeForShare(
+            optimal, car, tires, CarStrategy.Default, curvature, 0.9f);
 
         CarPhysics.Step(
             optimal,
             car,
             tires,
-            PhysicsInput(new DriverInput(0.018f, -12f)),
+            PhysicsInput(new DriverInput(curvature, brake)),
             1f / 60f
         );
         CarPhysics.Step(
             frontBiased,
             car,
             tires,
-            PhysicsInput(new DriverInput(0.018f, -12f, 0.07f)),
+            PhysicsInput(new DriverInput(curvature, brake, 0.07f)),
             1f / 60f
         );
 
+        // The anti-lock takes most of the excess a bad split creates, so what
+        // the bias costs is mainly braking the car never gets rather than a
+        // tyre driven past what it has. Only most, though: some is still there,
+        // and the balanced car has none of it.
         Assert.InRange(optimal.Telemetry.OverLimit, 0f, 1e-5f);
-        Assert.True(frontBiased.Telemetry.OverLimit > 0.02f);
+        Assert.True(frontBiased.Telemetry.OverLimit > 1e-3f);
         Assert.True(
             frontBiased.Telemetry.ActualLongitudinalAccel >
             optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
@@ -296,12 +314,26 @@ public sealed class CarPhysicsTests
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeRearTiresHotAndWorn(state);
         CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        // Cornering near what the worn rear will bear and then asking for all
+        // the drive there is. Drive alone cannot do it: the request is clipped
+        // at the car's own maximum, so the way to make an axle let go is to
+        // have the corner already using most of its circle.
+        float curvature = CurvatureForGripShare(state, car, tires, attack, 0.9f);
+        float drive = car.MaxDriveAcceleration;
 
-        StepMany(state, car, tires, new DriverInput(0.01f, 7f), attack, steps: 60);
+        StepMany(state, car, tires, new DriverInput(curvature, drive), attack, steps: 60);
 
         float builtSideslip = Math.Abs(state.SideslipAngleRadians);
         Assert.True(state.Telemetry.RearSlideSeverity > 0.1f, "rear saturation should expose slide severity");
-        Assert.True(state.SideslipAngleRadians < -0.03f, "a left turn should step the tail outward");
+        // The direction, not the size. How far the tail comes round is a
+        // property of one car's grip, inertia and recovery rate, and pinning a
+        // figure to it means the test stops being about rear saturation and
+        // starts being about that car: give it wings and the same slide
+        // settles at two thirds of the angle while sliding just as plainly.
+        Assert.True(
+            state.SideslipAngleRadians < -0.01f,
+            "a left turn should step the tail outward"
+        );
         Assert.True(state.YawRateRadiansPerSecond > 0f, "left-turn rear saturation should build positive yaw rate");
         Assert.True(
             state.Heading > state.VelocityHeading,
@@ -397,10 +429,17 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        SetSteadyYawRate(controlled, 0.012f);
-        SetSteadyYawRate(uncontrolled, 0.012f);
         CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
-        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0.012f, 5f), attack);
+        // Cornering hard and asking for drive on top, which is where traction
+        // control is meant to step in.
+        float curvature = CurvatureForGripShare(controlled, car: controlledCar,
+            tires, attack, 0.9f);
+        SetSteadyYawRate(controlled, curvature);
+        SetSteadyYawRate(uncontrolled, curvature);
+        float drive = DriveForShare(
+            controlled, controlledCar, tires, attack, curvature, 1.2f);
+        CarPhysicsStepInput input =
+            PhysicsInput(new DriverInput(curvature, drive), attack);
 
         CarPhysics.Step(controlled, controlledCar, tires, input, 1f / 60f);
         CarPhysics.Step(uncontrolled, uncontrolledCar, tires, input, 1f / 60f);
@@ -427,7 +466,10 @@ public sealed class CarPhysicsTests
         sliding.Heading = -0.1f;
         sliding.SideslipAngleRadians = 0.1f;
         CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
-        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0.012f, 7f), attack);
+        float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
+        float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
+        CarPhysicsStepInput input =
+            PhysicsInput(new DriverInput(curvature, drive), attack);
 
         CarPhysics.Step(aligned, car, tires, input, 1f / 60f);
         CarPhysics.Step(sliding, car, tires, input, 1f / 60f);
@@ -491,26 +533,31 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void DrivePowerSliderInterpolatesAbsoluteVehicleLimits()
+    /// <summary>
+    /// The slider lands between the named settings rather than on the nearest
+    /// one, and a figure asked for directly is honoured.
+    ///
+    /// Only the parts that could be wrong. Checking that each named setting
+    /// returns the number written beside it in the configuration is checking
+    /// that a table is its own contents: it can fail for one reason, that
+    /// somebody deliberately changed the number, and it reports that as a
+    /// broken test.
+    /// </summary>
+    public void DrivePowerFallsBetweenTheNamedSettings()
     {
         CarConfig car = new();
+        float eco = car.GetDrivePowerLimitWatts(BatteryOutputMode.Eco);
+        float normal = car.GetDrivePowerLimitWatts(BatteryOutputMode.Normal);
+        float between = car.GetDrivePowerLimitWatts(0.375f);
 
-        Assert.Equal(330000f, car.GetDrivePowerLimitWatts(0f));
-        Assert.Equal(360000f, car.GetDrivePowerLimitWatts(0.25f));
-        Assert.Equal(390000f, car.GetDrivePowerLimitWatts(0.5f));
-        Assert.Equal(420000f, car.GetDrivePowerLimitWatts(0.75f));
-        Assert.Equal(455000f, car.GetDrivePowerLimitWatts(1f));
-        Assert.Equal(375000f, car.GetDrivePowerLimitWatts(0.375f));
-    }
-
-    [Fact]
-    public void CustomDrivePowerOverridesPresetWithinVehicleLimits()
-    {
-        CarConfig car = new();
-        CarStrategy strategy = CarStrategy.Default
-            .WithDrivePowerLimitWatts(407000f);
-
-        Assert.Equal(407000f, car.GetDrivePowerLimitWatts(strategy));
+        Assert.InRange(between, MathF.Min(eco, normal), MathF.Max(eco, normal));
+        Assert.Equal((eco + normal) * 0.5f, between, precision: 1);
+        Assert.Equal(
+            407000f,
+            car.GetDrivePowerLimitWatts(
+                CarStrategy.Default.WithDrivePowerLimitWatts(407000f)
+            )
+        );
     }
 
     [Fact]
@@ -614,7 +661,7 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void SurfaceTemperaturesInsideIdealBandKeepFullGrip()
+    public void SurfaceTemperatureGripUsesAFlatWindowAndSmoothOuterCurve()
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
@@ -622,12 +669,25 @@ public sealed class CarPhysicsTests
         CarState lowIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState middleIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState highIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
-        CarState hot = CreateState(speed: 30f, batterySoc: 0.8f, tires);
-        SetTireTemps(cold, surfaceTempC: 75f, coreTempC: 90f);
-        SetTireTemps(lowIdeal, surfaceTempC: 85f, coreTempC: 90f);
-        SetTireTemps(middleIdeal, surfaceTempC: 100f, coreTempC: 90f);
-        SetTireTemps(highIdeal, surfaceTempC: 115f, coreTempC: 90f);
-        SetTireTemps(hot, surfaceTempC: 125f, coreTempC: 90f);
+        CarState hotNear = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState hotMiddle = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState hotFar = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        // Read off the compound rather than written down, so moving the window
+        // moves the test with it instead of leaving it asserting about a band
+        // no tyre has any more.
+        float bandLow = tires.IdealSurfaceTempLowC;
+        float bandHigh = tires.IdealSurfaceTempHighC;
+        SetTireTemps(cold, surfaceTempC: bandLow - 10f, coreTempC: 90f);
+        SetTireTemps(lowIdeal, surfaceTempC: bandLow, coreTempC: 90f);
+        SetTireTemps(
+            middleIdeal,
+            surfaceTempC: (bandLow + bandHigh) * 0.5f,
+            coreTempC: 90f
+        );
+        SetTireTemps(highIdeal, surfaceTempC: bandHigh, coreTempC: 90f);
+        SetTireTemps(hotNear, surfaceTempC: bandHigh + 5f, coreTempC: 90f);
+        SetTireTemps(hotMiddle, surfaceTempC: bandHigh + 10f, coreTempC: 90f);
+        SetTireTemps(hotFar, surfaceTempC: bandHigh + 15f, coreTempC: 90f);
 
         foreach (CarState state in new[]
                  {
@@ -635,7 +695,9 @@ public sealed class CarPhysicsTests
                      lowIdeal,
                      middleIdeal,
                      highIdeal,
-                     hot
+                     hotNear,
+                     hotMiddle,
+                     hotFar
                  })
         {
             CarPhysics.Step(
@@ -660,9 +722,15 @@ public sealed class CarPhysicsTests
         Assert.True(
             cold.Telemetry.FrontGripAccel < lowIdeal.Telemetry.FrontGripAccel
         );
-        Assert.True(
-            hot.Telemetry.FrontGripAccel < highIdeal.Telemetry.FrontGripAccel
-        );
+        float hotNearLoss = highIdeal.Telemetry.FrontGripAccel -
+                            hotNear.Telemetry.FrontGripAccel;
+        float hotMiddleLoss = highIdeal.Telemetry.FrontGripAccel -
+                              hotMiddle.Telemetry.FrontGripAccel;
+        float hotFarLoss = highIdeal.Telemetry.FrontGripAccel -
+                           hotFar.Telemetry.FrontGripAccel;
+        Assert.True(hotNearLoss > 0f);
+        Assert.InRange(hotMiddleLoss / hotNearLoss, 3.9f, 4.1f);
+        Assert.InRange(hotFarLoss / hotNearLoss, 8.9f, 9.1f);
     }
 
     [Theory]
@@ -714,9 +782,104 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void HotTreadWearRisesSmoothlyWithSquaredDistanceFromTheWindow()
+    {
+        CarConfig car = new() { DownforceAccelPerSpeedSquared = 0f };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralWearRate = 1f,
+            LongitudinalWearRate = 0f,
+            OverLimitWearRate = 0f,
+            SideslipWearRate = 0f
+        };
+        CarState edge = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState hotFive = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState hotTen = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        SetTireTemps(edge, tires.IdealSurfaceTempHighC, tires.IdealSurfaceTempHighC);
+        SetTireTemps(hotFive, tires.IdealSurfaceTempHighC + 5f, tires.IdealSurfaceTempHighC + 5f);
+        SetTireTemps(hotTen, tires.IdealSurfaceTempHighC + 10f, tires.IdealSurfaceTempHighC + 10f);
+
+        const float gripShare = 0.6f;
+        const float dt = 1f / 600f;
+        float edgeCurvature = CurvatureForGripShare(edge, car, tires, gripShare);
+        float hotFiveCurvature = CurvatureForGripShare(hotFive, car, tires, gripShare);
+        float hotTenCurvature = CurvatureForGripShare(hotTen, car, tires, gripShare);
+        SetSteadyYawRate(edge, edgeCurvature);
+        SetSteadyYawRate(hotFive, hotFiveCurvature);
+        SetSteadyYawRate(hotTen, hotTenCurvature);
+
+        StepAtMatchingAmbient(edge, car, tires, edgeCurvature, dt);
+        StepAtMatchingAmbient(hotFive, car, tires, hotFiveCurvature, dt);
+        StepAtMatchingAmbient(hotTen, car, tires, hotTenCurvature, dt);
+
+        float edgeWear = AverageWear(edge);
+        float fiveDegreeExtra = AverageWear(hotFive) / edgeWear - 1f;
+        float tenDegreeExtra = AverageWear(hotTen) / edgeWear - 1f;
+        Assert.True(fiveDegreeExtra > 0f);
+        Assert.InRange(tenDegreeExtra / fiveDegreeExtra, 3.9f, 4.1f);
+    }
+
+    [Fact]
+    public void WearRisesFasterThanSquaredDemandNearTheLimit()
+    {
+        CarConfig car = new() { DownforceAccelPerSpeedSquared = 0f };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralWearRate = 0.00055f,
+            LongitudinalWearRate = 0f,
+            OverLimitWearRate = 0f,
+            SideslipWearRate = 0f
+        };
+        CarState moderate = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState nearLimit = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        float moderateCurvature = CurvatureForGripShare(
+            moderate, car, tires, 0.60f);
+        float nearLimitCurvature = CurvatureForGripShare(
+            nearLimit, car, tires, 0.98f);
+        SetSteadyYawRate(moderate, moderateCurvature);
+        SetSteadyYawRate(nearLimit, nearLimitCurvature);
+
+        CarPhysics.Step(
+            moderate,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(moderateCurvature, 0f)),
+            1f / 60f
+        );
+        CarPhysics.Step(
+            nearLimit,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(nearLimitCurvature, 0f)),
+            1f / 60f
+        );
+
+        float moderateUseSquared = AverageAxleLateralUseSquared(moderate);
+        float nearLimitUseSquared = AverageAxleLateralUseSquared(nearLimit);
+        float moderateWearPerSquaredUse =
+            AverageWear(moderate) / moderateUseSquared;
+        float nearLimitWearPerSquaredUse =
+            AverageWear(nearLimit) / nearLimitUseSquared;
+        Assert.True(
+            nearLimitWearPerSquaredUse > moderateWearPerSquaredUse * 1.1f,
+            "high utilisation should represent growing partial-slip abrasion, not remain purely quadratic"
+        );
+    }
+
+    [Fact]
     public void EqualTireUseAtHigherSpeedAccumulatesMoreWorkBasedWear()
     {
-        CarConfig car = new();
+        // No wings, because the premise is that the same lateral acceleration
+        // is the same demand on the tyre at either speed, and downforce breaks
+        // exactly that: at speed the tyre is pressed down harder, so the same
+        // acceleration is a smaller share of what it can give. This is about
+        // the tyre model, so the car is the one where speed changes nothing
+        // else.
+        CarConfig car = new() { DownforceAccelPerSpeedSquared = 0f };
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,
@@ -724,8 +887,7 @@ public sealed class CarPhysicsTests
             LateralWearRate = 0.01f,
             LongitudinalWearRate = 0f,
             OverLimitWearRate = 0f,
-            SideslipWearRate = 0f,
-            HotWearStartTempC = 1000f
+            SideslipWearRate = 0f
         };
         CarState slow = CreateState(speed: 15f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 45f, batterySoc: 0.8f, tires);
@@ -771,6 +933,116 @@ public sealed class CarPhysicsTests
         Assert.True(
             AverageWear(fast) > AverageWear(slow) * 2.5f,
             "the speed proxy should approximate greater slip work at equal tire use"
+        );
+    }
+
+    [Fact]
+    public void WakeDownforceLossReducesHighSpeedLateralLimit()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState dirtyAir = cleanAir.Clone();
+        dirtyAir.WakeDownforceLoss = 0.1f;
+
+        CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
+            cleanAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: cleanAir.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits dirtyLimits = CarPhysics.EstimatePerformanceLimits(
+            dirtyAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: dirtyAir.Speed,
+            curvature: 0f
+        );
+
+        Assert.True(
+            dirtyLimits.LateralAccelerationLimit <
+            cleanLimits.LateralAccelerationLimit,
+            "turbulent wake must remove some of the high-speed aero grip"
+        );
+    }
+
+    [Fact]
+    public void AirVelocityDeficitAlsoReducesHighSpeedLateralLimit()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState lowEnergyWake = cleanAir.Clone();
+        lowEnergyWake.AirVelocityDeficit = 0.08f;
+
+        CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
+            cleanAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: cleanAir.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits wakeLimits = CarPhysics.EstimatePerformanceLimits(
+            lowEnergyWake,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: lowEnergyWake.Speed,
+            curvature: 0f
+        );
+
+        Assert.True(
+            wakeLimits.LateralAccelerationLimit <
+            cleanLimits.LateralAccelerationLimit,
+            "lower dynamic pressure must reduce drag and downforce together"
+        );
+    }
+
+    [Fact]
+    public void AirVelocityDeficitReducesHighSpeedAeroLoss()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState tow = cleanAir.Clone();
+        tow.AirVelocityDeficit = 0.08f;
+
+        CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
+            cleanAir,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: cleanAir.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits towLimits = CarPhysics.EstimatePerformanceLimits(
+            tow,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: tow.Speed,
+            curvature: 0f
+        );
+
+        Assert.True(
+            towLimits.LossAcceleration < cleanLimits.LossAcceleration,
+            "the follower should still gain straight-line tow while losing aero grip"
         );
     }
 
@@ -847,32 +1119,339 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void CombinedNearLimitUseAmplifiesExistingSlipHeatOnce()
+    public void CombinedNearLimitUseAddsPartialSlipHeat()
     {
         CarConfig car = new();
         TireConfig baselineTires = new()
         {
             StartingSurfaceTempC = 90f,
             StartingCoreTempC = 90f,
-            NearLimitHeatGain = 0f
+            NearLimitHeatRate = 0f
         };
-        TireConfig amplifiedTires = new()
+        TireConfig partialSlipTires = new()
         {
             StartingSurfaceTempC = 90f,
             StartingCoreTempC = 90f,
-            NearLimitHeatGain = 2f
+            NearLimitHeatRate = 0.5f
         };
         CarState baseline = CreateState(speed: 38f, batterySoc: 0.8f, baselineTires);
-        CarState amplified = CreateState(speed: 38f, batterySoc: 0.8f, amplifiedTires);
-        DriverInput input = new(0.011f, 5f);
+        CarState withPartialSlip = CreateState(
+            speed: 38f, batterySoc: 0.8f, partialSlipTires);
+        // Near the limit, which is the condition the extra heat is about.
+        float curvature = CurvatureForGripShare(
+            baseline, car, baselineTires, 0.9f);
+        float drive = DriveForShare(
+            baseline, car, baselineTires, CarStrategy.Default, curvature, 0.8f);
+        DriverInput input = new(curvature, drive);
 
         StepMany(baseline, car, baselineTires, input, CarStrategy.Default, steps: 120);
-        StepMany(amplified, car, amplifiedTires, input, CarStrategy.Default, steps: 120);
+        StepMany(
+            withPartialSlip,
+            car,
+            partialSlipTires,
+            input,
+            CarStrategy.Default,
+            steps: 120
+        );
 
         Assert.True(
-            AverageSurfaceTemp(amplified) > AverageSurfaceTemp(baseline),
-            "combined friction-circle use should multiply the existing directional slip heat"
+            AverageSurfaceTemp(withPartialSlip) > AverageSurfaceTemp(baseline),
+            "combined friction-circle use should add partial-slip heat"
         );
+    }
+
+    [Fact]
+    public void NearLimitPartialSlipHeatDoesNotMultiplyDirectionalHeat()
+    {
+        CarConfig car = new();
+        TireConfig lowBase = NearLimitTires(
+            lateralHeatRate: 0.25f, partialSlipHeatRate: 0f);
+        TireConfig lowAdded = NearLimitTires(
+            lateralHeatRate: 0.25f, partialSlipHeatRate: 0.5f);
+        TireConfig highBase = NearLimitTires(
+            lateralHeatRate: 4f, partialSlipHeatRate: 0f);
+        TireConfig highAdded = NearLimitTires(
+            lateralHeatRate: 4f, partialSlipHeatRate: 0.5f);
+        CarState lowBaseState = CreateState(speed: 38f, batterySoc: 0.8f, lowBase);
+        CarState lowAddedState = CreateState(speed: 38f, batterySoc: 0.8f, lowAdded);
+        CarState highBaseState = CreateState(speed: 38f, batterySoc: 0.8f, highBase);
+        CarState highAddedState = CreateState(speed: 38f, batterySoc: 0.8f, highAdded);
+        float curvature = CurvatureForGripShare(
+            lowBaseState, car, lowBase, 0.995f);
+        DriverInput input = new(curvature, 0f);
+
+        StepMany(lowBaseState, car, lowBase, input, CarStrategy.Default, steps: 1);
+        StepMany(lowAddedState, car, lowAdded, input, CarStrategy.Default, steps: 1);
+        StepMany(highBaseState, car, highBase, input, CarStrategy.Default, steps: 1);
+        StepMany(highAddedState, car, highAdded, input, CarStrategy.Default, steps: 1);
+
+        float lowExtra = AverageSurfaceTemp(lowAddedState) - AverageSurfaceTemp(lowBaseState);
+        float highExtra = AverageSurfaceTemp(highAddedState) - AverageSurfaceTemp(highBaseState);
+        Assert.True(lowExtra > 0f);
+        Assert.InRange(highExtra / lowExtra, 0.95f, 1.05f);
+    }
+
+    [Fact]
+    public void DirectionalHeatPerUnitWorkRisesTowardTheLimit()
+    {
+        float protect = MeasureDirectionalHeatPerSquaredUse(0.955f);
+        float light = MeasureDirectionalHeatPerSquaredUse(0.966f);
+        float attack = MeasureDirectionalHeatPerSquaredUse(1f);
+
+        Assert.True(
+            protect < light,
+            $"heat per unit work should grow from 95.5% to 96.6% use, got {protect:F6} versus {light:F6}"
+        );
+        Assert.True(
+            light < attack,
+            $"heat per unit work should keep growing to full use, got {light:F6} versus {attack:F6}"
+        );
+    }
+
+    [Fact]
+    public void AxleLateralComplianceRedistributesHeatAndWearWithoutChangingTotalWork()
+    {
+        CarConfig equalCompliance = new()
+        {
+            FrontStaticLoadShare = 0.5f,
+            FrontLateralComplianceRatio = 1f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        CarConfig softerFront = new()
+        {
+            FrontStaticLoadShare = 0.5f,
+            FrontLateralComplianceRatio = 2f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 100f,
+            StartingCoreTempC = 100f,
+            LateralHeatRate = 1f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f,
+            LateralWearRate = 0.001f,
+            LongitudinalWearRate = 0f,
+            NearLimitWearRate = 0f,
+            OverLimitWearRate = 0f,
+            SideslipWearRate = 0f
+        };
+        CarState equal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState frontWorkingHarder = CreateState(
+            speed: 30f,
+            batterySoc: 0.8f,
+            tires
+        );
+        float curvature = CurvatureForGripShare(
+            equal,
+            equalCompliance,
+            tires,
+            share: 0.6f
+        );
+        SetSteadyYawRate(equal, curvature);
+        SetSteadyYawRate(frontWorkingHarder, curvature);
+        CarPhysicsStepInput input = new(
+            new DriverInput(curvature, 0f),
+            CarStrategy.Default,
+            AirTempC: 100f,
+            TrackTempC: 100f
+        );
+
+        CarPhysics.Step(equal, equalCompliance, tires, input, 1f / 60f);
+        CarPhysics.Step(frontWorkingHarder, softerFront, tires, input, 1f / 60f);
+
+        float equalFrontTemp = AverageFrontSurfaceTemp(equal);
+        float equalRearTemp = AverageRearSurfaceTemp(equal);
+        float shiftedFrontTemp = AverageFrontSurfaceTemp(frontWorkingHarder);
+        float shiftedRearTemp = AverageRearSurfaceTemp(frontWorkingHarder);
+        float equalFrontWear = AverageFrontWear(equal);
+        float equalRearWear = AverageRearWear(equal);
+        float shiftedFrontWear = AverageFrontWear(frontWorkingHarder);
+        float shiftedRearWear = AverageRearWear(frontWorkingHarder);
+
+        Assert.True(shiftedFrontTemp > equalFrontTemp);
+        Assert.True(shiftedRearTemp < equalRearTemp);
+        Assert.True(shiftedFrontWear > equalFrontWear);
+        Assert.True(shiftedRearWear < equalRearWear);
+        Assert.Equal(
+            equalFrontTemp + equalRearTemp,
+            shiftedFrontTemp + shiftedRearTemp,
+            precision: 5
+        );
+        Assert.Equal(
+            equalFrontWear + equalRearWear,
+            shiftedFrontWear + shiftedRearWear,
+            precision: 7
+        );
+        Assert.Equal(
+            equal.Telemetry.ActualLateralAccel,
+            frontWorkingHarder.Telemetry.ActualLateralAccel,
+            precision: 5
+        );
+    }
+
+    [Fact]
+    public void NearZeroAxleContributionDoesNotDiscardTotalLateralWork()
+    {
+        CarConfig ordinaryCompliance = new()
+        {
+            FrontStaticLoadShare = 0.0001f,
+            FrontLateralComplianceRatio = 1f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        CarConfig extremeCompliance = new()
+        {
+            FrontStaticLoadShare = 0.0001f,
+            FrontLateralComplianceRatio = 100_000_000f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 100f,
+            StartingCoreTempC = 100f,
+            LateralHeatRate = 1f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f,
+            LateralWearRate = 0.001f,
+            LongitudinalWearRate = 0f,
+            NearLimitWearRate = 0f,
+            OverLimitWearRate = 0f,
+            SideslipWearRate = 0f
+        };
+        CarState ordinary = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState extreme = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        float curvature = CurvatureForGripShare(
+            ordinary,
+            ordinaryCompliance,
+            tires,
+            share: 0.6f
+        );
+        SetSteadyYawRate(ordinary, curvature);
+        SetSteadyYawRate(extreme, curvature);
+        CarPhysicsStepInput input = new(
+            new DriverInput(curvature, 0f),
+            CarStrategy.Default,
+            AirTempC: 100f,
+            TrackTempC: 100f
+        );
+
+        CarPhysics.Step(
+            ordinary,
+            ordinaryCompliance,
+            tires,
+            input,
+            1f / 60f
+        );
+        CarPhysics.Step(
+            extreme,
+            extremeCompliance,
+            tires,
+            input,
+            1f / 60f
+        );
+
+        Assert.Equal(
+            AverageFrontSurfaceTemp(ordinary) +
+            AverageRearSurfaceTemp(ordinary),
+            AverageFrontSurfaceTemp(extreme) +
+            AverageRearSurfaceTemp(extreme),
+            precision: 5
+        );
+        Assert.Equal(
+            AverageFrontWear(ordinary) + AverageRearWear(ordinary),
+            AverageFrontWear(extreme) + AverageRearWear(extreme),
+            precision: 7
+        );
+    }
+
+    private static TireConfig NearLimitTires(
+        float lateralHeatRate,
+        float partialSlipHeatRate
+    )
+    {
+        return new TireConfig
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = lateralHeatRate,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = partialSlipHeatRate
+        };
+    }
+
+    private static float MeasureDirectionalHeatPerSquaredUse(float gripShare)
+    {
+        CarConfig car = new();
+        TireConfig baselineTires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = 0f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f
+        };
+        TireConfig workingTires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = 10f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f
+        };
+        CarState baseline = CreateState(
+            speed: 38f,
+            batterySoc: 0.8f,
+            baselineTires
+        );
+        CarState working = CreateState(
+            speed: 38f,
+            batterySoc: 0.8f,
+            workingTires
+        );
+        float curvature = CurvatureForGripShare(
+            baseline,
+            car,
+            baselineTires,
+            gripShare
+        );
+        SetSteadyYawRate(baseline, curvature);
+        SetSteadyYawRate(working, curvature);
+
+        StepAtMatchingAmbient(
+            baseline,
+            car,
+            baselineTires,
+            curvature,
+            1f / 60f
+        );
+        StepAtMatchingAmbient(
+            working,
+            car,
+            workingTires,
+            curvature,
+            1f / 60f
+        );
+
+        float squaredUse = AverageAxleLateralUseSquared(working);
+        return (
+            AverageSurfaceTemp(working) - AverageSurfaceTemp(baseline)
+        ) / Math.Max(squaredUse, 1e-6f);
     }
 
     [Fact]
@@ -902,7 +1481,59 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void IsolatedCoreDoesNotExchangeHeatDirectlyWithAmbientAir()
+    public void BrakeWorkHeatsTheCoreAtTheAxleThatActuallyDoesIt()
+    {
+        CarConfig car = new()
+        {
+            FrontStaticLoadShare = 0.5f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f
+        };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+        CarState frontBiased = CreateState(speed: 50f, batterySoc: 0.8f, tires);
+        CarState rearBiased = CreateState(speed: 50f, batterySoc: 0.8f, tires);
+
+        CarPhysics.Step(
+            frontBiased,
+            car,
+            tires,
+            new CarPhysicsStepInput(
+                new DriverInput(0f, -5f, FrontBrakeBiasOffset: 0.20f),
+                CarStrategy.Default,
+                AirTempC: 90f,
+                TrackTempC: 90f
+            ),
+            1f / 60f
+        );
+        CarPhysics.Step(
+            rearBiased,
+            car,
+            tires,
+            new CarPhysicsStepInput(
+                new DriverInput(0f, -5f, FrontBrakeBiasOffset: -0.20f),
+                CarStrategy.Default,
+                AirTempC: 90f,
+                TrackTempC: 90f
+            ),
+            1f / 60f
+        );
+
+        Assert.True(
+            AverageFrontCoreTemp(frontBiased) >
+            AverageFrontCoreTemp(rearBiased)
+        );
+        Assert.True(
+            AverageRearCoreTemp(frontBiased) <
+            AverageRearCoreTemp(rearBiased)
+        );
+    }
+
+    [Fact]
+    public void CoreShedsHeatToTheAirFarMoreSlowlyThanTheTread()
     {
         CarConfig car = new();
         TireConfig tires = new()
@@ -912,21 +1543,24 @@ public sealed class CarPhysicsTests
         };
         CarState state = CreateState(speed: 0f, batterySoc: 0.8f, tires);
 
-        CarPhysics.Step(
+        StepMany(
             state,
             car,
             tires,
-            new CarPhysicsStepInput(
-                new DriverInput(0f, 0f),
-                CarStrategy.Default,
-                AirTempC: 25f,
-                TrackTempC: 25f
-            ),
-            1f / 60f
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            steps: 60
         );
 
-        Assert.True(AverageSurfaceTemp(state) < 100f);
-        Assert.Equal(100f, AverageCoreTemp(state), precision: 4);
+        float treadDrop = 100f - AverageSurfaceTemp(state);
+        float coreDrop = 100f - AverageCoreTemp(state);
+        // The carcass is not sealed - it reaches the outside through the rim
+        // and the gas inside - but it is buried, and the tread it is buried
+        // under is lying on the road inside its own hurricane. Both cool; only
+        // one of them cools at a rate a straight is long enough to notice.
+        Assert.True(treadDrop > 0f);
+        Assert.True(coreDrop > 0f);
+        Assert.True(treadDrop > coreDrop * 10f);
     }
 
     [Fact]
@@ -939,12 +1573,22 @@ public sealed class CarPhysicsTests
             StartingCoreTempC = 70f
         };
         CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
+        // Working the tyre hard enough that the tread actually heats: the point
+        // is which of the two follows the other, and a corner the tyre strolls
+        // through leaves nothing for either of them to follow.
+        float curvature = CurvatureForGripShare(
+            state,
+            car,
+            tires,
+            CarStrategy.Default,
+            1f
+        );
 
         StepMany(
             state,
             car,
             tires,
-            new DriverInput(0.012f, 0f),
+            new DriverInput(curvature, 0f),
             CarStrategy.Default,
             steps: 120
         );
@@ -959,9 +1603,35 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void LowerTireUseRecoversHeatSoakedCoreWhileLimitUseKeepsItHot()
+    {
+        CarState lowerUse = RunRepresentativeCoreDutyCycle(0.955f);
+        CarState limitUse = RunRepresentativeCoreDutyCycle(1f);
+
+        float lowerCore = AverageCoreTemp(lowerUse);
+        float limitCore = AverageCoreTemp(limitUse);
+        Assert.True(
+            lowerCore < 100f,
+            $"a five-minute low-use run should cool a 103 C soaked core below 100 C, got {lowerCore:F2} C"
+        );
+        Assert.True(
+            limitCore > 105f,
+            $"limit use should retain the established high-use heat behavior, got {limitCore:F2} C"
+        );
+        Assert.True(
+            limitCore - lowerCore > 5f,
+            $"the low and high uses need a useful core-temperature separation, got {lowerCore:F2} versus {limitCore:F2} C"
+        );
+    }
+
+    [Fact]
     public void StraightLineSpeedIncreasesTreadSurfaceCooling()
     {
-        CarConfig car = new();
+        // No wings, so the only thing speed changes is the air moving over the
+        // tyre, which is what this is about. With them the load at fifty five
+        // metres a second is more than doubled and the heat that comes with it
+        // swamps the cooling being measured.
+        CarConfig car = new() { DownforceAccelPerSpeedSquared = 0f };
         TireConfig tires = WarmTires();
         CarState parked = CreateState(speed: 0f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 55f, batterySoc: 0.8f, tires);
@@ -974,6 +1644,119 @@ public sealed class CarPhysicsTests
         Assert.True(
             AverageSurfaceTemp(fast) < AverageSurfaceTemp(parked),
             "fast straight-line running should increase air cooling at the tire surface"
+        );
+    }
+
+    [Fact]
+    public void AirVelocityDeficitReducesForcedTireCooling()
+    {
+        // Hold every source of heat and every ground-speed effect equal. The
+        // only physical difference is how much air the following tyre meets.
+        CarConfig car = new()
+        {
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f
+        };
+        TireConfig tires = WarmTires();
+        CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState wake = cleanAir.Clone();
+        wake.AirVelocityDeficit = 0.08f;
+        SetTireTemps(cleanAir, surfaceTempC: 112f, coreTempC: 104f);
+        SetTireTemps(wake, surfaceTempC: 112f, coreTempC: 104f);
+        CarPhysicsStepInput input = new(
+            new DriverInput(0f, 0f),
+            CarStrategy.Default,
+            AirTempC: 25f,
+            TrackTempC: 112f
+        );
+
+        for (int step = 0; step < 10 * 60; step++)
+        {
+            cleanAir.Speed = 55f;
+            wake.Speed = 55f;
+            CarPhysics.Step(cleanAir, car, tires, input, 1f / 60f);
+            CarPhysics.Step(wake, car, tires, input, 1f / 60f);
+        }
+
+        Assert.True(
+            AverageSurfaceTemp(wake) > AverageSurfaceTemp(cleanAir),
+            "a tyre meeting less air at the same ground speed must retain more tread heat"
+        );
+        Assert.True(
+            AverageCoreTemp(wake) > AverageCoreTemp(cleanAir),
+            "reduced forced convection must also slow the much smaller core-to-air path"
+        );
+    }
+
+    [Fact]
+    public void WakeDownforceLossAddsOnlyCorneringSurfaceHeat()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState cleanCorner = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState dirtyCorner = cleanCorner.Clone();
+        dirtyCorner.WakeDownforceLoss = 0.08f;
+        float cleanCurvature = CurvatureForGripShare(
+            cleanCorner,
+            car,
+            tires,
+            share: 0.7f
+        );
+        float dirtyCurvature = CurvatureForGripShare(
+            dirtyCorner,
+            car,
+            tires,
+            share: 0.7f
+        );
+        SetSteadyYawRate(cleanCorner, cleanCurvature);
+        SetSteadyYawRate(dirtyCorner, dirtyCurvature);
+
+        CarState cleanStraight = CreateState(speed: 55f, batterySoc: 0.8f, tires);
+        CarState dirtyStraight = cleanStraight.Clone();
+        dirtyStraight.WakeDownforceLoss = 0.08f;
+        CarPhysicsStepInput cleanCornerInput = PhysicsInput(
+            new DriverInput(cleanCurvature, 0f)
+        );
+        CarPhysicsStepInput dirtyCornerInput = PhysicsInput(
+            new DriverInput(dirtyCurvature, 0f)
+        );
+        CarPhysicsStepInput straightInput = PhysicsInput(
+            new DriverInput(0f, 0f)
+        );
+
+        for (int step = 0; step < 10 * 60; step++)
+        {
+            cleanCorner.Speed = 55f;
+            dirtyCorner.Speed = 55f;
+            cleanStraight.Speed = 55f;
+            dirtyStraight.Speed = 55f;
+            CarPhysics.Step(
+                cleanCorner,
+                car,
+                tires,
+                cleanCornerInput,
+                1f / 60f
+            );
+            CarPhysics.Step(
+                dirtyCorner,
+                car,
+                tires,
+                dirtyCornerInput,
+                1f / 60f
+            );
+            CarPhysics.Step(cleanStraight, car, tires, straightInput, 1f / 60f);
+            CarPhysics.Step(dirtyStraight, car, tires, straightInput, 1f / 60f);
+        }
+
+        Assert.True(
+            AverageSurfaceTemp(dirtyCorner) > AverageSurfaceTemp(cleanCorner),
+            "unresolved micro-slip in a loaded dirty-air corner must leave tread heat"
+        );
+        Assert.True(
+            AverageSurfaceTemp(dirtyStraight) <=
+            AverageSurfaceTemp(cleanStraight),
+            "turbulent downforce loss alone must not invent heat on a straight"
         );
     }
 
@@ -1053,9 +1836,124 @@ public sealed class CarPhysicsTests
         return state;
     }
 
+    /// <summary>
+    /// A curvature that asks the tyres for a given share of the grip they have
+    /// at the speed the car is doing.
+    ///
+    /// Every test below that is about what happens at the limit used to reach
+    /// the limit by naming a speed and a curvature that happened to sit there
+    /// for the car of the day. That is a fixture with an expiry date: give the
+    /// car wings and the same numbers no longer trouble it, and a dozen tests
+    /// fail saying only that something they expected to be true was not,
+    /// having quietly stopped testing anything at all. Asked for as a share of
+    /// the car's own limit, the same tests keep meaning what they meant on any
+    /// car, with wings or without.
+    /// </summary>
+    private static float CurvatureForGripShare(
+        CarState state,
+        CarConfig car,
+        TireConfig tires,
+        CarStrategy strategy,
+        float share
+    )
+    {
+        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+            state,
+            car,
+            tires,
+            strategy,
+            state.Speed,
+            curvature: 0f
+        );
+        float lateral = limits.LateralAccelerationLimit * share;
+        return lateral / MathF.Max(state.Speed * state.Speed, 1e-3f);
+    }
+
+    private static float CurvatureForGripShare(
+        CarState state,
+        CarConfig car,
+        TireConfig tires,
+        float share
+    )
+    {
+        return CurvatureForGripShare(state, car, tires, CarStrategy.Default, share);
+    }
+
+    /// <summary>Drive as a share of what the car can actually put down here.</summary>
+    private static float DriveForShare(
+        CarState state,
+        CarConfig car,
+        TireConfig tires,
+        CarStrategy strategy,
+        float curvature,
+        float share
+    )
+    {
+        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+            state,
+            car,
+            tires,
+            strategy,
+            state.Speed,
+            curvature
+        );
+        return limits.MaximumDriveAcceleration * share;
+    }
+
+    /// <summary>Braking as a share of what the car can actually stop with here.</summary>
+    private static float BrakeForShare(
+        CarState state,
+        CarConfig car,
+        TireConfig tires,
+        CarStrategy strategy,
+        float curvature,
+        float share
+    )
+    {
+        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+            state,
+            car,
+            tires,
+            strategy,
+            state.Speed,
+            curvature
+        );
+        return -limits.MaximumBrakeDeceleration * share;
+    }
+
     private static void SetSteadyYawRate(CarState state, float curvature)
     {
         state.YawRateRadiansPerSecond = state.Speed * curvature;
+    }
+
+    private static void StepAtMatchingAmbient(
+        CarState state,
+        CarConfig car,
+        TireConfig tires,
+        float curvature,
+        float dt
+    )
+    {
+        float temperature = state.FrontLeft.SurfaceTempC;
+        CarPhysics.Step(
+            state,
+            car,
+            tires,
+            new CarPhysicsStepInput(
+                new DriverInput(curvature, 0f),
+                CarStrategy.Default,
+                AirTempC: temperature,
+                TrackTempC: temperature
+            ),
+            dt
+        );
+    }
+
+    private static float AverageAxleLateralUseSquared(CarState state)
+    {
+        float front = state.Telemetry.FrontLateralUse;
+        float rear = state.Telemetry.RearLateralUse;
+        return (front * front + rear * rear) * 0.5f;
     }
 
     private static void MakeTiresHotAndWorn(CarState state)
@@ -1095,6 +1993,66 @@ public sealed class CarPhysicsTests
             tire.SurfaceTempC = surfaceTempC;
             tire.CoreTempC = coreTempC;
         }
+    }
+
+    private static CarState RunRepresentativeCoreDutyCycle(float use)
+    {
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 107f,
+            StartingCoreTempC = 103f
+        };
+        CarConfig car = new()
+        {
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
+        CarStrategy strategy = CarStrategy.Default;
+        const int cycleSteps = 20 * 60;
+        const int totalSteps = 5 * 60 * 60;
+
+        for (int step = 0; step < totalSteps; step++)
+        {
+            state.Speed = 55f;
+            float phaseSeconds = (step % cycleSteps) / 60f;
+            CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+                state,
+                car,
+                tires,
+                strategy,
+                state.Speed,
+                curvature: 0f
+            );
+            float curvature = phaseSeconds < 2f
+                ? limits.LateralAccelerationLimit * use /
+                  (state.Speed * state.Speed)
+                : 0f;
+            float acceleration = phaseSeconds switch
+            {
+                >= 2f and < 3f =>
+                    -limits.MaximumBrakeDeceleration * use,
+                >= 3f and < 5f =>
+                    limits.MaximumDriveAcceleration * use,
+                _ => 0f
+            };
+            SetSteadyYawRate(state, curvature);
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                new CarPhysicsStepInput(
+                    new DriverInput(curvature, acceleration),
+                    strategy,
+                    AirTempC: TestAirTempC,
+                    TrackTempC: TestTrackTempC
+                ),
+                1f / 60f
+            );
+        }
+
+        return state;
     }
 
     private static IEnumerable<TireState> Tires(CarState state)
@@ -1163,9 +2121,29 @@ public sealed class CarPhysicsTests
         ) * 0.25f;
     }
 
+    private static float AverageFrontCoreTemp(CarState state)
+    {
+        return (state.FrontLeft.CoreTempC + state.FrontRight.CoreTempC) * 0.5f;
+    }
+
+    private static float AverageRearCoreTemp(CarState state)
+    {
+        return (state.RearLeft.CoreTempC + state.RearRight.CoreTempC) * 0.5f;
+    }
+
     private static float AverageRearSurfaceTemp(CarState state)
     {
         return (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
+    }
+
+    private static float AverageFrontSurfaceTemp(CarState state)
+    {
+        return (state.FrontLeft.SurfaceTempC + state.FrontRight.SurfaceTempC) * 0.5f;
+    }
+
+    private static float AverageFrontWear(CarState state)
+    {
+        return (state.FrontLeft.Wear + state.FrontRight.Wear) * 0.5f;
     }
 
     private static float AverageRearWear(CarState state)

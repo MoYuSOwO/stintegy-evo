@@ -13,6 +13,34 @@ public interface IRaceDriver
     /// </summary>
     float TireEnergyEfficiency => 1f;
 
+    /// <summary>
+    /// How much of the cornering the tyres are being asked for actually
+    /// reaches the road, from this driver.
+    ///
+    /// Not how hard the driver decides to push, which is a strategy setting.
+    /// This is what is left over after the way they push: the line taken, the
+    /// steadiness of hand, how much of the tyre's work goes into turning the
+    /// car and how much goes into scrubbing it sideways. One driver asked for
+    /// nine tenths of a tyre gets nine tenths of a corner out of it; another
+    /// asked for the same gets less, and the tyre is no less worn for it.
+    /// </summary>
+    float CorneringEfficiency => 1f;
+
+    /// <summary>
+    /// The share of an axle's grip this driver leaves it at once they have
+    /// felt it go past what it has.
+    ///
+    /// Asking a tyre for more than it holds is not something a driver keeps
+    /// doing; they feel it and give some of it back, and how much comes back
+    /// is what separates one pair of hands from another. Whatever is still
+    /// over when they are done is the tyre's problem, and the tyre answers it
+    /// by returning less than it was asked for.
+    ///
+    /// Infinity is a driver who never feels it and gives nothing back, which
+    /// is how this behaved before anybody did.
+    /// </summary>
+    float LimitSettleUse => float.PositiveInfinity;
+
     void Initialize(in RaceDriverInitContext context)
     {
     }
