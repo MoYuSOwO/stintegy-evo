@@ -1213,14 +1213,16 @@ public static class CarPhysics
         if (total <= Epsilon)
             return AxleScales.Identity;
 
+        // A multiplicative scale cannot move a finite target onto an axle
+        // whose current contribution is numerically zero. In that degenerate
+        // frame, keep both sides unchanged so the total work remains exact.
+        if (currentFront <= Epsilon || currentRear <= Epsilon)
+            return AxleScales.Identity;
+
         float frontTarget = total * Math.Clamp(targetFrontShare, 0f, 1f);
         float rearTarget = total - frontTarget;
-        float frontScale = currentFront <= Epsilon
-            ? 1f
-            : frontTarget / currentFront;
-        float rearScale = currentRear <= Epsilon
-            ? 1f
-            : rearTarget / currentRear;
+        float frontScale = frontTarget / currentFront;
+        float rearScale = rearTarget / currentRear;
         return new AxleScales(frontScale, rearScale);
     }
 

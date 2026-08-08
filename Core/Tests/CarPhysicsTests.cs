@@ -1281,6 +1281,88 @@ public sealed class CarPhysicsTests
         );
     }
 
+    [Fact]
+    public void NearZeroAxleContributionDoesNotDiscardTotalLateralWork()
+    {
+        CarConfig ordinaryCompliance = new()
+        {
+            FrontStaticLoadShare = 0.0001f,
+            FrontLateralComplianceRatio = 1f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        CarConfig extremeCompliance = new()
+        {
+            FrontStaticLoadShare = 0.0001f,
+            FrontLateralComplianceRatio = 100_000_000f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 100f,
+            StartingCoreTempC = 100f,
+            LateralHeatRate = 1f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f,
+            LateralWearRate = 0.001f,
+            LongitudinalWearRate = 0f,
+            NearLimitWearRate = 0f,
+            OverLimitWearRate = 0f,
+            SideslipWearRate = 0f
+        };
+        CarState ordinary = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        CarState extreme = CreateState(speed: 30f, batterySoc: 0.8f, tires);
+        float curvature = CurvatureForGripShare(
+            ordinary,
+            ordinaryCompliance,
+            tires,
+            share: 0.6f
+        );
+        SetSteadyYawRate(ordinary, curvature);
+        SetSteadyYawRate(extreme, curvature);
+        CarPhysicsStepInput input = new(
+            new DriverInput(curvature, 0f),
+            CarStrategy.Default,
+            AirTempC: 100f,
+            TrackTempC: 100f
+        );
+
+        CarPhysics.Step(
+            ordinary,
+            ordinaryCompliance,
+            tires,
+            input,
+            1f / 60f
+        );
+        CarPhysics.Step(
+            extreme,
+            extremeCompliance,
+            tires,
+            input,
+            1f / 60f
+        );
+
+        Assert.Equal(
+            AverageFrontSurfaceTemp(ordinary) +
+            AverageRearSurfaceTemp(ordinary),
+            AverageFrontSurfaceTemp(extreme) +
+            AverageRearSurfaceTemp(extreme),
+            precision: 5
+        );
+        Assert.Equal(
+            AverageFrontWear(ordinary) + AverageRearWear(ordinary),
+            AverageFrontWear(extreme) + AverageRearWear(extreme),
+            precision: 7
+        );
+    }
+
     private static TireConfig NearLimitTires(
         float lateralHeatRate,
         float partialSlipHeatRate
