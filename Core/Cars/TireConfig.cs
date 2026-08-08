@@ -29,9 +29,12 @@ public sealed class TireConfig
     public const float RollingHeatReferenceSpeedMps = 30f;
     public const float SurfaceCoolingRate = 0.012f;
     public const float TrackSurfaceTransferRate = 0.004f;
-    public const float SurfaceCoreTransferRate = 0.035f;
+    // The carcass primarily sheds stored heat back through the tread. Keep the
+    // direct path smaller so low-use running can recover without erasing the
+    // heat soak that Push and Attack create near the tire limit.
+    public const float SurfaceCoreTransferRate = 0.04375f;
     public const float CoreHeatCapacityRatio = 12f;
-    public const float CoreAirCoolingRate = 0.0053f;
+    public const float CoreAirCoolingRate = 0.0057f;
     public const float SpeedCoolingReferenceMps = 60f;
     public const float MaximumSpeedCoolingMultiplier = 2.4f;
 

@@ -1603,6 +1603,28 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void LowerTireUseRecoversHeatSoakedCoreWhileLimitUseKeepsItHot()
+    {
+        CarState lowerUse = RunRepresentativeCoreDutyCycle(0.955f);
+        CarState limitUse = RunRepresentativeCoreDutyCycle(1f);
+
+        float lowerCore = AverageCoreTemp(lowerUse);
+        float limitCore = AverageCoreTemp(limitUse);
+        Assert.True(
+            lowerCore < 100f,
+            $"a five-minute low-use run should cool a 103 C soaked core below 100 C, got {lowerCore:F2} C"
+        );
+        Assert.True(
+            limitCore > 105f,
+            $"limit use should retain the established high-use heat behavior, got {limitCore:F2} C"
+        );
+        Assert.True(
+            limitCore - lowerCore > 5f,
+            $"the low and high uses need a useful core-temperature separation, got {lowerCore:F2} versus {limitCore:F2} C"
+        );
+    }
+
+    [Fact]
     public void StraightLineSpeedIncreasesTreadSurfaceCooling()
     {
         // No wings, so the only thing speed changes is the air moving over the
@@ -1971,6 +1993,66 @@ public sealed class CarPhysicsTests
             tire.SurfaceTempC = surfaceTempC;
             tire.CoreTempC = coreTempC;
         }
+    }
+
+    private static CarState RunRepresentativeCoreDutyCycle(float use)
+    {
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 107f,
+            StartingCoreTempC = 103f
+        };
+        CarConfig car = new()
+        {
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f
+        };
+        CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
+        CarStrategy strategy = CarStrategy.Default;
+        const int cycleSteps = 20 * 60;
+        const int totalSteps = 5 * 60 * 60;
+
+        for (int step = 0; step < totalSteps; step++)
+        {
+            state.Speed = 55f;
+            float phaseSeconds = (step % cycleSteps) / 60f;
+            CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+                state,
+                car,
+                tires,
+                strategy,
+                state.Speed,
+                curvature: 0f
+            );
+            float curvature = phaseSeconds < 2f
+                ? limits.LateralAccelerationLimit * use /
+                  (state.Speed * state.Speed)
+                : 0f;
+            float acceleration = phaseSeconds switch
+            {
+                >= 2f and < 3f =>
+                    -limits.MaximumBrakeDeceleration * use,
+                >= 3f and < 5f =>
+                    limits.MaximumDriveAcceleration * use,
+                _ => 0f
+            };
+            SetSteadyYawRate(state, curvature);
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                new CarPhysicsStepInput(
+                    new DriverInput(curvature, acceleration),
+                    strategy,
+                    AirTempC: TestAirTempC,
+                    TrackTempC: TestTrackTempC
+                ),
+                1f / 60f
+            );
+        }
+
+        return state;
     }
 
     private static IEnumerable<TireState> Tires(CarState state)
