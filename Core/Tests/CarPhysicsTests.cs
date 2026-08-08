@@ -1192,6 +1192,23 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
+    public void DirectionalHeatPerUnitWorkRisesTowardTheLimit()
+    {
+        float protect = MeasureDirectionalHeatPerSquaredUse(0.955f);
+        float light = MeasureDirectionalHeatPerSquaredUse(0.966f);
+        float attack = MeasureDirectionalHeatPerSquaredUse(1f);
+
+        Assert.True(
+            protect < light,
+            $"heat per unit work should grow from 95.5% to 96.6% use, got {protect:F6} versus {light:F6}"
+        );
+        Assert.True(
+            light < attack,
+            $"heat per unit work should keep growing to full use, got {light:F6} versus {attack:F6}"
+        );
+    }
+
+    [Fact]
     public void AxleLateralComplianceRedistributesHeatAndWearWithoutChangingTotalWork()
     {
         CarConfig equalCompliance = new()
@@ -1378,6 +1395,65 @@ public sealed class CarPhysicsTests
         };
     }
 
+    private static float MeasureDirectionalHeatPerSquaredUse(float gripShare)
+    {
+        CarConfig car = new();
+        TireConfig baselineTires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = 0f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f
+        };
+        TireConfig workingTires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = 10f,
+            LongitudinalHeatRate = 0f,
+            NearLimitHeatRate = 0f
+        };
+        CarState baseline = CreateState(
+            speed: 38f,
+            batterySoc: 0.8f,
+            baselineTires
+        );
+        CarState working = CreateState(
+            speed: 38f,
+            batterySoc: 0.8f,
+            workingTires
+        );
+        float curvature = CurvatureForGripShare(
+            baseline,
+            car,
+            baselineTires,
+            gripShare
+        );
+        SetSteadyYawRate(baseline, curvature);
+        SetSteadyYawRate(working, curvature);
+
+        StepAtMatchingAmbient(
+            baseline,
+            car,
+            baselineTires,
+            curvature,
+            1f / 60f
+        );
+        StepAtMatchingAmbient(
+            working,
+            car,
+            workingTires,
+            curvature,
+            1f / 60f
+        );
+
+        float squaredUse = AverageAxleLateralUseSquared(working);
+        return (
+            AverageSurfaceTemp(working) - AverageSurfaceTemp(baseline)
+        ) / Math.Max(squaredUse, 1e-6f);
+    }
+
     [Fact]
     public void StraightRollingBuildsCoreHeatWithoutTireSlip()
     {
@@ -1505,7 +1581,7 @@ public sealed class CarPhysicsTests
             car,
             tires,
             CarStrategy.Default,
-            0.9f
+            1f
         );
 
         StepMany(

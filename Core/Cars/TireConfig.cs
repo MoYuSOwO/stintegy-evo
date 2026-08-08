@@ -8,6 +8,10 @@ public sealed class TireConfig
     public const float TireWorkReferenceSpeedMps = 30f;
     public const float MaximumTireWorkSpeedMultiplier = 1.5f;
     public const float LongitudinalHeatExponent = 4f;
+    // Ordinary directional work becomes progressively more dissipative as the
+    // car approaches the friction-circle limit; the transition stays smooth.
+    public const float DirectionalHeatRampStartUse = 0.90f;
+    public const float MinimumDirectionalHeatScale = 0.20f;
     public const float NearLimitHeatStartUse = 0.99f;
     public const float NearLimitWearExponent = 8f;
     public const float OverLimitHeatRate = 6f;
@@ -50,7 +54,7 @@ public sealed class TireConfig
     public float WearCliffStart { get; init; } = 0.70f;
     public float WearCliffGripLoss { get; init; } = 0.15f;
 
-    public float LateralHeatRate { get; init; } = 0.70f;
+    public float LateralHeatRate { get; init; } = 1.10f;
     public float LongitudinalHeatRate { get; init; } = 0.55f;
     /// <summary>
     /// Extra tread heat at the edge of the friction circle.

@@ -408,6 +408,30 @@ public static class CarPhysics
 
         float costedFrontOverLimit = CostedOverLimit(config, front.OverLimit);
         float costedRearOverLimit = CostedOverLimit(config, rear.OverLimit);
+        float frontCombinedUse = Math.Clamp(
+            MathF.Sqrt(
+                frontLateralUse * frontLateralUse +
+                frontLongitudinalUse * frontLongitudinalUse
+            ),
+            0f,
+            1f
+        );
+        float rearCombinedUse = Math.Clamp(
+            MathF.Sqrt(
+                rearLateralUse * rearLateralUse +
+                rearLongitudinalUse * rearLongitudinalUse
+            ),
+            0f,
+            1f
+        );
+        // A driver approaching the car's combined limit creates a common
+        // intensity for this instant. Each axle still receives heat according
+        // to its own force and compliance; sharing only the intensity avoids
+        // turning a rear-limited car into an artificial rear-tyre heater.
+        float directionalHeatDemandUse = Math.Max(
+            frontCombinedUse,
+            rearCombinedUse
+        );
         float coolingAirSpeed = averageSpeed *
                                 (
                                     1f - Math.Clamp(
@@ -423,6 +447,7 @@ public static class CarPhysics
             frontLateralUse,
             frontLongitudinalUse,
             frontBrakeUse,
+            directionalHeatDemandUse,
             lateralWorkScales.FrontHeat,
             lateralWorkScales.FrontWear,
             costedFrontOverLimit,
@@ -442,6 +467,7 @@ public static class CarPhysics
             frontLateralUse,
             frontLongitudinalUse,
             frontBrakeUse,
+            directionalHeatDemandUse,
             lateralWorkScales.FrontHeat,
             lateralWorkScales.FrontWear,
             costedFrontOverLimit,
@@ -461,6 +487,7 @@ public static class CarPhysics
             rearLateralUse,
             rearLongitudinalUse,
             rearBrakeUse,
+            directionalHeatDemandUse,
             lateralWorkScales.RearHeat,
             lateralWorkScales.RearWear,
             costedRearOverLimit,
@@ -480,6 +507,7 @@ public static class CarPhysics
             rearLateralUse,
             rearLongitudinalUse,
             rearBrakeUse,
+            directionalHeatDemandUse,
             lateralWorkScales.RearHeat,
             lateralWorkScales.RearWear,
             costedRearOverLimit,
@@ -1001,6 +1029,7 @@ public static class CarPhysics
         float lateralUse,
         float longitudinalUse,
         float brakeUse,
+        float directionalHeatDemandUse,
         float lateralHeatScale,
         float lateralWearScale,
         float overLimit,
@@ -1070,6 +1099,28 @@ public static class CarPhysics
             tires.LateralHeatRate * normalizedLateralUse * normalizedLateralUse *
             lateralHeatScale +
             tires.LongitudinalHeatRate * longitudinalHeatUse;
+        // Force demand is not the same thing as rubber dissipation. At modest
+        // utilization most of the contact patch still adheres and relatively
+        // little of the work becomes tread heat; local micro-slip grows quickly
+        // as the friction circle fills. Keep this continuous and based on the
+        // actual combined vehicle demand, rather than on the named strategy mode.
+        float directionalHeatProgress = Math.Clamp(
+            (directionalHeatDemandUse - TireConfig.DirectionalHeatRampStartUse) /
+            Math.Max(
+                TireConfig.NearLimitHeatStartUse -
+                TireConfig.DirectionalHeatRampStartUse,
+                Epsilon
+            ),
+            0f,
+            1f
+        );
+        float directionalHeatSmoothStep =
+            directionalHeatProgress * directionalHeatProgress *
+            (3f - 2f * directionalHeatProgress);
+        directionalHeat *=
+            TireConfig.MinimumDirectionalHeatScale +
+            (1f - TireConfig.MinimumDirectionalHeatScale) *
+            directionalHeatSmoothStep;
         float wakeCorneringHeat = TireConfig.WakeCorneringHeatRate *
                                    Math.Clamp(
                                        wakeDownforceLoss,
