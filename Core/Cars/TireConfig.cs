@@ -9,6 +9,7 @@ public sealed class TireConfig
     public const float MaximumTireWorkSpeedMultiplier = 1.5f;
     public const float LongitudinalHeatExponent = 4f;
     public const float NearLimitHeatStartUse = 0.99f;
+    public const float NearLimitWearExponent = 8f;
     public const float OverLimitHeatRate = 6f;
     public const float SideslipHeatRate = 4f;
     // The reduced-order tyre has no local slip velocity. This small tread-only
@@ -17,6 +18,10 @@ public sealed class TireConfig
     public const float WakeCorneringHeatRate = 4f;
     public const float RollingSurfaceHeatRate = 1f;
     public const float RollingCoreHeatRate = 0.35f;
+    // A small share of the work done by the brakes reaches the tyre through
+    // the disc, wheel and enclosed air. It enters the slow carcass mass, not
+    // the tread, and follows the axle that actually supplied the braking.
+    public const float BrakeCoreHeatRate = 1.5f;
     public const float RollingHeatReferenceSpeedMps = 30f;
     public const float SurfaceCoolingRate = 0.012f;
     public const float TrackSurfaceTransferRate = 0.004f;
@@ -33,8 +38,12 @@ public sealed class TireConfig
     public float BaseMu { get; init; } = 1.72f;
     public float IdealSurfaceTempLowC { get; init; } = 85f;
     public float IdealSurfaceTempHighC { get; init; } = 115f;
-    public float ColdGripLossPerC { get; init; } = 0.006f;
-    public float HotGripLossPerC { get; init; } = 0.004f;
+    // Grip is flat inside the working window, then falls smoothly with the
+    // squared distance from its nearest edge. There is no second overheat
+    // threshold: progressively hotter or colder tread simply moves farther
+    // along the same curve.
+    public float ColdGripLossPerCSquared { get; init; } = 0.00060f;
+    public float HotGripLossPerCSquared { get; init; } = 0.00070f;
     public float CoreOverheatTempC { get; init; } = 115f;
     public float CoreOverheatGripLossPerC { get; init; } = 0f;
     public float WearLinearGripLoss { get; init; } = 0.10f;
@@ -53,10 +62,23 @@ public sealed class TireConfig
     /// </summary>
     public float NearLimitHeatRate { get; init; } = 1.50f;
 
-    public float LateralWearRate { get; init; } = 0.00055f;
-    public float LongitudinalWearRate { get; init; } = 0.000146f;
+    // The ordinary work rates are lower than the old purely-quadratic model:
+    // part of the same total stint wear now lives in NearLimitWearRate. This
+    // keeps Normal's established tyre life while letting harder use spend the
+    // tyre disproportionately faster.
+    public float LateralWearRate { get; init; } = 0.00048f;
+    public float LongitudinalWearRate { get; init; } = 0.000127f;
+    /// <summary>
+    /// Abrasion added as friction-circle use approaches one.
+    ///
+    /// The reduced-order tyre has no local slip velocity. A smooth high power
+    /// is used instead of an on/off threshold: ordinary running still follows
+    /// the directional work terms, while the last few percent of available
+    /// grip carry increasingly more partial-slip work.
+    /// </summary>
+    public float NearLimitWearRate { get; init; } = 0.00012f;
     public float OverLimitWearRate { get; init; } = 0.00110f;
     public float SideslipWearRate { get; init; } = 0.00070f;
-    public float HotWearStartTempC { get; init; } = 115f;
-    public float HotWearSlope { get; init; } = 0.035f;
+    public float ColdWearPerCSquared { get; init; } = 0.0015f;
+    public float HotWearPerCSquared { get; init; } = 0.0035f;
 }

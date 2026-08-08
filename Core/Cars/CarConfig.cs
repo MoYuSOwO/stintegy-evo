@@ -7,6 +7,13 @@ public sealed class CarConfig
     public float TrackWidthMeters { get; init; } = 1.65f;
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
     public float FrontStaticLoadShare { get; init; } = 0.47f;
+    /// <summary>
+    /// How much lateral deformation the front axle needs for the same force,
+    /// relative to the rear axle. One means equal compliance; a larger value
+    /// makes the front tyres do a larger share of the car's lateral rubber
+    /// work without changing the force they deliver or how the car moves.
+    /// </summary>
+    public float FrontLateralComplianceRatio { get; init; } = 1.4f;
     public float FrontDriveShare { get; init; } = 0f;
     public float YawInertiaKgM2 { get; init; } = 1450f;
     public float YawResponseTimeSeconds { get; init; } = 0.15f;

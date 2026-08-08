@@ -311,6 +311,14 @@ public static class CarPhysics
         float rearLateralUse = rear.LateralUse;
         float frontLongitudinalUse = front.LongitudinalUse;
         float rearLongitudinalUse = rear.LongitudinalUse;
+        float frontBrakeUse = front.LongitudinalAccel < 0f
+            ? frontLongitudinalUse
+            : 0f;
+        float rearBrakeUse = rear.LongitudinalAccel < 0f
+            ? rearLongitudinalUse
+            : 0f;
+        AxleLateralWorkScales lateralWorkScales =
+            CalculateAxleLateralWorkScales(state, config, front, rear);
         float lateralUse = Math.Abs(actualLateralAccel) / totalGrip;
         float overLimit = Math.Max(front.OverLimit, rear.OverLimit);
         float actualYawAcceleration = CalculateYawAcceleration(
@@ -414,6 +422,9 @@ public static class CarPhysics
             tires,
             frontLateralUse,
             frontLongitudinalUse,
+            frontBrakeUse,
+            lateralWorkScales.FrontHeat,
+            lateralWorkScales.FrontWear,
             costedFrontOverLimit,
             0f,
             input.AirTempC,
@@ -430,6 +441,9 @@ public static class CarPhysics
             tires,
             frontLateralUse,
             frontLongitudinalUse,
+            frontBrakeUse,
+            lateralWorkScales.FrontHeat,
+            lateralWorkScales.FrontWear,
             costedFrontOverLimit,
             0f,
             input.AirTempC,
@@ -446,6 +460,9 @@ public static class CarPhysics
             tires,
             rearLateralUse,
             rearLongitudinalUse,
+            rearBrakeUse,
+            lateralWorkScales.RearHeat,
+            lateralWorkScales.RearWear,
             costedRearOverLimit,
             normalizedSideslip,
             input.AirTempC,
@@ -462,6 +479,9 @@ public static class CarPhysics
             tires,
             rearLateralUse,
             rearLongitudinalUse,
+            rearBrakeUse,
+            lateralWorkScales.RearHeat,
+            lateralWorkScales.RearWear,
             costedRearOverLimit,
             normalizedSideslip,
             input.AirTempC,
@@ -980,6 +1000,9 @@ public static class CarPhysics
         TireConfig tires,
         float lateralUse,
         float longitudinalUse,
+        float brakeUse,
+        float lateralHeatScale,
+        float lateralWearScale,
         float overLimit,
         float sideslipRatio,
         float airTempC,
@@ -991,10 +1014,7 @@ public static class CarPhysics
         float tireEnergyEfficiency
     )
     {
-        float loadScale = Math.Max(
-            MinimumTireHeatLoadScale,
-            tire.LoadN / Math.Max(config.MassKg * Gravity * 0.25f, Epsilon)
-        );
+        float loadScale = CalculateTireWorkLoadScale(tire, config);
         float thermalOverLimit = Math.Min(overLimit, MaximumThermalOverLimit);
         float normalizedLateralUse = Math.Clamp(Math.Abs(lateralUse), 0f, 1f);
         float normalizedLongitudinalUse = Math.Clamp(
@@ -1002,6 +1022,7 @@ public static class CarPhysics
             0f,
             1f
         );
+        float normalizedBrakeUse = Math.Clamp(brakeUse, 0f, 1f);
         float tireWorkSpeedMultiplier = Math.Clamp(
             Math.Max(0f, speed) /
             TireConfig.TireWorkReferenceSpeedMps,
@@ -1046,7 +1067,8 @@ public static class CarPhysics
 
         float driverSensitiveEnergyFactor = Math.Clamp(tireEnergyEfficiency, 0.9f, 1.1f);
         float directionalHeat =
-            tires.LateralHeatRate * normalizedLateralUse * normalizedLateralUse +
+            tires.LateralHeatRate * normalizedLateralUse * normalizedLateralUse *
+            lateralHeatScale +
             tires.LongitudinalHeatRate * longitudinalHeatUse;
         float wakeCorneringHeat = TireConfig.WakeCorneringHeatRate *
                                    Math.Clamp(
@@ -1056,6 +1078,7 @@ public static class CarPhysics
                                    ) *
                                    normalizedLateralUse *
                                    normalizedLateralUse *
+                                   lateralHeatScale *
                                    tireWorkSpeedMultiplier;
         float surfaceHeat =
             tireWorkSpeedMultiplier *
@@ -1076,6 +1099,10 @@ public static class CarPhysics
         float surfaceToCore = TireConfig.SurfaceCoreTransferRate * (tire.SurfaceTempC - tire.CoreTempC);
         float rollingCoreHeat = TireConfig.RollingCoreHeatRate *
                                 loadScale * rollingHeatSpeedFactor;
+        float brakeCoreHeat = TireConfig.BrakeCoreHeatRate *
+                              normalizedBrakeUse *
+                              tireWorkSpeedMultiplier *
+                              loadScale;
 
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
@@ -1096,21 +1123,139 @@ public static class CarPhysics
                           airCoolingMultiplier *
                           (tire.CoreTempC - airTempC);
         tire.CoreTempC += (
-            rollingCoreHeat + surfaceToCore - coreToAir
+            rollingCoreHeat + brakeCoreHeat + surfaceToCore - coreToAir
         ) / TireConfig.CoreHeatCapacityRatio * dt;
 
-        float tempWearFactor = 1f + Math.Max(0f, tire.SurfaceTempC - tires.HotWearStartTempC) * tires.HotWearSlope;
+        float tempWearFactor = CalculateTemperatureWearFactor(
+            tires,
+            tire.SurfaceTempC
+        );
         float directionalWear =
-            tires.LateralWearRate * lateralUse * lateralUse +
+            tires.LateralWearRate * lateralUse * lateralUse *
+            lateralWearScale +
             tires.LongitudinalWearRate * longitudinalUse * longitudinalUse;
+        float partialSlipWear = Math.Max(0f, tires.NearLimitWearRate) *
+                                MathF.Pow(
+                                    combinedUse,
+                                    TireConfig.NearLimitWearExponent
+                                );
         float tireWorkWear =
-            directionalWear * driverSensitiveEnergyFactor +
+            (directionalWear + partialSlipWear) *
+            driverSensitiveEnergyFactor +
             tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit +
             tires.SideslipWearRate * sideslipRatio * sideslipRatio;
         float wearDelta = tireWorkWear * tireWorkSpeedMultiplier *
                           tempWearFactor * loadScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
+    }
+
+    private static AxleLateralWorkScales CalculateAxleLateralWorkScales(
+        CarState state,
+        CarConfig config,
+        AxleResult front,
+        AxleResult rear
+    )
+    {
+        float frontLoadWeight =
+            CalculateTireWorkLoadScale(state.FrontLeft, config) +
+            CalculateTireWorkLoadScale(state.FrontRight, config);
+        float rearLoadWeight =
+            CalculateTireWorkLoadScale(state.RearLeft, config) +
+            CalculateTireWorkLoadScale(state.RearRight, config);
+
+        // Lateral rubber work is force times deformation. In this reduced
+        // model deformation is not a state of its own, so use the small-angle
+        // relation deformation ~= force * compliance. The common mass and
+        // rear compliance cancel when only the front/rear share is needed.
+        float frontForce = Math.Abs(front.LateralAccel);
+        float rearForce = Math.Abs(rear.LateralAccel);
+        float frontCompliance = Math.Max(
+            0f,
+            config.FrontLateralComplianceRatio
+        );
+        float physicalFrontWeight =
+            frontForce * frontForce * frontCompliance;
+        float physicalRearWeight = rearForce * rearForce;
+        float physicalTotalWeight =
+            physicalFrontWeight + physicalRearWeight;
+        if (physicalTotalWeight <= Epsilon)
+            return AxleLateralWorkScales.Identity;
+
+        float targetFrontShare = physicalFrontWeight / physicalTotalWeight;
+        float normalizedFrontUse = Math.Clamp(front.LateralUse, 0f, 1f);
+        float normalizedRearUse = Math.Clamp(rear.LateralUse, 0f, 1f);
+        AxleScales heat = RedistributeAxleWork(
+            normalizedFrontUse * normalizedFrontUse * frontLoadWeight,
+            normalizedRearUse * normalizedRearUse * rearLoadWeight,
+            targetFrontShare
+        );
+        AxleScales wear = RedistributeAxleWork(
+            front.LateralUse * front.LateralUse * frontLoadWeight,
+            rear.LateralUse * rear.LateralUse * rearLoadWeight,
+            targetFrontShare
+        );
+        return new AxleLateralWorkScales(
+            heat.Front,
+            heat.Rear,
+            wear.Front,
+            wear.Rear
+        );
+    }
+
+    private static AxleScales RedistributeAxleWork(
+        float currentFront,
+        float currentRear,
+        float targetFrontShare
+    )
+    {
+        float total = currentFront + currentRear;
+        if (total <= Epsilon)
+            return AxleScales.Identity;
+
+        float frontTarget = total * Math.Clamp(targetFrontShare, 0f, 1f);
+        float rearTarget = total - frontTarget;
+        float frontScale = currentFront <= Epsilon
+            ? 1f
+            : frontTarget / currentFront;
+        float rearScale = currentRear <= Epsilon
+            ? 1f
+            : rearTarget / currentRear;
+        return new AxleScales(frontScale, rearScale);
+    }
+
+    private static float CalculateTireWorkLoadScale(
+        TireState tire,
+        CarConfig config
+    )
+    {
+        return Math.Max(
+            MinimumTireHeatLoadScale,
+            tire.LoadN /
+            Math.Max(config.MassKg * Gravity * 0.25f, Epsilon)
+        );
+    }
+
+    private static float CalculateTemperatureWearFactor(
+        TireConfig tires,
+        float surfaceTempC
+    )
+    {
+        float idealLow = Math.Min(
+            tires.IdealSurfaceTempLowC,
+            tires.IdealSurfaceTempHighC
+        );
+        float idealHigh = Math.Max(
+            tires.IdealSurfaceTempLowC,
+            tires.IdealSurfaceTempHighC
+        );
+        float coldDistance = Math.Max(0f, idealLow - surfaceTempC);
+        float hotDistance = Math.Max(0f, surfaceTempC - idealHigh);
+        return 1f +
+               Math.Max(0f, tires.ColdWearPerCSquared) *
+               coldDistance * coldDistance +
+               Math.Max(0f, tires.HotWearPerCSquared) *
+               hotDistance * hotDistance;
     }
 
     private static float CalculateAirCoolingMultiplier(float speed)
@@ -1239,9 +1384,17 @@ public static class CarPhysics
             tires.IdealSurfaceTempHighC
         );
         if (tire.SurfaceTempC < idealLow)
-            tempGrip -= (idealLow - tire.SurfaceTempC) * tires.ColdGripLossPerC;
+        {
+            float coldDistance = idealLow - tire.SurfaceTempC;
+            tempGrip -= coldDistance * coldDistance *
+                        tires.ColdGripLossPerCSquared;
+        }
         else if (tire.SurfaceTempC > idealHigh)
-            tempGrip -= (tire.SurfaceTempC - idealHigh) * tires.HotGripLossPerC;
+        {
+            float hotDistance = tire.SurfaceTempC - idealHigh;
+            tempGrip -= hotDistance * hotDistance *
+                        tires.HotGripLossPerCSquared;
+        }
 
         tempGrip -= Math.Max(0f, tire.CoreTempC - tires.CoreOverheatTempC) * tires.CoreOverheatGripLossPerC;
 
@@ -1274,6 +1427,21 @@ public static class CarPhysics
     }
 
     private readonly record struct LateralRequests(float Front, float Rear);
+
+    private readonly record struct AxleScales(float Front, float Rear)
+    {
+        public static AxleScales Identity => new(1f, 1f);
+    }
+
+    private readonly record struct AxleLateralWorkScales(
+        float FrontHeat,
+        float RearHeat,
+        float FrontWear,
+        float RearWear
+    )
+    {
+        public static AxleLateralWorkScales Identity => new(1f, 1f, 1f, 1f);
+    }
 
     private readonly record struct AxleResult(
         float LateralAccel,
