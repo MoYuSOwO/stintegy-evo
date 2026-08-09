@@ -209,6 +209,43 @@ public sealed class VehicleSpeedPlanner
         }
     }
 
+    internal ReferenceLineHandoverConstraints CreateHandoverConstraints(
+        RaceCar car,
+        VehicleSpeedLookahead baselineSpeedPlan,
+        float latestCompletionDistanceMeters
+    )
+    {
+        ArgumentNullException.ThrowIfNull(car);
+        ArgumentNullException.ThrowIfNull(baselineSpeedPlan);
+        EnsurePlanningSnapshot(car);
+        float standingLateralAccelerationLimit =
+            BasePlanningLimits(car).LateralAccelerationLimit *
+            _driverModifiers.EstimatedGripScale;
+        return new ReferenceLineHandoverConstraints(
+            baselineSpeedPlan,
+            standingLateralAccelerationLimit,
+            _planningDownforceAccelPerSpeedSquared,
+            latestCompletionDistanceMeters
+        );
+    }
+
+    internal ReferenceLineHandoverConstraints CreateHandoverConstraints(
+        RaceCar car,
+        VehicleSpeedLookahead baselineSpeedPlan,
+        DriverPlanningModifiers driverModifiers,
+        float latestCompletionDistanceMeters
+    )
+    {
+        ArgumentNullException.ThrowIfNull(car);
+        ArgumentNullException.ThrowIfNull(baselineSpeedPlan);
+        BeginPlanningSnapshot(car, driverModifiers);
+        return CreateHandoverConstraints(
+            car,
+            baselineSpeedPlan,
+            latestCompletionDistanceMeters
+        );
+    }
+
     public DynamicPathSpeedPlan PlanPredictedPath(
         VehicleSpeedLookahead destination,
         RaceCar car,
