@@ -302,6 +302,69 @@ public sealed class TrafficAvoidanceTests
         Assert.True(ego.LastInput.DesiredAccel > 0f);
     }
 
+    /// <summary>
+    /// The same car alongside, on a corner instead of a straight.
+    ///
+    /// Nothing about the pair has changed: three or four metres apart across
+    /// the road, the same speed, and each one holding the line it is already
+    /// on. Only the road is different.
+    ///
+    /// Two cars a few lengths apart on a bend point in different directions
+    /// merely by being at different places on it, so one car's velocity read
+    /// against the other's heading carries the road's own turn in it. A rival
+    /// a few degrees around a corner then reads as diving several metres a
+    /// second at a car it is simply keeping station with, and the room beside
+    /// it is judged to be closing when nothing is moving across the road at
+    /// all. Straights hide this, because there the two headings agree.
+    ///
+    /// Passing happens in corners, so a car that brakes for the room beside it
+    /// there can never finish a move it has begun.
+    /// </summary>
+    [Theory]
+    [InlineData(525f, -4f)]
+    [InlineData(1675f, 3f)]
+    public void ParallelCarThroughACornerDoesNotTriggerBraking(
+        float cornerS,
+        float lateralOffsetMeters
+    )
+    {
+        const float Speed = 30f;
+        const float AlongsideGapMeters = 8f;
+        TrackData track = TrackFactory.SimpleTestTrack();
+        ReferenceLineDriver egoDriver = new();
+        RaceCar ego = CreateCar(
+            "ego",
+            track,
+            s: cornerS,
+            d: 0f,
+            speed: Speed,
+            egoDriver
+        );
+        // The car alongside holds the corner at its own radius. Driving it
+        // straight would cut across the ego and make the conflict real.
+        TrackSample alongside = track.Sample(cornerS + AlongsideGapMeters);
+        RaceCar adjacent = CreateCar(
+            "adjacent",
+            track,
+            s: cornerS + AlongsideGapMeters,
+            d: lateralOffsetMeters,
+            speed: Speed,
+            new FixedDriver(new DriverInput(alongside.RefCurvature, 0.4f))
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(ego);
+        simulation.AddCar(adjacent);
+
+        simulation.Step(Dt);
+
+        Assert.Equal(
+            TrafficSpeedConstraintKind.None,
+            egoDriver.LastTelemetry.TrafficConstraintKind
+        );
+        Assert.False(egoDriver.LastTrafficConflictReport.Active);
+        Assert.Equal(0f, egoDriver.LastTrafficConflictReport.TimeLossSeconds);
+    }
+
     [Fact]
     public void CrossingCarCreatesStopConstraintWithoutReadingItsDriverPlan()
     {
