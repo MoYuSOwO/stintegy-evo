@@ -302,6 +302,178 @@ public sealed class TrafficAvoidanceTests
         Assert.True(ego.LastInput.DesiredAccel > 0f);
     }
 
+    /// <summary>
+    /// The same car alongside, on a corner instead of a straight.
+    ///
+    /// Nothing about the pair has changed: three or four metres apart across
+    /// the road, the same speed, and each one holding the line it is already
+    /// on. Only the road is different.
+    ///
+    /// Two cars a few lengths apart on a bend point in different directions
+    /// merely by being at different places on it, so one car's velocity read
+    /// against the other's heading carries the road's own turn in it. A rival
+    /// a few degrees around a corner then reads as diving several metres a
+    /// second at a car it is simply keeping station with, and the room beside
+    /// it is judged to be closing when nothing is moving across the road at
+    /// all. Straights hide this, because there the two headings agree.
+    ///
+    /// Passing happens in corners, so a car that brakes for the room beside it
+    /// there can never finish a move it has begun.
+    /// </summary>
+    [Theory]
+    [InlineData(525f, -4f)]
+    [InlineData(1675f, 3f)]
+    public void ParallelCarThroughACornerDoesNotTriggerBraking(
+        float cornerS,
+        float lateralOffsetMeters
+    )
+    {
+        const float Speed = 30f;
+        const float AlongsideGapMeters = 8f;
+        TrackData track = TrackFactory.SimpleTestTrack();
+        ReferenceLineDriver egoDriver = new();
+        RaceCar ego = CreateCar(
+            "ego",
+            track,
+            s: cornerS,
+            d: 0f,
+            speed: Speed,
+            egoDriver
+        );
+        // The car alongside holds the corner at its own radius. Driving it
+        // straight would cut across the ego and make the conflict real.
+        TrackSample alongside = track.Sample(cornerS + AlongsideGapMeters);
+        RaceCar adjacent = CreateCar(
+            "adjacent",
+            track,
+            s: cornerS + AlongsideGapMeters,
+            d: lateralOffsetMeters,
+            speed: Speed,
+            new FixedDriver(new DriverInput(alongside.RefCurvature, 0.4f))
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(ego);
+        simulation.AddCar(adjacent);
+
+        simulation.Step(Dt);
+
+        Assert.Equal(
+            TrafficSpeedConstraintKind.None,
+            egoDriver.LastTelemetry.TrafficConstraintKind
+        );
+        Assert.False(egoDriver.LastTrafficConflictReport.Active);
+        Assert.Equal(0f, egoDriver.LastTrafficConflictReport.TimeLossSeconds);
+    }
+
+    [Theory]
+    [InlineData(525f, -4f, -0.12f)]
+    [InlineData(1675f, 3f, 0.12f)]
+    public void CarActuallyMergingThroughACornerTriggersCloseFollowingConstraint(
+        float cornerS,
+        float opponentOffsetMeters,
+        float headingDeltaRadians
+    )
+    {
+        const float Speed = 30f;
+        const float OpponentLeadMeters = 8f;
+        const float PathLengthMeters = 20f;
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar ego = CreateCar(
+            "merging-ego",
+            track,
+            s: cornerS,
+            d: 0f,
+            speed: Speed,
+            new FixedDriver(new DriverInput(0f, 0f))
+        );
+        RaceCar opponent = CreateCar(
+            "merging-opponent",
+            track,
+            s: cornerS + OpponentLeadMeters,
+            d: opponentOffsetMeters,
+            speed: Speed,
+            new FixedDriver(new DriverInput(0f, 0f))
+        );
+        // The opponent starts outside the lateral safety envelope but points
+        // across the reference line toward the ego strongly enough to enter it
+        // within the one-second close-following lookahead.
+        TrackSample opponentSample = track.Sample(
+            cornerS + OpponentLeadMeters
+        );
+        opponent.State.Heading = opponentSample.RefHeading +
+                                 headingDeltaRadians;
+
+        float[] pathDistances = [0f, PathLengthMeters];
+        VehiclePathPrediction path = new();
+        path.Reset(pathDistances.Length);
+        foreach (float distance in pathDistances)
+        {
+            TrackSample sample = track.Sample(cornerS + distance);
+            path.Add(new VehiclePathPredictionPoint(
+                distance,
+                sample.RefPosition,
+                sample.RefHeading,
+                sample.S,
+                0f,
+                sample.RefCurvature,
+                sample.RefCurvature,
+                0f,
+                sample.RefCurvature,
+                Speed
+            ));
+        }
+
+        RaceCarSnapshot[] cars =
+        [
+            RaceCarSnapshot.Capture(
+                ego,
+                track.Project(ego.State.Position)
+            ),
+            RaceCarSnapshot.Capture(
+                opponent,
+                track.Project(opponent.State.Position)
+            )
+        ];
+        RaceFrameSnapshot frame = new(
+            raceTimeSeconds: 0f,
+            cars,
+            new TrafficMotionPlan?[cars.Length]
+        );
+        float[] segmentLengths = [PathLengthMeters, 0f];
+        float[] speeds = [Speed, Speed];
+        float[] speedLimits = [80f, 80f];
+        float[] arrivalTimes = new float[path.Count];
+        // Keep the full trajectory search shorter than the first path segment
+        // so this test specifically exercises the close-following fallback.
+        VehicleSpeedPlanningConfig config = new()
+        {
+            TrafficPredictionHorizonSeconds = 0.01f,
+            TrafficLateralMergePredictionSeconds = 1f
+        };
+        TrafficConstraintMemory memory = default;
+        TrafficSpeedConstraint constraint = default;
+
+        bool changed = TrafficConflictEvaluator.ApplyConstraints(
+            config,
+            track,
+            path,
+            in frame,
+            egoSnapshotIndex: 0,
+            segmentLengths,
+            speeds,
+            speedLimits,
+            arrivalTimes,
+            ref memory,
+            ref constraint
+        );
+
+        Assert.True(changed);
+        Assert.Equal(TrafficSpeedConstraintKind.Follow, constraint.Kind);
+        Assert.Equal(opponent.Id, constraint.OpponentId);
+        Assert.Equal(0f, constraint.PredictedConflictTimeSeconds);
+        Assert.True(constraint.CurrentClearanceMeters > 0f);
+    }
+
     [Fact]
     public void CrossingCarCreatesStopConstraintWithoutReadingItsDriverPlan()
     {

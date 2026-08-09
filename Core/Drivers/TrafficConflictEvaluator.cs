@@ -148,6 +148,7 @@ internal static class TrafficConflictEvaluator
             {
                 changed |= ApplyCloseFollowingConstraint(
                     config,
+                    track!,
                     in ego,
                     in opponent,
                     in currentProjection,
@@ -277,6 +278,7 @@ internal static class TrafficConflictEvaluator
 
     private static bool ApplyCloseFollowingConstraint(
         VehicleSpeedPlanningConfig config,
+        TrackData track,
         in RaceCarSnapshot ego,
         in RaceCarSnapshot opponent,
         in PathProjection projection,
@@ -294,14 +296,18 @@ internal static class TrafficConflictEvaluator
 
         float lateralLimit = (ego.WidthMeters + opponent.WidthMeters) * 0.5f +
                              config.TrafficLateralSafetyMarginMeters;
-        Vector2 pathLeft = new(
-            -projection.Tangent.Y,
-            projection.Tangent.X
-        );
-        float relativeLateralSpeed = Vector2.Dot(
-            opponent.Velocity - ego.Velocity,
-            pathLeft
-        );
+        // How fast the two are closing across the road. Reading one car's
+        // velocity against the other's heading counts the road's own bend as
+        // movement across it: two cars a few lengths apart on a curve point in
+        // different directions merely by being at different places on it, and
+        // a rival three degrees around a corner reads as diving three metres
+        // per second at a car that is simply following the same road. Each
+        // car's drift is therefore taken against the line it is itself
+        // following, which is what changing lane means, exactly as the
+        // opponent prediction already does it.
+        float relativeLateralSpeed =
+            ReferenceLateralDrift(track, in ego) -
+            ReferenceLateralDrift(track, in opponent);
         float predictedLateralDistance =
             projection.LateralDistanceMeters +
             relativeLateralSpeed *
@@ -1192,6 +1198,30 @@ internal static class TrafficConflictEvaluator
         if (forwardDelta > track.LengthMeters * 0.5f)
             return false;
         return string.CompareOrdinal(ego.Id, opponent.Id) > 0;
+    }
+
+    /// <summary>
+    /// How fast a car is moving across the racing line it is following, with
+    /// the line's own sideways travel taken out, so a car holding its line
+    /// around a corner reads as zero.
+    /// </summary>
+    private static float ReferenceLateralDrift(
+        TrackData track,
+        in RaceCarSnapshot car
+    )
+    {
+        TrackSample sample = track.Sample(car.TrackS);
+        float longitudinalSpeed = Vector2.Dot(car.Velocity, sample.Tangent);
+        float lateralSpeed = Vector2.Dot(car.Velocity, sample.Normal);
+        float referenceOffsetDerivative = (
+            track.Sample(
+                car.TrackS + ReferenceOffsetDerivativeProbeMeters
+            ).RefOffset -
+            track.Sample(
+                car.TrackS - ReferenceOffsetDerivativeProbeMeters
+            ).RefOffset
+        ) / (2f * ReferenceOffsetDerivativeProbeMeters);
+        return lateralSpeed - referenceOffsetDerivative * longitudinalSpeed;
     }
 
     private static float HeadingDot(float first, float second)
