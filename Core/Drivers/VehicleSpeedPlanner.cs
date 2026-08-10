@@ -474,7 +474,8 @@ public sealed class VehicleSpeedPlanner
                         speedLimits,
                         arrivalTimes,
                         ref evaluationMemory,
-                        ref trafficConstraint
+                        ref trafficConstraint,
+                        out bool requiresReevaluation
                     );
                     if (!changed)
                         break;
@@ -489,6 +490,8 @@ public sealed class VehicleSpeedPlanner
                         speeds,
                         lateralAccelerationLimit
                     );
+                    if (!requiresReevaluation)
+                        break;
                 }
                 TrafficConflictEvaluator.FillArrivalTimes(
                     count,
@@ -1172,6 +1175,14 @@ public sealed class VehicleSpeedPlanner
             config.TrafficPredictionHorizonSeconds <= 0f ||
             !float.IsFinite(config.TrafficMinimumGapMeters) ||
             config.TrafficMinimumGapMeters < 0f ||
+            !float.IsFinite(config.TrafficFollowingTimeHeadwaySeconds) ||
+            config.TrafficFollowingTimeHeadwaySeconds < 0f ||
+            !float.IsFinite(config.TrafficFollowingControlResponseSeconds) ||
+            config.TrafficFollowingControlResponseSeconds < 0f ||
+            !float.IsFinite(
+                config.TrafficApproachDecelerationMetersPerSecondSquared
+            ) ||
+            config.TrafficApproachDecelerationMetersPerSecondSquared <= 0f ||
             !float.IsFinite(config.TrafficTimeHeadwaySeconds) ||
             config.TrafficTimeHeadwaySeconds < 0f ||
             !float.IsFinite(config.TrafficLateralMergePredictionSeconds) ||

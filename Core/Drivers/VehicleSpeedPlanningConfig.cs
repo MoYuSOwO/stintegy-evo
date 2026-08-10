@@ -26,6 +26,9 @@ public sealed class VehicleSpeedPlanningConfig
     public bool EnableTrafficAvoidance { get; init; } = true;
     public float TrafficPredictionHorizonSeconds { get; init; } = 6f;
     public float TrafficMinimumGapMeters { get; init; } = 0.8f;
+    public float TrafficFollowingTimeHeadwaySeconds { get; init; } = 0.075f;
+    public float TrafficFollowingControlResponseSeconds { get; init; } = 0.4f;
+    public float TrafficApproachDecelerationMetersPerSecondSquared { get; init; } = 3f;
     public float TrafficTimeHeadwaySeconds { get; init; } = 0.12f;
     public float TrafficLateralMergePredictionSeconds { get; init; } = 1f;
     public float TrafficLateralSafetyMarginMeters { get; init; } = 0.15f;
