@@ -129,6 +129,7 @@ internal static class TrafficConflictEvaluator
             {
                 changed |= ApplyMovingFollowingConstraint(
                     config,
+                    track,
                     in ego,
                     in opponent,
                     in currentProjection,
@@ -371,6 +372,7 @@ internal static class TrafficConflictEvaluator
 
     private static bool ApplyMovingFollowingConstraint(
         VehicleSpeedPlanningConfig config,
+        TrackData track,
         in RaceCarSnapshot ego,
         in RaceCarSnapshot opponent,
         in PathProjection projection,
@@ -418,6 +420,7 @@ internal static class TrafficConflictEvaluator
 
             float predictedClearance = clearance;
             float predictedOpponentSpeed = opponentAlongSpeed;
+            float opponentTravelDistance;
             if (opponentPlan is not null)
             {
                 if (!opponentPlan.TrySample(
@@ -427,14 +430,37 @@ internal static class TrafficConflictEvaluator
                 {
                     break;
                 }
-                predictedClearance += planned.DistanceMeters -
-                                      projection.Path[i].DistanceMeters;
+                opponentTravelDistance = planned.DistanceMeters;
                 predictedOpponentSpeed = planned.SpeedMetersPerSecond;
             }
             else
             {
-                predictedClearance += opponentAlongSpeed * time -
-                                      projection.Path[i].DistanceMeters;
+                opponentTravelDistance = opponentAlongSpeed * time;
+            }
+            predictedClearance += opponentTravelDistance -
+                                  projection.Path[i].DistanceMeters;
+
+            if (i > 0)
+            {
+                PredictedTrafficPose opponentPose = PredictOpponent(
+                    track,
+                    in opponent,
+                    time,
+                    opponentPlan
+                );
+                if (!MayOverlapLaterally(
+                        config,
+                        projection.Path,
+                        projection.AlongDistanceMeters +
+                        opponentTravelDistance,
+                        in ego,
+                        in opponent,
+                        in opponentPose,
+                        time
+                    ))
+                {
+                    continue;
+                }
             }
 
             float predictedEgoSpeed = MathF.Max(0f, speeds[i]);
@@ -495,6 +521,55 @@ internal static class TrafficConflictEvaluator
         );
         RecordConstraint(in constraint, ref lastConstraint);
         return true;
+    }
+
+    private static bool MayOverlapLaterally(
+        VehicleSpeedPlanningConfig config,
+        VehiclePathPrediction path,
+        float opponentPathDistanceMeters,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        in PredictedTrafficPose opponentPose,
+        float timeSeconds
+    )
+    {
+        int beforeIndex = IndexAtOrBeforeDistance(
+            path,
+            Math.Clamp(opponentPathDistanceMeters, 0f, path.LengthMeters)
+        );
+        int afterIndex = Math.Min(beforeIndex + 1, path.Count - 1);
+        VehiclePathPredictionPoint before = path[beforeIndex];
+        VehiclePathPredictionPoint after = path[afterIndex];
+        float segmentLength = MathF.Max(
+            after.DistanceMeters - before.DistanceMeters,
+            1e-6f
+        );
+        float t = Math.Clamp(
+            (opponentPathDistanceMeters - before.DistanceMeters) /
+            segmentLength,
+            0f,
+            1f
+        );
+        Vector2 pathPosition = Vector2.Lerp(
+            before.Position,
+            after.Position,
+            t
+        );
+        float pathHeading = MathHelper.NormalizeAngle(
+            before.VelocityHeading +
+            MathHelper.NormalizeAngle(
+                after.VelocityHeading - before.VelocityHeading
+            ) * t
+        );
+        Vector2 pathLeft = new(-MathF.Sin(pathHeading), MathF.Cos(pathHeading));
+        float lateralDistance = MathF.Abs(
+            Vector2.Dot(opponentPose.Position - pathPosition, pathLeft)
+        );
+        float lateralLimit =
+            (ego.WidthMeters + opponent.WidthMeters) * 0.5f +
+            config.TrafficLateralSafetyMarginMeters +
+            LateralUncertaintyGrowthMetersPerSecond * timeSeconds;
+        return lateralDistance <= lateralLimit;
     }
 
     private static bool ApplyHeldConstraint(
