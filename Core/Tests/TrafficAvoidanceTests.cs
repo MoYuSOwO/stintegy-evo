@@ -374,7 +374,8 @@ public sealed class TrafficAvoidanceTests
         float headingDeltaRadians
     )
     {
-        const float Speed = 30f;
+        const float EgoSpeed = 32f;
+        const float OpponentSpeed = 30f;
         const float OpponentLeadMeters = 8f;
         const float PathLengthMeters = 20f;
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -383,7 +384,7 @@ public sealed class TrafficAvoidanceTests
             track,
             s: cornerS,
             d: 0f,
-            speed: Speed,
+            speed: EgoSpeed,
             new FixedDriver(new DriverInput(0f, 0f))
         );
         RaceCar opponent = CreateCar(
@@ -391,7 +392,7 @@ public sealed class TrafficAvoidanceTests
             track,
             s: cornerS + OpponentLeadMeters,
             d: opponentOffsetMeters,
-            speed: Speed,
+            speed: OpponentSpeed,
             new FixedDriver(new DriverInput(0f, 0f))
         );
         // The opponent starts outside the lateral safety envelope but points
@@ -419,7 +420,7 @@ public sealed class TrafficAvoidanceTests
                 sample.RefCurvature,
                 0f,
                 sample.RefCurvature,
-                Speed
+                EgoSpeed
             ));
         }
 
@@ -440,7 +441,7 @@ public sealed class TrafficAvoidanceTests
             new TrafficMotionPlan?[cars.Length]
         );
         float[] segmentLengths = [PathLengthMeters, 0f];
-        float[] speeds = [Speed, Speed];
+        float[] speeds = [EgoSpeed, EgoSpeed];
         float[] speedLimits = [80f, 80f];
         float[] arrivalTimes = new float[path.Count];
         // Keep the full trajectory search shorter than the first path segment
@@ -464,14 +465,112 @@ public sealed class TrafficAvoidanceTests
             speedLimits,
             arrivalTimes,
             ref memory,
-            ref constraint
+            ref constraint,
+            out bool requiresReevaluation
         );
 
         Assert.True(changed);
+        Assert.False(requiresReevaluation);
         Assert.Equal(TrafficSpeedConstraintKind.Follow, constraint.Kind);
         Assert.Equal(opponent.Id, constraint.OpponentId);
         Assert.Equal(0f, constraint.PredictedConflictTimeSeconds);
         Assert.True(constraint.CurrentClearanceMeters > 0f);
+    }
+
+    [Fact]
+    public void CloseFollowingClearanceIncludesRotatedBodyCorners()
+    {
+        const float EgoS = 100f;
+        const float CenterLeadMeters = 5.1f;
+        const float LateralOffsetMeters = 1.4f;
+        const float BodyAngleRadians = 0.08f;
+        const float Speed = 30f;
+        const float PathLengthMeters = 20f;
+        TrackData track = TrackFactory.SimpleTestTrack();
+        RaceCar ego = CreateCar(
+            "angled-ego",
+            track,
+            EgoS,
+            d: 0f,
+            speed: Speed,
+            new FixedDriver(new DriverInput(0f, 0f))
+        );
+        RaceCar opponent = CreateCar(
+            "angled-opponent",
+            track,
+            EgoS + CenterLeadMeters,
+            d: LateralOffsetMeters,
+            speed: Speed,
+            new FixedDriver(new DriverInput(0f, 0f))
+        );
+        TrackSample egoSample = track.Sample(EgoS);
+        TrackSample opponentSample = track.Sample(EgoS + CenterLeadMeters);
+        ego.State.Heading = egoSample.RefHeading + BodyAngleRadians;
+        ego.State.SideslipAngleRadians = -BodyAngleRadians;
+        opponent.State.Heading = opponentSample.RefHeading - BodyAngleRadians;
+        opponent.State.SideslipAngleRadians = BodyAngleRadians;
+
+        VehiclePathPrediction path = new();
+        path.Reset(2);
+        foreach (float distance in new[] { 0f, PathLengthMeters })
+        {
+            TrackSample sample = track.Sample(EgoS + distance);
+            path.Add(new VehiclePathPredictionPoint(
+                distance,
+                sample.RefPosition,
+                sample.RefHeading,
+                sample.S,
+                0f,
+                sample.RefCurvature,
+                sample.RefCurvature,
+                0f,
+                sample.RefCurvature,
+                Speed
+            ));
+        }
+
+        RaceCarSnapshot[] cars =
+        [
+            RaceCarSnapshot.Capture(ego, track.Project(ego.State.Position)),
+            RaceCarSnapshot.Capture(
+                opponent,
+                track.Project(opponent.State.Position)
+            )
+        ];
+        RaceFrameSnapshot frame = new(
+            raceTimeSeconds: 0f,
+            cars,
+            new TrafficMotionPlan?[cars.Length]
+        );
+        float[] segmentLengths = [PathLengthMeters, 0f];
+        float[] speeds = [Speed, Speed];
+        float[] speedLimits = [80f, 80f];
+        float[] arrivalTimes = new float[path.Count];
+        VehicleSpeedPlanningConfig config = new()
+        {
+            TrafficPredictionHorizonSeconds = 0.01f
+        };
+        TrafficConstraintMemory memory = default;
+        TrafficSpeedConstraint constraint = default;
+
+        bool changed = TrafficConflictEvaluator.ApplyConstraints(
+            config,
+            track,
+            path,
+            in frame,
+            egoSnapshotIndex: 0,
+            segmentLengths,
+            speeds,
+            speedLimits,
+            arrivalTimes,
+            ref memory,
+            ref constraint,
+            out _
+        );
+
+        Assert.True(changed);
+        Assert.Equal(TrafficSpeedConstraintKind.Follow, constraint.Kind);
+        Assert.InRange(constraint.CurrentClearanceMeters, 0.04f, 0.12f);
     }
 
     [Fact]

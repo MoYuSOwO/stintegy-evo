@@ -6,6 +6,7 @@ namespace StintegyEVO.Core.Drivers;
 
 internal readonly record struct TrafficMotionPlanPoint(
     float TimeSeconds,
+    float DistanceMeters,
     Vector2 Position,
     float HeadingRadians,
     float SpeedMetersPerSecond
@@ -68,6 +69,7 @@ internal sealed class TrafficMotionPlan
         EnsureCapacity(path.Count);
         Count = 0;
         float time = 0f;
+        float totalDistance = 0f;
         float previousSpeed = PointSpeed(path[0], speedPlan);
         for (int i = 0; i < path.Count; i++)
         {
@@ -81,6 +83,7 @@ internal sealed class TrafficMotionPlan
                     path[i - 1].Position,
                     point.Position
                 );
+                totalDistance += distance;
                 float averageSpeed = MathF.Max(
                     (previousSpeed + speed) * 0.5f,
                     0.5f
@@ -90,6 +93,7 @@ internal sealed class TrafficMotionPlan
 
             _points[Count++] = new TrafficMotionPlanPoint(
                 time,
+                totalDistance,
                 point.Position,
                 point.VelocityHeading,
                 speed
@@ -151,6 +155,11 @@ internal sealed class TrafficMotionPlan
         );
         point = new TrafficMotionPlanPoint(
             timeSeconds,
+            Lerp(
+                before.DistanceMeters,
+                after.DistanceMeters,
+                t
+            ),
             Vector2.Lerp(before.Position, after.Position, t),
             MathHelper.NormalizeAngle(
                 before.HeadingRadians +

@@ -22,7 +22,6 @@ internal static class TrafficConflictEvaluator
     private const float MaximumOpponentBrakeDeceleration = 14f;
     private const float LongitudinalUncertaintyGrowthMetersPerSecond = 0.08f;
     private const float LateralUncertaintyGrowthMetersPerSecond = 0.04f;
-    private const float FollowingReleaseMarginMeters = 1.5f;
     private const float ConstraintEpsilon = 1e-4f;
     private const int ConflictSearchStride = 4;
     private const int PathProjectionSearchRadius = 16;
@@ -41,9 +40,11 @@ internal static class TrafficConflictEvaluator
         float[] speedLimits,
         float[] arrivalTimes,
         ref TrafficConstraintMemory memory,
-        ref TrafficSpeedConstraint lastConstraint
+        ref TrafficSpeedConstraint lastConstraint,
+        out bool requiresReevaluation
     )
     {
+        requiresReevaluation = false;
         if (!config.EnableTrafficAvoidance ||
             egoSnapshotIndex < 0 ||
             egoSnapshotIndex >= frame.Count ||
@@ -78,6 +79,7 @@ internal static class TrafficConflictEvaluator
             ref memory,
             ref lastConstraint
         );
+        requiresReevaluation = changed;
 
         ReadOnlySpan<RaceCarSnapshot> cars = frame.Cars;
         for (int opponentIndex = 0; opponentIndex < cars.Length; opponentIndex++)
@@ -114,6 +116,33 @@ internal static class TrafficConflictEvaluator
                 opponent.Position,
                 estimatedAlongDistance
             );
+            if (TryGetMovingFollowingState(
+                    config,
+                    track,
+                    in ego,
+                    in opponent,
+                    in currentProjection,
+                    currentDirectionDot,
+                    out float opponentAlongSpeed,
+                    out float clearance
+                ))
+            {
+                changed |= ApplyMovingFollowingConstraint(
+                    config,
+                    in ego,
+                    in opponent,
+                    in currentProjection,
+                    opponentAlongSpeed,
+                    clearance,
+                    arrivalTimes,
+                    opponentPlan,
+                    speeds,
+                    speedLimits,
+                    ref lastConstraint
+                );
+                continue;
+            }
+
             if (TryFindFirstConflict(
                     config,
                     track,
@@ -126,7 +155,7 @@ internal static class TrafficConflictEvaluator
                     out PredictedConflict conflict
                 ))
             {
-                changed |= ApplyPredictedConflict(
+                bool conflictChanged = ApplyPredictedConflict(
                     config,
                     path,
                     in ego,
@@ -143,19 +172,8 @@ internal static class TrafficConflictEvaluator
                     ref memory,
                     ref lastConstraint
                 );
-            }
-            else
-            {
-                changed |= ApplyCloseFollowingConstraint(
-                    config,
-                    track!,
-                    in ego,
-                    in opponent,
-                    in currentProjection,
-                    currentDirectionDot,
-                    speedLimits,
-                    ref lastConstraint
-                );
+                changed |= conflictChanged;
+                requiresReevaluation |= conflictChanged;
             }
         }
 
@@ -276,17 +294,19 @@ internal static class TrafficConflictEvaluator
         return changed;
     }
 
-    private static bool ApplyCloseFollowingConstraint(
+    private static bool TryGetMovingFollowingState(
         VehicleSpeedPlanningConfig config,
         TrackData track,
         in RaceCarSnapshot ego,
         in RaceCarSnapshot opponent,
         in PathProjection projection,
         float directionDot,
-        float[] speedLimits,
-        ref TrafficSpeedConstraint lastConstraint
+        out float opponentAlongSpeed,
+        out float clearance
     )
     {
+        opponentAlongSpeed = 0f;
+        clearance = 0f;
         if (!projection.IsValid ||
             directionDot <= SameDirectionDotThreshold ||
             projection.AlongDistanceMeters <= 0f)
@@ -329,63 +349,152 @@ internal static class TrafficConflictEvaluator
         if (!mayOverlapLaterally)
             return false;
 
-        float egoAlongSpeed = MathF.Max(
-            0f,
-            Vector2.Dot(ego.Velocity, projection.Tangent)
-        );
-        float opponentAlongSpeed = MathF.Max(
+        opponentAlongSpeed = MathF.Max(
             0f,
             Vector2.Dot(opponent.Velocity, projection.Tangent)
         );
-        float clearance = CurrentClearance(
+        if (opponentAlongSpeed <= MovingSpeedThresholdMetersPerSecond)
+            return false;
+
+        clearance = CurrentClearance(
             in ego,
             in opponent,
             in projection
         );
-        float desiredGap = MathF.Max(
-            DesiredGap(config, egoAlongSpeed),
-            SafeStoppingGap(
+        // Once the cars overlap longitudinally this is no longer following.
+        // Keep side-by-side and crossing encounters in the collision solver.
+        if (clearance <= 0f)
+            return false;
+
+        return true;
+    }
+
+    private static bool ApplyMovingFollowingConstraint(
+        VehicleSpeedPlanningConfig config,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        in PathProjection projection,
+        float opponentAlongSpeed,
+        float clearance,
+        float[] arrivalTimes,
+        TrafficMotionPlan? opponentPlan,
+        float[] speeds,
+        float[] speedLimits,
+        ref TrafficSpeedConstraint lastConstraint
+    )
+    {
+        bool changed = false;
+        int firstChangedIndex = -1;
+        float firstTargetSpeed = 0f;
+        int count = projection.Path.Count;
+        float currentEgoSpeed = MathF.Max(
+            0f,
+            Vector2.Dot(ego.Velocity, projection.Tangent)
+        );
+        float currentDesiredGap = MathF.Max(
+            config.TrafficMinimumGapMeters +
+            config.TrafficFollowingTimeHeadwaySeconds * currentEgoSpeed,
+            ClosingStoppingGap(
                 config,
                 in ego,
                 in opponent,
-                egoAlongSpeed,
+                currentEgoSpeed,
                 opponentAlongSpeed
             )
         );
-        if (clearance > desiredGap + FollowingReleaseMarginMeters)
+        float recoveryRelativeSpeed = -MathF.Sqrt(
+            2f *
+            config.TrafficApproachDecelerationMetersPerSecondSquared *
+            MathF.Max(0f, currentDesiredGap - clearance)
+        );
+        for (int i = 0; i < count; i++)
+        {
+            float time = arrivalTimes[i];
+            if (!float.IsFinite(time) ||
+                time > config.TrafficPredictionHorizonSeconds)
+            {
+                break;
+            }
+
+            float predictedClearance = clearance;
+            float predictedOpponentSpeed = opponentAlongSpeed;
+            if (opponentPlan is not null)
+            {
+                if (!opponentPlan.TrySample(
+                        time,
+                        out TrafficMotionPlanPoint planned
+                    ))
+                {
+                    break;
+                }
+                predictedClearance += planned.DistanceMeters -
+                                      projection.Path[i].DistanceMeters;
+                predictedOpponentSpeed = planned.SpeedMetersPerSecond;
+            }
+            else
+            {
+                predictedClearance += opponentAlongSpeed * time -
+                                      projection.Path[i].DistanceMeters;
+            }
+
+            float predictedEgoSpeed = MathF.Max(0f, speeds[i]);
+            float desiredGap = MathF.Max(
+                config.TrafficMinimumGapMeters +
+                config.TrafficFollowingTimeHeadwaySeconds *
+                predictedEgoSpeed,
+                ClosingStoppingGap(
+                    config,
+                    in ego,
+                    in opponent,
+                    predictedEgoSpeed,
+                    predictedOpponentSpeed
+                )
+            );
+            float gapError = predictedClearance - desiredGap;
+            float targetRelativeSpeed = gapError >= 0f
+                ? MathF.Sqrt(
+                    2f *
+                    config.TrafficApproachDecelerationMetersPerSecondSquared *
+                    gapError
+                )
+                : recoveryRelativeSpeed;
+            float targetSpeed = predictedOpponentSpeed + targetRelativeSpeed;
+            if (targetSpeed >= speeds[i] - ConstraintEpsilon)
+            {
+                if (predictedClearance <= 0f)
+                    break;
+                continue;
+            }
+
+            speedLimits[i] = MathF.Min(
+                speedLimits[i],
+                MathF.Max(0f, targetSpeed)
+            );
+            changed = true;
+            if (firstChangedIndex >= 0)
+            {
+                if (predictedClearance <= 0f)
+                    break;
+                continue;
+            }
+            firstChangedIndex = i;
+            firstTargetSpeed = targetSpeed;
+            if (predictedClearance <= 0f)
+                break;
+        }
+        if (!changed)
             return false;
 
-        TrafficSpeedConstraintKind kind =
-            opponentAlongSpeed > MovingSpeedThresholdMetersPerSecond
-                ? TrafficSpeedConstraintKind.Follow
-                : TrafficSpeedConstraintKind.Stop;
-        float constraintDistance = MathF.Max(
-            0f,
-            projection.AlongDistanceMeters -
-            (ego.LengthMeters + opponent.LengthMeters) * 0.5f -
-            desiredGap
-        );
-        int constraintIndex = IndexAtOrBeforeDistance(
-            projection.Path,
-            constraintDistance
-        );
-        bool changed = ApplySpeedConstraint(
-            kind,
-            constraintIndex,
-            opponentAlongSpeed,
-            speedLimits,
-            projection.Path.Count
-        );
         TrafficSpeedConstraint constraint = new(
-            kind,
+            TrafficSpeedConstraintKind.Follow,
             opponent.Id,
-            projection.Path[constraintIndex].DistanceMeters,
-            opponentAlongSpeed,
-            0f,
+            projection.Path[firstChangedIndex].DistanceMeters,
+            firstTargetSpeed,
+            arrivalTimes[firstChangedIndex],
             clearance
         );
         RecordConstraint(in constraint, ref lastConstraint);
-        return changed;
+        return true;
     }
 
     private static bool ApplyHeldConstraint(
@@ -1269,6 +1378,44 @@ internal static class TrafficConflictEvaluator
         );
     }
 
+    private static float ClosingStoppingGap(
+        VehicleSpeedPlanningConfig config,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        float egoSpeedMetersPerSecond,
+        float opponentSpeedMetersPerSecond
+    )
+    {
+        float egoBrakeDeceleration = MathF.Max(
+            ego.MaximumBrakeDecelerationMetersPerSecondSquared *
+            config.BrakeDecelerationUsage,
+            0.1f
+        );
+        float opponentBrakeDeceleration = MathF.Max(
+            opponent.MaximumBrakeDecelerationMetersPerSecondSquared *
+            config.BrakeDecelerationUsage,
+            0.1f
+        );
+        float egoStoppingDistance =
+            egoSpeedMetersPerSecond * egoSpeedMetersPerSecond /
+            (2f * egoBrakeDeceleration);
+        float opponentStoppingDistance =
+            opponentSpeedMetersPerSecond * opponentSpeedMetersPerSecond /
+            (2f * opponentBrakeDeceleration);
+        float responseDistance = MathF.Max(
+            0f,
+            egoSpeedMetersPerSecond - opponentSpeedMetersPerSecond
+        ) * config.TrafficFollowingControlResponseSeconds;
+        return MathF.Max(
+            config.TrafficMinimumGapMeters +
+            config.TrafficLongitudinalSafetyMarginMeters,
+            config.TrafficMinimumGapMeters +
+            config.TrafficLongitudinalSafetyMarginMeters +
+            egoStoppingDistance - opponentStoppingDistance +
+            responseDistance
+        );
+    }
+
     private static float CurrentClearance(
         in RaceCarSnapshot ego,
         in RaceCarSnapshot opponent,
@@ -1277,8 +1424,32 @@ internal static class TrafficConflictEvaluator
     {
         if (!projection.IsValid)
             return float.PositiveInfinity;
+        float egoHalfExtent = ProjectedBodyHalfExtent(
+            in ego,
+            projection.Tangent
+        );
+        float opponentHalfExtent = ProjectedBodyHalfExtent(
+            in opponent,
+            projection.Tangent
+        );
         return projection.AlongDistanceMeters -
-               (ego.LengthMeters + opponent.LengthMeters) * 0.5f;
+               egoHalfExtent - opponentHalfExtent;
+    }
+
+    private static float ProjectedBodyHalfExtent(
+        in RaceCarSnapshot car,
+        Vector2 axis
+    )
+    {
+        Vector2 forward = new(
+            MathF.Cos(car.HeadingRadians),
+            MathF.Sin(car.HeadingRadians)
+        );
+        Vector2 left = new(-forward.Y, forward.X);
+        return car.LengthMeters * 0.5f *
+               MathF.Abs(Vector2.Dot(forward, axis)) +
+               car.WidthMeters * 0.5f *
+               MathF.Abs(Vector2.Dot(left, axis));
     }
 
     private static PathProjection ProjectOntoPath(
