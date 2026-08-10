@@ -25,17 +25,22 @@ public partial class RaceView : Node2D
 
     private const int DefaultGridCarCount = 20;
     private const int DefaultRosterSeed = 0x5345564F;
+    private const float FollowCameraZoom = 3f;
 
     private readonly List<CarView> _carViews = [];
     private readonly Label _telemetryLabel = new()
     {
-        Position = new GVector2(12f, 82f),
+        Position = new GVector2(12f, 42f),
         ZIndex = 1000
     };
     private RaceSimulation? _simulation;
     private RaceCar? _playerCar;
     private RaceCsvTelemetryRecorder? _csvTelemetry;
     private FrameTimeMonitor? _frameTimeMonitor;
+    private GVector2 _overviewCameraPosition;
+    private GVector2 _overviewCameraZoom = GVector2.One;
+    private int _selectedCarIndex;
+    private bool _followSelectedCar;
 
     public override void _Ready()
     {
@@ -83,6 +88,7 @@ public partial class RaceView : Node2D
             );
         foreach (CarView view in _carViews)
             view.SyncFromCore();
+        UpdateCamera();
         RefreshTelemetry();
     }
 
@@ -96,6 +102,28 @@ public partial class RaceView : Node2D
     {
         if (_playerCar == null || inputEvent is not InputEventKey key || !key.Pressed || key.Echo)
             return;
+
+        if (key.Keycode == Key.F)
+        {
+            _followSelectedCar = !_followSelectedCar;
+            UpdateCamera();
+            RefreshTelemetry();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        int carDelta = key.Keycode switch
+        {
+            Key.Left => -1,
+            Key.Right => 1,
+            _ => 0
+        };
+        if (carDelta != 0)
+        {
+            SelectObservedCar(carDelta);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
 
         int tireDelta = key.Keycode switch { Key.Q => -1, Key.E => 1, _ => 0 };
         int batteryDelta = key.Keycode switch { Key.A => -1, Key.D => 1, _ => 0 };
@@ -212,12 +240,14 @@ public partial class RaceView : Node2D
         CanvasLayer layer = new() { Layer = 90 };
         ColorRect panel = new()
         {
-            Position = new GVector2(8f, 76f),
-            Size = new GVector2(510f, 266f),
+            Position = new GVector2(8f, 36f),
+            Size = new GVector2(570f, 148f),
             Color = Color.FromHtml("#111820d8"),
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
         _telemetryLabel.AddThemeColorOverride("font_color", Color.FromHtml("#f3f6f8"));
+        _telemetryLabel.AddThemeFontSizeOverride("font_size", 13);
+        _telemetryLabel.AddThemeConstantOverride("line_spacing", 1);
         layer.AddChild(panel);
         layer.AddChild(_telemetryLabel);
         AddChild(layer);
@@ -234,17 +264,13 @@ public partial class RaceView : Node2D
         float rearTemp = (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
         string trafficStatus = TrafficStatus(_playerCar);
         _telemetryLabel.Text =
-            $"STINTEGYEVO  race {_simulation.RaceTimeSeconds:0.0}s  lap {_playerCar.Progress.Lap + 1}  cars {_simulation.Cars.Count}\n" +
-            $"{_playerCar.Id}  Speed {state.Speed * 3.6f:0} km/h   SOC {state.BatterySoc * 100f:0.0}%\n" +
-            $"{trafficStatus}\n" +
-            $"Tire {_playerCar.Strategy.TireMode}   Battery {_playerCar.Strategy.BatteryMode}\n" +
-            $"Air {_simulation.Environment.AirTempC:0} C   Track {_simulation.Environment.TrackTempC:0} C\n" +
-            $"Front {frontTemp:0.0} C   Rear {rearTemp:0.0} C   Use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
-            $"FL {WheelStatus(state.FrontLeft)}   FR {WheelStatus(state.FrontRight)}\n" +
-            $"RL {WheelStatus(state.RearLeft)}   RR {WheelStatus(state.RearRight)}\n" +
-            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg   Slide {telemetry.RearSlideSeverity:0.00}   TC {telemetry.TractionControlCutAccel:0.00}\n" +
-            $"Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s\n" +
-            $"Region {_playerCar.Progress.Region}   Q/E tire  A/D battery";
+            $"{_playerCar.Id}  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
+            $"SOC {state.BatterySoc * 100f:0.0}%  |  Tire {_playerCar.Strategy.TireMode}  Battery {_playerCar.Strategy.BatteryMode}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E tire  A/D batt\n" +
+            $"Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C  |  Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
+            $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
+            $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  Slide {telemetry.RearSlideSeverity:0.00}  TC {telemetry.TractionControlCutAccel:0.00}  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s\n" +
+            trafficStatus;
     }
 
     private static string TrafficStatus(RaceCar car)
@@ -254,13 +280,13 @@ public partial class RaceView : Node2D
 
         ReferenceLineDriverTelemetry telemetry = driver.LastTelemetry;
         if (telemetry.TrafficConstraintKind == TrafficSpeedConstraintKind.None)
-            return "Traffic CLEAR";
+            return "Traffic UNCONSTRAINED";
 
         return
             $"Traffic {telemetry.TrafficConstraintKind.ToString().ToUpperInvariant()} " +
-            $"{telemetry.TrafficOpponentId ?? "?"}   " +
-            $"gap {telemetry.TrafficCurrentClearanceMeters:0.0} m\n" +
-            $"Traffic plan {telemetry.TrafficConstraintDistanceMeters:0} m ahead @ " +
+            $"{telemetry.TrafficOpponentId ?? "?"}  |  " +
+            $"Gap {telemetry.TrafficCurrentClearanceMeters:0.0} m  |  " +
+            $"Plan {telemetry.TrafficConstraintDistanceMeters:0} m @ " +
             $"{telemetry.TrafficTargetSpeedMetersPerSecond * 3.6f:0} km/h";
     }
 
@@ -289,6 +315,37 @@ public partial class RaceView : Node2D
                value.Equals("yes", StringComparison.OrdinalIgnoreCase);
     }
 
+    private void SelectObservedCar(int delta)
+    {
+        if (_simulation == null || _simulation.Cars.Count == 0)
+            return;
+
+        int count = _simulation.Cars.Count;
+        _selectedCarIndex = (_selectedCarIndex + delta) % count;
+        if (_selectedCarIndex < 0)
+            _selectedCarIndex += count;
+        _playerCar = _simulation.Cars[_selectedCarIndex];
+        _followSelectedCar = true;
+        UpdateCamera();
+        RefreshTelemetry();
+    }
+
+    private void UpdateCamera()
+    {
+        if (Camera == null)
+            return;
+
+        if (_followSelectedCar && _playerCar != null)
+        {
+            Camera.Position = _playerCar.State.Position.ToGodot();
+            Camera.Zoom = GVector2.One * FollowCameraZoom;
+            return;
+        }
+
+        Camera.Position = _overviewCameraPosition;
+        Camera.Zoom = _overviewCameraZoom;
+    }
+
     private void ConfigureCamera(TrackData track)
     {
         if (Camera == null)
@@ -310,8 +367,9 @@ public partial class RaceView : Node2D
         float verticalZoom = viewportSize.Y / MathF.Max(size.Y + worldMargin, 1f);
         float zoom = Mathf.Clamp(Mathf.Min(horizontalZoom, verticalZoom), 0.25f, 4f);
 
-        Camera.Position = ((min + max) * 0.5f).ToGodot();
-        Camera.Zoom = GVector2.One * zoom;
+        _overviewCameraPosition = ((min + max) * 0.5f).ToGodot();
+        _overviewCameraZoom = GVector2.One * zoom;
+        UpdateCamera();
     }
 
 }
