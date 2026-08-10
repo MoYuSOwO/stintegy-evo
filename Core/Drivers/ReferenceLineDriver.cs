@@ -18,6 +18,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     private readonly StanleyPathPredictor _pathPredictor = new();
     private readonly VehicleSpeedLookahead _referenceSpeedLookahead = new();
     private readonly PathPlanBuffer _currentPlan = new();
+    private readonly PathPlanBuffer _handoverProbePlan = new();
     private readonly TrafficMotionPlan _publishedTrafficMotionPlan = new();
     private readonly TacticalManeuverPlanner _tacticalPlanner = new();
     private readonly TrackConstrainedLateralOffset _tacticalOffsetProfile = new();
@@ -255,13 +256,76 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
 
         RaceCar car = context.Car;
         CarState state = car.State;
+        DriverPlanningModifiers planningModifiers = new(
+            _performance!.PaceEfficiency,
+            _performance.EstimatedGripScale *
+            (1f + _performance.LocalSpeedErrorFraction),
+            _performance.FrontBrakeBiasOffset
+        );
+        bool needsHandoverPlan =
+            _tacticalOffsetProfile.RequiresHandoverPlanning(
+                context.Track,
+                context.Pose.S,
+                _tacticalIntent.TargetOffsetMeters,
+                car.Collision.HalfWidthMeters
+            );
+        if (needsHandoverPlan && _currentPlan.SpeedLookahead.Count > 0)
+        {
+            ReferenceLineHandoverConstraints handoverConstraints =
+                _speedPlanner.CreateHandoverConstraints(
+                    car,
+                    _currentPlan.SpeedLookahead,
+                    planningModifiers,
+                    _tacticalIntent.LatestCompletionDistanceMeters
+                );
+            _tacticalOffsetProfile.UpdateCommittedTarget(
+                context.Track,
+                context.Pose.S,
+                state.Speed,
+                _tacticalIntent.TargetOffsetMeters,
+                car.Collision.HalfWidthMeters,
+                in handoverConstraints
+            );
+            if (_referenceSpeedLookahead.Count > 0)
+            {
+                float baselineTargetSpeed =
+                    _currentPlan.SpeedLookahead.Sample(0f).TargetSpeed;
+                TrackData track = context.Track;
+                float tacticalOffset =
+                    _tacticalOffsetProfile.CommittedTargetOffsetMeters;
+                float executionOffset = _performance.LateralTargetErrorMeters;
+                ReferenceLineHandoverSpeedSelector.Refine(
+                    _tacticalOffsetProfile,
+                    baselineTargetSpeed,
+                    () => EvaluateCommittedHandoverTargetSpeed(
+                        car,
+                        track,
+                        _referenceSpeedLookahead,
+                        tacticalOffset,
+                        executionOffset
+                    )
+                );
+            }
+        }
+        else
+        {
+            _tacticalOffsetProfile.UpdateCommittedTarget(
+                context.Track,
+                context.Pose.S,
+                state.Speed,
+                _tacticalIntent.TargetOffsetMeters,
+                car.Collision.HalfWidthMeters
+            );
+        }
         float wheelBase = MathF.Max(car.CarConfig.WheelBaseMeters, 0.5f);
         float lateralTargetError = _performance!.LateralTargetErrorMeters;
         // The path controller follows the velocity direction. Body sideslip is
         // stabilized by the vehicle layer instead of turning into an abrupt
         // Stanley heading correction.
-        float tacticalOffsetMeters = _tacticalIntent.TargetOffsetMeters;
-        StanleyControlSample control = tacticalOffsetMeters == 0f
+        float tacticalOffsetMeters =
+            _tacticalOffsetProfile.CommittedTargetOffsetMeters;
+        StanleyControlSample control =
+            !_tacticalOffsetProfile.HasCommittedProfile
             ? StanleyControlLaw.Sample(
                 context.Track,
                 state.Position,
@@ -307,12 +371,6 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         // this and the plan has to be the lap the car can drive. Misjudging a
         // corner's speed is an error, not a limit, so it sits with the other
         // error rather than being smuggled in as less pace.
-        DriverPlanningModifiers planningModifiers = new(
-            _performance.PaceEfficiency,
-            _performance.EstimatedGripScale *
-            (1f + _performance.LocalSpeedErrorFraction),
-            _performance.FrontBrakeBiasOffset
-        );
         long planningStartTimestamp = Stopwatch.GetTimestamp();
         VehicleSpeedLookahead referenceLookahead =
             _speedPlanner.PlanReferenceLookahead(
@@ -400,7 +458,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _performance.EffectiveControl,
             _performance.ControlGainScale
         );
-        if (tacticalOffsetMeters == 0f)
+        if (!_tacticalOffsetProfile.HasCommittedProfile)
         {
             _pathPredictor.Predict(
                 destination.Path,
@@ -458,6 +516,63 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
 
     }
 
+    private float EvaluateCommittedHandoverTargetSpeed(
+        RaceCar car,
+        TrackData track,
+        VehicleSpeedLookahead referenceLookahead,
+        float tacticalOffsetMeters,
+        float executionOffsetMeters
+    )
+    {
+        CarState state = car.State;
+        StanleyControlSample control = StanleyControlLaw.Sample(
+            track,
+            state.Position,
+            state.VelocityHeading,
+            state.Speed,
+            MathF.Max(car.CarConfig.WheelBaseMeters, 0.5f),
+            car.Collision.HalfWidthMeters,
+            _tacticalOffsetProfile,
+            tacticalOffsetMeters,
+            executionOffsetMeters,
+            StanleyGain,
+            StanleySofteningSpeed,
+            HeadingGain,
+            CurvaturePreviewTimeSeconds,
+            MaximumCurvaturePreviewMeters,
+            car.CarConfig.MaxCurvatureRequest
+        );
+        _pathPredictor.Predict(
+            _handoverProbePlan.Path,
+            car,
+            track,
+            referenceLookahead,
+            tacticalOffsetMeters,
+            _tacticalOffsetProfile,
+            executionOffsetMeters,
+            StanleyGain,
+            StanleySofteningSpeed,
+            HeadingGain,
+            CurvaturePreviewTimeSeconds,
+            MaximumCurvaturePreviewMeters,
+            _speedPlanner.Config.SpeedPlanningHorizonMeters,
+            _speedPlanner.Config.PathPredictionStepMeters,
+            _speedPlanner.Config.MinimumDynamicPredictionMeters,
+            _speedPlanner.Config.PredictionConvergenceHoldMeters,
+            _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
+            _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
+            _speedPlanner.Config.PredictionConvergenceCurvatureError,
+            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            control.DesiredCurvature
+        );
+        DynamicPathSpeedPlan speedPlan = _speedPlanner.PlanPredictedPath(
+            _handoverProbePlan.SpeedLookahead,
+            car,
+            _handoverProbePlan.Path
+        );
+        return speedPlan.Current.TargetSpeed;
+    }
+
     private void CommitSelectedPlan(PathPlanBuffer selectedPlan)
     {
         _trafficMemory = selectedPlan.NextTrafficMemory;
@@ -497,6 +612,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         _lastTrafficConflictReport = default;
         _tacticalIntent = TacticalIntent.Keep;
         _tacticalPlanner.Reset();
+        _tacticalOffsetProfile.ResetCommittedTarget();
         _hasPreparedFrame = false;
         _preparedFrame = default;
         _publishedTrafficMotionPlan.Clear();
