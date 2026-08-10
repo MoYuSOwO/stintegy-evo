@@ -47,11 +47,9 @@ public partial class FrameTimeMonitor : CanvasLayer
             ? _coreStepTotalMs / _coreStepSamples
             : 0.0;
         _label.Text =
-            $"FPS {Engine.GetFramesPerSecond():0}\n" +
-            $"Frame interval  {averageFrameIntervalMs:0.00} avg / " +
-            $"{_maximumFrameIntervalMs:0.00} max ms\n" +
-            $"Core step       {averageCoreStepMs:0.00} avg / " +
-            $"{_maximumCoreStepMs:0.00} max ms";
+            $"FPS {Engine.GetFramesPerSecond():0}  |  " +
+            $"Frame {averageFrameIntervalMs:0.00}/{_maximumFrameIntervalMs:0.00} ms  |  " +
+            $"Core {averageCoreStepMs:0.00}/{_maximumCoreStepMs:0.00} ms";
         _elapsed = 0.0;
         _frameIntervalTotalMs = 0.0;
         _maximumFrameIntervalMs = 0f;
