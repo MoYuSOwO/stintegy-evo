@@ -23,6 +23,8 @@ internal sealed class TrafficMotionPlan
     public int Count { get; private set; }
     public float EndTimeSeconds =>
         Count == 0 ? 0f : _points[Count - 1].TimeSeconds;
+    public float EndDistanceMeters =>
+        Count == 0 ? 0f : _points[Count - 1].DistanceMeters;
 
     public void Clear()
     {
@@ -160,6 +162,70 @@ internal sealed class TrafficMotionPlan
                 after.DistanceMeters,
                 t
             ),
+            Vector2.Lerp(before.Position, after.Position, t),
+            MathHelper.NormalizeAngle(
+                before.HeadingRadians +
+                MathHelper.NormalizeAngle(
+                    after.HeadingRadians - before.HeadingRadians
+                ) * t
+            ),
+            Lerp(
+                before.SpeedMetersPerSecond,
+                after.SpeedMetersPerSecond,
+                t
+            )
+        );
+        return true;
+    }
+
+    public bool TrySampleByDistance(
+        float distanceMeters,
+        out TrafficMotionPlanPoint point
+    )
+    {
+        if (Count == 0 ||
+            distanceMeters < 0f ||
+            distanceMeters > EndDistanceMeters)
+        {
+            point = default;
+            return false;
+        }
+        if (Count == 1 || distanceMeters <= 0f)
+        {
+            point = _points[0];
+            return true;
+        }
+        if (distanceMeters >= EndDistanceMeters)
+        {
+            point = _points[Count - 1];
+            return true;
+        }
+
+        int low = 0;
+        int high = Count - 1;
+        while (high - low > 1)
+        {
+            int middle = (low + high) >> 1;
+            if (_points[middle].DistanceMeters <= distanceMeters)
+                low = middle;
+            else
+                high = middle;
+        }
+
+        TrafficMotionPlanPoint before = _points[low];
+        TrafficMotionPlanPoint after = _points[high];
+        float span = MathF.Max(
+            after.DistanceMeters - before.DistanceMeters,
+            1e-6f
+        );
+        float t = Math.Clamp(
+            (distanceMeters - before.DistanceMeters) / span,
+            0f,
+            1f
+        );
+        point = new TrafficMotionPlanPoint(
+            Lerp(before.TimeSeconds, after.TimeSeconds, t),
+            distanceMeters,
             Vector2.Lerp(before.Position, after.Position, t),
             MathHelper.NormalizeAngle(
                 before.HeadingRadians +

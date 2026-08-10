@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
@@ -14,6 +15,9 @@ public sealed class ContinuousFollowingTests
     private const float Dt = 1f / 60f;
     private static readonly Lazy<TrackData> DraftingTrack = new(
         BuildDraftingTrack
+    );
+    private static readonly Lazy<TrackData> VariableSpeedTrack = new(
+        BuildVariableSpeedTrack
     );
     private static readonly Lazy<FollowingDuelResult> SixSecondDuel = new(
         () => RunDuel(6f)
@@ -131,6 +135,92 @@ public sealed class ContinuousFollowingTests
         Assert.True(
             minimumClearance >= 0.25f,
             $"Follower reached only {minimumClearance:0.00} m clearance."
+        );
+    }
+
+    [Fact]
+    public void FasterFollowerKeepsAStableGapThroughRepeatedBrakingZones()
+    {
+        TrackData track = VariableSpeedTrack.Value;
+        ReferenceLineDriver leaderDriver = CreateDriver(
+            "variable-speed-leader-driver",
+            pace: 100f,
+            predictionHorizonSeconds: 6f
+        );
+        ReferenceLineDriver followerDriver = CreateDriver(
+            "variable-speed-follower-driver",
+            pace: 100f,
+            predictionHorizonSeconds: 6f
+        );
+        const float leaderS = 150f;
+        const float initialCenterGap = 40f;
+        RaceCar leader = CreateCar(
+            "variable-speed-leader",
+            track,
+            leaderS,
+            leaderDriver
+        );
+        leader.Strategy = new CarStrategy(
+            TireUsageMode.Normal,
+            BatteryOutputMode.Normal
+        );
+        RaceCar follower = CreateCar(
+            "variable-speed-follower",
+            track,
+            leaderS - initialCenterGap,
+            followerDriver
+        );
+        follower.Strategy = new CarStrategy(
+            TireUsageMode.Attack,
+            BatteryOutputMode.Attack
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(leader);
+        simulation.AddCar(follower);
+
+        float minimumClearance = float.PositiveInfinity;
+        List<float> leaderCrossings = [];
+        List<float> followerCrossings = [];
+        int leaderLap = leader.Progress.Lap;
+        int followerLap = follower.Progress.Lap;
+        for (int frame = 0; frame < 90 * 60; frame++)
+        {
+            simulation.Step(Dt);
+            float clearance = CurrentClearance(track, leader, follower);
+            minimumClearance = MathF.Min(
+                minimumClearance,
+                clearance
+            );
+            if (leader.Progress.Lap > leaderLap)
+            {
+                leaderLap = leader.Progress.Lap;
+                leaderCrossings.Add(simulation.RaceTimeSeconds);
+            }
+            if (follower.Progress.Lap > followerLap)
+            {
+                followerLap = follower.Progress.Lap;
+                followerCrossings.Add(simulation.RaceTimeSeconds);
+            }
+        }
+
+        Assert.True(
+            minimumClearance >= 0.25f,
+            $"follower touched the leader; minimum clearance was {minimumClearance:0.00} m"
+        );
+        int pairedCrossings = Math.Min(
+            leaderCrossings.Count,
+            followerCrossings.Count
+        );
+        Assert.True(
+            pairedCrossings >= 3,
+            $"expected at least three paired line crossings, got {pairedCrossings}"
+        );
+        float firstTimeGap = followerCrossings[0] - leaderCrossings[0];
+        float finalTimeGap = followerCrossings[pairedCrossings - 1] -
+                             leaderCrossings[pairedCrossings - 1];
+        Assert.True(
+            finalTimeGap <= firstTimeGap + 0.25f,
+            $"a faster follower's time gap grew from {firstTimeGap:0.00}s to {finalTimeGap:0.00}s"
         );
     }
 
@@ -261,6 +351,21 @@ public sealed class ContinuousFollowingTests
             .AddTurn(180f, 400f)
             .AddStraight(3000f)
             .AddTurn(180f, 400f)
+            .CloseLoop()
+            .Build(new TrackGridConfig());
+    }
+
+    private static TrackData BuildVariableSpeedTrack()
+    {
+        return new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 20f,
+                refLineSolver: CenterLineRefLineSolver.Instance
+            )
+            .AddStraight(250f)
+            .AddTurn(180f, 40f)
+            .AddStraight(250f)
+            .AddTurn(180f, 40f)
             .CloseLoop()
             .Build(new TrackGridConfig());
     }
