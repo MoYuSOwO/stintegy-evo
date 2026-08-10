@@ -256,6 +256,17 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
 
         RaceCar car = context.Car;
         CarState state = car.State;
+        RacingRoomSnapshot racingRoom = context.HasFrameSnapshot
+            ? context.Frame.RacingRoom
+            : default;
+        _tacticalOffsetProfile.UpdateRacingRoomConstraint(
+            context.Track,
+            context.Pose.S,
+            state.Speed,
+            in racingRoom,
+            car.Id,
+            car.Collision.HalfWidthMeters
+        );
         DriverPlanningModifiers planningModifiers = new(
             _performance!.PaceEfficiency,
             _performance.EstimatedGripScale *

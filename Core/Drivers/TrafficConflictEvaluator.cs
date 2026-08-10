@@ -62,6 +62,18 @@ internal static class TrafficConflictEvaluator
         );
 
         if (memory.OpponentId is not null &&
+            frame.RacingRoom.TryGetPair(
+                ego.Id,
+                memory.OpponentId,
+                out _
+            ))
+        {
+            // A following hold belongs to the old, single-file relationship.
+            // Once the cars have earned side-by-side room, spatial ownership
+            // replaces that longitudinal memory.
+            memory.Clear();
+        }
+        if (memory.OpponentId is not null &&
             frame.FindTrafficMotionPlan(memory.OpponentId) is not null)
         {
             // The held constraint came from an older state-only estimate. A
@@ -80,6 +92,18 @@ internal static class TrafficConflictEvaluator
             ref lastConstraint
         );
         requiresReevaluation = changed;
+        bool roomYieldChanged = ApplyRacingRoomYield(
+            track,
+            path,
+            in frame,
+            in ego,
+            speeds,
+            speedLimits,
+            arrivalTimes,
+            ref lastConstraint
+        );
+        changed |= roomYieldChanged;
+        requiresReevaluation |= roomYieldChanged;
 
         ReadOnlySpan<RaceCarSnapshot> cars = frame.Cars;
         for (int opponentIndex = 0; opponentIndex < cars.Length; opponentIndex++)
@@ -98,12 +122,34 @@ internal static class TrafficConflictEvaluator
                 ego.HeadingRadians,
                 opponent.HeadingRadians
             );
-            if (!ShouldYield(
-                    track,
-                    in ego,
+            bool hasReservedRoom = frame.RacingRoom.TryGetPair(
+                ego.Id,
+                opponent.Id,
+                out RacingRoomPairSnapshot roomPair
+            );
+            bool yieldsInReservedPair = hasReservedRoom && string.Equals(
+                roomPair.EntryTrailingCarId,
+                ego.Id,
+                StringComparison.Ordinal
+            );
+            if (hasReservedRoom)
+            {
+                float raceDelta = RacingRoomGeometry.SignedLongitudinalDelta(
                     in opponent,
-                    currentDirectionDot
-                ))
+                    in ego
+                );
+                yieldsInReservedPair = raceDelta > 0.05f ||
+                    (MathF.Abs(raceDelta) <= 0.05f &&
+                     yieldsInReservedPair);
+            }
+            if (hasReservedRoom
+                    ? !yieldsInReservedPair
+                    : !ShouldYield(
+                        track,
+                        in ego,
+                        in opponent,
+                        currentDirectionDot
+                    ))
             {
                 continue;
             }
@@ -116,7 +162,7 @@ internal static class TrafficConflictEvaluator
                 opponent.Position,
                 estimatedAlongDistance
             );
-            if (TryGetMovingFollowingState(
+            if (!hasReservedRoom && TryGetMovingFollowingState(
                     config,
                     track,
                     in ego,
@@ -212,6 +258,130 @@ internal static class TrafficConflictEvaluator
         }
 
         return changed;
+    }
+
+    private static bool ApplyRacingRoomYield(
+        TrackData track,
+        VehiclePathPrediction path,
+        in RaceFrameSnapshot frame,
+        in RaceCarSnapshot ego,
+        float[] speeds,
+        float[] speedLimits,
+        float[] arrivalTimes,
+        ref TrafficSpeedConstraint lastConstraint
+    )
+    {
+        if (frame.RacingRoom.Count == 0 || path.Count == 0)
+            return false;
+
+        string? opponentId = null;
+        RaceCarSnapshot opponent = default;
+        foreach (RacingRoomPairSnapshot pair in frame.RacingRoom.Pairs)
+        {
+            if (!string.Equals(
+                    pair.EntryTrailingCarId,
+                    ego.Id,
+                    StringComparison.Ordinal
+                ))
+            {
+                continue;
+            }
+            string candidateId = string.Equals(
+                pair.LeftCarId,
+                ego.Id,
+                StringComparison.Ordinal
+            )
+                ? pair.RightCarId
+                : pair.LeftCarId;
+            if (!frame.TryGetCar(candidateId, out RaceCarSnapshot candidate))
+                continue;
+            float candidateLead = RacingRoomGeometry.SignedLongitudinalDelta(
+                in candidate,
+                in ego
+            );
+            float selectedLead = opponentId is null
+                ? float.NegativeInfinity
+                : RacingRoomGeometry.SignedLongitudinalDelta(
+                    in opponent,
+                    in ego
+                );
+            if (opponentId is not null &&
+                (candidateLead < selectedLead ||
+                 (candidateLead == selectedLead &&
+                  string.CompareOrdinal(candidate.Id, opponent.Id) >= 0)))
+            {
+                continue;
+            }
+            opponentId = candidateId;
+            opponent = candidate;
+        }
+        if (opponentId is null)
+            return false;
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            TrackSample sample = track.Sample(path[i].ReferenceS);
+            if (!frame.RacingRoom.TryGetCorridor(
+                    ego.Id,
+                    sample.HalfWidth,
+                    ego.WidthMeters,
+                    out RacingRoomCorridor corridor
+                ) ||
+                corridor.Feasible ||
+                !corridor.MustYield)
+            {
+                continue;
+            }
+
+            float currentLead = RacingRoomGeometry.SignedLongitudinalDelta(
+                in opponent,
+                in ego
+            );
+            float requiredLead = 0.5f * (
+                ego.LengthMeters + opponent.LengthMeters
+            ) + RacingRoomGeometry.ReleaseClearanceMeters;
+            float distanceToLose = MathF.Max(0f, requiredLead - currentLead);
+            float availableTime = arrivalTimes[i];
+            if (!float.IsFinite(availableTime) || availableTime < 0.25f)
+            {
+                availableTime = MathF.Max(
+                    0.25f,
+                    path[i].DistanceMeters /
+                    MathF.Max(ego.SpeedMetersPerSecond, 1f)
+                );
+            }
+            float requiredTerminalSpeedDeficit =
+                2f * distanceToLose / availableTime;
+            float targetSpeed = MathF.Max(
+                0f,
+                opponent.SpeedMetersPerSecond -
+                requiredTerminalSpeedDeficit
+            );
+            bool changed = ApplySpeedConstraint(
+                TrafficSpeedConstraintKind.Yield,
+                i,
+                targetSpeed,
+                speedLimits,
+                path.Count
+            );
+            if (!changed)
+                return false;
+
+            TrafficSpeedConstraint constraint = new(
+                TrafficSpeedConstraintKind.Yield,
+                opponent.Id,
+                path[i].DistanceMeters,
+                targetSpeed,
+                availableTime,
+                currentLead - 0.5f * (
+                    ego.LengthMeters + opponent.LengthMeters
+                )
+            );
+            RecordConstraint(in constraint, ref lastConstraint);
+            return true;
+        }
+
+        return false;
     }
 
     private static bool ApplyPredictedConflict(
@@ -1510,7 +1680,8 @@ internal static class TrafficConflictEvaluator
         if (distanceDelta > ConstraintEpsilon)
             return false;
         if (candidate.Kind != current.Kind)
-            return candidate.Kind == TrafficSpeedConstraintKind.Stop;
+            return ConstraintPriority(candidate.Kind) >
+                   ConstraintPriority(current.Kind);
         float speedDelta = candidate.TargetSpeedMetersPerSecond -
                            current.TargetSpeedMetersPerSecond;
         if (speedDelta < -ConstraintEpsilon)
@@ -1521,6 +1692,17 @@ internal static class TrafficConflictEvaluator
             candidate.OpponentId,
             current.OpponentId
         ) < 0;
+    }
+
+    private static int ConstraintPriority(TrafficSpeedConstraintKind kind)
+    {
+        return kind switch
+        {
+            TrafficSpeedConstraintKind.Stop => 3,
+            TrafficSpeedConstraintKind.Yield => 2,
+            TrafficSpeedConstraintKind.Follow => 1,
+            _ => 0
+        };
     }
 
     private static bool ShouldYield(

@@ -30,6 +30,11 @@ public readonly record struct RaceCarSnapshot(
     DriverInput LastInput
 )
 {
+    public float RaceDistanceMeters { get; init; }
+    public float TrackLengthMeters { get; init; }
+    public float TrackWidthMeters { get; init; }
+    public float WheelBaseMeters { get; init; }
+
     public float VelocityHeadingRadians => MathHelper.NormalizeAngle(
         HeadingRadians + SideslipAngleRadians
     );
@@ -39,7 +44,11 @@ public readonly record struct RaceCarSnapshot(
         MathF.Sin(VelocityHeadingRadians) * SpeedMetersPerSecond
     );
 
-    internal static RaceCarSnapshot Capture(RaceCar car, TrackPose pose)
+    internal static RaceCarSnapshot Capture(
+        RaceCar car,
+        TrackPose pose,
+        float trackLengthMeters = 0f
+    )
     {
         CarState state = car.State;
         return new RaceCarSnapshot(
@@ -60,7 +69,13 @@ public readonly record struct RaceCarSnapshot(
             car.Collision.WidthMeters,
             car.CarConfig.MaxBrakeAccel,
             car.LastInput
-        );
+        )
+        {
+            RaceDistanceMeters = car.Progress.RaceDistanceMeters,
+            TrackLengthMeters = MathF.Max(0f, trackLengthMeters),
+            TrackWidthMeters = pose.Sample.Width,
+            WheelBaseMeters = car.CarConfig.WheelBaseMeters
+        };
     }
 }
 
@@ -72,12 +87,22 @@ public readonly struct RaceFrameSnapshot
     private readonly RaceCarSnapshot[]? _cars;
     private readonly TrafficMotionPlan?[]? _trafficMotionPlans;
     private readonly TrafficMotionPlan?[]? _previousTrafficMotionPlans;
+    private readonly RacingRoomSnapshot _racingRoom;
 
     internal RaceFrameSnapshot(
         float raceTimeSeconds,
         RaceCarSnapshot[] cars,
         TrafficMotionPlan?[] trafficMotionPlans
-    ) : this(raceTimeSeconds, cars, trafficMotionPlans, null)
+    ) : this(raceTimeSeconds, cars, trafficMotionPlans, null, default)
+    {
+    }
+
+    internal RaceFrameSnapshot(
+        float raceTimeSeconds,
+        RaceCarSnapshot[] cars,
+        TrafficMotionPlan?[] trafficMotionPlans,
+        RacingRoomSnapshot racingRoom
+    ) : this(raceTimeSeconds, cars, trafficMotionPlans, null, racingRoom)
     {
     }
 
@@ -86,6 +111,22 @@ public readonly struct RaceFrameSnapshot
         RaceCarSnapshot[] cars,
         TrafficMotionPlan?[] trafficMotionPlans,
         TrafficMotionPlan?[]? previousTrafficMotionPlans
+    ) : this(
+        raceTimeSeconds,
+        cars,
+        trafficMotionPlans,
+        previousTrafficMotionPlans,
+        default
+    )
+    {
+    }
+
+    internal RaceFrameSnapshot(
+        float raceTimeSeconds,
+        RaceCarSnapshot[] cars,
+        TrafficMotionPlan?[] trafficMotionPlans,
+        TrafficMotionPlan?[]? previousTrafficMotionPlans,
+        RacingRoomSnapshot racingRoom
     )
     {
         RaceTimeSeconds = raceTimeSeconds;
@@ -95,11 +136,13 @@ public readonly struct RaceFrameSnapshot
                                   nameof(trafficMotionPlans)
                               );
         _previousTrafficMotionPlans = previousTrafficMotionPlans;
+        _racingRoom = racingRoom;
     }
 
     public float RaceTimeSeconds { get; }
     public int Count => _cars?.Length ?? 0;
     public ReadOnlySpan<RaceCarSnapshot> Cars => _cars;
+    internal RacingRoomSnapshot RacingRoom => _racingRoom;
 
     public RaceCarSnapshot this[int index]
     {

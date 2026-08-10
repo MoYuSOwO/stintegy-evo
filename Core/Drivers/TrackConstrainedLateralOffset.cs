@@ -78,16 +78,39 @@ internal sealed class TrackConstrainedLateralOffset
     private float _minimumHandoverLengthMeters;
     private float _maximumHandoverLengthMeters;
     private bool _handoverActive;
+    private readonly RacingRoomPathConstraint _racingRoomConstraint = new();
 
     internal bool HasCommittedProfile =>
         _handoverActive ||
         MathF.Abs(_committedTargetOffsetMeters) >
-        TargetEqualityToleranceMeters;
+        TargetEqualityToleranceMeters ||
+        _racingRoomConstraint.HasProfile;
     internal float CommittedTargetOffsetMeters =>
         _committedTargetOffsetMeters;
     internal float CommittedHandoverLengthMeters => _handoverLengthMeters;
     internal float MaximumCommittedHandoverLengthMeters =>
         _maximumHandoverLengthMeters;
+    internal float RacingRoomHandoverLengthMeters =>
+        _racingRoomConstraint.HandoverLengthMeters;
+
+    internal void UpdateRacingRoomConstraint(
+        TrackData track,
+        float currentS,
+        float currentSpeedMetersPerSecond,
+        in RacingRoomSnapshot snapshot,
+        string carId,
+        float vehicleHalfWidthMeters
+    )
+    {
+        _racingRoomConstraint.Update(
+            track,
+            currentS,
+            currentSpeedMetersPerSecond,
+            in snapshot,
+            carId,
+            vehicleHalfWidthMeters
+        );
+    }
 
     internal void SetCommittedHandoverLength(float lengthMeters)
     {
@@ -277,9 +300,19 @@ internal sealed class TrackConstrainedLateralOffset
             constrainedTacticalOffset = SampleProfile(track, sample.S);
         }
 
-        return ClampAtSample(
+        float baseOffset = ClampAtSample(
             in sample,
             constrainedTacticalOffset + executionOffsetMeters,
+            vehicleHalfWidthMeters
+        );
+        return ClampAtSample(
+            in sample,
+            _racingRoomConstraint.Apply(
+                track,
+                in sample,
+                baseOffset,
+                vehicleHalfWidthMeters
+            ),
             vehicleHalfWidthMeters
         );
     }
@@ -299,7 +332,8 @@ internal sealed class TrackConstrainedLateralOffset
         );
         if (tacticalOffsetMeters == 0f &&
             executionOffsetMeters == 0f &&
-            !usesCommittedHandover)
+            !usesCommittedHandover &&
+            !_racingRoomConstraint.HasProfile)
         {
             TrackSample reference = track.Sample(s);
             return new TrackLateralTargetSample(

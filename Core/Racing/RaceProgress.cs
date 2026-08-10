@@ -11,6 +11,12 @@ public sealed class RaceProgress
     public float CurrentS { get; private set; }
     public float CurrentD { get; private set; }
     public float TotalDistance { get; private set; }
+    /// <summary>
+    /// Continuous longitudinal race position measured from the configured
+    /// start line. Unlike CurrentS this does not wrap at the lap seam, and
+    /// unlike TotalDistance it includes each car's starting-grid offset.
+    /// </summary>
+    public float RaceDistanceMeters => _initialStartLineOffset + TotalDistance;
     public float LastDeltaS { get; private set; }
     public int Lap { get; private set; }
     public TrackRegion Region { get; private set; }
