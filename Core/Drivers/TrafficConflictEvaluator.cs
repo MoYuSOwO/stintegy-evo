@@ -127,23 +127,56 @@ internal static class TrafficConflictEvaluator
                     out float clearance
                 ))
             {
-                changed |= ApplyMovingFollowingConstraint(
-                    config,
-                    track,
-                    in ego,
-                    in opponent,
-                    in currentProjection,
-                    opponentAlongSpeed,
-                    clearance,
-                    arrivalTimes,
-                    opponentPlan,
-                    speeds,
-                    speedLimits,
-                    ref lastConstraint
-                );
+                if (opponentPlan is not null)
+                {
+                    bool followChanged = ApplyPublishedFollowingEnvelope(
+                        config,
+                        path,
+                        in ego,
+                        in opponent,
+                        in currentProjection,
+                        opponentAlongSpeed,
+                        clearance,
+                        opponentPlan,
+                        speeds,
+                        speedLimits,
+                        arrivalTimes,
+                        out int firstChangedIndex,
+                        out float firstTargetSpeed
+                    );
+                    if (followChanged)
+                    {
+                        TrafficSpeedConstraint constraint = new(
+                            TrafficSpeedConstraintKind.Follow,
+                            opponent.Id,
+                            path[firstChangedIndex].DistanceMeters,
+                            firstTargetSpeed,
+                            arrivalTimes[firstChangedIndex],
+                            clearance
+                        );
+                        RecordConstraint(in constraint, ref lastConstraint);
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    changed |= ApplyMovingFollowingConstraint(
+                        config,
+                        track,
+                        in ego,
+                        in opponent,
+                        in currentProjection,
+                        opponentAlongSpeed,
+                        clearance,
+                        arrivalTimes,
+                        opponentPlan,
+                        speeds,
+                        speedLimits,
+                        ref lastConstraint
+                    );
+                }
                 continue;
             }
-
             if (TryFindFirstConflict(
                     config,
                     track,
@@ -291,6 +324,135 @@ internal static class TrafficConflictEvaluator
                 memory.ConflictTimeSeconds = conflict.TimeSeconds;
                 memory.EgoPosition = ego.Position;
             }
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// Builds a same-lane following envelope from the opponent's frozen plan.
+    /// The opponent speed profile is sampled at the position that should stay
+    /// one desired clearance ahead of each ego point. A limit is applied only
+    /// when the ego plan would reach that point first, so dirty-air losses can
+    /// be recovered on the next straight instead of becoming permanent.
+    /// Crossing, merging, and planless traffic remain in the collision path.
+    /// </summary>
+    private static bool ApplyPublishedFollowingEnvelope(
+        VehicleSpeedPlanningConfig config,
+        VehiclePathPrediction path,
+        in RaceCarSnapshot ego,
+        in RaceCarSnapshot opponent,
+        in PathProjection currentProjection,
+        float opponentAlongSpeed,
+        float currentClearance,
+        TrafficMotionPlan opponentPlan,
+        float[] speeds,
+        float[] speedLimits,
+        float[] arrivalTimes,
+        out int firstChangedIndex,
+        out float firstTargetSpeed
+    )
+    {
+        firstChangedIndex = 0;
+        firstTargetSpeed = 0f;
+        bool changed = false;
+
+        float currentDesiredClearance = FollowingDesiredGap(
+            config,
+            speeds[0]
+        );
+        if (currentClearance < currentDesiredClearance)
+        {
+            float recoverySpeed = MathF.Max(
+                0f,
+                opponentAlongSpeed - MathF.Sqrt(
+                    2f *
+                    config.TrafficApproachDecelerationMetersPerSecondSquared *
+                    (currentDesiredClearance - currentClearance)
+                )
+            );
+            if (recoverySpeed < speedLimits[0] - ConstraintEpsilon)
+            {
+                speedLimits[0] = recoverySpeed;
+                firstTargetSpeed = recoverySpeed;
+                changed = true;
+            }
+        }
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            if (!float.IsFinite(arrivalTimes[i]) ||
+                arrivalTimes[i] > config.TrafficPredictionHorizonSeconds)
+            {
+                break;
+            }
+
+            VehiclePathPredictionPoint egoPoint = path[i];
+            Vector2 tangent = new(
+                MathF.Cos(egoPoint.VelocityHeading),
+                MathF.Sin(egoPoint.VelocityHeading)
+            );
+            float desiredClearance = FollowingDesiredGap(config, speeds[i]);
+            float desiredCenterGap =
+                desiredClearance +
+                ProjectedBodyHalfExtent(in ego, tangent) +
+                ProjectedBodyHalfExtent(in opponent, tangent);
+            float opponentTravelDistance = egoPoint.DistanceMeters +
+                                           desiredCenterGap -
+                                           currentProjection.AlongDistanceMeters;
+            if (opponentTravelDistance < 0f)
+                continue;
+            if (!opponentPlan.TrySampleByDistance(
+                    opponentTravelDistance,
+                    out TrafficMotionPlanPoint opponentPoint
+                ))
+            {
+                break;
+            }
+            if (arrivalTimes[i] >=
+                opponentPoint.TimeSeconds - ConstraintEpsilon)
+            {
+                continue;
+            }
+
+            Vector2 opponentVelocity = new(
+                MathF.Cos(opponentPoint.HeadingRadians) *
+                opponentPoint.SpeedMetersPerSecond,
+                MathF.Sin(opponentPoint.HeadingRadians) *
+                opponentPoint.SpeedMetersPerSecond
+            );
+            PredictedTrafficPose opponentPose = new(
+                opponentPoint.Position,
+                opponentPoint.HeadingRadians,
+                opponentVelocity,
+                true
+            );
+            if (!MayOverlapLaterally(
+                    config,
+                    path,
+                    currentProjection.AlongDistanceMeters +
+                    opponentTravelDistance,
+                    in ego,
+                    in opponent,
+                    in opponentPose,
+                    opponentPoint.TimeSeconds
+                ))
+            {
+                continue;
+            }
+
+            float targetSpeed = MathF.Max(
+                0f,
+                opponentPoint.SpeedMetersPerSecond
+            );
+            if (targetSpeed >= speedLimits[i] - ConstraintEpsilon)
+                continue;
+            speedLimits[i] = targetSpeed;
+            if (!changed)
+            {
+                firstChangedIndex = i;
+                firstTargetSpeed = targetSpeed;
+            }
+            changed = true;
         }
         return changed;
     }
@@ -1420,6 +1582,16 @@ internal static class TrafficConflictEvaluator
     {
         return config.TrafficMinimumGapMeters +
                config.TrafficTimeHeadwaySeconds *
+               MathF.Max(0f, egoSpeedMetersPerSecond);
+    }
+
+    private static float FollowingDesiredGap(
+        VehicleSpeedPlanningConfig config,
+        float egoSpeedMetersPerSecond
+    )
+    {
+        return config.TrafficMinimumGapMeters +
+               config.TrafficFollowingTimeHeadwaySeconds *
                MathF.Max(0f, egoSpeedMetersPerSecond);
     }
 
