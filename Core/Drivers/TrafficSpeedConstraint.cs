@@ -4,7 +4,8 @@ public enum TrafficSpeedConstraintKind
 {
     None,
     Follow,
-    Stop
+    Stop,
+    Yield
 }
 
 /// <summary>

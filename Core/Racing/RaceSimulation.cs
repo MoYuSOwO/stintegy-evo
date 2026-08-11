@@ -25,6 +25,7 @@ public sealed class RaceSimulation
     private CarState[] _predictedStates = [];
     private TrafficMotionPlan?[] _stepTrafficMotionPlans = [];
     private TrafficMotionPlan?[] _previousTrafficMotionPlans = [];
+    private readonly RacingRoomCoordinator _racingRoomCoordinator = new();
 
     public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
     {
@@ -113,11 +114,18 @@ public sealed class RaceSimulation
             RaceCar car = _cars[i];
             TrackPose pose = Track.Project(car.State.Position);
             _stepPoses[i] = pose;
-            carSnapshots[i] = RaceCarSnapshot.Capture(car, pose);
+            carSnapshots[i] = RaceCarSnapshot.Capture(
+                car,
+                pose,
+                Track.LengthMeters
+            );
             _stepTrafficMotionPlans[i] = null;
         }
 
         ApplyWakeEffects(carSnapshots);
+        RacingRoomSnapshot racingRoom = _racingRoomCoordinator.Update(
+            carSnapshots
+        );
 
         // Planning is a write-only phase over one frozen physical snapshot.
         // No driver can read another driver's partially prepared plan. The
@@ -127,7 +135,8 @@ public sealed class RaceSimulation
             RaceTimeSeconds,
             carSnapshots,
             _stepTrafficMotionPlans,
-            _previousTrafficMotionPlans
+            _previousTrafficMotionPlans,
+            racingRoom
         );
         for (int i = 0; i < carCount; i++)
         {
@@ -160,7 +169,8 @@ public sealed class RaceSimulation
         RaceFrameSnapshot frame = new(
             RaceTimeSeconds,
             carSnapshots,
-            _stepTrafficMotionPlans
+            _stepTrafficMotionPlans,
+            racingRoom
         );
 
         // Driver evaluation is a read phase: every driver receives the exact same
