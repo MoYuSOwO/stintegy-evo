@@ -27,7 +27,8 @@ public static class CarPhysics
         return EffectiveDownforceAccelPerSpeedSquared(
             config,
             state.AirVelocityDeficit,
-            state.WakeDownforceLoss
+            state.WakeDownforceLoss,
+            state.OvertakeAssist
         );
     }
 
@@ -51,7 +52,8 @@ public static class CarPhysics
             lateralAcceleration,
             speed,
             state.AirVelocityDeficit,
-            state.WakeDownforceLoss
+            state.WakeDownforceLoss,
+            state.OvertakeAssist
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
@@ -126,7 +128,8 @@ public static class CarPhysics
             config,
             speed,
             lateralUse,
-            state.AirVelocityDeficit
+            state.AirVelocityDeficit,
+            state.OvertakeAssist
         );
 
         return new CarPerformanceLimits(
@@ -165,7 +168,8 @@ public static class CarPhysics
             speed * speed * curvature,
             speed,
             state.AirVelocityDeficit,
-            state.WakeDownforceLoss
+            state.WakeDownforceLoss,
+            state.OvertakeAssist
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float mass = Math.Max(config.MassKg, Epsilon);
@@ -341,7 +345,8 @@ public static class CarPhysics
             config,
             state.Speed,
             lateralUse,
-            state.AirVelocityDeficit
+            state.AirVelocityDeficit,
+            state.OvertakeAssist
         ) + sideslipLossAccel;
         float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
 
@@ -440,6 +445,8 @@ public static class CarPhysics
                                         1f
                                     )
                                 );
+        float tireWakeDownforceLoss =
+            EffectiveTireWakeDownforceLoss(state, config);
         UpdateTires(
             state.FrontLeft,
             config,
@@ -456,7 +463,7 @@ public static class CarPhysics
             input.TrackTempC,
             averageSpeed,
             coolingAirSpeed,
-            state.WakeDownforceLoss,
+            tireWakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -476,7 +483,7 @@ public static class CarPhysics
             input.TrackTempC,
             averageSpeed,
             coolingAirSpeed,
-            state.WakeDownforceLoss,
+            tireWakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -496,7 +503,7 @@ public static class CarPhysics
             input.TrackTempC,
             averageSpeed,
             coolingAirSpeed,
-            state.WakeDownforceLoss,
+            tireWakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -516,7 +523,7 @@ public static class CarPhysics
             input.TrackTempC,
             averageSpeed,
             coolingAirSpeed,
-            state.WakeDownforceLoss,
+            tireWakeDownforceLoss,
             dt,
             input.TireEnergyEfficiency
         );
@@ -952,17 +959,20 @@ public static class CarPhysics
         CarConfig config,
         float speed,
         float lateralUse,
-        float airVelocityDeficit
+        float airVelocityDeficit,
+        float overtakeAssist
     )
     {
         if (speed <= 0.01f)
             return 0f;
 
         float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
+        float assist = Math.Clamp(overtakeAssist, 0f, 1f);
         return
             config.RollingDragAccel +
             config.AeroDragAccelPerSpeedSquared * speed * speed *
-            metAir * metAir +
+            metAir * metAir *
+            (1f - config.OvertakeAssistDragReduction * assist) +
             config.CorneringScrubAccel * lateralUse * lateralUse;
     }
 
@@ -1330,7 +1340,8 @@ public static class CarPhysics
             state.FilteredLateralAccel,
             state.Speed,
             state.AirVelocityDeficit,
-            state.WakeDownforceLoss
+            state.WakeDownforceLoss,
+            state.OvertakeAssist
         );
     }
 
@@ -1355,13 +1366,15 @@ public static class CarPhysics
         float lateralAcceleration,
         float speed,
         float airVelocityDeficit,
-        float wakeDownforceLoss
+        float wakeDownforceLoss,
+        float overtakeAssist
     )
     {
         float downforceAcceleration = EffectiveDownforceAccelPerSpeedSquared(
             config,
             airVelocityDeficit,
-            wakeDownforceLoss
+            wakeDownforceLoss,
+            overtakeAssist
         ) * speed * speed;
         float totalLoad = config.MassKg * (Gravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
@@ -1389,19 +1402,42 @@ public static class CarPhysics
         );
     }
 
+    /// <summary>
+    /// The share of the wake's downforce disruption the tires actually feel.
+    /// Whatever the overtake mode hands back to the load model must also stop
+    /// shaking the car, or an assisted car would corner on recovered grip
+    /// while being charged full dirty-air tire temperature for it.
+    /// </summary>
+    private static float EffectiveTireWakeDownforceLoss(
+        CarState state,
+        CarConfig config
+    )
+    {
+        return state.WakeDownforceLoss *
+               (1f - config.OvertakeAssistDownforceRecovery *
+                Math.Clamp(state.OvertakeAssist, 0f, 1f));
+    }
+
     private static float EffectiveDownforceAccelPerSpeedSquared(
         CarConfig config,
         float airVelocityDeficit,
-        float wakeDownforceLoss
+        float wakeDownforceLoss,
+        float overtakeAssist
     )
     {
         float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
         float usableDownforce = 1f - Math.Clamp(wakeDownforceLoss, 0f, 1f);
+        float wakeFactor = metAir * metAir * usableDownforce;
+        // Hands back part of what the wake took, and nothing more: in clean air
+        // the factor is already one, so this half of the mode cannot make a car
+        // quicker than itself with nobody in front.
+        float restored = wakeFactor +
+                         config.OvertakeAssistDownforceRecovery *
+                         Math.Clamp(overtakeAssist, 0f, 1f) *
+                         (1f - wakeFactor);
         return MathF.Max(
             0f,
-            config.DownforceAccelPerSpeedSquared *
-            metAir * metAir *
-            usableDownforce
+            config.DownforceAccelPerSpeedSquared * restored
         );
     }
 

@@ -177,6 +177,25 @@ public sealed class CarConfig
     /// </summary>
     public float WakeDownforceDisruption { get; init; } = 0.08f;
 
+    /// <summary>
+    /// Fraction of aerodynamic drag removed while the car's overtake mode
+    /// runs. A drag reduction system is the model: the published worth of one
+    /// is ten to twelve km/h of top speed, and with top speed going as the
+    /// cube root of drag, three metres per second at eighty needs roughly a
+    /// tenth of the drag gone. This is a genuine straight-line gain over the
+    /// car's own clean-air pace, exactly as it is for the real device.
+    /// </summary>
+    public float OvertakeAssistDragReduction { get; init; } = 0.10f;
+
+    /// <summary>
+    /// Fraction of the downforce lost to a leading car's wake that the
+    /// overtake mode hands back. It scales what the wake removed, so in clean
+    /// air it does nothing, and at one it would erase the cornering penalty
+    /// of following entirely; half keeps dirty air a real cost while letting
+    /// a committed follower live close enough to strike.
+    /// </summary>
+    public float OvertakeAssistDownforceRecovery { get; init; } = 0.5f;
+
     public float CorneringScrubAccel { get; init; } = 1.15f;
     public float OverLimitMinGripEfficiency { get; init; } = 0.8f;
     public float OverLimitCostCap { get; init; } = 0.2f;

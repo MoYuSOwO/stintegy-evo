@@ -25,6 +25,7 @@ public sealed class RaceSimulation
     private CarState[] _predictedStates = [];
     private TrafficMotionPlan?[] _stepTrafficMotionPlans = [];
     private TrafficMotionPlan?[] _previousTrafficMotionPlans = [];
+    private int[] _overtakeAssistCrossings = [];
     private readonly RacingRoomCoordinator _racingRoomCoordinator = new();
 
     public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
@@ -203,25 +204,32 @@ public sealed class RaceSimulation
     }
 
     /// <summary>
-    /// Distance behind a car at which the air it has dragged along has given
-    /// back half the speed it had.
+    /// Length scale over which the air a car has dragged along gives back the
+    /// speed it had, as a Gaussian in distance.
     ///
-    /// A wake does not fade evenly. It is torn apart quickest right behind the
-    /// car where the shear is fiercest, so most of a tow is gone within a few
-    /// car lengths and what is left trails off slowly. Straight-line fading
-    /// gets this backwards at both ends: it hands a car fifty metres back half
-    /// the tow, when the truth there is nearer a seventh of it, and racecraft
-    /// reading that believes it can close on a straight where it cannot.
+    /// A wake does not fade evenly. It holds together for the first car length
+    /// or two, where the hole is still a hole, and then mixing takes it apart
+    /// quickly. A hyperbolic law gets the near field right and then trails a
+    /// tail that is not there: it still hands a car thirty metres back a third
+    /// of the effect, so a follower is charged for turbulence it is not
+    /// sitting in. The two decay lengths here are set jointly so the total
+    /// downforce loss they produce through the load model - reduced dynamic
+    /// pressure squared, times the disruption term - lands near the published
+    /// post-2022 figures of roughly 18 % at ten metres and 4 % at twenty:
+    /// this pair gives about 16 % and 3 %, where no hyperbola can fall that
+    /// fast at any half distance. The price of the shape is the far field -
+    /// beyond thirty metres a tow is essentially gone, deliberate for the
+    /// downforce side and an accepted simplification for the slipstream side.
     /// </summary>
-    private const float WakeHalfDistanceMeters = 11f;
+    private const float WakeDecayLengthMeters = 12f;
 
     /// <summary>
-    /// The rotating, unsteady part of the wake outlives more of its close-range
-    /// strength than the useful tow. This is deliberately still finite and
-    /// shares the same cutoff: it is a second response to one wake, not a
-    /// second invisible object trailing the car.
+    /// The rotating, unsteady part of the wake outlives the useful tow, so it
+    /// decays over a longer length, but it is the same kind of falloff and it
+    /// is finite: it is a second response to one wake, not a second invisible
+    /// object trailing the car.
     /// </summary>
-    private const float DirtyAirHalfDistanceMeters = 24f;
+    private const float DirtyAirDecayLengthMeters = 16f;
 
     /// <summary>
     /// Downforce recovers quickly once a car moves sideways out of the wake;
@@ -239,6 +247,19 @@ public sealed class RaceSimulation
 
     /// <summary>Beyond this there is nothing left worth computing.</summary>
     private const float WakeReachMeters = 80f;
+
+    /// <summary>
+    /// How close a car must be to the one ahead, as it crosses the line, to
+    /// earn overtake mode for the lap that follows.
+    /// </summary>
+    private const float OvertakeAssistGapSeconds = 1f;
+
+    private static float GaussianFalloff(float gap, float decayLengthMeters)
+    {
+        float scale = MathF.Max(decayLengthMeters, 1e-3f);
+        float normalized = gap / scale;
+        return MathF.Exp(-normalized * normalized);
+    }
 
     /// <summary>
     /// How much of its own speed each car's air is already carrying, because
@@ -279,10 +300,13 @@ public sealed class RaceSimulation
                 }
 
                 CarConfig wakeCar = _cars[j].CarConfig;
-                float deficit = wakeCar.WakeVelocityDeficit /
-                                (1f + gap / WakeHalfDistanceMeters);
-                float downforceLoss = wakeCar.WakeDownforceDisruption /
-                                      (1f + gap / DirtyAirHalfDistanceMeters);
+                float deficit = wakeCar.WakeVelocityDeficit *
+                                GaussianFalloff(gap, WakeDecayLengthMeters);
+                float downforceLoss = wakeCar.WakeDownforceDisruption *
+                                      GaussianFalloff(
+                                          gap,
+                                          DirtyAirDecayLengthMeters
+                                      );
 
                 // Across the wake the deficit falls away from the middle, and
                 // the middle is wider the further back it is read.
@@ -366,6 +390,89 @@ public sealed class RaceSimulation
             TrackRegion region = TrackBoundaryResolver.Classify(finalPose);
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
         }
+
+        UpdateOvertakeAssist();
+    }
+
+    /// <summary>
+    /// Overtake mode is settled once a lap, as the car crosses the line: a
+    /// car within one second of whoever is directly ahead of it on the road
+    /// carries the mode for the whole of the next lap. Deciding it at a
+    /// single point, for a whole lap, keeps the right from flickering with
+    /// every metre of gap, and keeps the rule something a driver could be
+    /// told rather than something only a solver could follow. The right
+    /// swaps sides on its own: whoever completes a pass stops qualifying at
+    /// the next crossing, and the car just passed starts to. Nobody carries
+    /// the mode off the grid - the first decision waits for the first real
+    /// crossing, the way the real aids sit disabled on an opening lap.
+    /// </summary>
+    private void UpdateOvertakeAssist()
+    {
+        if (_overtakeAssistCrossings.Length < _cars.Count)
+        {
+            int previous = _overtakeAssistCrossings.Length;
+            Array.Resize(ref _overtakeAssistCrossings, _cars.Count);
+            for (int i = previous; i < _overtakeAssistCrossings.Length; i++)
+                _overtakeAssistCrossings[i] = int.MinValue;
+        }
+
+        for (int i = 0; i < _cars.Count; i++)
+        {
+            RaceCar car = _cars[i];
+            // Continuous race distance over lap length is a crossing counter
+            // that, unlike the clamped lap number, still ticks for a car
+            // gridded behind the line - and only forward progress advances
+            // it, so sliding backwards across the line cannot re-roll the
+            // decision at a hundred and twenty hertz.
+            int crossings = (int)MathF.Floor(
+                car.Progress.RaceDistanceMeters / Track.LengthMeters
+            );
+            if (_overtakeAssistCrossings[i] == int.MinValue)
+            {
+                _overtakeAssistCrossings[i] = crossings;
+                continue;
+            }
+            if (crossings <= _overtakeAssistCrossings[i])
+                continue;
+            _overtakeAssistCrossings[i] = crossings;
+
+            float ownDistance = car.Progress.RaceDistanceMeters;
+            float nearestAhead = float.PositiveInfinity;
+            for (int j = 0; j < _cars.Count; j++)
+            {
+                if (j == i)
+                    continue;
+                float delta = OnTrackDistanceAhead(
+                    _cars[j].Progress.RaceDistanceMeters,
+                    ownDistance,
+                    Track.LengthMeters
+                );
+                if (delta > 0f && delta < nearestAhead)
+                    nearestAhead = delta;
+            }
+
+            float speed = MathF.Max(car.State.Speed, 1f);
+            car.State.OvertakeAssist =
+                nearestAhead / speed <= OvertakeAssistGapSeconds ? 1f : 0f;
+        }
+    }
+
+    /// <summary>
+    /// Distance up the road from one car to another, whole laps removed.
+    /// The wake the mode answers sits on the road, so a backmarker five
+    /// metres ahead counts and a rival a lap up in the standings does not.
+    /// </summary>
+    internal static float OnTrackDistanceAhead(
+        float otherRaceDistanceMeters,
+        float ownRaceDistanceMeters,
+        float trackLengthMeters
+    )
+    {
+        float delta = (otherRaceDistanceMeters - ownRaceDistanceMeters) %
+                      trackLengthMeters;
+        if (delta < 0f)
+            delta += trackLengthMeters;
+        return delta;
     }
 
     private void EnsureStepCapacity(int required)

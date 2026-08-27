@@ -17,6 +17,7 @@ public sealed class VehicleSpeedPlanner
     private const float PerformanceCacheSpeedStepMetersPerSecond = 0.25f;
     private const float PerformanceCacheCurvatureStep = 0.001f;
     private const float WakeStateStep = 0.0025f;
+    private const float OvertakeAssistStateStep = 0.5f;
     private const float InitialMaximumSpeedSearchMetersPerSecond = 50f;
     private const float NumericalMaximumSpeedMetersPerSecond = 1000f;
     private const float GravityMetersPerSecondSquared = 9.80665f;
@@ -1067,6 +1068,7 @@ public sealed class VehicleSpeedPlanner
             Quantize(car.State.BatterySoc, 0.005f),
             Quantize(car.State.AirVelocityDeficit, WakeStateStep),
             Quantize(car.State.WakeDownforceLoss, WakeStateStep),
+            Quantize(car.State.OvertakeAssist, OvertakeAssistStateStep),
             Quantize(modifiers.PaceEfficiency, 0.005f),
             Quantize(modifiers.EstimatedGripScale, 0.005f),
             Quantize(modifiers.FrontBrakeBiasOffset, 0.0025f),
@@ -1100,6 +1102,7 @@ public sealed class VehicleSpeedPlanner
         int BatterySoc,
         int AirVelocityDeficit,
         int WakeDownforceLoss,
+        int OvertakeAssist,
         int PaceEfficiency,
         int EstimatedGripScale,
         int FrontBrakeBiasOffset,
