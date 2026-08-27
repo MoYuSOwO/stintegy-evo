@@ -203,25 +203,32 @@ public sealed class RaceSimulation
     }
 
     /// <summary>
-    /// Distance behind a car at which the air it has dragged along has given
-    /// back half the speed it had.
+    /// Length scale over which the air a car has dragged along gives back the
+    /// speed it had, as a Gaussian in distance.
     ///
-    /// A wake does not fade evenly. It is torn apart quickest right behind the
-    /// car where the shear is fiercest, so most of a tow is gone within a few
-    /// car lengths and what is left trails off slowly. Straight-line fading
-    /// gets this backwards at both ends: it hands a car fifty metres back half
-    /// the tow, when the truth there is nearer a seventh of it, and racecraft
-    /// reading that believes it can close on a straight where it cannot.
+    /// A wake does not fade evenly. It holds together for the first car length
+    /// or two, where the hole is still a hole, and then mixing takes it apart
+    /// quickly. A hyperbolic law gets the near field right and then trails a
+    /// tail that is not there: it still hands a car thirty metres back a third
+    /// of the effect, so a follower is charged for turbulence it is not
+    /// sitting in. The two decay lengths here are set jointly so the total
+    /// downforce loss they produce through the load model - reduced dynamic
+    /// pressure squared, times the disruption term - lands near the published
+    /// post-2022 figures of roughly 18 % at ten metres and 4 % at twenty:
+    /// this pair gives about 16 % and 3 %, where no hyperbola can fall that
+    /// fast at any half distance. The price of the shape is the far field -
+    /// beyond thirty metres a tow is essentially gone, deliberate for the
+    /// downforce side and an accepted simplification for the slipstream side.
     /// </summary>
-    private const float WakeHalfDistanceMeters = 11f;
+    private const float WakeDecayLengthMeters = 12f;
 
     /// <summary>
-    /// The rotating, unsteady part of the wake outlives more of its close-range
-    /// strength than the useful tow. This is deliberately still finite and
-    /// shares the same cutoff: it is a second response to one wake, not a
-    /// second invisible object trailing the car.
+    /// The rotating, unsteady part of the wake outlives the useful tow, so it
+    /// decays over a longer length, but it is the same kind of falloff and it
+    /// is finite: it is a second response to one wake, not a second invisible
+    /// object trailing the car.
     /// </summary>
-    private const float DirtyAirHalfDistanceMeters = 24f;
+    private const float DirtyAirDecayLengthMeters = 16f;
 
     /// <summary>
     /// Downforce recovers quickly once a car moves sideways out of the wake;
@@ -239,6 +246,13 @@ public sealed class RaceSimulation
 
     /// <summary>Beyond this there is nothing left worth computing.</summary>
     private const float WakeReachMeters = 80f;
+
+    private static float GaussianFalloff(float gap, float decayLengthMeters)
+    {
+        float scale = MathF.Max(decayLengthMeters, 1e-3f);
+        float normalized = gap / scale;
+        return MathF.Exp(-normalized * normalized);
+    }
 
     /// <summary>
     /// How much of its own speed each car's air is already carrying, because
@@ -279,10 +293,13 @@ public sealed class RaceSimulation
                 }
 
                 CarConfig wakeCar = _cars[j].CarConfig;
-                float deficit = wakeCar.WakeVelocityDeficit /
-                                (1f + gap / WakeHalfDistanceMeters);
-                float downforceLoss = wakeCar.WakeDownforceDisruption /
-                                      (1f + gap / DirtyAirHalfDistanceMeters);
+                float deficit = wakeCar.WakeVelocityDeficit *
+                                GaussianFalloff(gap, WakeDecayLengthMeters);
+                float downforceLoss = wakeCar.WakeDownforceDisruption *
+                                      GaussianFalloff(
+                                          gap,
+                                          DirtyAirDecayLengthMeters
+                                      );
 
                 // Across the wake the deficit falls away from the middle, and
                 // the middle is wider the further back it is read.
