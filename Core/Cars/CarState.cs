@@ -45,6 +45,17 @@ public sealed class CarState
     /// </summary>
     public float WakeDownforceLoss { get; set; }
 
+    /// <summary>
+    /// How strongly this car's overtake mode is running, zero to one, this
+    /// lap: earned by being
+    /// within one second of the car ahead at the line, and spent over the whole
+    /// following lap. It trims drag - a genuine straight-line gain, as with a
+    /// drag reduction system - and hands back part of what the wake took from
+    /// downforce, which is capped at clean-air level and so only shortens the
+    /// cornering penalty of running behind someone.
+    /// </summary>
+    public float OvertakeAssist { get; set; }
+
     public TireState FrontLeft { get; } = new();
     public TireState FrontRight { get; } = new();
     public TireState RearLeft { get; } = new();
@@ -66,6 +77,7 @@ public sealed class CarState
         SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
         AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
         WakeDownforceLoss = Math.Clamp(WakeDownforceLoss, 0f, 1f);
+        OvertakeAssist = Math.Clamp(OvertakeAssist, 0f, 1f);
     }
 
     public TireState GetTire(WheelId wheel)
@@ -102,6 +114,7 @@ public sealed class CarState
             FilteredLateralAccel = FilteredLateralAccel,
             AirVelocityDeficit = AirVelocityDeficit,
             WakeDownforceLoss = WakeDownforceLoss,
+            OvertakeAssist = OvertakeAssist,
             Telemetry = Telemetry
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
@@ -123,6 +136,7 @@ public sealed class CarState
         FilteredLateralAccel = other.FilteredLateralAccel;
         AirVelocityDeficit = other.AirVelocityDeficit;
         WakeDownforceLoss = other.WakeDownforceLoss;
+        OvertakeAssist = other.OvertakeAssist;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);

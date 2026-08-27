@@ -88,8 +88,12 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
         );
         float speed = car.State.Speed;
         float rollingLoss = speed > 0.01f ? car.CarConfig.RollingDragAccel : 0f;
+        float metAir = 1f - Math.Clamp(car.State.AirVelocityDeficit, 0f, 1f);
         float aeroLoss = speed > 0.01f
-            ? car.CarConfig.AeroDragAccelPerSpeedSquared * speed * speed
+            ? car.CarConfig.AeroDragAccelPerSpeedSquared * speed * speed *
+              metAir * metAir *
+              (1f - car.CarConfig.OvertakeAssistDragReduction *
+               Math.Clamp(car.State.OvertakeAssist, 0f, 1f))
             : 0f;
         float corneringScrub = MathF.Max(
             0f,
