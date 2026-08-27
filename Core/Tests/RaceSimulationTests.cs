@@ -10,8 +10,12 @@ namespace StintegyEVO.Core.Tests;
 public sealed class RaceSimulationTests
 {
     [Fact]
-    public void DirtyAirRetainsMoreOfItsCloseRangeEffectThanTheTowFartherBack()
+    public void TheTowOutlivesTheDirtyAirFartherBack()
     {
+        // The wake rises off the road as it ages: the follower's body stays
+        // sunk in slowed air, so the tow keeps a long tail, while the
+        // disturbance that costs downforce lives in the risen wake and is
+        // gone within a few car lengths.
         (float closeTow, float closeDirtyAir) = MeasureWake(
             centerSeparationMeters: 12f,
             lateralOffsetMeters: 0f
@@ -21,11 +25,11 @@ public sealed class RaceSimulationTests
             lateralOffsetMeters: 0f
         );
 
-        Assert.True(closeTow > farTow && farTow > 0f);
-        Assert.True(closeDirtyAir > farDirtyAir && farDirtyAir > 0f);
+        Assert.True(closeTow > farTow && farTow > 0.01f);
+        Assert.True(closeDirtyAir > farDirtyAir);
         Assert.True(
-            farDirtyAir / closeDirtyAir > farTow / closeTow,
-            "dirty-air disturbance should decay more slowly than straight-line tow"
+            farTow / closeTow > farDirtyAir / MathF.Max(closeDirtyAir, 1e-6f),
+            "the tow must retain more of its strength far back than the dirty air does"
         );
     }
 

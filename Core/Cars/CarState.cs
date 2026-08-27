@@ -46,6 +46,14 @@ public sealed class CarState
     public float WakeDownforceLoss { get; set; }
 
     /// <summary>
+    /// Share of oncoming-air speed missing at this car's working aero
+    /// surfaces. The body's own deficit is <see cref="AirVelocityDeficit"/>;
+    /// this one decays much faster with distance, because the wake rises off
+    /// the road while wings and floor stay close to it.
+    /// </summary>
+    public float DownforceVelocityDeficit { get; set; }
+
+    /// <summary>
     /// How strongly this car's overtake mode is running, zero to one, this
     /// lap: earned by being
     /// within one second of the car ahead at the line, and spent over the whole
@@ -77,6 +85,7 @@ public sealed class CarState
         SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
         AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
         WakeDownforceLoss = Math.Clamp(WakeDownforceLoss, 0f, 1f);
+        DownforceVelocityDeficit = Math.Clamp(DownforceVelocityDeficit, 0f, 1f);
         OvertakeAssist = Math.Clamp(OvertakeAssist, 0f, 1f);
     }
 
@@ -114,6 +123,7 @@ public sealed class CarState
             FilteredLateralAccel = FilteredLateralAccel,
             AirVelocityDeficit = AirVelocityDeficit,
             WakeDownforceLoss = WakeDownforceLoss,
+            DownforceVelocityDeficit = DownforceVelocityDeficit,
             OvertakeAssist = OvertakeAssist,
             Telemetry = Telemetry
         };
@@ -136,6 +146,7 @@ public sealed class CarState
         FilteredLateralAccel = other.FilteredLateralAccel;
         AirVelocityDeficit = other.AirVelocityDeficit;
         WakeDownforceLoss = other.WakeDownforceLoss;
+        DownforceVelocityDeficit = other.DownforceVelocityDeficit;
         OvertakeAssist = other.OvertakeAssist;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);

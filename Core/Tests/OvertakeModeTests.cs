@@ -250,12 +250,57 @@ public sealed class OvertakeModeTests
         );
     }
 
+    [Fact]
+    public void TheTwoFacesOfTheWakePartCompanyWithDistance()
+    {
+        // Forty metres back on a straight: the body still sits in slowed air
+        // (the tow that makes long-straight slipstreaming a real tactic),
+        // while the wings and floor have climbed out of the risen wake and
+        // the downforce penalty is essentially gone.
+        RaceCar chaser = ChaserAtGap(40f, new CarConfig());
+
+        Assert.True(
+            chaser.State.AirVelocityDeficit > 0.015f,
+            $"the tow must survive at 40 m; got {chaser.State.AirVelocityDeficit:0.0000}"
+        );
+        float metAir = 1f - chaser.State.DownforceVelocityDeficit;
+        float downforceLoss =
+            1f - metAir * metAir * (1f - chaser.State.WakeDownforceLoss);
+        Assert.True(
+            downforceLoss < 0.01f,
+            $"the downforce penalty must be gone at 40 m; got {downforceLoss:0.0000}"
+        );
+    }
+
+    [Fact]
+    public void AnInsensitiveCarShrugsOffDirtyAirButKeepsTheTow()
+    {
+        RaceCar chaser = ChaserAtGap(
+            8f,
+            new CarConfig { DirtyAirSensitivity = 0f }
+        );
+
+        Assert.True(
+            chaser.State.AirVelocityDeficit > 0.04f,
+            "the drag relief of a tow is universal"
+        );
+        Assert.Equal(0f, chaser.State.DownforceVelocityDeficit);
+        Assert.Equal(0f, chaser.State.WakeDownforceLoss);
+    }
+
     private static float TotalDownforceLossAtGap(float bodyGapMeters)
+    {
+        RaceCar chaser = ChaserAtGap(bodyGapMeters, new CarConfig());
+        float metAir = 1f - chaser.State.DownforceVelocityDeficit;
+        return 1f - metAir * metAir * (1f - chaser.State.WakeDownforceLoss);
+    }
+
+    private static RaceCar ChaserAtGap(float bodyGapMeters, CarConfig chaserConfig)
     {
         TrackData track = Loop.Value;
         RaceSimulation simulation = new(track);
         RaceCar leader = CreateCar(track, 100f, "lead");
-        RaceCar chaser = CreateCar(track, 100f, "chase");
+        RaceCar chaser = CreateCar(track, 100f, "chase", chaserConfig);
         float centerDistance = bodyGapMeters +
                                (leader.Collision.LengthMeters +
                                 chaser.Collision.LengthMeters) * 0.5f;
@@ -270,8 +315,7 @@ public sealed class OvertakeModeTests
 
         simulation.Step(1f / 60f);
 
-        float metAir = 1f - chaser.State.AirVelocityDeficit;
-        return 1f - metAir * metAir * (1f - chaser.State.WakeDownforceLoss);
+        return chaser;
     }
 
     private static float SoloDistance(bool assist)
@@ -292,12 +336,17 @@ public sealed class OvertakeModeTests
         return car.Progress.RaceDistanceMeters;
     }
 
-    private static RaceCar CreateCar(TrackData track, float s, string id)
+    private static RaceCar CreateCar(
+        TrackData track,
+        float s,
+        string id,
+        CarConfig? config = null
+    )
     {
         TrackSample sample = track.Sample(s);
         return new RaceCar(
             id,
-            new CarConfig(),
+            config ?? new CarConfig(),
             new TireConfig
             {
                 StartingSurfaceTempC = 90f,

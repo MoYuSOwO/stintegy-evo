@@ -178,6 +178,44 @@ public sealed class CarConfig
     public float WakeDownforceDisruption { get; init; } = 0.08f;
 
     /// <summary>
+    /// Half distance of the drag relief this car's wake hands to a follower,
+    /// as a hyperbolic tail. The two faces of a wake part company with
+    /// distance: the wake rises off the road as it ages, but a following
+    /// car's body stays sunk in the slowed air, so the tow keeps a long
+    /// tail - at fifty metres roughly a seventh of the full effect survives,
+    /// which is what makes slipstreaming from far back on a long straight a
+    /// real tactic.
+    /// </summary>
+    public float WakeTowHalfDistanceMeters { get; init; } = 11f;
+
+    /// <summary>
+    /// Gaussian decay length of the dynamic-pressure share of the follower's
+    /// downforce loss. Wings and floor ride close to the road and climb out
+    /// of the rising wake within a couple of car lengths, so this face is
+    /// short where the tow is long. Together with the disruption decay below
+    /// it is set so the total downforce loss lands near the published
+    /// post-2022 figures: roughly 16 % at ten metres and 3 % at twenty
+    /// against the cited 18 % and 4 %.
+    /// </summary>
+    public float WakeDownforceDecayLengthMeters { get; init; } = 12f;
+
+    /// <summary>
+    /// Gaussian decay length of the turbulent disruption term. It outlives
+    /// the downforce share of the dynamic pressure a little, but it is the
+    /// same short-range creature: it also lives in the risen wake.
+    /// </summary>
+    public float WakeDirtyAirDecayLengthMeters { get; init; } = 16f;
+
+    /// <summary>
+    /// How strongly this car's own aerodynamics feel a wake's downforce
+    /// effects. The drag relief of a tow is universal, but how much of the
+    /// disturbed air reaches the working surfaces is a property of the
+    /// following car: a ground-effect concept living below the risen wake
+    /// runs lower than a car that leans on over-body wings.
+    /// </summary>
+    public float DirtyAirSensitivity { get; init; } = 1f;
+
+    /// <summary>
     /// Fraction of aerodynamic drag removed while the car's overtake mode
     /// runs. A drag reduction system is the model: the published worth of one
     /// is ten to twelve km/h of top speed, and with top speed going as the
