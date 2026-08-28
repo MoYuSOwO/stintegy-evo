@@ -222,8 +222,12 @@ public sealed class CarConfig
     /// cube root of drag, three metres per second at eighty needs roughly a
     /// tenth of the drag gone. This is a genuine straight-line gain over the
     /// car's own clean-air pace, exactly as it is for the real device.
+    /// Eight percent is the measured sweet spot on top of a real tow: in the
+    /// reference duel six percent converts no passes at all, ten converts
+    /// every start at the same second, and eight wins some starts and not
+    /// others - possible, never guaranteed.
     /// </summary>
-    public float OvertakeAssistDragReduction { get; init; } = 0.10f;
+    public float OvertakeAssistDragReduction { get; init; } = 0.08f;
 
     /// <summary>
     /// Fraction of the downforce lost to a leading car's wake that the
