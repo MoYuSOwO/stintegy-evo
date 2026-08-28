@@ -26,7 +26,7 @@ public static class CarPhysics
     {
         return EffectiveDownforceAccelPerSpeedSquared(
             config,
-            state.AirVelocityDeficit,
+            state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
             state.OvertakeAssist
         );
@@ -51,7 +51,7 @@ public static class CarPhysics
             assumedLongitudinalAcceleration,
             lateralAcceleration,
             speed,
-            state.AirVelocityDeficit,
+            state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
             state.OvertakeAssist
         );
@@ -167,7 +167,7 @@ public static class CarPhysics
             assumedLongitudinalAcceleration,
             speed * speed * curvature,
             speed,
-            state.AirVelocityDeficit,
+            state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
             state.OvertakeAssist
         );
@@ -1339,7 +1339,7 @@ public static class CarPhysics
             state.FilteredLongitudinalAccel,
             state.FilteredLateralAccel,
             state.Speed,
-            state.AirVelocityDeficit,
+            state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
             state.OvertakeAssist
         );
@@ -1365,14 +1365,14 @@ public static class CarPhysics
         float longitudinalAcceleration,
         float lateralAcceleration,
         float speed,
-        float airVelocityDeficit,
+        float downforceVelocityDeficit,
         float wakeDownforceLoss,
         float overtakeAssist
     )
     {
         float downforceAcceleration = EffectiveDownforceAccelPerSpeedSquared(
             config,
-            airVelocityDeficit,
+            downforceVelocityDeficit,
             wakeDownforceLoss,
             overtakeAssist
         ) * speed * speed;
@@ -1420,12 +1420,12 @@ public static class CarPhysics
 
     private static float EffectiveDownforceAccelPerSpeedSquared(
         CarConfig config,
-        float airVelocityDeficit,
+        float downforceVelocityDeficit,
         float wakeDownforceLoss,
         float overtakeAssist
     )
     {
-        float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
+        float metAir = 1f - Math.Clamp(downforceVelocityDeficit, 0f, 1f);
         float usableDownforce = 1f - Math.Clamp(wakeDownforceLoss, 0f, 1f);
         float wakeFactor = metAir * metAir * usableDownforce;
         // Hands back part of what the wake took, and nothing more: in clean air

@@ -983,8 +983,14 @@ public sealed class CarPhysicsTests
             StartingCoreTempC = 90f
         };
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
-        CarState lowEnergyWake = cleanAir.Clone();
-        lowEnergyWake.AirVelocityDeficit = 0.08f;
+        // The wake's two faces are carried by separate fields: the body's
+        // deficit trims drag and cooling, the surface deficit is what the
+        // downforce model reads. A body-only tow must leave cornering alone;
+        // the surface deficit must take it away.
+        CarState bodyOnlyTow = cleanAir.Clone();
+        bodyOnlyTow.AirVelocityDeficit = 0.08f;
+        CarState surfaceWake = cleanAir.Clone();
+        surfaceWake.DownforceVelocityDeficit = 0.08f;
 
         CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
             cleanAir,
@@ -994,19 +1000,32 @@ public sealed class CarPhysicsTests
             speed: cleanAir.Speed,
             curvature: 0f
         );
-        CarPerformanceLimits wakeLimits = CarPhysics.EstimatePerformanceLimits(
-            lowEnergyWake,
+        CarPerformanceLimits bodyTowLimits = CarPhysics.EstimatePerformanceLimits(
+            bodyOnlyTow,
             car,
             tires,
             CarStrategy.Default,
-            speed: lowEnergyWake.Speed,
+            speed: bodyOnlyTow.Speed,
+            curvature: 0f
+        );
+        CarPerformanceLimits surfaceWakeLimits = CarPhysics.EstimatePerformanceLimits(
+            surfaceWake,
+            car,
+            tires,
+            CarStrategy.Default,
+            speed: surfaceWake.Speed,
             curvature: 0f
         );
 
-        Assert.True(
-            wakeLimits.LateralAccelerationLimit <
+        Assert.Equal(
             cleanLimits.LateralAccelerationLimit,
-            "lower dynamic pressure must reduce drag and downforce together"
+            bodyTowLimits.LateralAccelerationLimit,
+            precision: 4
+        );
+        Assert.True(
+            surfaceWakeLimits.LateralAccelerationLimit <
+            cleanLimits.LateralAccelerationLimit,
+            "the surface deficit is what must take cornering grip away"
         );
     }
 
