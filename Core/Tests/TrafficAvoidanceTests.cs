@@ -167,12 +167,11 @@ public sealed class TrafficAvoidanceTests
             s: 135f,
             d: 0f,
             speed: leadSpeed,
-            new FixedDriver(
-                new DriverInput(
-                    0f,
-                    0.18f + 0.00046f * leadSpeed * leadSpeed
-                )
-            )
+            // Holds its speed by feedback rather than by a throttle
+            // setting calibrated to cancel the losses of a level road,
+            // which stopped being true once this layout was given a
+            // gradient. What the test is about is the car behind.
+            new HoldSpeedDriver(leadSpeed)
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(ego);
@@ -1033,6 +1032,15 @@ public sealed class TrafficAvoidanceTests
             secondMinimum - firstMaximum,
             firstMinimum - secondMaximum
         );
+    }
+
+    private sealed class HoldSpeedDriver(float targetSpeed) : IRaceDriver
+    {
+        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        {
+            float error = targetSpeed - context.Car.State.Speed;
+            return new DriverInput(0f, Math.Clamp(5f * error, -8f, 8f));
+        }
     }
 
     private sealed class FixedDriver(DriverInput input) : IRaceDriver

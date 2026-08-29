@@ -11,7 +11,8 @@ namespace StintegyEVO.Core.Track;
 public readonly record struct TrackSurfaceContext(
     float DistanceMeters,
     float CentrelineCurvature,
-    float HalfWidthMeters
+    float HalfWidthMeters,
+    float LapLengthMeters
 );
 
 /// <summary>

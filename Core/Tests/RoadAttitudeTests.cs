@@ -310,6 +310,70 @@ public sealed class RoadAttitudeTests
         Assert.InRange(hilly / level, 0.97f, 1.03f);
     }
 
+    [Fact]
+    public void TheSimpleLayoutClimbsItsStartStraightAndGivesItBack()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+
+        // Up the start/finish straight, level across the top through the
+        // hairpin and esses, and all of it back down the back straight.
+        Assert.True(HeightAt(track, 550f) > 25f, "the start straight must climb");
+        Assert.InRange(HeightAt(track, 832f) - HeightAt(track, 550f), -3f, 3f);
+        Assert.InRange(HeightAt(track, 1332f), -3f, 3f);
+        Assert.InRange(HeightAt(track, track.LengthMeters - 1f), -3f, 3f);
+
+        // Steep enough to be felt: a climb of thirty metres over a
+        // five-hundred-metre straight is about six percent.
+        Assert.True(track.Sample(275f).Grade > 0.04f);
+        Assert.True(track.Sample(1080f).Grade < -0.04f);
+    }
+
+    [Fact]
+    public void TheSimpleLayoutBanksTheHairpinAndTheLongLeft()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+
+        float hairpin = MathF.Abs(track.Sample(580f).BankSlope);
+        float sweeper = MathF.Abs(track.Sample(1450f).BankSlope);
+        float straight = MathF.Abs(track.Sample(275f).BankSlope);
+
+        Assert.True(hairpin > 0.25f, $"hairpin bank {hairpin:0.000}");
+        Assert.True(sweeper > 0.18f, $"long left bank {sweeper:0.000}");
+        Assert.True(straight < 0.02f, "the straight should stay near level");
+
+        // The bank has to lean the way the corner turns, or it would be
+        // fighting the very corner it was built for.
+        foreach (float s in new[] { 580f, 1450f })
+        {
+            TrackSample sample = track.Sample(s);
+            Assert.Equal(
+                MathF.Sign(sample.RefCurvature),
+                MathF.Sign(sample.BankSlope)
+            );
+        }
+    }
+
+    [Fact]
+    public void TheSimpleLayoutMarksItsFeaturesWhereTheyActuallyAre()
+    {
+        // The surface is placed by distances written beside the layout. If
+        // anyone edits the layout without moving them, the bank lands on a
+        // straight and this catches it.
+        TrackData track = TrackFactory.SimpleTestTrack();
+        Assert.True(MathF.Abs(track.Sample(580f).RefCurvature) > 0.02f);
+        Assert.True(MathF.Abs(track.Sample(1450f).RefCurvature) > 0.005f);
+        Assert.True(MathF.Abs(track.Sample(275f).RefCurvature) < 0.002f);
+        Assert.True(MathF.Abs(track.Sample(1080f).RefCurvature) < 0.002f);
+    }
+
+    private static float HeightAt(TrackData track, float target)
+    {
+        float height = 0f;
+        for (float s = 0f; s < target; s += 1f)
+            height += track.Sample(s).Grade;
+        return height;
+    }
+
     private static IEnumerable<(string, TrackData)> NamedCircuits()
     {
         yield return ("silverstone", TrackFactory.SilverstoneStyleTestTrack());
@@ -317,6 +381,8 @@ public sealed class RoadAttitudeTests
         yield return ("shanghai", TrackFactory.ShanghaiStyleTestTrack());
         yield return ("sepang", TrackFactory.SepangStyleTestTrack());
         yield return ("speedway", TrackFactory.BankedSpeedwayTestTrack());
+        yield return ("simple", TrackFactory.SimpleTestTrack());
+        yield return ("simple-left", TrackFactory.SimpleTestTrack(isLeft: true));
     }
 
     private static float ElevationRange(TrackData track)

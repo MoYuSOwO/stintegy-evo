@@ -27,7 +27,6 @@ public static class TrackElevation
     /// gradient is continuous across the start/finish line.
     /// </summary>
     public static Func<TrackSurfaceContext, TrackSurface> Profile(
-        float lapLengthMeters,
         (float Fraction, float Height)[] controlPoints,
         Func<TrackSurfaceContext, TrackSurface>? crossSection = null
     )
@@ -35,11 +34,11 @@ public static class TrackElevation
         ArgumentNullException.ThrowIfNull(controlPoints);
         if (controlPoints.Length < 2)
             throw new ArgumentException("A profile needs at least two heights.");
-        float lap = MathF.Max(lapLengthMeters, 1f);
 
         return context =>
         {
             const float probe = 1f;
+            float lap = MathF.Max(context.LapLengthMeters, 1f);
             float ahead = HeightAt(
                 controlPoints,
                 (context.DistanceMeters + probe) / lap
@@ -52,6 +51,31 @@ public static class TrackElevation
                 ? TrackSurface.Flat
                 : crossSection(context);
             return section with { Grade = (ahead - behind) / (2f * probe) };
+        };
+    }
+
+    /// <summary>
+    /// The same profile written in metres from the start/finish line rather
+    /// than in fractions, which is what a hand-authored layout wants: a
+    /// straight's length is known when the layout is written, its share of
+    /// a lap is not.
+    /// </summary>
+    public static Func<TrackSurfaceContext, TrackSurface> ProfileByDistance(
+        (float Metres, float Height)[] controlPoints,
+        Func<TrackSurfaceContext, TrackSurface>? crossSection = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(controlPoints);
+        if (controlPoints.Length < 2)
+            throw new ArgumentException("A profile needs at least two heights.");
+
+        return context =>
+        {
+            float lap = MathF.Max(context.LapLengthMeters, 1f);
+            (float, float)[] fractions = new (float, float)[controlPoints.Length];
+            for (int i = 0; i < controlPoints.Length; i++)
+                fractions[i] = (controlPoints[i].Metres / lap, controlPoints[i].Height);
+            return Profile(fractions, crossSection)(context);
         };
     }
 

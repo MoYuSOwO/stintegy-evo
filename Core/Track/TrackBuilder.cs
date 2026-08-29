@@ -915,7 +915,8 @@ public class TrackBuilder
                         : _surfaceAt(new TrackSurfaceContext(
                             i * TrackData.StepLength,
                             CentrelineCurvature(refTrackPoints, i),
-                            refTrackPoints[i].Width * 0.5f
+                            refTrackPoints[i].Width * 0.5f,
+                            nodes.Count * TrackData.StepLength
                         ))
                 )
             );
@@ -1038,6 +1039,7 @@ public static class TrackFactory
             ;
         }
 
+        builder.WithSurface(SimpleTestTrackSurface);
         return builder.Build(
             new()
             {
@@ -1090,6 +1092,85 @@ public static class TrackFactory
         );
     }
 
+    // Where each feature of the simple test layout starts, measured from
+    // the start/finish line. The layout is written a few lines above; these
+    // follow from it, and a test pins them against the curvature that is
+    // actually built so they cannot drift apart unnoticed.
+    private const float SimpleStartStraightEnd = 550f;
+    private const float SimpleTurn1End = 613f;      // 180 degrees at R20
+    private const float SimpleBackStraightStart = 832f;
+    private const float SimpleBackStraightEnd = 1332f;
+    private const float SimpleBigTurnEnd = 1584f;   // 180 degrees at R80
+
+    /// <summary>
+    /// The simple test layout given some relief: the start/finish straight
+    /// climbs hard, the plateau carries through the first-corner hairpin and
+    /// the esses, and the back straight gives every metre of it back. The
+    /// hairpin and the long left before the final corner are banked well
+    /// past what a road circuit carries, so this layout exercises gradient
+    /// and bank together — which is the point of a test track, as against
+    /// the Grand Prix circuits, where the surface is modelled after the real
+    /// places and is correspondingly mild.
+    /// </summary>
+    private static TrackSurface SimpleTestTrackSurface(
+        TrackSurfaceContext context
+    )
+    {
+        const float summit = 30f;
+        TrackSurface section = TrackElevation.ProfileByDistance(
+            [
+                (0f, 0f),
+                (SimpleStartStraightEnd, summit),
+                (SimpleBackStraightStart, summit),
+                (SimpleBackStraightEnd, 0f)
+            ],
+            TrackSurfaces.RoadCircuit
+        )(context);
+
+        float extra = SimpleExtraBank(context.DistanceMeters);
+        if (extra <= 0f)
+            return section;
+
+        // Added in the direction the corner already leans, so the bank helps
+        // the turn rather than fighting it whichever way it goes.
+        return section with
+        {
+            BankSlope = section.BankSlope +
+                        MathF.CopySign(extra, section.BankSlope)
+        };
+    }
+
+    /// <summary>
+    /// How much bank the two chosen corners get beyond the drainage
+    /// crossfall, easing in and out over their entries and exits so the
+    /// road never steps.
+    /// </summary>
+    private static float SimpleExtraBank(float distance)
+    {
+        const float hairpinBank = 0.30f;   // about seventeen degrees
+        const float sweeperBank = 0.22f;   // about twelve degrees
+        return MathF.Max(
+            hairpinBank * Ramp(
+                distance, SimpleStartStraightEnd, SimpleTurn1End, 25f
+            ),
+            sweeperBank * Ramp(
+                distance, SimpleBackStraightEnd, SimpleBigTurnEnd, 45f
+            )
+        );
+    }
+
+    private static float Ramp(
+        float value, float start, float end, float blend
+    )
+    {
+        if (value <= start - blend || value >= end + blend)
+            return 0f;
+        float rising = Math.Clamp((value - (start - blend)) / blend, 0f, 1f);
+        float falling = Math.Clamp(((end + blend) - value) / blend, 0f, 1f);
+        float t = MathF.Min(rising, falling);
+        return t * t * (3f - 2f * t);
+    }
+
     // FIA Arena Grand Prix layout: the source centerline and widths come from
     // the TUM FTM open racetrack database and are scaled to the FIA-published
     // 5.891 km centreline length.
@@ -1102,7 +1183,6 @@ public static class TrackFactory
             GrandPrixTestBufferMeters
         );
         builder.WithSurface(TrackElevation.Profile(
-            5_891f,
             TrackElevation.SilverstoneHeights,
             TrackSurfaces.RoadCircuit
         ));
@@ -1122,7 +1202,6 @@ public static class TrackFactory
             3f
         );
         builder.WithSurface(TrackElevation.Profile(
-            3_337f,
             TrackElevation.MonacoHeights,
             TrackSurfaces.RoadCircuit
         ));
@@ -1147,7 +1226,6 @@ public static class TrackFactory
             controlSpacingMeters: 12f
         );
         builder.WithSurface(TrackElevation.Profile(
-            5_451f,
             TrackElevation.ShanghaiHeights,
             TrackSurfaces.RoadCircuit
         ));
@@ -1168,7 +1246,6 @@ public static class TrackFactory
             GrandPrixTestBufferMeters
         );
         builder.WithSurface(TrackElevation.Profile(
-            5_543f,
             TrackElevation.SepangHeights,
             TrackSurfaces.RoadCircuit
         ));
