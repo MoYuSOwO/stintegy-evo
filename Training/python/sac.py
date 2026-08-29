@@ -59,11 +59,34 @@ class SacConfig:
     target_entropy_scale: float = 1.0
     device: str = field(default_factory=lambda: default_device())
 
+    # Quantiles predicted per critic head. Zero keeps the classic scalar
+    # critic, which predicts the mean return; any positive count makes the
+    # critic distributional. Cornering outcomes are bimodal — the car makes
+    # the corner or it does not — and a mean of those two describes an
+    # outcome that never happens, whereas a spread of quantiles can say
+    # "mostly through, sometimes into the wall", which is the information a
+    # risk trade-off actually needs.
+    quantiles: int = 0
+    # Truncated Quantile Critics drops the most optimistic quantiles from
+    # the pooled target, which is a sharper instrument against value
+    # overestimation than taking the minimum of two scalars.
+    top_quantiles_to_drop_per_critic: int = 2
+    huber_kappa: float = 1.0
+    # Layer normalization inside the critic trunk. The critic chases a
+    # target it moves itself, and normalizing each layer is the cheapest
+    # known way to keep that pursuit stable.
+    critic_layer_norm: bool = False
 
-def mlp(sizes: list[int], out_size: int) -> nn.Sequential:
+
+def mlp(
+    sizes: list[int], out_size: int, layer_norm: bool = False
+) -> nn.Sequential:
     layers: list[nn.Module] = []
     for i in range(len(sizes) - 1):
-        layers += [nn.Linear(sizes[i], sizes[i + 1]), nn.ReLU()]
+        layers.append(nn.Linear(sizes[i], sizes[i + 1]))
+        if layer_norm:
+            layers.append(nn.LayerNorm(sizes[i + 1]))
+        layers.append(nn.ReLU())
     layers.append(nn.Linear(sizes[-1], out_size))
     return nn.Sequential(*layers)
 
@@ -96,10 +119,25 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, obs_size: int, action_size: int, hidden: tuple[int, ...]):
+    """Twin critics whose heads emit either one value or a set of quantiles.
+
+    With ``outputs == 1`` each head predicts the mean return, exactly as
+    classic SAC does. With more, each head predicts that many quantiles of
+    the return distribution, evenly spaced in probability.
+    """
+
+    def __init__(
+        self,
+        obs_size: int,
+        action_size: int,
+        hidden: tuple[int, ...],
+        outputs: int = 1,
+        layer_norm: bool = False,
+    ):
         super().__init__()
-        self.q1 = mlp([obs_size + action_size, *hidden], 1)
-        self.q2 = mlp([obs_size + action_size, *hidden], 1)
+        self.outputs = outputs
+        self.q1 = mlp([obs_size + action_size, *hidden], outputs, layer_norm)
+        self.q2 = mlp([obs_size + action_size, *hidden], outputs, layer_norm)
 
     def forward(
         self, obs: torch.Tensor, action: torch.Tensor
@@ -155,11 +193,30 @@ class SacAgent:
     def __init__(self, obs_size: int, action_size: int, config: SacConfig):
         self.config = config
         self.device = config.device
+        self.distributional = config.quantiles > 0
+        outputs = config.quantiles if self.distributional else 1
         self.actor = Actor(obs_size, action_size, config.hidden).to(self.device)
-        self.critic = Critic(obs_size, action_size, config.hidden).to(self.device)
-        self.critic_target = Critic(
-            obs_size, action_size, config.hidden
-        ).to(self.device)
+        critic_args = (
+            obs_size,
+            action_size,
+            config.hidden,
+            outputs,
+            config.critic_layer_norm,
+        )
+        self.critic = Critic(*critic_args).to(self.device)
+        self.critic_target = Critic(*critic_args).to(self.device)
+        if self.distributional:
+            # Midpoints of equal-probability bins: the fractions each
+            # predicted quantile is responsible for.
+            self.taus = (
+                (torch.arange(outputs, device=self.device) + 0.5) / outputs
+            ).view(1, -1, 1)
+            self.kept_quantiles = (
+                2 * outputs
+                - 2 * config.top_quantiles_to_drop_per_critic
+            )
+            if self.kept_quantiles < 1:
+                raise ValueError("Truncation removes every target quantile.")
         self.critic_target.load_state_dict(self.critic.state_dict())
         for parameter in self.critic_target.parameters():
             parameter.requires_grad_(False)
@@ -199,12 +256,29 @@ class SacAgent:
         with torch.no_grad():
             next_action, next_log_prob = self.actor(next_obs)
             target_q1, target_q2 = self.critic_target(next_obs, next_action)
-            target_q = torch.min(target_q1, target_q2)
-            target_q -= self.alpha * next_log_prob
-            target = reward + (1.0 - done) * config.gamma * target_q
+            if self.distributional:
+                # Pool both heads' quantiles, drop the most optimistic
+                # ones, and treat what remains as the target distribution.
+                pooled = torch.cat([target_q1, target_q2], dim=-1)
+                kept = torch.sort(pooled, dim=-1).values[
+                    :, : self.kept_quantiles
+                ]
+                target = reward + (1.0 - done) * config.gamma * (
+                    kept - self.alpha * next_log_prob
+                )
+            else:
+                target_q = torch.min(target_q1, target_q2)
+                target_q -= self.alpha * next_log_prob
+                target = reward + (1.0 - done) * config.gamma * target_q
 
         q1, q2 = self.critic(obs, action)
-        critic_loss = F.mse_loss(q1, target) + F.mse_loss(q2, target)
+        if self.distributional:
+            critic_loss = (
+                self._quantile_huber(q1, target)
+                + self._quantile_huber(q2, target)
+            )
+        else:
+            critic_loss = F.mse_loss(q1, target) + F.mse_loss(q2, target)
         self.critic_optimizer.zero_grad(set_to_none=True)
         critic_loss.backward()
         self.critic_optimizer.step()
@@ -213,9 +287,15 @@ class SacAgent:
             parameter.requires_grad_(False)
         new_action, log_prob = self.actor(obs)
         q1_pi, q2_pi = self.critic(obs, new_action)
-        actor_loss = (
-            self.alpha.detach() * log_prob - torch.min(q1_pi, q2_pi)
-        ).mean()
+        if self.distributional:
+            # The actor maximizes the mean of the whole predicted
+            # distribution; pessimism already lives in the truncated target.
+            value = torch.cat([q1_pi, q2_pi], dim=-1).mean(
+                dim=-1, keepdim=True
+            )
+        else:
+            value = torch.min(q1_pi, q2_pi)
+        actor_loss = (self.alpha.detach() * log_prob - value).mean()
         self.actor_optimizer.zero_grad(set_to_none=True)
         actor_loss.backward()
         self.actor_optimizer.step()
@@ -242,6 +322,28 @@ class SacAgent:
             "alpha": float(self.alpha.detach()),
             "q_mean": float(q1.mean().detach()),
         }
+
+    def _quantile_huber(
+        self, predicted: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Quantile regression loss between predictions and a target set.
+
+        Each predicted quantile is pulled toward the target distribution
+        with a weight that is asymmetric in its own fraction: the quantile
+        responsible for the tenth percentile is penalized nine times more
+        for overshooting than for undershooting, which is what makes the
+        set converge to the distribution's shape rather than its mean.
+        """
+        delta = target.unsqueeze(1) - predicted.unsqueeze(2)
+        kappa = self.config.huber_kappa
+        absolute = delta.abs()
+        huber = torch.where(
+            absolute <= kappa,
+            0.5 * delta.pow(2),
+            kappa * (absolute - 0.5 * kappa),
+        )
+        weight = (self.taus - (delta < 0).float()).abs()
+        return (weight * huber).mean(dim=2).sum(dim=1).mean()
 
     def save(self, path: str) -> None:
         torch.save(

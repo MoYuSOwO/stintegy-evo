@@ -79,6 +79,13 @@ def main() -> int:
     parser.add_argument("--resume", default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--updates-per-step", type=int, default=None)
+    parser.add_argument(
+        "--quantiles", type=int, default=None,
+        help="0 keeps the scalar critic; a positive count makes it distributional",
+    )
+    parser.add_argument("--critic-layer-norm", action="store_true")
+    parser.add_argument("--hidden", default=None, help='e.g. "256,256"')
+    parser.add_argument("--tag", default="", help="suffix for checkpoint files")
     args = parser.parse_args()
 
     checkpoint_dir = Path(args.checkpoint_dir)
@@ -89,8 +96,20 @@ def main() -> int:
         overrides["device"] = args.device
     if args.updates_per_step is not None:
         overrides["updates_per_step"] = args.updates_per_step
+    if args.quantiles is not None:
+        overrides["quantiles"] = args.quantiles
+    if args.critic_layer_norm:
+        overrides["critic_layer_norm"] = True
+    if args.hidden:
+        overrides["hidden"] = tuple(
+            int(part) for part in args.hidden.split(",")
+        )
     config = SacConfig(**overrides)
-    print(f"device: {config.device}")
+    print(
+        f"device: {config.device} hidden={config.hidden} "
+        f"quantiles={config.quantiles} layer_norm={config.critic_layer_norm} "
+        f"updates/step={config.updates_per_step}"
+    )
     with HostEnv(
         batch=args.batch,
         seed_base=args.seed,
@@ -192,10 +211,10 @@ def main() -> int:
                     f"{held_out['eval_progress']:+.2f} "
                     f"walls {held_out['eval_walls']:.0f}"
                 )
-                agent.save(str(checkpoint_dir / "latest.pt"))
+                agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
                 if train_stats["eval_progress"] > best_progress:
                     best_progress = train_stats["eval_progress"]
-                    agent.save(str(checkpoint_dir / "best.pt"))
+                    agent.save(str(checkpoint_dir / f"best{args.tag}.pt"))
                     print(f"  saved best (progress {best_progress:+.2f})")
 
     print("training finished")
