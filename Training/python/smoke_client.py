@@ -72,6 +72,7 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--steps", type=int, default=300)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--solo", action="store_true")
     parser.add_argument(
         "--host-project",
         default=str(
@@ -87,7 +88,7 @@ def main() -> int:
             "dotnet", "run", "-c", "Release", "--project",
             args.host_project, "--", "--batch", str(args.batch),
             "--seed-base", str(args.seed),
-        ],
+        ] + (["--solo"] if args.solo else []),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=sys.stderr,

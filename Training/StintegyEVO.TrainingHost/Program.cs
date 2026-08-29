@@ -31,7 +31,8 @@ internal static class Program
                 float maximumForwardGapMeters,
                 float episodeDurationSeconds,
                 CarStrategy opponentStrategy,
-                float opponentPace
+                float opponentPace,
+                bool solo
             ) =
                 ParseOptions(args);
             BatchedTrainingHost host = new(
@@ -42,7 +43,8 @@ internal static class Program
                 maximumForwardGapMeters,
                 episodeDurationSeconds,
                 opponentStrategy,
-                opponentPace
+                opponentPace,
+                solo
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -62,7 +64,8 @@ internal static class Program
         float MaximumForwardGapMeters,
         float EpisodeDurationSeconds,
         CarStrategy OpponentStrategy,
-        float OpponentPace
+        float OpponentPace,
+        bool Solo
     ) ParseOptions(string[] args)
     {
         int batchSize = 1;
@@ -76,9 +79,15 @@ internal static class Program
             DirectDriveDuelEnvironment.DefaultEpisodeDurationSeconds;
         CarStrategy opponentStrategy = CarStrategy.Default;
         float opponentPace = 70f;
+        bool solo = false;
         for (int i = 0; i < args.Length; i++)
         {
             string option = args[i];
+            if (option == "--solo")
+            {
+                solo = true;
+                continue;
+            }
             if (i + 1 >= args.Length)
                 throw new ArgumentException($"Missing value for '{option}'.");
             string value = args[++i];
@@ -172,7 +181,8 @@ internal static class Program
             maximumForwardGapMeters,
             episodeDurationSeconds,
             opponentStrategy,
-            opponentPace
+            opponentPace,
+            solo
         );
     }
 
