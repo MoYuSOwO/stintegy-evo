@@ -156,6 +156,7 @@ public sealed class VehicleSpeedPlanner
         float[] segmentLengths = ArrayPool<float>.Shared.Rent(count);
         float[] speedLimits = ArrayPool<float>.Shared.Rent(count);
         float[] speeds = ArrayPool<float>.Shared.Rent(count);
+        float[] alongTrackGravity = ArrayPool<float>.Shared.Rent(count);
         try
         {
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
@@ -165,16 +166,19 @@ public sealed class VehicleSpeedPlanner
             for (int i = 0; i < count; i++)
             {
                 float distance = i * planningStep;
+                TrackSample surface = track.Sample(startS + distance);
                 float curvature = BankedEquivalentCurvature(
                     SamplePeakCurvature(
                         track,
                         startS + distance,
                         planningStep * 0.5f
                     ),
-                    track.Sample(startS + distance),
+                    surface,
                     lateralAccelerationLimit
                 );
                 curvatures[i] = curvature;
+                alongTrackGravity[i] = RoadAt(in surface)
+                    .AlongTrackGravity(GravityMetersPerSecondSquared);
                 speedLimits[i] = LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
@@ -193,7 +197,8 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                lateralAccelerationLimit
+                lateralAccelerationLimit,
+                alongTrackGravity
             );
             FillLookahead(
                 destination,
@@ -211,6 +216,7 @@ public sealed class VehicleSpeedPlanner
             ArrayPool<float>.Shared.Return(segmentLengths);
             ArrayPool<float>.Shared.Return(speedLimits);
             ArrayPool<float>.Shared.Return(speeds);
+            ArrayPool<float>.Shared.Return(alongTrackGravity);
         }
     }
 
@@ -378,6 +384,7 @@ public sealed class VehicleSpeedPlanner
         float[] arrivalTimes = trafficEnabled
             ? ArrayPool<float>.Shared.Rent(count)
             : Array.Empty<float>();
+        float[] alongTrackGravity = ArrayPool<float>.Shared.Rent(count);
         try
         {
             CarPerformanceLimits baseLimits = BasePlanningLimits(car);
@@ -394,6 +401,7 @@ public sealed class VehicleSpeedPlanner
                     segmentLengths,
                     speedLimits,
                     speeds,
+                    alongTrackGravity,
                     out maximumAbsoluteCurvature
                 );
             if (!restoredPreparedFreePlan)
@@ -402,13 +410,19 @@ public sealed class VehicleSpeedPlanner
                 for (int i = 0; i < count; i++)
                 {
                     VehiclePathPredictionPoint point = path[i];
-                    float planningCurvature = track is null
-                        ? point.CommandedCurvature
-                        : BankedEquivalentCurvature(
-                            point.CommandedCurvature,
-                            track.Sample(point.ReferenceS),
+                    float planningCurvature = point.CommandedCurvature;
+                    alongTrackGravity[i] = 0f;
+                    if (track is not null)
+                    {
+                        TrackSample surface = track.Sample(point.ReferenceS);
+                        planningCurvature = BankedEquivalentCurvature(
+                            planningCurvature,
+                            surface,
                             lateralAccelerationLimit
                         );
+                        alongTrackGravity[i] = RoadAt(in surface)
+                            .AlongTrackGravity(GravityMetersPerSecondSquared);
+                    }
                     if (i == 0)
                     {
                         planningCurvature = GreaterMagnitude(
@@ -448,7 +462,8 @@ public sealed class VehicleSpeedPlanner
                     segmentLengths,
                     speedLimits,
                     speeds,
-                    lateralAccelerationLimit
+                    lateralAccelerationLimit,
+                    alongTrackGravity
                 );
                 if (capturePreparedFreePlan)
                 {
@@ -459,6 +474,7 @@ public sealed class VehicleSpeedPlanner
                         segmentLengths,
                         speedLimits,
                         speeds,
+                        alongTrackGravity,
                         maximumAbsoluteCurvature
                     );
                 }
@@ -506,7 +522,8 @@ public sealed class VehicleSpeedPlanner
                         segmentLengths,
                         speedLimits,
                         speeds,
-                        lateralAccelerationLimit
+                        lateralAccelerationLimit,
+                        alongTrackGravity
                     );
                     if (!requiresReevaluation)
                         break;
@@ -590,6 +607,7 @@ public sealed class VehicleSpeedPlanner
             ArrayPool<float>.Shared.Return(segmentLengths);
             ArrayPool<float>.Shared.Return(speedLimits);
             ArrayPool<float>.Shared.Return(speeds);
+            ArrayPool<float>.Shared.Return(alongTrackGravity);
             if (arrivalTimes.Length > 0)
                 ArrayPool<float>.Shared.Return(arrivalTimes);
         }
@@ -613,6 +631,26 @@ public sealed class VehicleSpeedPlanner
     /// beyond that, so a steeply banked corner is modelled slightly
     /// conservatively rather than optimistically.
     /// </summary>
+    /// <summary>
+    /// The road under the racing line, which is where the free plan assumes
+    /// the car will be. A car that then runs wider on a progressively
+    /// banked corner finds more grip than this planned for, which is the
+    /// right way round: the plan stays honest and the extra is upside.
+    /// </summary>
+    private static RoadAttitude RoadAt(in TrackSample sample)
+    {
+        if (sample.Grade == 0f &&
+            sample.BankSlope == 0f &&
+            sample.BankCurvature == 0f)
+        {
+            return RoadAttitude.Flat;
+        }
+        return new RoadAttitude(
+            sample.Grade,
+            sample.BankSlopeAt(sample.RefOffset)
+        );
+    }
+
     private float BankedEquivalentCurvature(
         float curvature,
         in TrackSample sample,
@@ -626,10 +664,7 @@ public sealed class VehicleSpeedPlanner
         if (absoluteCurvature <= Config.CurvatureEpsilon)
             return curvature;
 
-        RoadAttitude road = new(
-            sample.Grade,
-            sample.BankSlopeAt(sample.RefOffset)
-        );
+        RoadAttitude road = RoadAt(in sample);
         float cosine = road.NormalCosine;
         float assist = curvature >= 0f
             ? road.BankTangent * cosine
@@ -686,7 +721,8 @@ public sealed class VehicleSpeedPlanner
         float endCurvature,
         float startSpeed,
         float distance,
-        float lateralAccelerationLimit
+        float lateralAccelerationLimit,
+        float alongTrackGravity = 0f
     )
     {
         int substeps = Math.Max(1, Config.IntegrationSubsteps);
@@ -697,10 +733,17 @@ public sealed class VehicleSpeedPlanner
         {
             float t = (substep + 0.5f) / substeps;
             float curvature = Lerp(startCurvature, endCurvature, t);
-            float acceleration = MaximumNetDriveAcceleration(car, speed, curvature);
+            // A climb takes from what the engine can add, a descent gives
+            // to it. Applied outside the cached lookup because it is a
+            // simple sum and does not belong in the cache key.
+            float acceleration =
+                MaximumNetDriveAcceleration(car, speed, curvature) +
+                alongTrackGravity;
             float predicted = MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * acceleration * stepDistance));
             float midpointSpeed = (speed + predicted) * 0.5f;
-            float midpointAcceleration = MaximumNetDriveAcceleration(car, midpointSpeed, curvature);
+            float midpointAcceleration =
+                MaximumNetDriveAcceleration(car, midpointSpeed, curvature) +
+                alongTrackGravity;
             speed = MathF.Min(
                 LateralSpeedLimit(
                     curvature,
@@ -721,7 +764,8 @@ public sealed class VehicleSpeedPlanner
         float endCurvature,
         float endSpeed,
         float distance,
-        float lateralAccelerationLimit
+        float lateralAccelerationLimit,
+        float alongTrackGravity = 0f
     )
     {
         int substeps = Math.Max(1, Config.IntegrationSubsteps);
@@ -732,10 +776,17 @@ public sealed class VehicleSpeedPlanner
         {
             float t = (substep + 0.5f) / substeps;
             float curvature = Lerp(startCurvature, endCurvature, t);
-            float deceleration = MaximumNetBrakeDeceleration(car, speed, curvature);
+            // Braking downhill has gravity working against it, which is
+            // why a plan that ignores the road brakes too late into a
+            // descending corner.
+            float deceleration =
+                MaximumNetBrakeDeceleration(car, speed, curvature) -
+                alongTrackGravity;
             float predicted = MathF.Sqrt(MathF.Max(0f, speed * speed + 2f * deceleration * stepDistance));
             float midpointSpeed = (speed + predicted) * 0.5f;
-            float midpointDeceleration = MaximumNetBrakeDeceleration(car, midpointSpeed, curvature);
+            float midpointDeceleration =
+                MaximumNetBrakeDeceleration(car, midpointSpeed, curvature) -
+                alongTrackGravity;
             speed = MathF.Min(
                 LateralSpeedLimit(
                     curvature,
@@ -929,6 +980,12 @@ public sealed class VehicleSpeedPlanner
         );
     }
 
+    /// <summary>
+    /// Settles the speed profile over an open chain of points. The optional
+    /// per-point pull along the track is what lets the braking integration
+    /// know the road descends: without it a plan brakes for a corner as
+    /// though the approach were level, and arrives at it too fast.
+    /// </summary>
     private void PlanOpenChain(
         RaceCar car,
         float[] curvatures,
@@ -936,7 +993,8 @@ public sealed class VehicleSpeedPlanner
         float[] segmentLengths,
         float[] speedLimits,
         float[] speeds,
-        float lateralAccelerationLimit
+        float lateralAccelerationLimit,
+        float[]? alongTrackGravity = null
     )
     {
         for (int pass = 0; pass < LoadTransferPasses; pass++)
@@ -948,7 +1006,8 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                lateralAccelerationLimit
+                lateralAccelerationLimit,
+                alongTrackGravity
             );
             speeds[0] = MathF.Min(speeds[0], MathF.Max(0f, car.State.Speed));
             // Kept for the last time round only. Tightening a corner and
@@ -976,7 +1035,8 @@ public sealed class VehicleSpeedPlanner
                 segmentLengths,
                 speedLimits,
                 speeds,
-                lateralAccelerationLimit
+                lateralAccelerationLimit,
+                alongTrackGravity
             );
             break;
         }
@@ -1307,6 +1367,17 @@ public sealed class VehicleSpeedPlanner
         }
     }
 
+    /// <summary>
+    /// Gravity's pull along one segment, averaged over its ends, or none
+    /// when the caller has no road to speak of.
+    /// </summary>
+    private static float SegmentGravity(float[]? alongTrackGravity, int index)
+    {
+        return alongTrackGravity is null
+            ? 0f
+            : 0.5f * (alongTrackGravity[index] + alongTrackGravity[index + 1]);
+    }
+
     private bool ApplyForwardOpenPass(
         RaceCar car,
         float[] curvatures,
@@ -1314,7 +1385,8 @@ public sealed class VehicleSpeedPlanner
         float[] segmentLengths,
         float[] speedLimits,
         float[] speeds,
-        float lateralAccelerationLimit
+        float lateralAccelerationLimit,
+        float[]? alongTrackGravity
     )
     {
         bool changed = false;
@@ -1329,7 +1401,8 @@ public sealed class VehicleSpeedPlanner
                     curvatures[i + 1],
                     speeds[i],
                     distance,
-                    lateralAccelerationLimit
+                    lateralAccelerationLimit,
+                    SegmentGravity(alongTrackGravity, i)
                 );
             float limited = MathF.Min(speedLimits[i + 1], reachable);
             if (limited < speeds[i + 1] - Config.ConvergenceToleranceMetersPerSecond)
@@ -1348,7 +1421,8 @@ public sealed class VehicleSpeedPlanner
         float[] segmentLengths,
         float[] speedLimits,
         float[] speeds,
-        float lateralAccelerationLimit
+        float lateralAccelerationLimit,
+        float[]? alongTrackGravity
     )
     {
         bool changed = false;
@@ -1363,7 +1437,8 @@ public sealed class VehicleSpeedPlanner
                     curvatures[i + 1],
                     speeds[i + 1],
                     distance,
-                    lateralAccelerationLimit
+                    lateralAccelerationLimit,
+                    SegmentGravity(alongTrackGravity, i)
                 );
             float limited = MathF.Min(speedLimits[i], reachable);
             if (limited < speeds[i] - Config.ConvergenceToleranceMetersPerSecond)

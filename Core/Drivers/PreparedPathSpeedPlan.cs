@@ -17,6 +17,7 @@ internal sealed class PreparedPathSpeedPlan
     private int _pathGeneration;
     private long _planningSnapshotGeneration;
     private int _count;
+    private float[] _alongTrackGravity = [];
     private float _maximumAbsoluteCurvature;
 
     public void Capture(
@@ -26,6 +27,7 @@ internal sealed class PreparedPathSpeedPlan
         float[] segmentLengths,
         float[] speedLimits,
         float[] speeds,
+        float[] alongTrackGravity,
         float maximumAbsoluteCurvature
     )
     {
@@ -36,6 +38,7 @@ internal sealed class PreparedPathSpeedPlan
         Array.Copy(segmentLengths, _segmentLengths, count);
         Array.Copy(speedLimits, _speedLimits, count);
         Array.Copy(speeds, _speeds, count);
+        Array.Copy(alongTrackGravity, _alongTrackGravity, count);
         _path = path;
         _pathGeneration = path.Generation;
         _planningSnapshotGeneration = planningSnapshotGeneration;
@@ -50,6 +53,7 @@ internal sealed class PreparedPathSpeedPlan
         float[] segmentLengths,
         float[] speedLimits,
         float[] speeds,
+        float[] alongTrackGravity,
         out float maximumAbsoluteCurvature
     )
     {
@@ -67,10 +71,19 @@ internal sealed class PreparedPathSpeedPlan
         EnsureDestinationCapacity(segmentLengths, nameof(segmentLengths));
         EnsureDestinationCapacity(speedLimits, nameof(speedLimits));
         EnsureDestinationCapacity(speeds, nameof(speeds));
+        EnsureDestinationCapacity(
+            alongTrackGravity,
+            nameof(alongTrackGravity)
+        );
         Array.Copy(_curvatures, curvatures, _count);
         Array.Copy(_segmentLengths, segmentLengths, _count);
         Array.Copy(_speedLimits, speedLimits, _count);
         Array.Copy(_speeds, speeds, _count);
+        // The road travels with the plan. Restoring without it would leave
+        // whatever the pooled array last held standing in for the gradient,
+        // which is both wrong and different depending on who rented it
+        // before.
+        Array.Copy(_alongTrackGravity, alongTrackGravity, _count);
         maximumAbsoluteCurvature = _maximumAbsoluteCurvature;
         _path = null;
         return true;
@@ -85,6 +98,7 @@ internal sealed class PreparedPathSpeedPlan
         _segmentLengths = new float[count];
         _speedLimits = new float[count];
         _speeds = new float[count];
+        _alongTrackGravity = new float[count];
     }
 
     private void EnsureDestinationCapacity(float[] destination, string name)

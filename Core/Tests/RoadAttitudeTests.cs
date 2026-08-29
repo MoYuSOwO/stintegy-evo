@@ -366,6 +366,72 @@ public sealed class RoadAttitudeTests
         Assert.True(MathF.Abs(track.Sample(1080f).RefCurvature) < 0.002f);
     }
 
+    [Fact]
+    public void ThePlanBrakesEarlierForACornerItIsDescendingInto()
+    {
+        // The plan has to know the road falls away, or it brakes for the
+        // corner as though the approach were level and arrives too fast.
+        // Same layout three times, differing only in what the road does on
+        // the way in.
+        float level = PlannedApproachSpeed(0f);
+        float downhill = PlannedApproachSpeed(-0.08f);
+        float uphill = PlannedApproachSpeed(0.08f);
+
+        Assert.True(
+            downhill < level,
+            $"descending {downhill:0.0} should be planned slower than level {level:0.0}"
+        );
+        Assert.True(
+            uphill > level,
+            $"climbing {uphill:0.0} should be planned faster than level {level:0.0}"
+        );
+    }
+
+    /// <summary>
+    /// How fast the plan says the car may be forty metres from a hairpin,
+    /// on an approach with the given gradient. Forty metres because these
+    /// cars stop hard enough that a braking zone is short: sampled from
+    /// further out the answer is the car's top speed and says nothing
+    /// about braking at all.
+    /// </summary>
+    private static float PlannedApproachSpeed(float grade)
+    {
+        const float approach = 300f;
+        TrackData track = new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 16f,
+                startLeftBuffer: 5f,
+                startRightBuffer: 5f
+            )
+            .AddStraight(approach)
+            .AddTurn(180f, 40f)
+            .AddStraight(approach)
+            .AddTurn(180f, 40f)
+            .CloseLoop()
+            .WithSurface(context => new TrackSurface(
+                // Falls away over the approach and climbs back on the far
+                // side, so the lap still closes.
+                Grade: context.DistanceMeters < approach
+                    ? grade
+                    : -grade * approach /
+                      MathF.Max(context.LapLengthMeters - approach, 1f)
+            ))
+            .Build(new TrackGridConfig());
+
+        RaceCar car = CreateCar(track, s: 10f, speed: 70f);
+        VehicleSpeedPlanner planner = new();
+        VehicleSpeedLookahead plan = planner.PlanReferenceLookahead(
+            new VehicleSpeedLookahead(),
+            car,
+            track,
+            startS: 10f,
+            horizonMeters: 320f,
+            stepMeters: 2f,
+            DriverPlanningModifiers.Neutral
+        );
+        return plan.Sample(approach - 50f).TargetSpeed;
+    }
+
     private static float HeightAt(TrackData track, float target)
     {
         float height = 0f;
