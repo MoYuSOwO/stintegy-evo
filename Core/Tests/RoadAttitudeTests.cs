@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
@@ -254,6 +255,95 @@ public sealed class RoadAttitudeTests
             $"banked speedway {banked:0} m should beat the flat one {flat:0} m"
         );
     }
+
+    [Fact]
+    public void EveryCircuitReturnsToTheHeightItLeft()
+    {
+        // The one thing a closed circuit's elevation must do. Integrating
+        // the gradient the physics actually reads has to come back to zero,
+        // or a car would gain or lose energy on every lap for free.
+        foreach ((string name, TrackData track) in NamedCircuits())
+        {
+            float climb = 0f;
+            float step = 1f;
+            for (float s = 0f; s < track.LengthMeters; s += step)
+                climb += track.Sample(s).Grade * step;
+            Assert.InRange(climb, -0.5f, 0.5f);
+            Assert.True(name.Length > 0);
+        }
+    }
+
+    [Fact]
+    public void CircuitsCarryTheElevationTheirCharacterCallsFor()
+    {
+        // Ranked by how much each circuit actually climbs: Monaco far
+        // beyond the rest, Silverstone the flat airfield it is.
+        float monaco = ElevationRange(TrackFactory.MonacoStyleTestTrack());
+        float sepang = ElevationRange(TrackFactory.SepangStyleTestTrack());
+        float shanghai = ElevationRange(TrackFactory.ShanghaiStyleTestTrack());
+        float silverstone = ElevationRange(
+            TrackFactory.SilverstoneStyleTestTrack()
+        );
+
+        Assert.True(monaco > sepang, $"monaco {monaco:0.0} vs sepang {sepang:0.0}");
+        Assert.True(sepang > shanghai);
+        Assert.True(shanghai > silverstone);
+        // Monaco's climb out of Sainte Dévote is the steepest thing here
+        // and is a real gradient, not a rounding artefact.
+        Assert.True(SteepestGrade(TrackFactory.MonacoStyleTestTrack()) > 0.03f);
+        Assert.True(
+            SteepestGrade(TrackFactory.SilverstoneStyleTestTrack()) < 0.02f
+        );
+    }
+
+    [Fact]
+    public void AClimbCostsAndTheMatchingDescentPaysItBack()
+    {
+        // End to end on a real circuit: a lap of Monaco against the same
+        // layout levelled. What matters is that the two come out close,
+        // because a closed lap spends climbing exactly what it recovers
+        // descending — a hilly circuit is not a slow one, it is one whose
+        // speed is differently distributed. A large gap either way would
+        // mean the gradient was leaking energy.
+        float hilly = LapDistance(TrackFactory.MonacoStyleTestTrack());
+        float level = LapDistance(BuildLevelMonaco());
+        Assert.InRange(hilly / level, 0.97f, 1.03f);
+    }
+
+    private static IEnumerable<(string, TrackData)> NamedCircuits()
+    {
+        yield return ("silverstone", TrackFactory.SilverstoneStyleTestTrack());
+        yield return ("monaco", TrackFactory.MonacoStyleTestTrack());
+        yield return ("shanghai", TrackFactory.ShanghaiStyleTestTrack());
+        yield return ("sepang", TrackFactory.SepangStyleTestTrack());
+        yield return ("speedway", TrackFactory.BankedSpeedwayTestTrack());
+    }
+
+    private static float ElevationRange(TrackData track)
+    {
+        float height = 0f, lowest = 0f, highest = 0f, step = 1f;
+        for (float s = 0f; s < track.LengthMeters; s += step)
+        {
+            height += track.Sample(s).Grade * step;
+            lowest = MathF.Min(lowest, height);
+            highest = MathF.Max(highest, height);
+        }
+        return highest - lowest;
+    }
+
+    private static float SteepestGrade(TrackData track)
+    {
+        float steepest = 0f;
+        for (float s = 0f; s < track.LengthMeters; s += 2f)
+            steepest = MathF.Max(steepest, MathF.Abs(track.Sample(s).Grade));
+        return steepest;
+    }
+
+    private static TrackData BuildLevelMonaco() =>
+        TrackBuilder.FromClosedCenterline(
+                TrackCenterlineData.Monaco, 3_337f, 3f, 3f)
+            .WithSurface(TrackSurfaces.RoadCircuit)
+            .Build(new TrackGridConfig());
 
     private static float LapDistance(TrackData track)
     {

@@ -1101,7 +1101,11 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
-        builder.WithSurface(TrackSurfaces.RoadCircuit);
+        builder.WithSurface(TrackElevation.Profile(
+            5_891f,
+            TrackElevation.SilverstoneHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
@@ -1117,7 +1121,11 @@ public static class TrackFactory
             3f,
             3f
         );
-        builder.WithSurface(TrackSurfaces.RoadCircuit);
+        builder.WithSurface(TrackElevation.Profile(
+            3_337f,
+            TrackElevation.MonacoHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(
                 gridOffsetMeters: 3.5f,
@@ -1138,7 +1146,11 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackSurfaces.RoadCircuit);
+        builder.WithSurface(TrackElevation.Profile(
+            5_451f,
+            TrackElevation.ShanghaiHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
@@ -1155,7 +1167,11 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
-        builder.WithSurface(TrackSurfaces.RoadCircuit);
+        builder.WithSurface(TrackElevation.Profile(
+            5_543f,
+            TrackElevation.SepangHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
