@@ -114,7 +114,20 @@ public static class DirectDriveObservation
     /// </summary>
     public const int RoadAndLimitsSize = 13;
 
-    public const int EgoSize = 12;
+    /// <summary>
+    /// The car's own motion, where it sits on the road, what it last asked
+    /// for — and two things the tyre model knows that nothing else in here
+    /// implies. How badly the rear axle is sliding is not the body's
+    /// sideslip angle and cannot be had from it; it comes out of the axle
+    /// over-limits and the lateral each end actually delivered. And how much
+    /// drive the traction control just took away is buried in the gap
+    /// between the acceleration asked for and the one that arrived, along
+    /// with drag and grip, with no way to separate the three.
+    ///
+    /// These stand in for the per-tyre slip angles on Sony's list, which
+    /// this physics cannot produce because it resolves forces at the axle.
+    /// </summary>
+    public const int EgoSize = 14;
     public const int OpponentCount = 6;
     public const int OpponentSize = 16;
 
@@ -168,6 +181,14 @@ public static class DirectDriveObservation
     internal const float AccelerationScale = 20f;
     internal const float YawRateScale = 2f;
     internal const float SideslipScale = 0.5f;
+
+    /// <summary>
+    /// Rear slide severity has no upper bound of its own — it is a max over
+    /// axle over-limits and delivery imbalances, and full lock at full
+    /// throttle takes it past six. Two puts everyday sliding under one and
+    /// leaves the extremes where the rest of this vector's extremes are.
+    /// </summary>
+    internal const float RearSlideScale = 2f;
     internal const float SlopeScale = 0.4f;
     internal const float VerticalRateScale = 0.02f;
     internal const float TemperatureScale = 150f;
@@ -457,7 +478,11 @@ public sealed class DirectDriveObservationBuilder
         observation[cursor++] = (halfWidth + pose.D) /
                                 DirectDriveObservation.HalfWidthScale;
         observation[cursor++] = lastCurvatureNorm;
-        observation[cursor] = lastAccelerationNorm;
+        observation[cursor++] = lastAccelerationNorm;
+        observation[cursor++] = state.Telemetry.RearSlideSeverity /
+                                DirectDriveObservation.RearSlideScale;
+        observation[cursor] = state.Telemetry.TractionControlCutAccel /
+                              DirectDriveObservation.AccelerationScale;
     }
 
     private static void WriteTiresAndBattery(
