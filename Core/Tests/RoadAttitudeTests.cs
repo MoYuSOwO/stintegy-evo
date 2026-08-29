@@ -281,6 +281,50 @@ public sealed class RoadAttitudeTests
     }
 
     [Fact]
+    public void ABankedStretchCanStraddleTheStartLine()
+    {
+        // Banking has no closing condition the way elevation does -- it is a
+        // value across the road, not a rate along it, so nothing integrates
+        // round a lap and nothing has to come back to zero. What it does
+        // have to be is continuous at the seam, and a stretch measured along
+        // a number line rather than round a lap is not: its ramp gets cut
+        // off at the start line. Today's layouts keep their banked corners
+        // away from the line, so this held by luck of where the corners are
+        // rather than by construction.
+        const float lap = 1000f;
+        const float blend = 40f;
+
+        // A corner from 960 m round through the line to 80 m.
+        float Weight(float s) =>
+            TrackSurfaces.SectionWeight(s, 960f, 1080f, blend, lap);
+
+        // Full weight right across the line, and matching either side of it.
+        Assert.Equal(1f, Weight(0f), 3);
+        Assert.Equal(1f, Weight(20f), 3);
+        Assert.Equal(1f, Weight(980f), 3);
+
+        // Easing in over the forty metres before it and out over the forty
+        // after, both of which cross the line, and nothing beyond either.
+        Assert.InRange(Weight(940f), 0.4f, 0.6f);
+        Assert.InRange(Weight(100f), 0.4f, 0.6f);
+        Assert.Equal(0f, Weight(920f), 3);
+        Assert.Equal(0f, Weight(120f), 3);
+        Assert.Equal(0f, Weight(500f), 3);
+
+        // And no step anywhere round the lap, the seam included.
+        float previous = Weight(lap - 1f);
+        for (float s = 0f; s < lap; s += 1f)
+        {
+            float here = Weight(s);
+            Assert.True(
+                MathF.Abs(here - previous) < 0.05f,
+                $"the stretch steps by {MathF.Abs(here - previous):0.000} at s={s:0}"
+            );
+            previous = here;
+        }
+    }
+
+    [Fact]
     public void TheStartLineIsNotASeamInTheRoad()
     {
         // Closing the height is necessary but not sufficient: a lap can come

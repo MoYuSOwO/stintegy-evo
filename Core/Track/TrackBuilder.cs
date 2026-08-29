@@ -1156,7 +1156,10 @@ public static class TrackFactory
             TrackSurfaces.RoadCircuit
         )(context);
 
-        float extra = SimpleExtraBank(context.DistanceMeters);
+        float extra = SimpleExtraBank(
+            context.DistanceMeters,
+            context.LapLengthMeters
+        );
         if (extra <= 0f)
             return section;
 
@@ -1181,30 +1184,18 @@ public static class TrackFactory
     /// crossfall, easing in and out over their entries and exits so the
     /// road never steps.
     /// </summary>
-    private static float SimpleExtraBank(float distance)
+    private static float SimpleExtraBank(float distance, float lapLength)
     {
         const float hairpinBank = 0.30f;   // about seventeen degrees
         const float sweeperBank = 0.22f;   // about twelve degrees
         return MathF.Max(
-            hairpinBank * Ramp(
-                distance, SimpleStartStraightEnd, SimpleTurn1End, 25f
+            hairpinBank * TrackSurfaces.SectionWeight(
+                distance, SimpleStartStraightEnd, SimpleTurn1End, 25f, lapLength
             ),
-            sweeperBank * Ramp(
-                distance, SimpleBackStraightEnd, SimpleBigTurnEnd, 45f
+            sweeperBank * TrackSurfaces.SectionWeight(
+                distance, SimpleBackStraightEnd, SimpleBigTurnEnd, 45f, lapLength
             )
         );
-    }
-
-    private static float Ramp(
-        float value, float start, float end, float blend
-    )
-    {
-        if (value <= start - blend || value >= end + blend)
-            return 0f;
-        float rising = Math.Clamp((value - (start - blend)) / blend, 0f, 1f);
-        float falling = Math.Clamp(((end + blend) - value) / blend, 0f, 1f);
-        float t = MathF.Min(rising, falling);
-        return t * t * (3f - 2f * t);
     }
 
     // FIA Arena Grand Prix layout: the source centerline and widths come from

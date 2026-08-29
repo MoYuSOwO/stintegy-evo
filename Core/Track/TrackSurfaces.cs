@@ -45,6 +45,47 @@ public static class TrackSurfaces
     }
 
     /// <summary>
+    /// How much of a stretch's treatment applies at one place on the lap:
+    /// one in the middle of it, nothing outside, easing between over the
+    /// blend length at either end.
+    ///
+    /// Measured round the lap rather than along a number line, so a corner
+    /// that straddles the start/finish line is treated like any other. A
+    /// straight comparison would clip such a corner's ramp at the seam and
+    /// leave the bank stepping there -- and a layout is free to put a corner
+    /// wherever the corner is.
+    /// </summary>
+    public static float SectionWeight(
+        float distanceMeters,
+        float startMeters,
+        float endMeters,
+        float blendMeters,
+        float lapLengthMeters
+    )
+    {
+        float blend = MathF.Max(blendMeters, 1e-3f);
+        float from = startMeters - blend;
+        float span = (endMeters + blend) - from;
+        if (span <= 0f)
+            return 0f;
+
+        float offset = distanceMeters - from;
+        if (lapLengthMeters > 0f)
+        {
+            offset -= lapLengthMeters *
+                      MathF.Floor(offset / lapLengthMeters);
+        }
+        if (offset >= span)
+            return 0f;
+
+        float t = MathF.Min(
+            Math.Clamp(offset / blend, 0f, 1f),
+            Math.Clamp((span - offset) / blend, 0f, 1f)
+        );
+        return t * t * (3f - 2f * t);
+    }
+
+    /// <summary>
     /// How a road circuit is built: a crown across the straights so water
     /// runs off both edges, easing into a shallow superelevation through
     /// the corners as the section tilts into the turn. Both are drainage
