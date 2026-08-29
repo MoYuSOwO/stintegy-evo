@@ -210,7 +210,16 @@ public static class CarPhysics
 
         state.Normalize();
 
-        WheelLoads loads = CalculateWheelLoads(state, config);
+        RoadAttitude road = input.RoadAttitude;
+        float roadNormalGravity = road.NormalGravity(
+            Gravity,
+            state.Speed,
+            state.Telemetry.ActualCurvature
+        );
+        float roadAlongGravity = road.AlongTrackGravity(Gravity);
+        float roadLateralDemand = road.LateralGravityDemand(Gravity);
+
+        WheelLoads loads = CalculateWheelLoads(state, config, roadNormalGravity);
         ApplyWheelLoads(state, loads);
 
         float frontGrip = CalculateAxleGripAccel(config, tires, state.FrontLeft, state.FrontRight);
@@ -228,7 +237,8 @@ public static class CarPhysics
             config.MaxDriveAcceleration
         );
 
-        float requestedLateralAccel = state.Speed * state.Speed * desiredCurvature;
+        float requestedLateralAccel =
+            state.Speed * state.Speed * desiredCurvature + roadLateralDemand;
         float referenceYawRate = state.Speed * desiredCurvature;
         float dynamicYawBlend = CalculateDynamicYawBlend(state.Speed);
         LateralRequests lateralRequests = AllocateLateralRequests(
@@ -348,7 +358,8 @@ public static class CarPhysics
             state.AirVelocityDeficit,
             state.OvertakeAssist
         ) + sideslipLossAccel;
-        float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
+        float actualLongitudinalAccel =
+            axleLongitudinalAccel - lossAccel + roadAlongGravity;
 
         float oldSpeed = state.Speed;
         float newSpeed = Math.Max(0f, oldSpeed + actualLongitudinalAccel * dt);
@@ -1334,6 +1345,15 @@ public static class CarPhysics
 
     private static WheelLoads CalculateWheelLoads(CarState state, CarConfig config)
     {
+        return CalculateWheelLoads(state, config, Gravity);
+    }
+
+    private static WheelLoads CalculateWheelLoads(
+        CarState state,
+        CarConfig config,
+        float normalGravity
+    )
+    {
         return CalculateWheelLoads(
             config,
             state.FilteredLongitudinalAccel,
@@ -1341,7 +1361,8 @@ public static class CarPhysics
             state.Speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.OvertakeAssist
+            state.OvertakeAssist,
+            normalGravity
         );
     }
 
@@ -1367,7 +1388,8 @@ public static class CarPhysics
         float speed,
         float downforceVelocityDeficit,
         float wakeDownforceLoss,
-        float overtakeAssist
+        float overtakeAssist,
+        float normalGravity = Gravity
     )
     {
         float downforceAcceleration = EffectiveDownforceAccelPerSpeedSquared(
@@ -1376,7 +1398,7 @@ public static class CarPhysics
             wakeDownforceLoss,
             overtakeAssist
         ) * speed * speed;
-        float totalLoad = config.MassKg * (Gravity + downforceAcceleration);
+        float totalLoad = config.MassKg * (normalGravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
         frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);

@@ -8,6 +8,8 @@ namespace StintegyEVO.Core.Track;
 
 public class TrackBuilder
 {
+    private Func<float, TrackSurface>? _surfaceAtDistance;
+
     private static readonly IRefLineSolver DefaultRefLineSolver =
         new MinimumCurvatureRefLineSolver();
 
@@ -625,6 +627,20 @@ public class TrackBuilder
         return result;
     }
 
+    /// <summary>
+    /// Supplies the road's out-of-plane shape as a function of distance
+    /// along the centreline, sampled once per node at build time. Taking a
+    /// function rather than per-segment arguments keeps the geometry
+    /// pipeline untouched while still allowing a banking ramp, a hill, or
+    /// an oval whose bank steepens toward the wall.
+    /// </summary>
+    public TrackBuilder WithSurface(Func<float, TrackSurface> surfaceAtDistance)
+    {
+        ArgumentNullException.ThrowIfNull(surfaceAtDistance);
+        _surfaceAtDistance = surfaceAtDistance;
+        return this;
+    }
+
     public TrackBuilder AddStraight(float length, float? targetEndWidth = null, float? targetEndLeftBuffer = null, float? targetEndRightBuffer = null)
     {
         float targetEndWidthNotNull = targetEndWidth ?? currentWidth;
@@ -858,7 +874,10 @@ public class TrackBuilder
                     refTrackPoints[i].Width,
                     nodes[i].LeftBuffer,
                     nodes[i].RightBuffer,
-                    refNodes[i]
+                    refNodes[i],
+                    _surfaceAtDistance is null
+                        ? TrackSurface.Flat
+                        : _surfaceAtDistance(i * TrackData.StepLength)
                 )
             );
         }

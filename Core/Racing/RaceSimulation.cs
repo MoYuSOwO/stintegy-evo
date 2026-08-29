@@ -361,7 +361,10 @@ public sealed class RaceSimulation
                 _stepTireEnergyEfficiencies[i],
                 _stepCorneringEfficiencies[i],
                 _stepLimitSettleUses[i]
-            );
+            )
+            {
+                RoadAttitude = SampleRoadAttitude(car)
+            };
 
             CarState startState = _startStates[i];
             CarState predictedState = _predictedStates[i];
@@ -526,6 +529,27 @@ public sealed class RaceSimulation
                 _previousTrafficMotionPlans[i] ??= new TrafficMotionPlan();
             snapshot.CopyFrom(current);
         }
+    }
+
+    /// <summary>
+    /// Reads the road under a car. The bank is taken at the car's own
+    /// lateral offset rather than at the centreline, so a progressively
+    /// banked corner really does reward the car that runs high.
+    /// </summary>
+    private RoadAttitude SampleRoadAttitude(RaceCar car)
+    {
+        TrackPose pose = Track.Project(car.State.Position);
+        TrackSample sample = pose.Sample;
+        if (sample.Grade == 0f &&
+            sample.BankSlope == 0f &&
+            sample.BankCurvature == 0f)
+        {
+            return RoadAttitude.Flat;
+        }
+        return new RoadAttitude(
+            sample.Grade,
+            sample.BankSlopeAt(pose.D)
+        );
     }
 
     private void ResolveContactsAndWalls()

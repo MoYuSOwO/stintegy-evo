@@ -165,10 +165,14 @@ public sealed class VehicleSpeedPlanner
             for (int i = 0; i < count; i++)
             {
                 float distance = i * planningStep;
-                float curvature = SamplePeakCurvature(
-                    track,
-                    startS + distance,
-                    planningStep * 0.5f
+                float curvature = BankedEquivalentCurvature(
+                    SamplePeakCurvature(
+                        track,
+                        startS + distance,
+                        planningStep * 0.5f
+                    ),
+                    track.Sample(startS + distance),
+                    lateralAccelerationLimit
                 );
                 curvatures[i] = curvature;
                 speedLimits[i] = LateralSpeedLimit(
@@ -391,7 +395,13 @@ public sealed class VehicleSpeedPlanner
                 for (int i = 0; i < count; i++)
                 {
                     VehiclePathPredictionPoint point = path[i];
-                    float planningCurvature = point.CommandedCurvature;
+                    float planningCurvature = track is null
+                        ? point.CommandedCurvature
+                        : BankedEquivalentCurvature(
+                            point.CommandedCurvature,
+                            track.Sample(point.ReferenceS),
+                            lateralAccelerationLimit
+                        );
                     if (i == 0)
                     {
                         planningCurvature = GreaterMagnitude(
@@ -577,6 +587,67 @@ public sealed class VehicleSpeedPlanner
                 ArrayPool<float>.Shared.Return(arrivalTimes);
         }
     }
+
+    /// <summary>
+    /// The flat corner that would be as hard as this banked one.
+    ///
+    /// The whole planner already reasons in curvature — the speed limit,
+    /// the braking integration, and how much grip a corner leaves over for
+    /// accelerating all read the same array — so folding the road into that
+    /// number lets every one of them account for the bank without being
+    /// told about it. The conversion equates the banked balance
+    ///
+    ///   k*v^2 - g*B = L*cos + (L/g)*(k*B + downforce)*v^2
+    ///
+    /// with the flat one it replaces, and solves for the curvature that
+    /// would produce the same speed. It carries the demand the bank takes
+    /// off the tyres, which also correctly leaves more grip for braking and
+    /// acceleration; it does not carry the extra load the bank presses on
+    /// beyond that, so a steeply banked corner is modelled slightly
+    /// conservatively rather than optimistically.
+    /// </summary>
+    private float BankedEquivalentCurvature(
+        float curvature,
+        in TrackSample sample,
+        float lateralAccelerationLimit
+    )
+    {
+        if (sample.BankSlope == 0f && sample.BankCurvature == 0f)
+            return curvature;
+
+        float absoluteCurvature = MathF.Abs(curvature);
+        if (absoluteCurvature <= Config.CurvatureEpsilon)
+            return curvature;
+
+        RoadAttitude road = new(
+            sample.Grade,
+            sample.BankSlopeAt(sample.RefOffset)
+        );
+        float cosine = road.NormalCosine;
+        float assist = curvature >= 0f
+            ? road.BankTangent * cosine
+            : -road.BankTangent * cosine;
+        float standingLimit = MathF.Max(lateralAccelerationLimit, 1e-3f);
+        float airPaid = standingLimit *
+                        _planningDownforceAccelPerSpeedSquared /
+                        GravityMetersPerSecondSquared;
+        float held = standingLimit * cosine +
+                     GravityMetersPerSecondSquared * assist;
+        if (held <= 0f)
+            return MathF.CopySign(MaximumEquivalentCurvature, curvature);
+
+        float curvatureLeft = absoluteCurvature -
+                              standingLimit / GravityMetersPerSecondSquared *
+                              absoluteCurvature * assist -
+                              airPaid;
+        float equivalent = standingLimit * curvatureLeft / held + airPaid;
+        return MathF.CopySign(
+            MathF.Min(MathF.Max(equivalent, 0f), MaximumEquivalentCurvature),
+            curvature
+        );
+    }
+
+    private const float MaximumEquivalentCurvature = 1f;
 
     private static int TrafficReportEvaluationIndex(
         int count,
