@@ -33,8 +33,6 @@ public static class DirectDriveObservation
     public const int TireAndBatterySize = 13;
     public const int ModeSize = 3;
     public const int AeroSize = 3;
-    public const int CoachPlanSpeedCount = 12;
-    public const int CoachSize = 2 + CoachPlanSpeedCount;
     public const int OpponentCount = 6;
     public const int OpponentSize = 16;
 
@@ -44,8 +42,7 @@ public static class DirectDriveObservation
     public const int TireAndBatteryOffset = EgoOffset + EgoSize;
     public const int ModeOffset = TireAndBatteryOffset + TireAndBatterySize;
     public const int AeroOffset = ModeOffset + ModeSize;
-    public const int CoachOffset = AeroOffset + AeroSize;
-    public const int OpponentOffset = CoachOffset + CoachSize;
+    public const int OpponentOffset = AeroOffset + AeroSize;
     public const int DynamicBlockOffset = EgoOffset;
     public const int DynamicBlockSize =
         EgoSize + OpponentCount * OpponentSize;
@@ -55,14 +52,6 @@ public static class DirectDriveObservation
         PreviousDynamicOffset + DynamicBlockSize;
 
     public const int ActionSize = 2;
-
-    /// <summary>
-    /// The coach's suggested action, stored in the same normalized actuator
-    /// units the driver maps policy actions with, so a passthrough policy
-    /// reproduces the analytic baseline exactly.
-    /// </summary>
-    public const int CoachCurvatureIndex = CoachOffset;
-    public const int CoachAccelerationIndex = CoachOffset + 1;
 
     internal const float DistanceScale = 600f;
     internal const float LateralScale = 30f;
@@ -96,9 +85,6 @@ public sealed class DirectDriveObservationBuilder
 
     internal void Build(
         in RaceDriverFrameContext context,
-        VehicleSpeedLookahead coachLookahead,
-        float coachCurvatureNorm,
-        float coachAccelerationNorm,
         float lastCurvatureNorm,
         float lastAccelerationNorm,
         Span<float> observation
@@ -134,12 +120,6 @@ public sealed class DirectDriveObservationBuilder
         WriteTiresAndBattery(observation, state);
         WriteModes(observation, car, state);
         WriteAero(observation, state);
-        WriteCoach(
-            observation,
-            coachLookahead,
-            coachCurvatureNorm,
-            coachAccelerationNorm
-        );
         WriteOpponents(
             observation,
             in context,
@@ -273,25 +253,6 @@ public sealed class DirectDriveObservationBuilder
         observation[cursor++] = state.AirVelocityDeficit;
         observation[cursor++] = state.DownforceVelocityDeficit;
         observation[cursor] = state.WakeDownforceLoss;
-    }
-
-    private static void WriteCoach(
-        Span<float> observation,
-        VehicleSpeedLookahead coachLookahead,
-        float coachCurvatureNorm,
-        float coachAccelerationNorm
-    )
-    {
-        int cursor = DirectDriveObservation.CoachOffset;
-        observation[cursor++] = coachCurvatureNorm;
-        observation[cursor++] = coachAccelerationNorm;
-        for (int i = 0; i < DirectDriveObservation.CoachPlanSpeedCount; i++)
-        {
-            float distance = DirectDriveObservation.PreviewDistancesMeters[i];
-            observation[cursor++] =
-                coachLookahead.Sample(distance).TargetSpeed /
-                DirectDriveObservation.SpeedScale;
-        }
     }
 
     private static void WriteOpponents(

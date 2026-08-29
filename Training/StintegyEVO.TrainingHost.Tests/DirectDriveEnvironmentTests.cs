@@ -62,7 +62,7 @@ public sealed class DirectDriveEnvironmentTests
     }
 
     [Fact]
-    public void ObservationsStayFiniteUnderCoachFollowing()
+    public void ObservationsStayFiniteUnderSteadyDriving()
     {
         DirectDriveDuelEnvironment environment = new();
         float[] observation =
@@ -72,15 +72,11 @@ public sealed class DirectDriveEnvironmentTests
         float[] action = new float[DirectDriveObservation.ActionSize];
         for (int step = 0; step < 120 && !environment.IsTerminal; step++)
         {
-            // Follow the coach block: the observation carries the analytic
-            // suggestion in action units, so echoing it back is the
-            // baseline-driving policy.
-            action[0] = observation[
-                DirectDriveObservation.CoachCurvatureIndex
-            ];
-            action[1] = observation[
-                DirectDriveObservation.CoachAccelerationIndex
-            ];
+            // Steer at a point down the road and hold a modest throttle.
+            // What is being pinned is that nothing in the observation goes
+            // non-finite while the car is actually driving, so any policy
+            // that keeps it moving will do.
+            Steer(observation, action);
             environment.Step(action, observation);
             foreach (float value in observation)
                 Assert.True(float.IsFinite(value));
@@ -100,16 +96,24 @@ public sealed class DirectDriveEnvironmentTests
         float[] action = new float[DirectDriveObservation.ActionSize];
         for (int step = 0; step < 60 && !environment.IsTerminal; step++)
         {
-            action[0] = observation[
-                DirectDriveObservation.CoachCurvatureIndex
-            ];
-            action[1] = observation[
-                DirectDriveObservation.CoachAccelerationIndex
-            ];
+            Steer(observation, action);
             TrainingStepResult result = environment.Step(action, observation);
             Assert.Equal(0f, result.RelativeProgressReward);
         }
 
         Assert.Throws<InvalidOperationException>(() => environment.Opponent);
+    }
+
+    /// <summary>Pure pursuit off the geometry block, thirty metres ahead.</summary>
+    private static void Steer(float[] observation, float[] action)
+    {
+        int cursor = DirectDriveObservation.GeometryOffset +
+                     5 * DirectDriveObservation.GeometryFloatsPerPoint;
+        float ahead = observation[cursor] * 600f;
+        float across = observation[cursor + 1] * 30f;
+        float rangeSquared = ahead * ahead + across * across;
+        float curvature = rangeSquared > 1f ? 2f * across / rangeSquared : 0f;
+        action[0] = Math.Clamp(curvature / 0.05f, -1f, 1f);
+        action[1] = 0.4f;
     }
 }

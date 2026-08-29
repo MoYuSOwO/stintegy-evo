@@ -8,10 +8,12 @@ using Xunit;
 namespace StintegyEVO.Core.Tests;
 
 /// <summary>
-/// Pins the direct physical interface: a policy that merely echoes the
-/// coach block must lap like the analytic driver, because between a policy
-/// and the car there is deliberately nothing else. If these pins break,
-/// the interface or the observation is lying to every learner above it.
+/// Pins the direct physical interface. Between a policy and the car there
+/// is deliberately nothing, so the only thing standing between a learner
+/// and the road is the observation — and the way to show it is sound is to
+/// drive with it. The pure-pursuit policy below reads nothing but the
+/// geometry block and laps the track on it. If that breaks, the interface
+/// or the observation is lying to every learner above it.
 /// </summary>
 public sealed class DirectDriveRaceDriverTests
 {
@@ -24,10 +26,6 @@ public sealed class DirectDriveRaceDriverTests
             DirectDriveObservation.GeometryPointCount,
             DirectDriveObservation.PreviewDistancesMeters.Length
         );
-        Assert.True(
-            DirectDriveObservation.CoachPlanSpeedCount <=
-            DirectDriveObservation.PreviewDistancesMeters.Length
-        );
         Assert.Equal(
             DirectDriveObservation.PreviousDynamicOffset +
             DirectDriveObservation.DynamicBlockSize,
@@ -36,39 +34,65 @@ public sealed class DirectDriveRaceDriverTests
     }
 
     [Fact]
-    public void CoachPassthroughLapsCloseToTheReferenceDriver()
+    public void TheGeometryBlockIsEnoughToDriveOn()
     {
-        float referenceDistance = RunSolo(
-            new ReferenceLineDriver(),
-            out bool referenceOnSurface
-        );
-        float directDistance = RunSolo(
-            new DirectDriveRaceDriver(new CoachPassthroughPolicy()),
-            out bool directOnSurface
+        // Not a performance pin. The claim is that everything a car needs to
+        // stay on a road is in the observation, and the demonstration is a
+        // policy that uses only the road part of it and gets round.
+        float distance = RunSolo(
+            new DirectDriveRaceDriver(new PurePursuitPolicy()),
+            out bool stayedOnSurface
         );
 
-        Assert.True(referenceOnSurface);
         Assert.True(
-            directOnSurface,
-            "the passthrough car left the racing surface"
+            stayedOnSurface,
+            $"the pure-pursuit car left the racing surface after {distance:0} m"
         );
-        // The coach block is the reference-line plan, which samples peak
-        // curvature per segment and is therefore deliberately conservative;
-        // echoing it lands near ninety percent of the full driver. This pin
-        // guards the interface, not performance: the learner's job is to
-        // beat the coach, not to copy it.
+        // Half a lap of the simple layout and then some, on a quarter
+        // throttle. The bar is that it gets round a road, not that it is
+        // quick: a policy this artless would be embarrassed to be quick.
         Assert.True(
-            directDistance >= referenceDistance * 0.85f,
-            $"passthrough covered {directDistance:0} m vs reference " +
-            $"{referenceDistance:0} m"
+            distance > 1000f,
+            $"a minute of pure pursuit covered only {distance:0} m"
         );
+    }
+
+    /// <summary>
+    /// Steers at a point down the road and holds a modest throttle, reading
+    /// nothing but the geometry block. Deliberately artless: it is here to
+    /// show the observation carries a road, not to drive well.
+    /// </summary>
+    private sealed class PurePursuitPolicy : IDrivingPolicy
+    {
+        private const int AimPoint = 5;          // thirty metres ahead
+
+        public void Act(ReadOnlySpan<float> observation, Span<float> action)
+        {
+            int cursor = DirectDriveObservation.GeometryOffset +
+                         AimPoint * DirectDriveObservation.GeometryFloatsPerPoint;
+            float ahead = observation[cursor] *
+                          DirectDriveObservation.DistanceScale;
+            float across = observation[cursor + 1] *
+                           DirectDriveObservation.LateralScale;
+
+            float rangeSquared = ahead * ahead + across * across;
+            float curvature = rangeSquared > 1f
+                ? 2f * across / rangeSquared
+                : 0f;
+
+            // The interface takes curvature as a fraction of the car's own
+            // steering limit, and a hundredth of a per-metre is a long way
+            // round for these cars.
+            action[0] = Math.Clamp(curvature / 0.05f, -1f, 1f);
+            action[1] = 0.25f;
+        }
     }
 
     [Fact]
     public void ObservationsAndActionsStayFinite()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
-        DirectDriveRaceDriver driver = new(new CoachPassthroughPolicy());
+        DirectDriveRaceDriver driver = new(new PurePursuitPolicy());
         RaceCar car = CreateCar(track, 100f, 40f, driver);
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);

@@ -14,16 +14,25 @@ namespace StintegyEVO.Core.Drivers.Learned;
 /// stewards in training, exactly as the training plan lays out. The only
 /// limits applied are the car's own actuators: maximum curvature request,
 /// maximum braking, and the drive limit the powertrain and battery mode
-/// physically deliver. The analytic planner still runs, but only to write
-/// the coach block of the observation.
+/// physically deliver.
+///
+/// The analytic planner is not on this path at all. It used to run once a
+/// decision to write a coach block into the observation, and it cost
+/// three-quarters of the simulation to do it -- for advice that is 4 to 16
+/// percent wrong about braking over a crest and leaves up to 81 percent of
+/// the grip unused through a compression, which is to say wrong about
+/// exactly the ground the road model just added.
+///
+/// Ten decisions a second, not thirty. Sony tested five to sixty on Gran
+/// Turismo and found nothing above ten worth having, and a decision is the
+/// expensive part of a step.
 /// </summary>
 public sealed class DirectDriveRaceDriver : IRaceDriver
 {
-    public const float DefaultDecisionHz = 30f;
+    public const float DefaultDecisionHz = 10f;
 
     private readonly IDrivingPolicy _policy;
-    private readonly VehicleSpeedPlanner _speedPlanner;
-    private readonly VehicleSpeedLookahead _coachLookahead = new();
+    private readonly VehicleSpeedPlanningConfig _planningConfig;
     private readonly DirectDriveObservationBuilder _observationBuilder = new();
     private readonly float[] _observation =
         new float[DirectDriveObservation.ObservationSize];
@@ -36,12 +45,6 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
     private float _lastCurvatureNorm;
     private float _lastAccelerationNorm;
 
-    public float StanleyGain { get; init; } = 2f;
-    public float StanleySofteningSpeed { get; init; } = 4f;
-    public float HeadingGain { get; init; } = 1f;
-    public float CurvaturePreviewTimeSeconds { get; init; } = 0.15f;
-    public float MaximumCurvaturePreviewMeters { get; init; } = 6f;
-    public float CoachSpeedGain { get; init; } = 2.5f;
 
     public DirectDriveRaceDriver(
         IDrivingPolicy policy,
@@ -53,7 +56,7 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
         if (!float.IsFinite(decisionHz) || decisionHz <= 0f)
             throw new ArgumentOutOfRangeException(nameof(decisionHz));
         _policy = policy;
-        _speedPlanner = new VehicleSpeedPlanner(speedPlanningConfig);
+        _planningConfig = speedPlanningConfig ?? new VehicleSpeedPlanningConfig();
         _decisionPeriodSeconds = 1f / decisionHz;
     }
 
@@ -84,78 +87,31 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
 
         RaceCar car = context.Car;
         CarState state = car.State;
-        VehicleSpeedPlanningConfig config = _speedPlanner.Config;
-        _speedPlanner.PlanReferenceLookahead(
-            _coachLookahead,
-            car,
-            context.Track,
-            context.Pose.S,
-            config.SpeedPlanningHorizonMeters,
-            config.PathPredictionStepMeters,
-            DriverPlanningModifiers.Neutral
-        );
-        StanleyControlSample coachSteering = StanleyControlLaw.Sample(
-            context.Track,
-            state.Position,
-            state.VelocityHeading,
-            state.Speed,
-            car.CarConfig.WheelBaseMeters,
-            lateralTargetOffsetMeters: 0f,
-            StanleyGain,
-            StanleySofteningSpeed,
-            HeadingGain,
-            CurvaturePreviewTimeSeconds,
-            MaximumCurvaturePreviewMeters,
-            car.CarConfig.MaxCurvatureRequest
-        );
-        VehicleSpeedPlanPoint coachSpeedPoint = _coachLookahead.Sample(0f);
-        float coachReferenceAcceleration =
-            coachSpeedPoint.ReferenceAcceleration;
-        if (state.Speed > coachSpeedPoint.TargetSpeed)
-        {
-            coachReferenceAcceleration = MathF.Min(
-                coachReferenceAcceleration,
-                0f
-            );
-        }
+        VehicleSpeedPlanningConfig config = _planningConfig;
+
+        // Not advice, just the actuator range the policy's [-1, 1] is
+        // stretched onto: what this car can pull and push right now.
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             state,
             car.CarConfig,
             car.TireConfig,
             car.Strategy,
             state.Speed,
-            coachSteering.DesiredCurvature,
-            config.GetAccelerationUsage(car.Strategy),
-            coachReferenceAcceleration
+            state.Telemetry.ActualCurvature,
+            config.GetAccelerationUsage(car.Strategy)
         );
         float driveLimit = MathF.Max(
             1f,
             limits.MaximumDriveAcceleration * config.DriveAccelerationUsage
         );
         float brakeLimit = MathF.Max(1f, car.CarConfig.MaxBrakeAccel);
-        float coachAcceleration = coachReferenceAcceleration +
-            limits.LossAcceleration +
-            CoachSpeedGain * (coachSpeedPoint.TargetSpeed - state.Speed);
         float maxCurvature = MathF.Max(
             1e-4f,
             car.CarConfig.MaxCurvatureRequest
         );
-        float coachCurvatureNorm = Math.Clamp(
-            coachSteering.DesiredCurvature / maxCurvature,
-            -1f,
-            1f
-        );
-        float coachAccelerationNorm = NormalizeAcceleration(
-            coachAcceleration,
-            brakeLimit,
-            driveLimit
-        );
 
         _observationBuilder.Build(
             in context,
-            _coachLookahead,
-            coachCurvatureNorm,
-            coachAccelerationNorm,
             _lastCurvatureNorm,
             _lastAccelerationNorm,
             _observation
@@ -174,18 +130,6 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
                 : accelerationNorm * brakeLimit
         );
         return _heldInput;
-    }
-
-    private static float NormalizeAcceleration(
-        float acceleration,
-        float brakeLimit,
-        float driveLimit
-    )
-    {
-        float normalized = acceleration >= 0f
-            ? acceleration / driveLimit
-            : acceleration / brakeLimit;
-        return Math.Clamp(normalized, -1f, 1f);
     }
 
     private static float SanitizeUnit(float value)

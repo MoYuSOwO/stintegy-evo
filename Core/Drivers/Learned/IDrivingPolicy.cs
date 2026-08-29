@@ -13,18 +13,3 @@ public interface IDrivingPolicy
 {
     void Act(ReadOnlySpan<float> observation, Span<float> action);
 }
-
-/// <summary>
-/// Drives exactly what the coach suggests: the policy that reproduces the
-/// analytic baseline through the direct interface. It is the pipeline's
-/// ground truth — if this policy cannot lap close to the reference driver,
-/// the interface or the observation is broken, not the learner.
-/// </summary>
-public sealed class CoachPassthroughPolicy : IDrivingPolicy
-{
-    public void Act(ReadOnlySpan<float> observation, Span<float> action)
-    {
-        action[0] = observation[DirectDriveObservation.CoachCurvatureIndex];
-        action[1] = observation[DirectDriveObservation.CoachAccelerationIndex];
-    }
-}
