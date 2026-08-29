@@ -32,6 +32,19 @@ public static class TrackSurfaces
     private const float CornerBankReferenceCurvature = 0.01f;
 
     /// <summary>
+    /// Which way a corner leans and how committed it is, as one signed
+    /// number that eases through zero rather than switching sign at it.
+    /// Anything deciding a bank's direction has to use something like this:
+    /// the curvature a track is built from carries noise around zero on the
+    /// straights, and a hard sign turns that noise into a full-magnitude
+    /// bank pointing whichever way the noise happened to fall.
+    /// </summary>
+    public static float CornerLean(float curvature, float referenceCurvature)
+    {
+        return MathF.Tanh(curvature / MathF.Max(referenceCurvature, 1e-6f));
+    }
+
+    /// <summary>
     /// How a road circuit is built: a crown across the straights so water
     /// runs off both edges, easing into a shallow superelevation through
     /// the corners as the section tilts into the turn. Both are drainage

@@ -659,6 +659,17 @@ public class TrackBuilder
     /// not do for this: a corner taken wide reads as almost straight, and a
     /// road is built to the shape of the road.
     /// </summary>
+    /// <summary>
+    /// Half the length, in nodes, that the surface's idea of curvature is
+    /// averaged over. A road is not banked from the curvature at a point:
+    /// superelevation is run in and out over tens of metres, and a
+    /// centreline assembled from straights and arcs steps its curvature at
+    /// every junction. Reading it over a stretch gives the surface the
+    /// transition the geometry does not have, and keeps the dither around
+    /// zero on a straight from being read as a corner.
+    /// </summary>
+    private const int SurfaceCurvatureHalfWindowNodes = 8;
+
     private static float CentrelineCurvature(
         IReadOnlyList<RefLineTrackPoint> points,
         int index
@@ -668,12 +679,23 @@ public class TrackBuilder
         if (count < 3)
             return 0f;
 
-        Vector2 before = points[(index - 1 + count) % count].Tangent;
-        Vector2 after = points[(index + 1) % count].Tangent;
-        float turn = MathHelper.NormalizeAngle(
-            MathF.Atan2(after.Y, after.X) - MathF.Atan2(before.Y, before.X)
-        );
-        return turn / (2f * TrackData.StepLength);
+        int half = Math.Min(SurfaceCurvatureHalfWindowNodes, (count - 1) / 2);
+        if (half < 1)
+            half = 1;
+
+        // Accumulated node by node rather than as one difference across the
+        // window, so a hairpin that turns more than half a circle inside it
+        // cannot wrap around and come back as a corner the other way.
+        float turn = 0f;
+        for (int step = -half; step < half; step++)
+        {
+            Vector2 a = points[((index + step) % count + count) % count].Tangent;
+            Vector2 b = points[((index + step + 1) % count + count) % count].Tangent;
+            turn += MathHelper.NormalizeAngle(
+                MathF.Atan2(b.Y, b.X) - MathF.Atan2(a.Y, a.X)
+            );
+        }
+        return turn / (2f * half * TrackData.StepLength);
     }
 
     public TrackBuilder AddStraight(float length, float? targetEndWidth = null, float? targetEndLeftBuffer = null, float? targetEndRightBuffer = null)
@@ -1103,6 +1125,13 @@ public static class TrackFactory
     private const float SimpleBigTurnEnd = 1584f;   // 180 degrees at R80
 
     /// <summary>
+    /// Curvature at which the added bank is fully committed: loose enough
+    /// that both banked corners here get essentially all of it, tight enough
+    /// that a straight gets essentially none.
+    /// </summary>
+    private const float SimpleExtraBankReferenceCurvature = 0.006f;
+
+    /// <summary>
     /// The simple test layout given some relief: the start/finish straight
     /// climbs hard, the plateau carries through the first-corner hairpin and
     /// the esses, and the back straight gives every metre of it back. The
@@ -1131,12 +1160,19 @@ public static class TrackFactory
         if (extra <= 0f)
             return section;
 
-        // Added in the direction the corner already leans, so the bank helps
-        // the turn rather than fighting it whichever way it goes.
+        // Added in the direction the corner leans, so the bank helps the turn
+        // whichever way it goes -- but weighted by how committed that lean
+        // is, not merely by its sign. Taking the sign alone put the whole
+        // seventeen degrees on whichever side of zero the curvature happened
+        // to be, and flipped all of it in a single metre where the hairpin
+        // handed over to the esses.
+        float lean = TrackSurfaces.CornerLean(
+            context.CentrelineCurvature,
+            SimpleExtraBankReferenceCurvature
+        );
         return section with
         {
-            BankSlope = section.BankSlope +
-                        MathF.CopySign(extra, section.BankSlope)
+            BankSlope = section.BankSlope + extra * lean
         };
     }
 

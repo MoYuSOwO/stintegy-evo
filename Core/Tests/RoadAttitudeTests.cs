@@ -583,6 +583,46 @@ public sealed class RoadAttitudeTests
     }
 
     [Fact]
+    public void NoCircuitTurnsItsBankOverInASingleMetre()
+    {
+        // Banking is run in and out over tens of metres on a real road. It
+        // cannot reverse under a car in one, and a surface that does is not
+        // a road but a step in the lateral force balance.
+        //
+        // The two that did: the simple layout flipped seventeen degrees of
+        // added bank to seventeen the other way between one node and the
+        // next, where the hairpin handed over to the esses; and the speedway
+        // put a reverse-banked node at each turn exit, where the curvature
+        // it was built from dithered across zero on the straight. Both came
+        // of reading a bank's direction from the sign of a noisy, stepped
+        // curvature rather than from how committed the corner is. The worst
+        // any circuit manages now is 0.135 per metre.
+        foreach ((string name, TrackData track) in NamedCircuits())
+        {
+            float worst = 0f;
+            float worstAtS = 0f;
+            int metres = (int)track.LengthMeters;
+            for (int s = 0; s < metres; s++)
+            {
+                float change = MathF.Abs(
+                    track.Sample(s + 1).BankSlope - track.Sample(s).BankSlope
+                );
+                if (change > worst)
+                {
+                    worst = change;
+                    worstAtS = s;
+                }
+            }
+
+            Assert.True(
+                worst < 0.2f,
+                $"{name} changes its bank by {worst:0.000} per metre at " +
+                $"s={worstAtS:0}, which is a step rather than a transition"
+            );
+        }
+    }
+
+    [Fact]
     public void ThePlanReadsTheBankWhereTheCarWillActuallyBe()
     {
         // A progressively banked corner is not one surface but a range of
