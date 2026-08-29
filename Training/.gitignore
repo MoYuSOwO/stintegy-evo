@@ -1,0 +1,3 @@
+.venv/
+python/checkpoints/
+python/__pycache__/
