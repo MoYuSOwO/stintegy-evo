@@ -1,0 +1,49 @@
+device: cpu hidden=(512, 512, 256) quantiles=0 layer_norm=False updates/step=2
+env: obs=303 action=2 lanes=64 solo=True
+step    1000 transitions     64000 reward -0.2244 alpha 0.603 q +6.11 2892 tps
+          own_progress=+0.0194 wall=-0.0092 off_course=-0.0114 tyre_slip=-0.0066 time=-0.0010 mode_excess=-0.0014 retirement=-0.2142
+          terminals {'wall': 457}
+step    2000 transitions    128000 reward -0.2280 alpha 0.332 q +8.04 2703 tps
+          own_progress=+0.0184 wall=-0.0078 off_course=-0.0104 tyre_slip=-0.0064 time=-0.0010 mode_excess=-0.0014 retirement=-0.2194
+          terminals {'wall': 468}
+step    3000 transitions    192000 reward -0.1617 alpha 0.183 q +6.67 2608 tps
+          own_progress=+0.0140 wall=-0.0060 off_course=-0.0076 tyre_slip=-0.0047 time=-0.0010 mode_excess=-0.0012 retirement=-0.1552
+          terminals {'wall': 331, 'stalled': 14}
+step    4000 transitions    256000 reward -0.0860 alpha 0.102 q +4.17 2567 tps
+          own_progress=+0.0098 wall=-0.0064 off_course=-0.0049 tyre_slip=-0.0029 time=-0.0010 mode_excess=-0.0010 retirement=-0.0797
+          terminals {'wall': 170, 'stalled': 47}
+step    5000 transitions    320000 reward -0.0500 alpha 0.058 q +0.87 2545 tps
+          own_progress=+0.0085 wall=-0.0078 off_course=-0.0047 tyre_slip=-0.0024 time=-0.0010 mode_excess=-0.0009 retirement=-0.0417
+          terminals {'wall': 89, 'stalled': 59}
+step    6000 transitions    384000 reward -0.0285 alpha 0.033 q -0.76 2572 tps
+          own_progress=+0.0076 wall=-0.0088 off_course=-0.0042 tyre_slip=-0.0025 time=-0.0010 mode_excess=-0.0009 retirement=-0.0187
+          terminals {'wall': 40, 'stalled': 92}
+step    7000 transitions    448000 reward -0.0226 alpha 0.020 q -2.15 2595 tps
+          own_progress=+0.0076 wall=-0.0113 off_course=-0.0054 tyre_slip=-0.0033 time=-0.0010 mode_excess=-0.0011 retirement=-0.0080
+          terminals {'stalled': 94, 'wall': 17}
+step    8000 transitions    512000 reward -0.0228 alpha 0.012 q -2.68 2611 tps
+          own_progress=+0.0091 wall=-0.0134 off_course=-0.0054 tyre_slip=-0.0047 time=-0.0010 mode_excess=-0.0012 retirement=-0.0061
+          terminals {'stalled': 103, 'wall': 13}
+step    9000 transitions    576000 reward -0.0118 alpha 0.008 q -3.68 2631 tps
+          own_progress=+0.0139 wall=-0.0099 off_course=-0.0043 tyre_slip=-0.0064 time=-0.0010 mode_excess=-0.0013 retirement=-0.0028
+          terminals {'stalled': 101, 'wall': 6}
+step   10000 transitions    640000 reward -0.0162 alpha 0.006 q -4.07 2646 tps
+          own_progress=+0.0139 wall=-0.0113 off_course=-0.0046 tyre_slip=-0.0062 time=-0.0010 mode_excess=-0.0013 retirement=-0.0056
+          terminals {'stalled': 101, 'wall': 12}
+  eval  train progress +16.58 walls 1 mode -1.296 | held-out(sepang) progress +15.73 walls 0
+  saved best (progress +16.58)
+step   11000 transitions    704000 reward -0.0142 alpha 0.005 q -4.70 2546 tps
+          own_progress=+0.0153 wall=-0.0122 off_course=-0.0042 tyre_slip=-0.0064 time=-0.0010 mode_excess=-0.0013 retirement=-0.0042
+          terminals {'stalled': 105, 'wall': 9}
+step   12000 transitions    768000 reward -0.0158 alpha 0.004 q -5.06 2565 tps
+          own_progress=+0.0138 wall=-0.0129 off_course=-0.0045 tyre_slip=-0.0057 time=-0.0010 mode_excess=-0.0013 retirement=-0.0042
+          terminals {'stalled': 102, 'wall': 9}
+step   13000 transitions    832000 reward -0.0169 alpha 0.004 q -4.85 2580 tps
+          own_progress=+0.0145 wall=-0.0130 off_course=-0.0039 tyre_slip=-0.0055 time=-0.0010 mode_excess=-0.0013 retirement=-0.0066
+          terminals {'stalled': 93, 'wall': 14}
+step   14000 transitions    896000 reward -0.0087 alpha 0.004 q -5.59 2592 tps
+          own_progress=+0.0152 wall=-0.0112 off_course=-0.0036 tyre_slip=-0.0061 time=-0.0010 mode_excess=-0.0011 retirement=-0.0009
+          terminals {'stalled': 111, 'wall': 2}
+step   15000 transitions    960000 reward -0.0088 alpha 0.004 q -5.35 2600 tps
+          own_progress=+0.0151 wall=-0.0097 off_course=-0.0029 tyre_slip=-0.0054 time=-0.0010 mode_excess=-0.0011 retirement=-0.0037
+          terminals {'stalled': 100, 'wall': 8}

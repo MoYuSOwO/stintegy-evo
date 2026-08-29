@@ -34,7 +34,10 @@ KIND_MASKED_RESET_RESPONSE = 10
 KIND_ERROR = 0xFFFF
 
 TERMINAL_NAMES = (
-    "none", "passed", "contact", "wall", "stalled", "timeout"
+    # A barrier no longer ends a race -- it is priced for as long as it
+    # lasts, like leaving the track -- so nothing between "contact" and
+    # "stalled" ends an episode any more.
+    "none", "passed", "contact", "stalled", "timeout"
 )
 
 COMPONENT_NAMES = (

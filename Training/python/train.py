@@ -51,12 +51,12 @@ def evaluate(
             for lane in np.flatnonzero(done):
                 name = TERMINAL_NAMES[reason[lane]]
                 reasons[name] = reasons.get(name, 0) + 1
-    walls = reasons.get("wall", 0)
+    stalls = reasons.get("stalled", 0)
     return {
         "eval_reward": float(rewards.mean()),
         "eval_progress": float(distance.mean()),
         "eval_mode_excess": float(excess.mean()),
-        "eval_walls": float(walls),
+        "eval_stalls": float(stalls),
     }
 
 
@@ -83,7 +83,10 @@ def main() -> int:
         "--quantiles", type=int, default=None,
         help="0 keeps the scalar critic; a positive count makes it distributional",
     )
-    parser.add_argument("--critic-layer-norm", action="store_true")
+    parser.add_argument(
+        "--no-critic-layer-norm", action="store_true",
+        help="turn off critic layer norm, which is on by default",
+    )
     parser.add_argument("--hidden", default=None, help='e.g. "256,256"')
     parser.add_argument("--tag", default="", help="suffix for checkpoint files")
     args = parser.parse_args()
@@ -98,8 +101,8 @@ def main() -> int:
         overrides["updates_per_step"] = args.updates_per_step
     if args.quantiles is not None:
         overrides["quantiles"] = args.quantiles
-    if args.critic_layer_norm:
-        overrides["critic_layer_norm"] = True
+    if args.no_critic_layer_norm:
+        overrides["critic_layer_norm"] = False
     if args.hidden:
         overrides["hidden"] = tuple(
             int(part) for part in args.hidden.split(",")
@@ -205,7 +208,7 @@ def main() -> int:
                 )
                 print(
                     f"  eval  train progress {train_stats['eval_progress']:+.2f} "
-                    f"walls {train_stats['eval_walls']:.0f} "
+                    f"stalls {train_stats['eval_stalls']:.0f} "
                     f"mode {train_stats['eval_mode_excess']:+.3f} | "
                     f"held-out({args.held_out_track}) progress "
                     f"{held_out['eval_progress']:+.2f} "

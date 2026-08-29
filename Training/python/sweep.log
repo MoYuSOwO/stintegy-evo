@@ -1,0 +1,10 @@
+each configuration gets 180 s
+
+ lanes  upd/step    steps  transitions   updates     tps    reward
+    64         2     7000       448000     14000    2661   -0.0260
+    32         8     1800        57600     14400     344   -0.1396
+    16        16     1400        22400     22400     153   -0.1977
+    32        16     1200        38400     19200     228   -0.0924
+    16        32     1000        16000     32000     119   -0.2264
+
+furthest along after 180 s: 64 lanes x 2 updates, reward -0.0260

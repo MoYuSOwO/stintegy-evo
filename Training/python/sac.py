@@ -66,16 +66,19 @@ class SacConfig:
     # outcome that never happens, whereas a spread of quantiles can say
     # "mostly through, sometimes into the wall", which is the information a
     # risk trade-off actually needs.
-    quantiles: int = 0
-    # Truncated Quantile Critics drops the most optimistic quantiles from
-    # the pooled target, which is a sharper instrument against value
-    # overestimation than taking the minimum of two scalars.
-    top_quantiles_to_drop_per_critic: int = 2
+    quantiles: int = 32
+    # How many of the most optimistic quantiles Truncated Quantile Critics
+    # drops from the pooled target. Zero selects QR-SAC instead, which is
+    # what Sony used: take whichever head is more pessimistic about the mean
+    # and keep the whole of that head's distribution, rather than stitching
+    # a target out of both. TQC's pessimism is tunable, but the distribution
+    # it builds is not one either critic actually predicted.
+    top_quantiles_to_drop_per_critic: int = 0
     huber_kappa: float = 1.0
     # Layer normalization inside the critic trunk. The critic chases a
     # target it moves itself, and normalizing each layer is the cheapest
     # known way to keep that pursuit stable.
-    critic_layer_norm: bool = False
+    critic_layer_norm: bool = True
 
 
 def mlp(
@@ -215,7 +218,9 @@ class SacAgent:
                 2 * outputs
                 - 2 * config.top_quantiles_to_drop_per_critic
             )
-            if self.kept_quantiles < 1:
+            if config.top_quantiles_to_drop_per_critic > 0 and (
+                self.kept_quantiles < 1
+            ):
                 raise ValueError("Truncation removes every target quantile.")
         self.critic_target.load_state_dict(self.critic.state_dict())
         for parameter in self.critic_target.parameters():
@@ -257,12 +262,25 @@ class SacAgent:
             next_action, next_log_prob = self.actor(next_obs)
             target_q1, target_q2 = self.critic_target(next_obs, next_action)
             if self.distributional:
-                # Pool both heads' quantiles, drop the most optimistic
-                # ones, and treat what remains as the target distribution.
-                pooled = torch.cat([target_q1, target_q2], dim=-1)
-                kept = torch.sort(pooled, dim=-1).values[
-                    :, : self.kept_quantiles
-                ]
+                if config.top_quantiles_to_drop_per_critic > 0:
+                    # Truncated Quantile Critics: pool both heads, drop the
+                    # most optimistic, and treat what remains as the target.
+                    # The pessimism is tunable but the distribution that
+                    # results is stitched from two predictions and is not one
+                    # either head actually made.
+                    pooled = torch.cat([target_q1, target_q2], dim=-1)
+                    kept = torch.sort(pooled, dim=-1).values[
+                        :, : self.kept_quantiles
+                    ]
+                else:
+                    # QR-SAC, which is what Sony used: take whichever head
+                    # is more pessimistic about the mean and use the whole of
+                    # that head's distribution. Classic SAC takes the smaller
+                    # of two numbers; this takes the smaller of two opinions,
+                    # and keeps its shape.
+                    mean_q1 = target_q1.mean(dim=-1, keepdim=True)
+                    mean_q2 = target_q2.mean(dim=-1, keepdim=True)
+                    kept = torch.where(mean_q1 <= mean_q2, target_q1, target_q2)
                 target = reward + (1.0 - done) * config.gamma * (
                     kept - self.alpha * next_log_prob
                 )

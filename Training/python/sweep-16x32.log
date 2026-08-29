@@ -1,0 +1,17 @@
+device: cpu hidden=(512, 512, 256) quantiles=0 layer_norm=False updates/step=32
+env: obs=303 action=2 lanes=16 solo=True
+step     200 transitions      3200 reward -0.1581 alpha nan q +nan 43802 tps
+          own_progress=+0.0215 wall=-0.0088 off_course=-0.0117 tyre_slip=-0.0063 time=-0.0010 mode_excess=-0.0017 retirement=-0.1500
+          terminals {'stalled': 16}
+step     400 transitions      6400 reward -0.2406 alpha nan q +nan 44796 tps
+          own_progress=+0.0206 wall=-0.0086 off_course=-0.0093 tyre_slip=-0.0066 time=-0.0010 mode_excess=-0.0015 retirement=-0.2344
+          terminals {'stalled': 25}
+step     600 transitions      9600 reward -0.2253 alpha nan q +nan 46155 tps
+          own_progress=+0.0154 wall=-0.0051 off_course=-0.0039 tyre_slip=-0.0046 time=-0.0010 mode_excess=-0.0011 retirement=-0.2250
+          terminals {'stalled': 24}
+step     800 transitions     12800 reward -0.2750 alpha 0.188 q +9.84 205 tps
+          own_progress=+0.0211 wall=-0.0068 off_course=-0.0083 tyre_slip=-0.0068 time=-0.0010 mode_excess=-0.0014 retirement=-0.2719
+          terminals {'stalled': 29}
+step    1000 transitions     16000 reward -0.1788 alpha 0.036 q +7.99 119 tps
+          own_progress=+0.0177 wall=-0.0043 off_course=-0.0060 tyre_slip=-0.0059 time=-0.0010 mode_excess=-0.0012 retirement=-0.1781
+          terminals {'stalled': 19}
