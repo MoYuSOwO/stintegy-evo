@@ -210,7 +210,19 @@ public static class CarPhysics
 
         state.Normalize();
 
-        WheelLoads loads = CalculateWheelLoads(state, config);
+        RoadAttitude road = input.RoadAttitude;
+        float roadNormalGravity = road.NormalGravity(
+            Gravity,
+            state.Speed,
+            state.Telemetry.ActualCurvature
+        );
+        float roadAlongGravity = road.AlongTrackGravity(Gravity, state.Speed);
+        float roadLateralDemand =
+            road.LateralGravityDemand(Gravity, state.Speed);
+        float curvatureDemandScale = road.CurvatureDemandScale;
+        float longitudinalDemandScale = road.LongitudinalDemandScale;
+
+        WheelLoads loads = CalculateWheelLoads(state, config, roadNormalGravity);
         ApplyWheelLoads(state, loads);
 
         float frontGrip = CalculateAxleGripAccel(config, tires, state.FrontLeft, state.FrontRight);
@@ -228,7 +240,13 @@ public static class CarPhysics
             config.MaxDriveAcceleration
         );
 
-        float requestedLateralAccel = state.Speed * state.Speed * desiredCurvature;
+        // The corner is asked for in the plan view; the tyres answer along
+        // the surface, and on a bank those are not the same size. Handing
+        // over the whole of v^2 k asks for more grip than the corner needs --
+        // fourteen percent more at Daytona's angle.
+        float requestedLateralAccel =
+            curvatureDemandScale * state.Speed * state.Speed * desiredCurvature +
+            roadLateralDemand;
         float referenceYawRate = state.Speed * desiredCurvature;
         float dynamicYawBlend = CalculateDynamicYawBlend(state.Speed);
         LateralRequests lateralRequests = AllocateLateralRequests(
@@ -348,14 +366,25 @@ public static class CarPhysics
             state.AirVelocityDeficit,
             state.OvertakeAssist
         ) + sideslipLossAccel;
-        float actualLongitudinalAccel = axleLongitudinalAccel - lossAccel;
+        float actualLongitudinalAccel =
+            (axleLongitudinalAccel - lossAccel) * longitudinalDemandScale +
+            roadAlongGravity;
 
         float oldSpeed = state.Speed;
         float newSpeed = Math.Max(0f, oldSpeed + actualLongitudinalAccel * dt);
         float averageSpeed = (oldSpeed + newSpeed) * 0.5f;
 
+        // Gravity bends the path as surely as the tyres do. The bank was
+        // taken off what the tyres were asked for, so it has to be added
+        // back here or the car would corner only as hard as the tyres
+        // alone and run wide on exactly the surface built to hold it in.
+        // Undone in the same order it was applied, so the curvature that
+        // comes back out is the one the plan view will actually see.
+        float pathLateralAccel =
+            (actualLateralAccel - roadLateralDemand) /
+            MathF.Max(curvatureDemandScale, 1e-3f);
         float actualCurvature = averageSpeed > 0.5f
-            ? actualLateralAccel / Math.Max(averageSpeed * averageSpeed, Epsilon)
+            ? pathLateralAccel / Math.Max(averageSpeed * averageSpeed, Epsilon)
             : 0f;
         referenceYawRate = averageSpeed * desiredCurvature;
         dynamicYawBlend = CalculateDynamicYawBlend(averageSpeed);
@@ -1334,6 +1363,15 @@ public static class CarPhysics
 
     private static WheelLoads CalculateWheelLoads(CarState state, CarConfig config)
     {
+        return CalculateWheelLoads(state, config, Gravity);
+    }
+
+    private static WheelLoads CalculateWheelLoads(
+        CarState state,
+        CarConfig config,
+        float normalGravity
+    )
+    {
         return CalculateWheelLoads(
             config,
             state.FilteredLongitudinalAccel,
@@ -1341,7 +1379,8 @@ public static class CarPhysics
             state.Speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.OvertakeAssist
+            state.OvertakeAssist,
+            normalGravity
         );
     }
 
@@ -1367,7 +1406,8 @@ public static class CarPhysics
         float speed,
         float downforceVelocityDeficit,
         float wakeDownforceLoss,
-        float overtakeAssist
+        float overtakeAssist,
+        float normalGravity = Gravity
     )
     {
         float downforceAcceleration = EffectiveDownforceAccelPerSpeedSquared(
@@ -1376,7 +1416,7 @@ public static class CarPhysics
             wakeDownforceLoss,
             overtakeAssist
         ) * speed * speed;
-        float totalLoad = config.MassKg * (Gravity + downforceAcceleration);
+        float totalLoad = config.MassKg * (normalGravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
         frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);

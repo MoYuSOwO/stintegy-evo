@@ -38,6 +38,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "traffic_target_speed_mps,traffic_conflict_time_s,traffic_clearance_m," +
             "reference_path_speed_mps," +
             "target_speed_mps,actual_speed_mps,a_ref_mps2,loss_compensation_mps2," +
+            "grade_compensation_mps2," +
             "speed_feedback_mps2," +
             "command_accel_mps2,actual_accel_mps2,actual_lateral_accel_mps2," +
             "actual_curvature_1pm,front_lateral_use,rear_lateral_use,over_limit,wall_contact," +
@@ -140,6 +141,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             car.State.Speed,
             control.ReferenceAcceleration,
             control.LossCompensationAcceleration,
+            control.GradeCompensationAcceleration,
             control.SpeedFeedbackAcceleration,
             control.DesiredAcceleration,
             physics.ActualLongitudinalAccel,

@@ -8,6 +8,8 @@ namespace StintegyEVO.Core.Track;
 
 public class TrackBuilder
 {
+    private Func<TrackSurfaceContext, TrackSurface>? _surfaceAt;
+
     private static readonly IRefLineSolver DefaultRefLineSolver =
         new MinimumCurvatureRefLineSolver();
 
@@ -625,6 +627,107 @@ public class TrackBuilder
         return result;
     }
 
+    /// <summary>
+    /// Supplies the road's out-of-plane shape as a function of distance
+    /// along the centreline, sampled once per node at build time. Taking a
+    /// function rather than per-segment arguments keeps the geometry
+    /// pipeline untouched while still allowing a banking ramp, a hill, or
+    /// an oval whose bank steepens toward the wall.
+    /// </summary>
+    /// <summary>
+    /// Supplies the road's out-of-plane shape, sampled once per node at
+    /// build time and told how sharply the road turns and how wide it is
+    /// there — which is what a construction model needs, since crossfall
+    /// scales with the width it must shed water across and a corner's
+    /// superelevation follows how tight it is. Taking a function rather
+    /// than per-segment arguments keeps the geometry pipeline untouched
+    /// while still allowing a banking ramp, a hill, or a speedway whose
+    /// bank steepens toward the wall.
+    /// </summary>
+    public TrackBuilder WithSurface(
+        Func<TrackSurfaceContext, TrackSurface> surfaceAt
+    )
+    {
+        ArgumentNullException.ThrowIfNull(surfaceAt);
+        _surfaceAt = surfaceAt;
+        return this;
+    }
+
+    /// <summary>
+    /// How sharply the centreline turns here, taken from how the tangent
+    /// swings between its neighbours. The racing line's own curvature will
+    /// not do for this: a corner taken wide reads as almost straight, and a
+    /// road is built to the shape of the road.
+    /// </summary>
+    /// <summary>
+    /// Half the length, in nodes, that the surface's idea of curvature is
+    /// averaged over. A road is not banked from the curvature at a point:
+    /// superelevation is run in and out over tens of metres, and a
+    /// centreline assembled from straights and arcs steps its curvature at
+    /// every junction. Reading it over a stretch gives the surface the
+    /// transition the geometry does not have, and keeps the dither around
+    /// zero on a straight from being read as a corner.
+    /// </summary>
+    private const int SurfaceCurvatureHalfWindowNodes = 8;
+
+    /// <summary>
+    /// How sharply the road bends in the vertical plane, read off the
+    /// gradient that has just been laid down rather than asked of whoever
+    /// wrote the surface. A road cannot be given a climb and a crest that
+    /// disagree, and the car is going to be pressed into whichever of them
+    /// is real.
+    /// </summary>
+    private static void WriteVerticalRate(TrackSurface[] surfaces)
+    {
+        int count = surfaces.Length;
+        if (count < 3)
+            return;
+
+        float[] bend = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            float ahead = surfaces[(i + 1) % count].Grade;
+            float behind = surfaces[(i - 1 + count) % count].Grade;
+            // The rate the gradient changes at, per metre of plan view --
+            // not the curvature of the road in space. The physics is written
+            // in the plan view and wants the rate; converting to a curvature
+            // here and dividing it back out there would be two errors that
+            // only nearly cancel.
+            bend[i] = (ahead - behind) / (2f * TrackData.StepLength);
+        }
+
+        for (int i = 0; i < count; i++)
+            surfaces[i] = surfaces[i] with { VerticalRate = bend[i] };
+    }
+
+    private static float CentrelineCurvature(
+        IReadOnlyList<RefLineTrackPoint> points,
+        int index
+    )
+    {
+        int count = points.Count;
+        if (count < 3)
+            return 0f;
+
+        int half = Math.Min(SurfaceCurvatureHalfWindowNodes, (count - 1) / 2);
+        if (half < 1)
+            half = 1;
+
+        // Accumulated node by node rather than as one difference across the
+        // window, so a hairpin that turns more than half a circle inside it
+        // cannot wrap around and come back as a corner the other way.
+        float turn = 0f;
+        for (int step = -half; step < half; step++)
+        {
+            Vector2 a = points[((index + step) % count + count) % count].Tangent;
+            Vector2 b = points[((index + step + 1) % count + count) % count].Tangent;
+            turn += MathHelper.NormalizeAngle(
+                MathF.Atan2(b.Y, b.X) - MathF.Atan2(a.Y, a.X)
+            );
+        }
+        return turn / (2f * half * TrackData.StepLength);
+    }
+
     public TrackBuilder AddStraight(float length, float? targetEndWidth = null, float? targetEndLeftBuffer = null, float? targetEndRightBuffer = null)
     {
         float targetEndWidthNotNull = targetEndWidth ?? currentWidth;
@@ -848,6 +951,20 @@ public class TrackBuilder
             );
         }
         RefLine refNodes = _refLineSolver.Generate(refTrackPoints);
+        TrackSurface[] surfaces = new TrackSurface[nodes.Count];
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            surfaces[i] = _surfaceAt is null
+                ? TrackSurface.Flat
+                : _surfaceAt(new TrackSurfaceContext(
+                    i * TrackData.StepLength,
+                    CentrelineCurvature(refTrackPoints, i),
+                    refTrackPoints[i].Width * 0.5f,
+                    nodes.Count * TrackData.StepLength
+                ));
+        }
+        WriteVerticalRate(surfaces);
+
         List<TrackNode> resNodes = [];
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -858,7 +975,8 @@ public class TrackBuilder
                     refTrackPoints[i].Width,
                     nodes[i].LeftBuffer,
                     nodes[i].RightBuffer,
-                    refNodes[i]
+                    refNodes[i],
+                    surfaces[i]
                 )
             );
         }
@@ -980,6 +1098,7 @@ public static class TrackFactory
             ;
         }
 
+        builder.WithSurface(SimpleTestTrackSurface);
         return builder.Build(
             new()
             {
@@ -990,6 +1109,129 @@ public static class TrackFactory
                 IsFirstGridLeft = true,
                 GridStepDist = 8
             }
+        );
+    }
+
+    /// <summary>
+    /// A banked short track, which is where banking stops being a drainage
+    /// detail and becomes the corner. The turns run to about thirty-one
+    /// degrees at the wall against eighteen at the apron, so grip grows
+    /// with the load the corner itself presses down, and running high buys
+    /// bank at the price of distance. The ninety-metre turns are what make
+    /// that matter: a gentler speedway's corners are not the limit for
+    /// these cars, and banking a corner nobody was slowing for changes
+    /// nothing. No Grand Prix circuit in this file offers the trade; this
+    /// one exists so the physics that models it has somewhere to be true.
+    /// </summary>
+    public static TrackData BankedSpeedwayTestTrack()
+    {
+        TrackBuilder builder = new(
+            new Vector2(0f, 0f),
+            startWidth: 15f,
+            startLeftBuffer: 6f,
+            startRightBuffer: 6f
+        );
+        builder
+            .AddStraight(350f)
+            .AddTurn(180f, 90f)
+            .AddStraight(350f)
+            .AddTurn(180f, 90f)
+            .CloseLoop()
+            .WithSurface(TrackSurfaces.Speedway);
+        return builder.Build(
+            new TrackGridConfig
+            {
+                StartingLineIdx = 100,
+                GridCount = 20,
+                GridOffset = 5,
+                FirstGridIdx = 90,
+                IsFirstGridLeft = true,
+                GridStepDist = 9
+            }
+        );
+    }
+
+    // Where each feature of the simple test layout starts, measured from
+    // the start/finish line. The layout is written a few lines above; these
+    // follow from it, and a test pins them against the curvature that is
+    // actually built so they cannot drift apart unnoticed.
+    private const float SimpleStartStraightEnd = 550f;
+    private const float SimpleTurn1End = 613f;      // 180 degrees at R20
+    private const float SimpleBackStraightStart = 832f;
+    private const float SimpleBackStraightEnd = 1332f;
+    private const float SimpleBigTurnEnd = 1584f;   // 180 degrees at R80
+
+    /// <summary>
+    /// Curvature at which the added bank is fully committed: loose enough
+    /// that both banked corners here get essentially all of it, tight enough
+    /// that a straight gets essentially none.
+    /// </summary>
+    private const float SimpleExtraBankReferenceCurvature = 0.006f;
+
+    /// <summary>
+    /// The simple test layout given some relief: the start/finish straight
+    /// climbs hard, the plateau carries through the first-corner hairpin and
+    /// the esses, and the back straight gives every metre of it back. The
+    /// hairpin and the long left before the final corner are banked well
+    /// past what a road circuit carries, so this layout exercises gradient
+    /// and bank together — which is the point of a test track, as against
+    /// the Grand Prix circuits, where the surface is modelled after the real
+    /// places and is correspondingly mild.
+    /// </summary>
+    private static TrackSurface SimpleTestTrackSurface(
+        TrackSurfaceContext context
+    )
+    {
+        const float summit = 30f;
+        TrackSurface section = TrackElevation.ProfileByDistance(
+            [
+                (0f, 0f),
+                (SimpleStartStraightEnd, summit),
+                (SimpleBackStraightStart, summit),
+                (SimpleBackStraightEnd, 0f)
+            ],
+            TrackSurfaces.RoadCircuit
+        )(context);
+
+        float extra = SimpleExtraBank(
+            context.DistanceMeters,
+            context.LapLengthMeters
+        );
+        if (extra <= 0f)
+            return section;
+
+        // Added in the direction the corner leans, so the bank helps the turn
+        // whichever way it goes -- but weighted by how committed that lean
+        // is, not merely by its sign. Taking the sign alone put the whole
+        // seventeen degrees on whichever side of zero the curvature happened
+        // to be, and flipped all of it in a single metre where the hairpin
+        // handed over to the esses.
+        float lean = TrackSurfaces.CornerLean(
+            context.CentrelineCurvature,
+            SimpleExtraBankReferenceCurvature
+        );
+        return section with
+        {
+            BankSlope = section.BankSlope + extra * lean
+        };
+    }
+
+    /// <summary>
+    /// How much bank the two chosen corners get beyond the drainage
+    /// crossfall, easing in and out over their entries and exits so the
+    /// road never steps.
+    /// </summary>
+    private static float SimpleExtraBank(float distance, float lapLength)
+    {
+        const float hairpinBank = 0.30f;   // about seventeen degrees
+        const float sweeperBank = 0.22f;   // about twelve degrees
+        return MathF.Max(
+            hairpinBank * TrackSurfaces.SectionWeight(
+                distance, SimpleStartStraightEnd, SimpleTurn1End, 25f, lapLength
+            ),
+            sweeperBank * TrackSurfaces.SectionWeight(
+                distance, SimpleBackStraightEnd, SimpleBigTurnEnd, 45f, lapLength
+            )
         );
     }
 
@@ -1004,6 +1246,10 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.SilverstoneHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
@@ -1019,6 +1265,10 @@ public static class TrackFactory
             3f,
             3f
         );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.MonacoHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(
                 gridOffsetMeters: 3.5f,
@@ -1039,6 +1289,10 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.ShanghaiHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
@@ -1055,6 +1309,10 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.SepangHeights,
+            TrackSurfaces.RoadCircuit
+        ));
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );

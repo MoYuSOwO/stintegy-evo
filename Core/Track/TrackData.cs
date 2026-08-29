@@ -47,6 +47,36 @@ public readonly struct TrackSample
     public readonly float RefHeading;
     public readonly float RefCurvature;
 
+    /// <summary>Rise over run along the direction of travel; positive uphill.</summary>
+    public readonly float Grade;
+
+    /// <summary>
+    /// Cross slope at the centreline, and how that slope itself changes
+    /// across the road. Together they describe the section as
+    /// <c>z(d) = z0 + BankSlope*d + BankCurvature*d^2</c>, which is the
+    /// cheapest form that still covers what real circuits do: a constant
+    /// bank, a crown shedding water off both edges, and progressive banking
+    /// where the outside is steeper than the inside. A single bank angle per
+    /// point would force every section to be a straight line and could
+    /// represent none of the last two.
+    /// </summary>
+    public readonly float BankSlope;
+    public readonly float BankCurvature;
+
+    /// <summary>
+    /// How sharply the road bends in the vertical plane, positive into a
+    /// compression and negative over a crest. Multiplied by the square of
+    /// the speed it is the extra load the tarmac carries, or fails to.
+    /// </summary>
+    public readonly float VerticalRate;
+
+    /// <summary>
+    /// The cross slope actually under a car at lateral offset <paramref name="d"/>.
+    /// On a progressively banked corner this is what makes the high line a
+    /// real choice: more bank, more grip, longer way round.
+    /// </summary>
+    public float BankSlopeAt(float d) => BankSlope + 2f * BankCurvature * d;
+
     public float HalfWidth => Width * 0.5f;
     public Vector2 LeftEdge => Center + Normal * HalfWidth;
     public Vector2 RightEdge => Center - Normal * HalfWidth;
@@ -63,7 +93,11 @@ public readonly struct TrackSample
         float refOffset,
         Vector2 refPosition,
         float refHeading,
-        float refCurvature
+        float refCurvature,
+        float grade = 0f,
+        float bankSlope = 0f,
+        float bankCurvature = 0f,
+        float verticalRate = 0f
     )
     {
         S = s;
@@ -77,6 +111,10 @@ public readonly struct TrackSample
         RefPosition = refPosition;
         RefHeading = refHeading;
         RefCurvature = refCurvature;
+        Grade = grade;
+        BankSlope = bankSlope;
+        BankCurvature = bankCurvature;
+        VerticalRate = verticalRate;
     }
 }
 
@@ -197,7 +235,11 @@ public class TrackData
             Lerp(a.RefOffset, b.RefOffset, t),
             Vector2.Lerp(a.Ref, b.Ref, t),
             LerpAngle(a.RefLinePoint.Heading, b.RefLinePoint.Heading, t),
-            Lerp(a.RefLinePoint.Curvature, b.RefLinePoint.Curvature, t)
+            Lerp(a.RefLinePoint.Curvature, b.RefLinePoint.Curvature, t),
+            Lerp(a.Surface.Grade, b.Surface.Grade, t),
+            Lerp(a.Surface.BankSlope, b.Surface.BankSlope, t),
+            Lerp(a.Surface.BankCurvature, b.Surface.BankCurvature, t),
+            Lerp(a.Surface.VerticalRate, b.Surface.VerticalRate, t)
         );
     }
 
