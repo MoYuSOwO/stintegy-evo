@@ -63,7 +63,10 @@ public sealed class RaceSimulation
             return;
 
         foreach (RaceCar car in _cars)
+        {
             car.LastBoundaryContact = null;
+            car.HitCarThisStep = false;
+        }
 
         float remainingDriverTime = dt;
         while (remainingDriverTime > MinimumStepSeconds)

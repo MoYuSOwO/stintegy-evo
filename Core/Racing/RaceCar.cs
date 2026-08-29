@@ -37,6 +37,7 @@ public sealed class RaceCar
     public CarCollisionConfig Collision { get; }
     public DriverInput LastInput { get; internal set; }
     public TrackBoundaryContact? LastBoundaryContact { get; internal set; }
+    public bool HitCarThisStep { get; internal set; }
 
     public void InstallFreshTires(TireConfig tireConfig)
     {
