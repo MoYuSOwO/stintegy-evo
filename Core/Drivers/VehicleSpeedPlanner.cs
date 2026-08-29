@@ -274,10 +274,17 @@ public sealed class VehicleSpeedPlanner
         );
     }
 
+    /// <summary>
+    /// Builds the traffic-free plan that the traffic-aware pass then reuses.
+    /// It takes the track because that cached plan is what the car actually
+    /// drives: leaving the road out here would have the reference lookahead
+    /// know about a bank that the plan under the wheels never saw.
+    /// </summary>
     internal DynamicPathSpeedPlan PreparePredictedPathForTraffic(
         VehicleSpeedLookahead destination,
         RaceCar car,
-        VehiclePathPrediction path
+        VehiclePathPrediction path,
+        TrackData? track = null
     )
     {
         TrafficConstraintMemory noTrafficMemory = default;
@@ -287,7 +294,7 @@ public sealed class VehicleSpeedPlanner
             destination,
             capturePreparedFreePlan: true,
             usePreparedFreePlan: false,
-            track: null,
+            track,
             frame: default,
             egoSnapshotIndex: -1,
             in noTrafficMemory,

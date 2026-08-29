@@ -147,6 +147,29 @@ public sealed class RoadAttitudeTests
     }
 
     [Fact]
+    public void ABankedOvalIsFasterToDriveThanAFlatOne()
+    {
+        // The end-to-end check the analytic ones cannot make: a real car,
+        // planning and driving itself, over the same oval twice. Every sign
+        // in the chain has to agree for this to come out the right way
+        // round, which is exactly how the first version's inverted bank was
+        // caught.
+        float flat = RunSimulated(TrackSurface.Flat);
+        float banked = RunSimulated(new TrackSurface(BankSlope: 0.45f));
+        float wrongWay = RunSimulated(new TrackSurface(BankSlope: -0.45f));
+
+        Assert.True(
+            banked > flat * 1.02f,
+            $"banked {banked:0} m should beat flat {flat:0} m"
+        );
+        Assert.True(
+            wrongWay < flat,
+            $"a bank leaning out of the corner ({wrongWay:0} m) must cost " +
+            $"against flat ({flat:0} m)"
+        );
+    }
+
+    [Fact]
     public void ClimbShowsUpInASimulatedCar()
     {
         float flatDistance = RunSimulated(TrackSurface.Flat);

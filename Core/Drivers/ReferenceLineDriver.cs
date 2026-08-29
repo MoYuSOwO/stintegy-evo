@@ -408,7 +408,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         _currentPlan.SpeedPlan = _speedPlanner.PreparePredictedPathForTraffic(
             _currentPlan.SpeedLookahead,
             car,
-            _currentPlan.Path
+            _currentPlan.Path,
+            context.Track
         );
         _currentPlan.TrafficConstraint = default;
         _currentPlan.NextTrafficMemory = default;

@@ -365,8 +365,13 @@ public static class CarPhysics
         float newSpeed = Math.Max(0f, oldSpeed + actualLongitudinalAccel * dt);
         float averageSpeed = (oldSpeed + newSpeed) * 0.5f;
 
+        // Gravity bends the path as surely as the tyres do. The bank was
+        // taken off what the tyres were asked for, so it has to be added
+        // back here or the car would corner only as hard as the tyres
+        // alone and run wide on exactly the surface built to hold it in.
+        float pathLateralAccel = actualLateralAccel - roadLateralDemand;
         float actualCurvature = averageSpeed > 0.5f
-            ? actualLateralAccel / Math.Max(averageSpeed * averageSpeed, Epsilon)
+            ? pathLateralAccel / Math.Max(averageSpeed * averageSpeed, Epsilon)
             : 0f;
         referenceYawRate = averageSpeed * desiredCurvature;
         dynamicYawBlend = CalculateDynamicYawBlend(averageSpeed);
