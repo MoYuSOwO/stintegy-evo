@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Drivers.Learned;
 using StintegyEVO.TrainingHost.Environment;
 using StintegyEVO.TrainingHost.Protocol;
 
@@ -11,7 +12,7 @@ public sealed class BatchedTrainingHost
 {
     private readonly int _batchSize;
     private readonly string? _trackFamily;
-    private readonly TacticalDuelEnvironment[] _environments;
+    private readonly DirectDriveDuelEnvironment[] _environments;
     private readonly float[] _observations;
     private readonly float[] _actions;
     private readonly TrainingStepResult[] _results;
@@ -30,11 +31,11 @@ public sealed class BatchedTrainingHost
         long seedBase = 0,
         string? trackFamily = null,
         float minimumForwardGapMeters =
-            TacticalDuelEnvironment.DefaultMinimumForwardGapMeters,
+            DirectDriveDuelEnvironment.DefaultMinimumForwardGapMeters,
         float maximumForwardGapMeters =
-            TacticalDuelEnvironment.DefaultMaximumForwardGapMeters,
+            DirectDriveDuelEnvironment.DefaultMaximumForwardGapMeters,
         float episodeDurationSeconds =
-            TacticalDuelEnvironment.DefaultEpisodeDurationSeconds,
+            DirectDriveDuelEnvironment.DefaultEpisodeDurationSeconds,
         CarStrategy? opponentStrategy = null,
         float opponentPace = 70f
     )
@@ -47,10 +48,10 @@ public sealed class BatchedTrainingHost
             ? null
             : trackFamily;
         int observationCount = checked(
-            batchSize * TacticalPolicyShape.ObservationSize
+            batchSize * DirectDriveObservation.ObservationSize
         );
         int actionCount = checked(
-            batchSize * TacticalPolicyShape.ActionSize
+            batchSize * DirectDriveObservation.ActionSize
         );
         _resetRequestBytes = checked(batchSize * sizeof(long));
         _maskedResetRequestBytes = checked(
@@ -71,7 +72,7 @@ public sealed class BatchedTrainingHost
             );
         }
 
-        _environments = new TacticalDuelEnvironment[batchSize];
+        _environments = new DirectDriveDuelEnvironment[batchSize];
         _observations = new float[observationCount];
         _actions = new float[actionCount];
         _results = new TrainingStepResult[batchSize];
@@ -89,7 +90,7 @@ public sealed class BatchedTrainingHost
 
         for (int i = 0; i < batchSize; i++)
         {
-            _environments[i] = new TacticalDuelEnvironment(
+            _environments[i] = new DirectDriveDuelEnvironment(
                 minimumForwardGapMeters,
                 maximumForwardGapMeters,
                 episodeDurationSeconds,
@@ -188,11 +189,11 @@ public sealed class BatchedTrainingHost
         Span<byte> payload = _responseBuffer.AsSpan(0, 16);
         BinaryPrimitives.WriteInt32LittleEndian(
             payload,
-            TacticalPolicyShape.ObservationSize
+            DirectDriveObservation.ObservationSize
         );
         BinaryPrimitives.WriteInt32LittleEndian(
             payload[4..],
-            TacticalPolicyShape.ActionSize
+            DirectDriveObservation.ActionSize
         );
         BinaryPrimitives.WriteInt32LittleEndian(payload[8..], _batchSize);
         BinaryPrimitives.WriteInt32LittleEndian(
@@ -301,9 +302,9 @@ public sealed class BatchedTrainingHost
 
     private void StepOne(int index)
     {
-        int actionOffset = index * TacticalPolicyShape.ActionSize;
+        int actionOffset = index * DirectDriveObservation.ActionSize;
         _results[index] = _environments[index].Step(
-            _actions.AsSpan(actionOffset, TacticalPolicyShape.ActionSize),
+            _actions.AsSpan(actionOffset, DirectDriveObservation.ActionSize),
             ObservationFor(index)
         );
     }
@@ -342,8 +343,8 @@ public sealed class BatchedTrainingHost
 
     private Span<float> ObservationFor(int index) =>
         _observations.AsSpan(
-            index * TacticalPolicyShape.ObservationSize,
-            TacticalPolicyShape.ObservationSize
+            index * DirectDriveObservation.ObservationSize,
+            DirectDriveObservation.ObservationSize
         );
 
     private void WriteObservationResponse(

@@ -20,10 +20,11 @@ public readonly record struct TrainingStepResult(
     float ActionMagnitudePenalty,
     float ActionDeltaPenalty,
     float TimePenalty,
-    float TimeoutOutcome
+    float TimeoutOutcome,
+    float ModeBudgetPenalty
 )
 {
-    public const int ComponentCount = 9;
+    public const int ComponentCount = 10;
 
     public bool Done => TerminalReason != TrainingTerminalReason.None;
 
@@ -36,7 +37,8 @@ public readonly record struct TrainingStepResult(
         ActionMagnitudePenalty +
         ActionDeltaPenalty +
         TimePenalty +
-        TimeoutOutcome;
+        TimeoutOutcome +
+        ModeBudgetPenalty;
 
     public float GetComponent(int index) => index switch
     {
@@ -49,6 +51,7 @@ public readonly record struct TrainingStepResult(
         6 => ActionDeltaPenalty,
         7 => TimePenalty,
         8 => TimeoutOutcome,
+        9 => ModeBudgetPenalty,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 }

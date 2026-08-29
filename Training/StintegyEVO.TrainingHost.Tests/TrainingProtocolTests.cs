@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Drivers.Learned;
 using StintegyEVO.TrainingHost.Environment;
 using StintegyEVO.TrainingHost.Protocol;
 using Xunit;
@@ -53,11 +54,11 @@ public sealed class TrainingProtocolTests
         Assert.Equal(TrainingMessageKind.HelloResponse, hello.Kind);
         Assert.Equal(16, hello.Payload.Length);
         Assert.Equal(
-            TacticalPolicyShape.ObservationSize,
+            DirectDriveObservation.ObservationSize,
             BinaryPrimitives.ReadInt32LittleEndian(hello.Payload)
         );
         Assert.Equal(
-            TacticalPolicyShape.ActionSize,
+            DirectDriveObservation.ActionSize,
             BinaryPrimitives.ReadInt32LittleEndian(hello.Payload.AsSpan(4))
         );
         Assert.Equal(
@@ -88,7 +89,7 @@ public sealed class TrainingProtocolTests
             input,
             TrainingMessageKind.Step,
             new byte[
-                batchSize * TacticalPolicyShape.ActionSize * sizeof(float)
+                batchSize * DirectDriveObservation.ActionSize * sizeof(float)
             ]
         );
         byte[] maskedResetPayload = new byte[
@@ -125,7 +126,7 @@ public sealed class TrainingProtocolTests
         TrainingMessage maskedReset = TrainingProtocol.ReadMessage(output);
         TrainingMessage close = TrainingProtocol.ReadMessage(output);
         int observationBytes =
-            batchSize * TacticalPolicyShape.ObservationSize * sizeof(float);
+            batchSize * DirectDriveObservation.ObservationSize * sizeof(float);
         int stepBytes = observationBytes +
                         batchSize * sizeof(float) +
                         batchSize * sizeof(byte) * 2 +
@@ -143,22 +144,22 @@ public sealed class TrainingProtocolTests
         Assert.Equal(TrainingMessageKind.CloseResponse, close.Kind);
 
         ReadOnlySpan<byte> secondAfterStep = step.Payload.AsSpan(
-            TacticalPolicyShape.ObservationSize * sizeof(float),
-            TacticalPolicyShape.ObservationSize * sizeof(float)
+            DirectDriveObservation.ObservationSize * sizeof(float),
+            DirectDriveObservation.ObservationSize * sizeof(float)
         );
         ReadOnlySpan<byte> secondAfterMaskedReset = maskedReset.Payload.AsSpan(
-            TacticalPolicyShape.ObservationSize * sizeof(float),
-            TacticalPolicyShape.ObservationSize * sizeof(float)
+            DirectDriveObservation.ObservationSize * sizeof(float),
+            DirectDriveObservation.ObservationSize * sizeof(float)
         );
         Assert.True(secondAfterStep.SequenceEqual(secondAfterMaskedReset));
         Assert.False(
             reset.Payload.AsSpan(
                 0,
-                TacticalPolicyShape.ObservationSize * sizeof(float)
+                DirectDriveObservation.ObservationSize * sizeof(float)
             ).SequenceEqual(
                 maskedReset.Payload.AsSpan(
                     0,
-                    TacticalPolicyShape.ObservationSize * sizeof(float)
+                    DirectDriveObservation.ObservationSize * sizeof(float)
                 )
             )
         );

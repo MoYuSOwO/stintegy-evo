@@ -1,5 +1,6 @@
 using System.Globalization;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Drivers.Learned;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -68,11 +69,11 @@ internal static class Program
         long seedBase = 0;
         string? trackFamily = null;
         float minimumForwardGapMeters =
-            TacticalDuelEnvironment.DefaultMinimumForwardGapMeters;
+            DirectDriveDuelEnvironment.DefaultMinimumForwardGapMeters;
         float maximumForwardGapMeters =
-            TacticalDuelEnvironment.DefaultMaximumForwardGapMeters;
+            DirectDriveDuelEnvironment.DefaultMaximumForwardGapMeters;
         float episodeDurationSeconds =
-            TacticalDuelEnvironment.DefaultEpisodeDurationSeconds;
+            DirectDriveDuelEnvironment.DefaultEpisodeDurationSeconds;
         CarStrategy opponentStrategy = CarStrategy.Default;
         float opponentPace = 70f;
         for (int i = 0; i < args.Length; i++)
@@ -203,7 +204,7 @@ internal static class Program
 
     private static int RunReachabilityScan()
     {
-        float[] observation = new float[TacticalPolicyShape.ObservationSize];
+        float[] observation = new float[DirectDriveObservation.ObservationSize];
         string[] tracks = ["silverstone"];
         float[] actions = [-0.4f, -0.25f, 0f, 0.25f, 0.4f];
         float[] pulseDurationsSeconds = [3f, 6f, 30f];
@@ -211,11 +212,11 @@ internal static class Program
         int contacts = 0;
         int walls = 0;
         int episodes = 0;
-        float[] actionBuffer = new float[TacticalPolicyShape.ActionSize];
+        float[] actionBuffer = new float[DirectDriveObservation.ActionSize];
 
         foreach (string trackFamily in tracks)
         {
-            TacticalDuelEnvironment trackProbe = new();
+            DirectDriveDuelEnvironment trackProbe = new();
             trackProbe.ResetTrack(trackFamily, seed: 0, observation);
             float startS = FindBestPassingWindowStart(
                 trackProbe.Simulation.Track
@@ -233,7 +234,7 @@ internal static class Program
                 trackProbe.Simulation.Track,
                 startS + 14f,
                 new ReferenceLineDriver(
-                    profile: TacticalDuelEnvironment.TrainingOpponentProfile
+                    profile: DirectDriveDuelEnvironment.TrainingOpponentProfile
                 ),
                 new CarStrategy(
                     TireUsageMode.Normal,
@@ -251,7 +252,7 @@ internal static class Program
                     : pulseDurationsSeconds;
                 foreach (float pulseDuration in durations)
                 {
-                    TacticalDuelEnvironment environment = new();
+                    DirectDriveDuelEnvironment environment = new();
                     environment.ResetScenario(
                         trackFamily,
                         seed: 0,
@@ -389,14 +390,14 @@ internal static class Program
 
     private static int RunTrace()
     {
-        float[] observation = new float[TacticalPolicyShape.ObservationSize];
-        TacticalDuelEnvironment probe = new();
+        float[] observation = new float[DirectDriveObservation.ObservationSize];
+        DirectDriveDuelEnvironment probe = new();
         probe.ResetTrack("silverstone", seed: 0, observation);
         float startS = FindBestPassingWindowStart(probe.Simulation.Track);
         foreach (float forwardGap in new[] { 8f, 10f })
         {
             const float action = 0.35f;
-            TacticalDuelEnvironment environment = new();
+            DirectDriveDuelEnvironment environment = new();
             environment.ResetScenario(
                 "silverstone",
                 seed: 0,
