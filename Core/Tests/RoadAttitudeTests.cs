@@ -262,14 +262,71 @@ public sealed class RoadAttitudeTests
         // The one thing a closed circuit's elevation must do. Integrating
         // the gradient the physics actually reads has to come back to zero,
         // or a car would gain or lose energy on every lap for free.
+        //
+        // It closes by construction rather than by tuning: heights are what
+        // the circuits are specified in, wrapped round and read with a
+        // periodic interpolant, and the gradient is that curve's slope. The
+        // slope of a periodic curve integrates to nothing over a period, so
+        // the tolerance here is for the summation and not for the model --
+        // every circuit lands inside a millimetre.
         foreach ((string name, TrackData track) in NamedCircuits())
         {
             float climb = 0f;
             float step = 1f;
             for (float s = 0f; s < track.LengthMeters; s += step)
                 climb += track.Sample(s).Grade * step;
-            Assert.InRange(climb, -0.5f, 0.5f);
+            Assert.InRange(climb, -0.05f, 0.05f);
             Assert.True(name.Length > 0);
+        }
+    }
+
+    [Fact]
+    public void TheStartLineIsNotASeamInTheRoad()
+    {
+        // Closing the height is necessary but not sufficient: a lap can come
+        // back to where it started and still arrive there over a step, if
+        // the surface either side of the start line was worked out without
+        // reference to the other side. What is asserted is not some absolute
+        // smoothness but that the seam is nothing special -- the road across
+        // the start line has to be no rougher than the road anywhere else on
+        // the same circuit.
+        foreach ((string name, TrackData track) in NamedCircuits())
+        {
+            int metres = (int)track.LengthMeters;
+            float worstGrade = 0f;
+            float worstBank = 0f;
+            for (int s = 0; s < metres - 1; s++)
+            {
+                worstGrade = MathF.Max(
+                    worstGrade,
+                    MathF.Abs(track.Sample(s + 1).Grade - track.Sample(s).Grade)
+                );
+                worstBank = MathF.Max(
+                    worstBank,
+                    MathF.Abs(
+                        track.Sample(s + 1).BankSlope -
+                        track.Sample(s).BankSlope
+                    )
+                );
+            }
+
+            TrackSample before = track.Sample(metres - 1);
+            TrackSample after = track.Sample(0);
+            float seamGrade = MathF.Abs(after.Grade - before.Grade);
+            float seamBank = MathF.Abs(after.BankSlope - before.BankSlope);
+
+            Assert.True(
+                seamGrade <= worstGrade * 1.5f + 1e-4f,
+                $"{name} steps its gradient by {seamGrade:0.00000} across the " +
+                $"start line, against {worstGrade:0.00000} at its worst " +
+                $"elsewhere"
+            );
+            Assert.True(
+                seamBank <= worstBank * 1.5f + 1e-4f,
+                $"{name} steps its bank by {seamBank:0.00000} across the " +
+                $"start line, against {worstBank:0.00000} at its worst " +
+                $"elsewhere"
+            );
         }
     }
 
