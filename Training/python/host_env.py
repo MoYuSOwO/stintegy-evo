@@ -40,7 +40,7 @@ TERMINAL_NAMES = (
 COMPONENT_NAMES = (
     "own_progress", "relative_progress", "pass", "contact", "wall",
     "action_magnitude", "action_delta", "time", "timeout_outcome",
-    "mode_excess",
+    "mode_excess", "retirement",
 )
 
 DEFAULT_HOST_PROJECT = str(

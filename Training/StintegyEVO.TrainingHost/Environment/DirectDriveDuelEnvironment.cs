@@ -318,7 +318,15 @@ public sealed class DirectDriveDuelEnvironment
                             !_solo
                 ? Math.Clamp(-signedLeadDistance * 0.1f, -8f, 8f)
                 : 0f,
-            ModeExcessPenalty: ModeExcessPenalty()
+            ModeExcessPenalty: ModeExcessPenalty(),
+            // Coming to a halt ends the episode, and an ending that costs
+            // nothing is worth more than any lap that risks the wall — so
+            // without this the surest way to stop losing points is to stop.
+            // A car parked on a race track has retired, and retiring is at
+            // least as expensive as running out of road.
+            RetirementPenalty: terminalReason == TrainingTerminalReason.Stalled
+                ? -30f
+                : 0f
         );
     }
 
