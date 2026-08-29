@@ -212,7 +212,7 @@ def main() -> int:
                     f"mode {train_stats['eval_mode_excess']:+.3f} | "
                     f"held-out({args.held_out_track}) progress "
                     f"{held_out['eval_progress']:+.2f} "
-                    f"walls {held_out['eval_walls']:.0f}"
+                    f"stalls {held_out['eval_stalls']:.0f}"
                 )
                 agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
                 if train_stats["eval_progress"] > best_progress:
