@@ -548,14 +548,14 @@ public sealed class RaceSimulation
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
             sample.BankCurvature == 0f &&
-            sample.VerticalCurvature == 0f)
+            sample.VerticalRate == 0f)
         {
             return RoadAttitude.Flat;
         }
         return new RoadAttitude(
             sample.Grade,
             sample.BankSlopeAt(car.Progress.CurrentD),
-            sample.VerticalCurvature
+            sample.VerticalRate
         );
     }
 

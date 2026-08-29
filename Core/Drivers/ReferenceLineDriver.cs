@@ -153,7 +153,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         // the gradient, and a proportional term answers a standing pull with
         // a standing error.
         float gradeCompensationAcceleration = -RoadAttitudeAt(in prepared)
-            .AlongTrackGravity(GravityMetersPerSecondSquared);
+            .AlongTrackGravity(GravityMetersPerSecondSquared, state.Speed);
         float speedFeedbackAcceleration = SpeedGain *
                                           (speedReference.TargetSpeed - state.Speed);
         float desiredAcceleration = referenceAcceleration +
@@ -656,14 +656,14 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
             sample.BankCurvature == 0f &&
-            sample.VerticalCurvature == 0f)
+            sample.VerticalRate == 0f)
         {
             return RoadAttitude.Flat;
         }
         return new RoadAttitude(
             sample.Grade,
             sample.BankSlopeAt(frame.FrontPose.D),
-            sample.VerticalCurvature
+            sample.VerticalRate
         );
     }
 

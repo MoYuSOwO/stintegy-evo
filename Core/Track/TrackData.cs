@@ -68,7 +68,7 @@ public readonly struct TrackSample
     /// compression and negative over a crest. Multiplied by the square of
     /// the speed it is the extra load the tarmac carries, or fails to.
     /// </summary>
-    public readonly float VerticalCurvature;
+    public readonly float VerticalRate;
 
     /// <summary>
     /// The cross slope actually under a car at lateral offset <paramref name="d"/>.
@@ -97,7 +97,7 @@ public readonly struct TrackSample
         float grade = 0f,
         float bankSlope = 0f,
         float bankCurvature = 0f,
-        float verticalCurvature = 0f
+        float verticalRate = 0f
     )
     {
         S = s;
@@ -114,7 +114,7 @@ public readonly struct TrackSample
         Grade = grade;
         BankSlope = bankSlope;
         BankCurvature = bankCurvature;
-        VerticalCurvature = verticalCurvature;
+        VerticalRate = verticalRate;
     }
 }
 
@@ -239,7 +239,7 @@ public class TrackData
             Lerp(a.Surface.Grade, b.Surface.Grade, t),
             Lerp(a.Surface.BankSlope, b.Surface.BankSlope, t),
             Lerp(a.Surface.BankCurvature, b.Surface.BankCurvature, t),
-            Lerp(a.Surface.VerticalCurvature, b.Surface.VerticalCurvature, t)
+            Lerp(a.Surface.VerticalRate, b.Surface.VerticalRate, t)
         );
     }
 

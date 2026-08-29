@@ -26,8 +26,8 @@ public sealed class RoadAttitudeTests
     {
         RoadAttitude flat = RoadAttitude.Flat;
         Assert.Equal(1f, flat.NormalCosine, 6);
-        Assert.Equal(0f, flat.AlongTrackGravity(Gravity), 6);
-        Assert.Equal(0f, flat.LateralGravityDemand(Gravity), 6);
+        Assert.Equal(0f, flat.AlongTrackGravity(Gravity, 60f), 6);
+        Assert.Equal(0f, flat.LateralGravityDemand(Gravity, 60f), 6);
         Assert.Equal(
             Gravity,
             flat.NormalGravity(Gravity, speedMetersPerSecond: 60f, curvature: 0.01f),
@@ -57,27 +57,38 @@ public sealed class RoadAttitudeTests
     [Fact]
     public void BankingCarriesPartOfTheCorneringLoad()
     {
+        // What matters is the share of the grip a corner uses up, not the
+        // raw force: resolving the demand onto the surface shrinks it a
+        // little whichever way the road leans, so comparing forces alone
+        // would call an adverse bank an improvement.
+        RoadAttitude banked = new(0f, 0.3f);
+        const float speed = 60f;
+
         // The track normal points right, so a surface rising to the right
         // raises the outside of a left-hand corner.
-        RoadAttitude banked = new(0f, 0.3f);
-        const float leftHander = 0.02f;
-
-        float demandFlat = 60f * 60f * leftHander;
-        float demandBanked = demandFlat +
-                             banked.LateralGravityDemand(Gravity);
-
         Assert.True(
-            MathF.Abs(demandBanked) < MathF.Abs(demandFlat),
-            "banking into the corner must reduce what the tyres owe"
+            GripShare(banked, speed, 0.02f) < GripShare(RoadAttitude.Flat, speed, 0.02f),
+            "banking into the corner must leave the tyres less to do"
         );
-
-        const float rightHander = -0.02f;
-        float wrongWay = 60f * 60f * rightHander +
-                         banked.LateralGravityDemand(Gravity);
         Assert.True(
-            MathF.Abs(wrongWay) > MathF.Abs(60f * 60f * rightHander),
+            GripShare(banked, speed, -0.02f) > GripShare(RoadAttitude.Flat, speed, -0.02f),
             "banking the wrong way must cost the tyres more"
         );
+    }
+
+    /// <summary>
+    /// How much of what the road is pressing into the tyres a corner spends.
+    /// </summary>
+    private static float GripShare(
+        RoadAttitude road,
+        float speed,
+        float curvature
+    )
+    {
+        float demand = road.CurvatureDemandScale * speed * speed * curvature +
+                       road.LateralGravityDemand(Gravity, speed);
+        return MathF.Abs(demand) /
+               road.NormalGravity(Gravity, speed, curvature);
     }
 
     [Fact]
@@ -519,8 +530,8 @@ public sealed class RoadAttitudeTests
 
         Assert.InRange(hilly.Sample(SummitMetres).Grade, -0.005f, 0.005f);
         Assert.InRange(hilly.Sample(DipMetres).Grade, -0.005f, 0.005f);
-        Assert.True(hilly.Sample(SummitMetres).VerticalCurvature < -1e-4f);
-        Assert.True(hilly.Sample(DipMetres).VerticalCurvature > 1e-4f);
+        Assert.True(hilly.Sample(SummitMetres).VerticalRate < -1e-4f);
+        Assert.True(hilly.Sample(DipMetres).VerticalRate > 1e-4f);
 
         float level = PlannedSpeedAt(flat, SummitMetres);
         float overACrest = PlannedSpeedAt(hilly, SummitMetres);
@@ -573,32 +584,34 @@ public sealed class RoadAttitudeTests
     [Fact]
     public void ThePlanBrakesEarlierForACornerItIsDescendingInto()
     {
-        // The plan has to know the road falls away, or it brakes for the
-        // corner as though the approach were level and arrives too fast.
-        // Same layout three times, differing only in what the road does on
-        // the way in.
-        float level = PlannedApproachSpeed(0f);
-        float downhill = PlannedApproachSpeed(-0.08f);
-        float uphill = PlannedApproachSpeed(0.08f);
+        // Where the plan lifts, not how fast it is somewhere. A car coming
+        // down the hill is quicker all the way along the approach -- it has
+        // been accelerating the whole way -- so its speed at any fixed point
+        // says nothing. What the gradient decides is the braking point.
+        float level = BrakingPointMetresBeforeTheCorner(0f);
+        float downhill = BrakingPointMetresBeforeTheCorner(-0.08f);
+        float uphill = BrakingPointMetresBeforeTheCorner(0.08f);
 
         Assert.True(
-            downhill < level,
-            $"descending {downhill:0.0} should be planned slower than level {level:0.0}"
+            downhill > level + 2f,
+            $"descending should brake {downhill:0} m out, further than the " +
+            $"{level:0} m a level approach needs"
         );
         Assert.True(
-            uphill > level,
-            $"climbing {uphill:0.0} should be planned faster than level {level:0.0}"
+            uphill < level - 1f,
+            $"climbing should brake {uphill:0} m out, later than the " +
+            $"{level:0} m a level approach needs"
         );
     }
 
     /// <summary>
-    /// How fast the plan says the car may be forty metres from a hairpin,
-    /// on an approach with the given gradient. Forty metres because these
-    /// cars stop hard enough that a braking zone is short: sampled from
-    /// further out the answer is the car's top speed and says nothing
-    /// about braking at all.
+    /// How far before the hairpin the plan stops accelerating, on an
+    /// approach of the given gradient. One gradient the whole way round, so
+    /// the road never bends in the vertical plane and nothing but the
+    /// gradient separates the three runs; the lap does not close in height
+    /// and is not meant to.
     /// </summary>
-    private static float PlannedApproachSpeed(float grade)
+    private static float BrakingPointMetresBeforeTheCorner(float grade)
     {
         const float approach = 300f;
         TrackData track = new TrackBuilder(
@@ -612,13 +625,6 @@ public sealed class RoadAttitudeTests
             .AddStraight(approach)
             .AddTurn(180f, 40f)
             .CloseLoop()
-            // One gradient the whole way round, so the road never bends in
-            // the vertical plane and the only thing separating the three
-            // runs is the gradient itself. The lap does not close in height
-            // and is not meant to: a descent that levels out into the corner
-            // ends in a compression, the compression presses the car down,
-            // and the extra grip would answer this test instead of the
-            // braking does. A real circuit has both; a probe wants one.
             .WithSurface(context => new TrackSurface(Grade: grade))
             .Build(new TrackGridConfig());
 
@@ -633,7 +639,18 @@ public sealed class RoadAttitudeTests
             stepMeters: 2f,
             DriverPlanningModifiers.Neutral
         );
-        return plan.Sample(approach - 50f).TargetSpeed;
+
+        float peak = 0f;
+        float peakAt = 0f;
+        for (float d = 0f; d < approach; d += 1f)
+        {
+            float speed = plan.Sample(d).TargetSpeed;
+            if (speed <= peak)
+                continue;
+            peak = speed;
+            peakAt = d;
+        }
+        return approach - peakAt;
     }
 
     private static float HeightAt(TrackData track, float target)

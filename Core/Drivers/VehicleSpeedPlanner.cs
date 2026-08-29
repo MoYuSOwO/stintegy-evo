@@ -179,8 +179,6 @@ public sealed class VehicleSpeedPlanner
                     surface.RefOffset
                 );
                 curvatures[i] = curvature;
-                alongTrackGravity[i] = RoadAt(in surface, surface.RefOffset)
-                    .AlongTrackGravity(GravityMetersPerSecondSquared);
                 speedLimits[i] = LateralSpeedLimit(
                     curvature,
                     lateralAccelerationLimit,
@@ -188,6 +186,14 @@ public sealed class VehicleSpeedPlanner
                     _planningDownforceAccelPerSpeedSquared
                 );
                 speeds[i] = speedLimits[i];
+                // Worked out after the limit, because how much of gravity
+                // pulls along the road depends on how fast the car is going
+                // over the road's own vertical bend.
+                alongTrackGravity[i] = RoadAt(in surface, surface.RefOffset)
+                    .AlongTrackGravity(
+                        GravityMetersPerSecondSquared,
+                        speedLimits[i]
+                    );
                 if (i > 0)
                     segmentLengths[i - 1] = planningStep;
             }
@@ -439,7 +445,10 @@ public sealed class VehicleSpeedPlanner
                             pathOffset
                         );
                         alongTrackGravity[i] = RoadAt(in surface, pathOffset)
-                            .AlongTrackGravity(GravityMetersPerSecondSquared);
+                            .AlongTrackGravity(
+                                GravityMetersPerSecondSquared,
+                                point.EstimatedSpeed
+                            );
                     }
                     if (i == 0)
                     {
@@ -671,17 +680,35 @@ public sealed class VehicleSpeedPlanner
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
             sample.BankCurvature == 0f &&
-            sample.VerticalCurvature == 0f)
+            sample.VerticalRate == 0f)
         {
             return RoadAttitude.Flat;
         }
         return new RoadAttitude(
             sample.Grade,
             sample.BankSlopeAt(offsetMeters),
-            sample.VerticalCurvature
+            sample.VerticalRate
         );
     }
 
+    /// <summary>
+    /// The flat-road corner that would be worth the same speed as this one.
+    ///
+    /// Setting the tyres' duty equal to the grip they have, on the real road,
+    ///
+    ///     (G/L) v^2 k  -  b (g + v^2 r) / (L G)
+    ///         = a0/g * ( [g + v^2 (k b + r)] / L  +  C v^2 )
+    ///
+    /// and on a flat one, v^2 = a0 / (k_eq - a0 C / g), and asking for the
+    /// same v^2 out of both, gives a k_eq that has no speed left in it. So
+    /// the whole of the road's effect on a corner folds into the curvature
+    /// array the planner already carries, and the braking integration and the
+    /// leftover longitudinal grip inherit it for nothing.
+    ///
+    /// b is the bank taken in the corner's own sense, positive where it leans
+    /// into the turn; r is the rate the gradient changes at, positive into a
+    /// compression.
+    /// </summary>
     private float BankedEquivalentCurvature(
         float curvature,
         in TrackSample sample,
@@ -691,7 +718,8 @@ public sealed class VehicleSpeedPlanner
     {
         if (sample.BankSlope == 0f &&
             sample.BankCurvature == 0f &&
-            sample.VerticalCurvature == 0f)
+            sample.VerticalRate == 0f &&
+            sample.Grade == 0f)
         {
             return curvature;
         }
@@ -701,37 +729,35 @@ public sealed class VehicleSpeedPlanner
             return curvature;
 
         RoadAttitude road = RoadAt(in sample, offsetMeters);
-        float cosine = road.NormalCosine;
-        float assist = curvature >= 0f
-            ? road.BankTangent * cosine
-            : -road.BankTangent * cosine;
+        float alongShape = MathF.Sqrt(
+            1f + Sanitize(sample.Grade) * Sanitize(sample.Grade)
+        );
+        float surfaceShape = 1f / MathF.Max(road.NormalCosine, 1e-6f);
+        float bank = curvature >= 0f
+            ? Sanitize(road.BankTangent)
+            : -Sanitize(road.BankTangent);
+        float rate = Sanitize(sample.VerticalRate);
+
         float standingLimit = MathF.Max(lateralAccelerationLimit, 1e-3f);
-        float airPaid = standingLimit *
-                        _planningDownforceAccelPerSpeedSquared /
-                        GravityMetersPerSecondSquared;
-        float held = standingLimit * cosine +
-                     GravityMetersPerSecondSquared * assist;
-        if (held <= 0f)
+        float gripPerGravity = standingLimit / GravityMetersPerSecondSquared;
+        float airPaid = gripPerGravity * _planningDownforceAccelPerSpeedSquared;
+
+        // What the corner is worth before the tyres are asked for anything:
+        // an adverse bank steeper than the grip makes it simply impossible.
+        float carried = standingLimit + bank * GravityMetersPerSecondSquared /
+                                        alongShape;
+        if (carried <= 0f)
             return MathF.CopySign(MaximumEquivalentCurvature, curvature);
 
-        float curvatureLeft = absoluteCurvature -
-                              standingLimit / GravityMetersPerSecondSquared *
-                              absoluteCurvature * assist -
-                              airPaid;
-        float equivalent = standingLimit * curvatureLeft / held + airPaid;
+        float asked = alongShape * absoluteCurvature -
+                      bank * rate / alongShape -
+                      gripPerGravity * (absoluteCurvature * bank + rate +
+                                        _planningDownforceAccelPerSpeedSquared *
+                                        surfaceShape);
+        if (asked <= 0f)
+            return MathF.CopySign(MathF.Max(airPaid, 0f), curvature);
 
-        // The road's own vertical bend is a load that grows with the square
-        // of the speed, exactly as downforce does, so it lands in the same
-        // closed form and comes out as a shift in the corner the plan is
-        // solving: a0 * k_vertical / g, tighter over a crest where the car
-        // goes light and looser through a compression where the tarmac
-        // presses it down. Folding it in here rather than plumbing it
-        // separately means the braking integration and the leftover
-        // longitudinal grip get it for nothing, the same bargain the bank
-        // is already taking.
-        equivalent -= standingLimit * Sanitize(sample.VerticalCurvature) /
-                      GravityMetersPerSecondSquared;
-
+        float equivalent = airPaid + standingLimit * asked / carried;
         return MathF.CopySign(
             MathF.Min(MathF.Max(equivalent, 0f), MaximumEquivalentCurvature),
             curvature

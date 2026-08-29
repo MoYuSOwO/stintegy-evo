@@ -22,7 +22,7 @@ public readonly record struct TrackSurfaceContext(
 /// separates this from a single bank angle — it is what a crown, a bowl,
 /// and progressive banking all need, and all three exist on real circuits.
 ///
-/// VerticalCurvature is how sharply the road bends in the plane the car
+/// VerticalRate is how sharply the road bends in the plane the car
 /// drives along, positive into a compression and negative over a crest. It
 /// is not authored beside the others: the builder works it out from the
 /// gradient that was laid down, because a road cannot be given a climb and
@@ -32,22 +32,22 @@ public readonly record struct TrackSurface(
     float Grade = 0f,
     float BankSlope = 0f,
     float BankCurvature = 0f,
-    float VerticalCurvature = 0f
+    float VerticalRate = 0f
 )
 {
     public static readonly TrackSurface Flat = new();
 
     public bool IsFlat =>
         Grade == 0f && BankSlope == 0f &&
-        BankCurvature == 0f && VerticalCurvature == 0f;
+        BankCurvature == 0f && VerticalRate == 0f;
 
     public static TrackSurface Lerp(TrackSurface a, TrackSurface b, float t) =>
         new(
             a.Grade + (b.Grade - a.Grade) * t,
             a.BankSlope + (b.BankSlope - a.BankSlope) * t,
             a.BankCurvature + (b.BankCurvature - a.BankCurvature) * t,
-            a.VerticalCurvature +
-            (b.VerticalCurvature - a.VerticalCurvature) * t
+            a.VerticalRate +
+            (b.VerticalRate - a.VerticalRate) * t
         );
 }
 

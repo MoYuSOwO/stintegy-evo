@@ -677,7 +677,7 @@ public class TrackBuilder
     /// disagree, and the car is going to be pressed into whichever of them
     /// is real.
     /// </summary>
-    private static void WriteVerticalCurvature(TrackSurface[] surfaces)
+    private static void WriteVerticalRate(TrackSurface[] surfaces)
     {
         int count = surfaces.Length;
         if (count < 3)
@@ -688,17 +688,16 @@ public class TrackBuilder
         {
             float ahead = surfaces[(i + 1) % count].Grade;
             float behind = surfaces[(i - 1 + count) % count].Grade;
-            float gradeSlope = (ahead - behind) / (2f * TrackData.StepLength);
-
-            // The gradient is a tangent, not an angle, so turning its rate of
-            // change into a curvature costs the usual (1 + m^2)^(3/2).
-            float grade = surfaces[i].Grade;
-            float shape = 1f + grade * grade;
-            bend[i] = gradeSlope / (shape * MathF.Sqrt(shape));
+            // The rate the gradient changes at, per metre of plan view --
+            // not the curvature of the road in space. The physics is written
+            // in the plan view and wants the rate; converting to a curvature
+            // here and dividing it back out there would be two errors that
+            // only nearly cancel.
+            bend[i] = (ahead - behind) / (2f * TrackData.StepLength);
         }
 
         for (int i = 0; i < count; i++)
-            surfaces[i] = surfaces[i] with { VerticalCurvature = bend[i] };
+            surfaces[i] = surfaces[i] with { VerticalRate = bend[i] };
     }
 
     private static float CentrelineCurvature(
@@ -964,7 +963,7 @@ public class TrackBuilder
                     nodes.Count * TrackData.StepLength
                 ));
         }
-        WriteVerticalCurvature(surfaces);
+        WriteVerticalRate(surfaces);
 
         List<TrackNode> resNodes = [];
         for (int i = 0; i < nodes.Count; i++)
