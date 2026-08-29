@@ -220,7 +220,6 @@ internal static class Program
         float[] pulseDurationsSeconds = [3f, 6f, 30f];
         int passes = 0;
         int contacts = 0;
-        int walls = 0;
         int episodes = 0;
         float[] actionBuffer = new float[DirectDriveObservation.ActionSize];
 
@@ -300,7 +299,6 @@ internal static class Program
                     episodes++;
                     passes += reason == TrainingTerminalReason.Passed ? 1 : 0;
                     contacts += reason == TrainingTerminalReason.Contact ? 1 : 0;
-                    walls += reason == TrainingTerminalReason.Wall ? 1 : 0;
                     Console.WriteLine(
                         $"track={environment.TrackFamily,-12} s={startS,7:0} " +
                         $"action={sideAction,5:0.00} pulse={pulseDuration,4:0.0}s " +
@@ -315,8 +313,7 @@ internal static class Program
         }
 
         Console.WriteLine(
-            $"summary episodes={episodes} passes={passes} " +
-            $"contacts={contacts} walls={walls}"
+            $"summary episodes={episodes} passes={passes} contacts={contacts}"
         );
         return passes > 0 ? 0 : 1;
     }

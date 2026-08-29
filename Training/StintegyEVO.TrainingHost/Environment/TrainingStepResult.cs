@@ -5,7 +5,6 @@ public enum TrainingTerminalReason : byte
     None,
     Passed,
     Contact,
-    Wall,
     Stalled,
     Timeout
 }
@@ -17,8 +16,8 @@ public readonly record struct TrainingStepResult(
     float PassReward,
     float ContactPenalty,
     float WallPenalty,
-    float ActionMagnitudePenalty,
-    float ActionDeltaPenalty,
+    float OffCoursePenalty,
+    float TyreSlipPenalty,
     float TimePenalty,
     float TimeoutOutcome,
     float ModeExcessPenalty,
@@ -35,8 +34,8 @@ public readonly record struct TrainingStepResult(
         PassReward +
         ContactPenalty +
         WallPenalty +
-        ActionMagnitudePenalty +
-        ActionDeltaPenalty +
+        OffCoursePenalty +
+        TyreSlipPenalty +
         TimePenalty +
         TimeoutOutcome +
         ModeExcessPenalty +
@@ -49,8 +48,8 @@ public readonly record struct TrainingStepResult(
         2 => PassReward,
         3 => ContactPenalty,
         4 => WallPenalty,
-        5 => ActionMagnitudePenalty,
-        6 => ActionDeltaPenalty,
+        5 => OffCoursePenalty,
+        6 => TyreSlipPenalty,
         7 => TimePenalty,
         8 => TimeoutOutcome,
         9 => ModeExcessPenalty,

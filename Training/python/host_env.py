@@ -39,7 +39,7 @@ TERMINAL_NAMES = (
 
 COMPONENT_NAMES = (
     "own_progress", "relative_progress", "pass", "contact", "wall",
-    "action_magnitude", "action_delta", "time", "timeout_outcome",
+    "off_course", "tyre_slip", "time", "timeout_outcome",
     "mode_excess", "retirement",
 )
 

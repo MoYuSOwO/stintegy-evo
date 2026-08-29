@@ -39,7 +39,33 @@ public sealed class DirectDriveDuelEnvironment
     /// the action regularizers by a clear margin, and in the solo stage it
     /// is the objective outright.
     /// </summary>
-    private const float OwnProgressRate = 0.004f;
+    /// <summary>
+    /// What a metre of track is worth. Raised fivefold from the rate the
+    /// first two rounds used, where a perfect lap earned less than the fixed
+    /// costs of driving it and the optimal policy was therefore to crawl.
+    /// </summary>
+    private const float OwnProgressRate = 0.02f;
+
+    /// <summary>
+    /// The penalties the road exacts, all per second and all proportional to
+    /// the square of the speed, after the shape Sony used: leaving the track
+    /// and scraping a barrier are both things you are doing, priced for as
+    /// long as you do them, not events that end the race. Their reward
+    /// function ends an episode for nothing but running out of time.
+    /// </summary>
+    private const float OffCoursePenaltyPerSpeedSquaredSecond = 1e-3f;
+    private const float WallPenaltyPerSpeedSquaredSecond = 5e-3f;
+
+    /// <summary>
+    /// Sliding, priced by how far past the tyres' limit the car is being
+    /// asked to go and how far sideways it has ended up as a result. This
+    /// stands where an action-smoothness penalty used to: what wants
+    /// discouraging is the car being out of shape, which is a thing the
+    /// physics can see, not the policy's hand being unsteady, which is not.
+    /// </summary>
+    private const float TyreSlipPenaltyPerSecond = 2f;
+
+    private const float TimePenaltyPerSecond = 0.01f;
 
     /// <summary>
     /// Price per unit of friction-circle usage taken beyond what the pit
@@ -90,8 +116,6 @@ public sealed class DirectDriveDuelEnvironment
     // The canonical mode-to-grip-allowance mapping, the same one the
     // analytic planner drives to.
     private readonly VehicleSpeedPlanningConfig _planningConfig = new();
-    private readonly float[] _previousAction =
-        new float[DirectDriveObservation.ActionSize];
     private readonly float _minimumForwardGapMeters;
     private readonly float _maximumForwardGapMeters;
     private readonly float _episodeDurationSeconds;
@@ -292,19 +316,20 @@ public sealed class DirectDriveDuelEnvironment
         );
         _terminal = terminalReason != TrainingTerminalReason.None;
 
-        float actionMagnitude = 0f;
-        float actionDelta = 0f;
-        for (int i = 0; i < action.Length; i++)
-        {
-            actionMagnitude += action[i] * action[i];
-            float delta = action[i] - _previousAction[i];
-            actionDelta += delta * delta;
-            _previousAction[i] = action[i];
-        }
+        bool offCourse = _ego.Progress.Region != TrackRegion.RacingSurface;
+        bool againstTheWall = _ego.LastBoundaryContact.HasValue;
+        float speedSquared = _ego.State.Speed * _ego.State.Speed;
+        float sliding =
+            MathF.Min(MathF.Abs(_ego.State.Telemetry.OverLimit), 1f) *
+            MathF.Abs(_ego.State.SideslipAngleRadians);
 
         return new TrainingStepResult(
             terminalReason,
-            OwnProgressReward: OwnProgressRate * egoProgress,
+            // Masked off course, so that cutting a corner cannot pay for
+            // itself with the ground it gains.
+            OwnProgressReward: offCourse
+                ? 0f
+                : OwnProgressRate * egoProgress,
             RelativeProgressReward: _solo
                 ? 0f
                 : 0.1f * (egoProgress - opponentProgress),
@@ -314,12 +339,17 @@ public sealed class DirectDriveDuelEnvironment
             ContactPenalty: contact
                 ? (egoAtFault ? -20f : -2f)
                 : 0f,
-            WallPenalty: terminalReason == TrainingTerminalReason.Wall
-                ? -30f
+            WallPenalty: againstTheWall
+                ? -WallPenaltyPerSpeedSquaredSecond * speedSquared *
+                  AgentStepSeconds
                 : 0f,
-            ActionMagnitudePenalty: -0.001f * actionMagnitude,
-            ActionDeltaPenalty: -0.01f * actionDelta,
-            TimePenalty: -0.003f,
+            OffCoursePenalty: offCourse
+                ? -OffCoursePenaltyPerSpeedSquaredSecond * speedSquared *
+                  AgentStepSeconds
+                : 0f,
+            TyreSlipPenalty:
+                -TyreSlipPenaltyPerSecond * sliding * AgentStepSeconds,
+            TimePenalty: -TimePenaltyPerSecond * AgentStepSeconds,
             TimeoutOutcome: terminalReason == TrainingTerminalReason.Timeout &&
                             !_solo
                 ? Math.Clamp(-signedLeadDistance * 0.1f, -8f, 8f)
@@ -453,7 +483,6 @@ public sealed class DirectDriveDuelEnvironment
         _egoDistanceOrigin = _ego.Progress.TotalDistance;
         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
         _egoDriver.LastObservation.CopyTo(observation);
-        Array.Clear(_previousAction);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
         MaximumAbsoluteReferenceOffsetMeters = 0f;
         _elapsedSeconds = 0f;
@@ -466,11 +495,11 @@ public sealed class DirectDriveDuelEnvironment
         float signedLeadDistance
     )
     {
-        // Contact is deliberately not terminal: it is priced by the steward
-        // penalty and the race continues, the way real incidents do.
-        if (Ego.LastBoundaryContact.HasValue)
-            return TrainingTerminalReason.Wall;
-
+        // Neither contact nor a barrier is terminal: both are priced for as
+        // long as they last and the race continues, the way real incidents
+        // do. An episode that ends the moment a car brushes something
+        // destroys every bit of learning that would have followed, and it
+        // teaches a policy that the cheapest race is a short one.
         if (_opponent is not null)
         {
             float fullClearance =
