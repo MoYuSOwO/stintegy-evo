@@ -468,6 +468,109 @@ public sealed class RoadAttitudeTests
     }
 
     [Fact]
+    public void ACrestTakesWeightOffTheCarAndACompressionPutsItOn()
+    {
+        // Following a road that bends upward takes force beyond holding the
+        // car up, and the tarmac is what supplies it -- which is why a
+        // compression is where a car can carry impossible speed, and why a
+        // brake pedal means less at the top of a hill. Both scale with the
+        // square of the speed, so neither arrives gently.
+        const float gravity = 9.80665f;
+        RoadAttitude crest = new(0f, 0f, -1f / 500f);
+        RoadAttitude compression = new(0f, 0f, 1f / 500f);
+
+        // Sixty metres a second over a five-hundred-metre crest asks for
+        // 7.2 of the 9.8 the car has, and it keeps the rest.
+        Assert.Equal(
+            gravity - 3600f / 500f,
+            crest.NormalGravity(gravity, 60f, 0f),
+            2
+        );
+        Assert.Equal(
+            gravity + 3600f / 500f,
+            compression.NormalGravity(gravity, 60f, 0f),
+            2
+        );
+
+        // Standing still the road's shape is worth nothing at all: this is
+        // a speed-squared effect or it is nothing.
+        Assert.Equal(gravity, crest.NormalGravity(gravity, 0f, 0f), 4);
+
+        // And the car is never allowed to be lifted clean off, because a
+        // model that keeps the car on the surface has nothing to say about
+        // what happens when it is not.
+        RoadAttitude brow = new(0f, 0f, -1f / 40f);
+        Assert.Equal(
+            gravity * RoadAttitude.MinimumNormalShare,
+            brow.NormalGravity(gravity, 60f, 0f),
+            4
+        );
+    }
+
+    [Fact]
+    public void ThePlanSlowsOverACrestAndPressesOnThroughACompression()
+    {
+        // Sampled at the top of the hill and at the bottom of it, because
+        // those are the two places where the road is momentarily level and
+        // what is left is purely how it bends. Anywhere else the gradient
+        // would be answering as well.
+        TrackData hilly = RollingOval(heightMetres: 12f);
+        TrackData flat = RollingOval(heightMetres: 0f);
+
+        Assert.InRange(hilly.Sample(SummitMetres).Grade, -0.005f, 0.005f);
+        Assert.InRange(hilly.Sample(DipMetres).Grade, -0.005f, 0.005f);
+        Assert.True(hilly.Sample(SummitMetres).VerticalCurvature < -1e-4f);
+        Assert.True(hilly.Sample(DipMetres).VerticalCurvature > 1e-4f);
+
+        float level = PlannedSpeedAt(flat, SummitMetres);
+        float overACrest = PlannedSpeedAt(hilly, SummitMetres);
+        float throughACompression = PlannedSpeedAt(hilly, DipMetres);
+
+        Assert.True(
+            overACrest < level * 0.985f,
+            $"over a crest {overACrest:0.0} should be planned below the same " +
+            $"corner on the level, {level:0.0}"
+        );
+        Assert.True(
+            throughACompression > level * 1.015f,
+            $"through a compression {throughACompression:0.0} should beat " +
+            $"the same corner on the level, {level:0.0}"
+        );
+    }
+
+    // Halfway round each of the oval's two turns.
+    private const float SummitMetres = 400f + MathF.PI * 90f / 2f;
+    private const float DipMetres = SummitMetres + 400f + MathF.PI * 90f;
+
+    /// <summary>
+    /// One oval with a hill over it, the top of the hill in the middle of
+    /// one turn and the bottom in the middle of the other, so a corner can
+    /// be compared against the same corner on the level. Passing zero gives
+    /// the identical layout dead flat, which is the control.
+    /// </summary>
+    private static TrackData RollingOval(float heightMetres)
+    {
+        const float lap = 2f * 400f + 2f * MathF.PI * 90f;
+        return new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 16f,
+                refLineSolver: CenterLineRefLineSolver.Instance
+            )
+            .AddStraight(400f)
+            .AddTurn(180f, 90f)
+            .AddStraight(400f)
+            .AddTurn(180f, 90f)
+            .CloseLoop()
+            .WithSurface(TrackElevation.ProfileByDistance([
+                (SummitMetres - 0.25f * lap, 0f),
+                (SummitMetres, heightMetres),
+                (SummitMetres + 0.25f * lap, 0f),
+                (DipMetres, -heightMetres)
+            ]))
+            .Build(new TrackGridConfig());
+    }
+
+    [Fact]
     public void ThePlanBrakesEarlierForACornerItIsDescendingInto()
     {
         // The plan has to know the road falls away, or it brakes for the
@@ -509,14 +612,14 @@ public sealed class RoadAttitudeTests
             .AddStraight(approach)
             .AddTurn(180f, 40f)
             .CloseLoop()
-            .WithSurface(context => new TrackSurface(
-                // Falls away over the approach and climbs back on the far
-                // side, so the lap still closes.
-                Grade: context.DistanceMeters < approach
-                    ? grade
-                    : -grade * approach /
-                      MathF.Max(context.LapLengthMeters - approach, 1f)
-            ))
+            // One gradient the whole way round, so the road never bends in
+            // the vertical plane and the only thing separating the three
+            // runs is the gradient itself. The lap does not close in height
+            // and is not meant to: a descent that levels out into the corner
+            // ends in a compression, the compression presses the car down,
+            // and the extra grip would answer this test instead of the
+            // braking does. A real circuit has both; a probe wants one.
+            .WithSurface(context => new TrackSurface(Grade: grade))
             .Build(new TrackGridConfig());
 
         RaceCar car = CreateCar(track, s: 10f, speed: 70f);

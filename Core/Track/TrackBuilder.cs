@@ -670,6 +670,37 @@ public class TrackBuilder
     /// </summary>
     private const int SurfaceCurvatureHalfWindowNodes = 8;
 
+    /// <summary>
+    /// How sharply the road bends in the vertical plane, read off the
+    /// gradient that has just been laid down rather than asked of whoever
+    /// wrote the surface. A road cannot be given a climb and a crest that
+    /// disagree, and the car is going to be pressed into whichever of them
+    /// is real.
+    /// </summary>
+    private static void WriteVerticalCurvature(TrackSurface[] surfaces)
+    {
+        int count = surfaces.Length;
+        if (count < 3)
+            return;
+
+        float[] bend = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            float ahead = surfaces[(i + 1) % count].Grade;
+            float behind = surfaces[(i - 1 + count) % count].Grade;
+            float gradeSlope = (ahead - behind) / (2f * TrackData.StepLength);
+
+            // The gradient is a tangent, not an angle, so turning its rate of
+            // change into a curvature costs the usual (1 + m^2)^(3/2).
+            float grade = surfaces[i].Grade;
+            float shape = 1f + grade * grade;
+            bend[i] = gradeSlope / (shape * MathF.Sqrt(shape));
+        }
+
+        for (int i = 0; i < count; i++)
+            surfaces[i] = surfaces[i] with { VerticalCurvature = bend[i] };
+    }
+
     private static float CentrelineCurvature(
         IReadOnlyList<RefLineTrackPoint> points,
         int index
@@ -921,6 +952,20 @@ public class TrackBuilder
             );
         }
         RefLine refNodes = _refLineSolver.Generate(refTrackPoints);
+        TrackSurface[] surfaces = new TrackSurface[nodes.Count];
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            surfaces[i] = _surfaceAt is null
+                ? TrackSurface.Flat
+                : _surfaceAt(new TrackSurfaceContext(
+                    i * TrackData.StepLength,
+                    CentrelineCurvature(refTrackPoints, i),
+                    refTrackPoints[i].Width * 0.5f,
+                    nodes.Count * TrackData.StepLength
+                ));
+        }
+        WriteVerticalCurvature(surfaces);
+
         List<TrackNode> resNodes = [];
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -932,14 +977,7 @@ public class TrackBuilder
                     nodes[i].LeftBuffer,
                     nodes[i].RightBuffer,
                     refNodes[i],
-                    _surfaceAt is null
-                        ? TrackSurface.Flat
-                        : _surfaceAt(new TrackSurfaceContext(
-                            i * TrackData.StepLength,
-                            CentrelineCurvature(refTrackPoints, i),
-                            refTrackPoints[i].Width * 0.5f,
-                            nodes.Count * TrackData.StepLength
-                        ))
+                    surfaces[i]
                 )
             );
         }

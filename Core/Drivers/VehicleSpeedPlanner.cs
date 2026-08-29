@@ -676,7 +676,8 @@ public sealed class VehicleSpeedPlanner
         }
         return new RoadAttitude(
             sample.Grade,
-            sample.BankSlopeAt(offsetMeters)
+            sample.BankSlopeAt(offsetMeters),
+            sample.VerticalCurvature
         );
     }
 
@@ -687,8 +688,12 @@ public sealed class VehicleSpeedPlanner
         float offsetMeters
     )
     {
-        if (sample.BankSlope == 0f && sample.BankCurvature == 0f)
+        if (sample.BankSlope == 0f &&
+            sample.BankCurvature == 0f &&
+            sample.VerticalCurvature == 0f)
+        {
             return curvature;
+        }
 
         float absoluteCurvature = MathF.Abs(curvature);
         if (absoluteCurvature <= Config.CurvatureEpsilon)
@@ -713,6 +718,19 @@ public sealed class VehicleSpeedPlanner
                               absoluteCurvature * assist -
                               airPaid;
         float equivalent = standingLimit * curvatureLeft / held + airPaid;
+
+        // The road's own vertical bend is a load that grows with the square
+        // of the speed, exactly as downforce does, so it lands in the same
+        // closed form and comes out as a shift in the corner the plan is
+        // solving: a0 * k_vertical / g, tighter over a crest where the car
+        // goes light and looser through a compression where the tarmac
+        // presses it down. Folding it in here rather than plumbing it
+        // separately means the braking integration and the leftover
+        // longitudinal grip get it for nothing, the same bargain the bank
+        // is already taking.
+        equivalent -= standingLimit * Sanitize(sample.VerticalCurvature) /
+                      GravityMetersPerSecondSquared;
+
         return MathF.CopySign(
             MathF.Min(MathF.Max(equivalent, 0f), MaximumEquivalentCurvature),
             curvature
@@ -720,6 +738,9 @@ public sealed class VehicleSpeedPlanner
     }
 
     private const float MaximumEquivalentCurvature = 1f;
+
+    private static float Sanitize(float value) =>
+        float.IsFinite(value) ? value : 0f;
 
     private static int TrafficReportEvaluationIndex(
         int count,

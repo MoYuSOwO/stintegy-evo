@@ -80,10 +80,18 @@ public static class TrackElevation
     }
 
     /// <summary>
-    /// Height at a fraction of the lap, interpolated periodically. Catmull-
-    /// Rom gives a smooth curve through every control point, which matters
-    /// because the gradient is its derivative and a kink in the height
-    /// would read as a step in the road.
+    /// Height at a fraction of the lap, interpolated periodically.
+    ///
+    /// The tangents are taken over the real spacing of the control points
+    /// rather than over their index. That distinction is the whole of it:
+    /// the textbook Catmull-Rom is smooth in its own parameter, and if one
+    /// segment covers five hundred metres of road and the next covers two
+    /// hundred and eighty, the same smooth parameter runs at two different
+    /// speeds either side of the point where they meet. The gradient, which
+    /// is height per metre and not height per parameter, then steps by the
+    /// ratio of the two — and once the load knows about the road's vertical
+    /// bend, that step is not a cosmetic kink but a car pressed into the
+    /// tarmac at five times its weight for one metre.
     /// </summary>
     public static float HeightAt(
         (float Fraction, float Height)[] points,
@@ -97,32 +105,42 @@ public static class TrackElevation
         while (index + 1 < count && points[index + 1].Fraction <= wrapped)
             index++;
 
-        float startFraction = points[index].Fraction;
-        float endFraction = index + 1 < count
-            ? points[index + 1].Fraction
-            : points[0].Fraction + 1f;
-        float span = MathF.Max(endFraction - startFraction, 1e-6f);
-        float t = Math.Clamp((wrapped - startFraction) / span, 0f, 1f);
+        (float x0, float p0) = ControlPoint(points, index - 1);
+        (float x1, float p1) = ControlPoint(points, index);
+        (float x2, float p2) = ControlPoint(points, index + 1);
+        (float x3, float p3) = ControlPoint(points, index + 2);
 
-        float p0 = points[(index - 1 + count) % count].Height;
-        float p1 = points[index].Height;
-        float p2 = points[(index + 1) % count].Height;
-        float p3 = points[(index + 2) % count].Height;
-        return CatmullRom(p0, p1, p2, p3, t);
-    }
+        float span = MathF.Max(x2 - x1, 1e-6f);
+        float t = Math.Clamp((wrapped - x1) / span, 0f, 1f);
 
-    private static float CatmullRom(
-        float p0, float p1, float p2, float p3, float t
-    )
-    {
+        // Slope at each end, in height per unit of lap. Shared with the
+        // neighbouring segment by construction, which is what makes the
+        // gradient continuous where two segments of different length meet.
+        float slopeAtStart = (p2 - p0) / MathF.Max(x2 - x0, 1e-6f);
+        float slopeAtEnd = (p3 - p1) / MathF.Max(x3 - x1, 1e-6f);
+
         float t2 = t * t;
         float t3 = t2 * t;
-        return 0.5f * (
-            2f * p1 +
-            (p2 - p0) * t +
-            (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 +
-            (-p0 + 3f * p1 - 3f * p2 + p3) * t3
-        );
+        return (2f * t3 - 3f * t2 + 1f) * p1 +
+               (t3 - 2f * t2 + t) * span * slopeAtStart +
+               (-2f * t3 + 3f * t2) * p2 +
+               (t3 - t2) * span * slopeAtEnd;
+    }
+
+    /// <summary>
+    /// One control point by index, wrapping round the lap and carrying the
+    /// wrap into its position so the four points of a segment always read
+    /// as increasing even where the run passes the start line.
+    /// </summary>
+    private static (float Fraction, float Height) ControlPoint(
+        (float Fraction, float Height)[] points,
+        int index
+    )
+    {
+        int count = points.Length;
+        int laps = (int)MathF.Floor(index / (float)count);
+        (float fraction, float height) = points[index - laps * count];
+        return (fraction + laps, height);
     }
 
     /// <summary>

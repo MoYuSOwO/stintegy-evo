@@ -17,10 +17,18 @@ namespace StintegyEVO.Core.Cars;
 /// </summary>
 public readonly record struct RoadAttitude(
     float GradeTangent,
-    float BankTangent
+    float BankTangent,
+    float VerticalCurvature = 0f
 )
 {
-    public static readonly RoadAttitude Flat = new(0f, 0f);
+    public static readonly RoadAttitude Flat = new(0f, 0f, 0f);
+
+    /// <summary>
+    /// The least of its weight the model will let a car keep. Beyond this
+    /// the car has left the road, which is a thing a surface-bound model
+    /// cannot represent, so it is held here instead.
+    /// </summary>
+    public const float MinimumNormalShare = 0.1f;
 
     /// <summary>
     /// Cosine of the surface's total tilt: the share of gravity left
@@ -62,6 +70,15 @@ public readonly record struct RoadAttitude(
     /// demand. It is clamped at a floor because a corner steep and fast
     /// enough to unload the car entirely has thrown it off the surface,
     /// which this reduced-order model does not represent.
+    ///
+    /// The road's own vertical bend counts the same way and for the same
+    /// reason. Following a road that curves upward takes force beyond
+    /// holding the car up, and the tarmac supplies it: a compression presses
+    /// the car down hard, which is the whole character of Eau Rouge. Over a
+    /// crest the sign turns round and the car goes light, which is why a
+    /// brake pedal means less at the top of a hill. Both scale with the
+    /// square of the speed, so neither is felt slowly and both arrive at
+    /// once.
     /// </summary>
     public float NormalGravity(
         float gravity,
@@ -73,16 +90,16 @@ public readonly record struct RoadAttitude(
         // Curvature and bank sharing a sign means the road is leaning the
         // way the corner turns, and the cornering load then presses the car
         // down instead of sideways.
-        float fromBanking = speedMetersPerSecond * speedMetersPerSecond *
+        float speedSquared = speedMetersPerSecond * speedMetersPerSecond;
+        float fromBanking = speedSquared *
                             Sanitize(curvature) * Sanitize(BankTangent) *
                             cosine;
+        float fromVerticalBend = speedSquared * Sanitize(VerticalCurvature);
         return MathF.Max(
-            gravity * cosine + fromBanking,
+            gravity * cosine + fromBanking + fromVerticalBend,
             gravity * MinimumNormalShare
         );
     }
-
-    private const float MinimumNormalShare = 0.1f;
 
     private static float Sanitize(float value) =>
         float.IsFinite(value) ? value : 0f;

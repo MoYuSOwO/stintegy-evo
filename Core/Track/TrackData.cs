@@ -64,6 +64,13 @@ public readonly struct TrackSample
     public readonly float BankCurvature;
 
     /// <summary>
+    /// How sharply the road bends in the vertical plane, positive into a
+    /// compression and negative over a crest. Multiplied by the square of
+    /// the speed it is the extra load the tarmac carries, or fails to.
+    /// </summary>
+    public readonly float VerticalCurvature;
+
+    /// <summary>
     /// The cross slope actually under a car at lateral offset <paramref name="d"/>.
     /// On a progressively banked corner this is what makes the high line a
     /// real choice: more bank, more grip, longer way round.
@@ -89,7 +96,8 @@ public readonly struct TrackSample
         float refCurvature,
         float grade = 0f,
         float bankSlope = 0f,
-        float bankCurvature = 0f
+        float bankCurvature = 0f,
+        float verticalCurvature = 0f
     )
     {
         S = s;
@@ -106,6 +114,7 @@ public readonly struct TrackSample
         Grade = grade;
         BankSlope = bankSlope;
         BankCurvature = bankCurvature;
+        VerticalCurvature = verticalCurvature;
     }
 }
 
@@ -229,7 +238,8 @@ public class TrackData
             Lerp(a.RefLinePoint.Curvature, b.RefLinePoint.Curvature, t),
             Lerp(a.Surface.Grade, b.Surface.Grade, t),
             Lerp(a.Surface.BankSlope, b.Surface.BankSlope, t),
-            Lerp(a.Surface.BankCurvature, b.Surface.BankCurvature, t)
+            Lerp(a.Surface.BankCurvature, b.Surface.BankCurvature, t),
+            Lerp(a.Surface.VerticalCurvature, b.Surface.VerticalCurvature, t)
         );
     }
 

@@ -542,13 +542,15 @@ public sealed class RaceSimulation
         TrackSample sample = pose.Sample;
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
-            sample.BankCurvature == 0f)
+            sample.BankCurvature == 0f &&
+            sample.VerticalCurvature == 0f)
         {
             return RoadAttitude.Flat;
         }
         return new RoadAttitude(
             sample.Grade,
-            sample.BankSlopeAt(pose.D)
+            sample.BankSlopeAt(pose.D),
+            sample.VerticalCurvature
         );
     }
 
