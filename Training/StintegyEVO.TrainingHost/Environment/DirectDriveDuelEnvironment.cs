@@ -96,6 +96,12 @@ public sealed class DirectDriveDuelEnvironment
     private readonly float _maximumForwardGapMeters;
     private readonly float _episodeDurationSeconds;
     private readonly CarStrategy _opponentStrategy;
+    /// <summary>
+    /// How often the sparring partner rethinks. Ten a second, the same rate
+    /// the agent decides at, which is both cheap and appropriately coarse.
+    /// </summary>
+    private const float OpponentDecisionHz = 10f;
+
     private readonly DriverProfile _opponentProfile;
     private readonly bool _solo;
     private RaceSimulation? _simulation;
@@ -431,7 +437,10 @@ public sealed class DirectDriveDuelEnvironment
                 track,
                 EgoStartS + InitialForwardGapMeters,
                 startSpeed,
-                new ReferenceLineDriver(profile: _opponentProfile),
+                new HeldDecisionDriver(
+                    new ReferenceLineDriver(profile: _opponentProfile),
+                    OpponentDecisionHz
+                ),
                 _opponentStrategy
             );
             _simulation.AddCar(_opponent);
