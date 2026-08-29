@@ -31,11 +31,29 @@ public sealed class DirectDriveDuelEnvironment
     private const float StalledHoldSeconds = 2f;
     private const float WarmupStepSeconds = 1e-6f;
 
-    // Placeholder until the wear budgets per tire mode are calibrated from
-    // baseline stints; positive infinity disables the penalty while keeping
-    // the plumbing and the protocol shape stable.
-    private const float WearBudgetPerKilometerDisabled =
-        float.PositiveInfinity;
+    /// <summary>
+    /// Reward per meter of the ego's own progress. The archived offset task
+    /// weighted this at a twentieth of this rate because relative progress
+    /// carried the signal there; driving itself is now the thing being
+    /// learned, so covering ground has to outweigh the per-step clock and
+    /// the action regularizers by a clear margin, and in the solo stage it
+    /// is the objective outright.
+    /// </summary>
+    private const float OwnProgressRate = 0.004f;
+
+    /// <summary>
+    /// Price per unit of friction-circle usage taken beyond what the pit
+    /// wall allotted, per agent step. A tire mode is exactly an instruction
+    /// about how much of the tire's grip the driver may spend, and the
+    /// physics never enforces it — only battery modes are hardware-capped —
+    /// so a learned driver would otherwise drive Attack while the wall
+    /// called Protect. Disobeying Protect outright buys on the order of one
+    /// percent more distance a lap; this rate prices that at roughly ten
+    /// times what it earns, which is what makes obedience the strategy
+    /// game's premise rather than a suggestion. Subject to revision once
+    /// training shows how the policy actually trades it.
+    /// </summary>
+    private const float ModeExcessPenaltyRate = 0.1f;
 
     internal static readonly DriverProfile TrainingOpponentProfile = new(
         "training-opponent",
@@ -69,6 +87,9 @@ public sealed class DirectDriveDuelEnvironment
     );
 
     private readonly ManualDrivingPolicy _manualPolicy = new();
+    // The canonical mode-to-grip-allowance mapping, the same one the
+    // analytic planner drives to.
+    private readonly VehicleSpeedPlanningConfig _planningConfig = new();
     private readonly float[] _previousAction =
         new float[DirectDriveObservation.ActionSize];
     private readonly float _minimumForwardGapMeters;
@@ -86,12 +107,12 @@ public sealed class DirectDriveDuelEnvironment
     private float _stalledHoldSeconds;
     private float _egoDistanceOrigin;
     private float _opponentDistanceOrigin;
-    private float _episodeStartWear;
     private bool _terminal;
 
     public string TrackFamily { get; private set; } = string.Empty;
     public float EgoStartS { get; private set; }
     public float InitialForwardGapMeters { get; private set; }
+    public CarStrategy EgoStrategy { get; private set; } = CarStrategy.Default;
     public float ElapsedSeconds => _elapsedSeconds;
     public bool IsTerminal => _terminal;
     public float SignedLeadDistanceMeters => CalculateSignedLeadDistance();
@@ -277,7 +298,7 @@ public sealed class DirectDriveDuelEnvironment
 
         return new TrainingStepResult(
             terminalReason,
-            OwnProgressReward: 0.0002f * egoProgress,
+            OwnProgressReward: OwnProgressRate * egoProgress,
             RelativeProgressReward: _solo
                 ? 0f
                 : 0.1f * (egoProgress - opponentProgress),
@@ -297,30 +318,53 @@ public sealed class DirectDriveDuelEnvironment
                             !_solo
                 ? Math.Clamp(-signedLeadDistance * 0.1f, -8f, 8f)
                 : 0f,
-            ModeBudgetPenalty: ModeBudgetPenalty(egoProgress)
+            ModeExcessPenalty: ModeExcessPenalty()
         );
     }
 
-    private float ModeBudgetPenalty(float egoProgressMeters)
+    /// <summary>
+    /// How far past its allotted share of the friction circle the car is
+    /// being driven. The tire mode maps to the same grip fraction the
+    /// analytic planner drives to, so the comparison is the instruction
+    /// itself rather than a proxy: at Attack the allowance is the whole
+    /// circle and no excess is possible, while at Protect anything above
+    /// about ninety-six percent is grip the wall did not authorize. The
+    /// reading is the last physics substep of the agent step, which
+    /// samples rather than integrates the excess; over an episode's
+    /// thousands of steps that average is what the policy optimizes.
+    /// </summary>
+    private float ModeExcessPenalty()
     {
-        if (float.IsPositiveInfinity(WearBudgetPerKilometerDisabled) ||
-            _ego is null ||
-            egoProgressMeters <= 0f)
-        {
+        if (_ego is null)
             return 0f;
-        }
 
-        float wearNow = TotalWear(_ego.State);
-        float wearDelta = wearNow - _episodeStartWear;
-        _episodeStartWear = wearNow;
-        float budget = WearBudgetPerKilometerDisabled *
-                       egoProgressMeters / 1000f;
-        return -MathF.Max(0f, wearDelta - budget) * 100f;
+        CarTelemetry telemetry = _ego.State.Telemetry;
+        float allowance = _planningConfig.GetAccelerationUsage(_ego.Strategy);
+        float frontUse = CombinedUse(
+            telemetry.FrontLateralUse,
+            telemetry.FrontLongitudinalUse
+        );
+        float rearUse = CombinedUse(
+            telemetry.RearLateralUse,
+            telemetry.RearLongitudinalUse
+        );
+        float excess = MathF.Max(frontUse, rearUse) - allowance;
+        return excess <= 0f ? 0f : -ModeExcessPenaltyRate * excess;
     }
 
-    private static float TotalWear(CarState state) =>
-        state.FrontLeft.Wear + state.FrontRight.Wear +
-        state.RearLeft.Wear + state.RearRight.Wear;
+    /// <summary>
+    /// Share of the available friction circle actually being spent, capped
+    /// at the whole circle. A request beyond the circle does not buy grip —
+    /// it slides — and the physics already charges for that; counting it
+    /// here as well would conflate overdriving with disobeying the wall,
+    /// and the plan holds that a driver's self-inflicted costs are priced
+    /// by lap time, not by penalties.
+    /// </summary>
+    private static float CombinedUse(float lateral, float longitudinal) =>
+        MathF.Min(
+            1f,
+            MathF.Sqrt(lateral * lateral + longitudinal * longitudinal)
+        );
 
     private void ResetCore(
         TrackChoice choice,
@@ -344,6 +388,13 @@ public sealed class DirectDriveDuelEnvironment
             );
         float startSpeed = startSpeedMetersPerSecond ??
                            EstimateStartSpeed(track, EgoStartS);
+        // Every episode draws a pit-wall instruction. Without this the
+        // policy would only ever be told Attack and could never learn what
+        // the other modes ask of it, however the observation reports them.
+        EgoStrategy = new CarStrategy(
+            (TireUsageMode)(random.NextInt(5) + 1),
+            (BatteryOutputMode)(random.NextInt(5) + 1)
+        );
 
         RaceEnvironment raceEnvironment = new()
         {
@@ -358,7 +409,7 @@ public sealed class DirectDriveDuelEnvironment
             EgoStartS,
             startSpeed,
             _egoDriver,
-            new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Attack)
+            EgoStrategy
         );
         _simulation.AddCar(_ego);
         if (_solo)
@@ -386,7 +437,6 @@ public sealed class DirectDriveDuelEnvironment
         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
         _egoDriver.LastObservation.CopyTo(observation);
         Array.Clear(_previousAction);
-        _episodeStartWear = TotalWear(_ego.State);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
         MaximumAbsoluteReferenceOffsetMeters = 0f;
         _elapsedSeconds = 0f;

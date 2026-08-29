@@ -21,7 +21,7 @@ public readonly record struct TrainingStepResult(
     float ActionDeltaPenalty,
     float TimePenalty,
     float TimeoutOutcome,
-    float ModeBudgetPenalty
+    float ModeExcessPenalty
 )
 {
     public const int ComponentCount = 10;
@@ -38,7 +38,7 @@ public readonly record struct TrainingStepResult(
         ActionDeltaPenalty +
         TimePenalty +
         TimeoutOutcome +
-        ModeBudgetPenalty;
+        ModeExcessPenalty;
 
     public float GetComponent(int index) => index switch
     {
@@ -51,7 +51,7 @@ public readonly record struct TrainingStepResult(
         6 => ActionDeltaPenalty,
         7 => TimePenalty,
         8 => TimeoutOutcome,
-        9 => ModeBudgetPenalty,
+        9 => ModeExcessPenalty,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 }
