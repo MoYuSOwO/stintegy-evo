@@ -44,6 +44,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
     {
     }
 
+    private const float GravityMetersPerSecondSquared = 9.80665f;
+
     public float SpeedGain { get; init; } = 2.5f;
     public float StanleyGain { get; init; } = 2f;
     public float StanleySofteningSpeed { get; init; } = 4f;
@@ -110,7 +112,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _currentPlan.SpeedPlan = _speedPlanner.PlanPredictedPath(
                 _currentPlan.SpeedLookahead,
                 car,
-                _currentPlan.Path
+                _currentPlan.Path,
+                context.Track
             );
             _currentPlan.TrafficConstraint = default;
             _currentPlan.NextTrafficMemory = default;
@@ -143,10 +146,19 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         // The speed plan stores net vehicle acceleration, while DriverInput asks
         // for axle acceleration before rolling, aero, and cornering losses.
         float lossCompensationAcceleration = currentLimits.LossAcceleration;
+        // Gravity stands between the axle and the road exactly as the losses
+        // do, and it has to be paid for in the same place. Without this the
+        // plan may know the hill is there and the car still will not hold the
+        // planned speed on it: only the proportional term is left to answer
+        // the gradient, and a proportional term answers a standing pull with
+        // a standing error.
+        float gradeCompensationAcceleration = -RoadAttitudeAt(in prepared)
+            .AlongTrackGravity(GravityMetersPerSecondSquared, state.Speed);
         float speedFeedbackAcceleration = SpeedGain *
                                           (speedReference.TargetSpeed - state.Speed);
         float desiredAcceleration = referenceAcceleration +
                                     lossCompensationAcceleration +
+                                    gradeCompensationAcceleration +
                                     speedFeedbackAcceleration;
         float driveAccelerationLimit =
             currentLimits.MaximumDriveAcceleration *
@@ -198,6 +210,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             speedReference.TargetSpeed,
             referenceAcceleration,
             lossCompensationAcceleration,
+            gradeCompensationAcceleration,
             speedFeedbackAcceleration,
             driveAccelerationLimit,
             desiredAcceleration,
@@ -408,7 +421,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         _currentPlan.SpeedPlan = _speedPlanner.PreparePredictedPathForTraffic(
             _currentPlan.SpeedLookahead,
             car,
-            _currentPlan.Path
+            _currentPlan.Path,
+            context.Track
         );
         _currentPlan.TrafficConstraint = default;
         _currentPlan.NextTrafficMemory = default;
@@ -579,7 +593,8 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         DynamicPathSpeedPlan speedPlan = _speedPlanner.PlanPredictedPath(
             _handoverProbePlan.SpeedLookahead,
             car,
-            _handoverProbePlan.Path
+            _handoverProbePlan.Path,
+            track
         );
         return speedPlan.Current.TargetSpeed;
     }
@@ -627,6 +642,29 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         _hasPreparedFrame = false;
         _preparedFrame = default;
         _publishedTrafficMotionPlan.Clear();
+    }
+
+    /// <summary>
+    /// The road under the front axle, read at the car's own place across the
+    /// width so a cross-section that curves is taken where the car is.
+    /// </summary>
+    private static RoadAttitude RoadAttitudeAt(
+        in PreparedReferenceLineFrame frame
+    )
+    {
+        TrackSample sample = frame.FrontSample;
+        if (sample.Grade == 0f &&
+            sample.BankSlope == 0f &&
+            sample.BankCurvature == 0f &&
+            sample.VerticalRate == 0f)
+        {
+            return RoadAttitude.Flat;
+        }
+        return new RoadAttitude(
+            sample.Grade,
+            sample.BankSlopeAt(frame.FrontPose.D),
+            sample.VerticalRate
+        );
     }
 
     private readonly record struct PreparedReferenceLineFrame(

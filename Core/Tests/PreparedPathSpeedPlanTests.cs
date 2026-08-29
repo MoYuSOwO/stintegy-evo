@@ -15,6 +15,7 @@ public sealed class PreparedPathSpeedPlanTests
         float[] segmentLengths = [2f, 0f];
         float[] speedLimits = [31f, 29f];
         float[] speeds = [28f, 27f];
+        float[] alongTrackGravity = [0f, -0.45f];
         prepared.Capture(
             path,
             planningSnapshotGeneration: 17,
@@ -22,12 +23,14 @@ public sealed class PreparedPathSpeedPlanTests
             segmentLengths,
             speedLimits,
             speeds,
+            alongTrackGravity,
             maximumAbsoluteCurvature: 0.02f
         );
         float[] restoredCurvatures = new float[2];
         float[] restoredSegmentLengths = new float[2];
         float[] restoredSpeedLimits = new float[2];
         float[] restoredSpeeds = new float[2];
+        float[] restoredGravity = new float[2];
 
         bool restored = prepared.TryRestore(
             path,
@@ -36,10 +39,14 @@ public sealed class PreparedPathSpeedPlanTests
             restoredSegmentLengths,
             restoredSpeedLimits,
             restoredSpeeds,
+            restoredGravity,
             out float maximumAbsoluteCurvature
         );
 
         Assert.True(restored);
+        // The road has to travel with the plan, or a restored plan brakes
+        // for a gradient that belongs to whoever used the buffer last.
+        Assert.Equal(alongTrackGravity, restoredGravity);
         Assert.Equal(curvatures, restoredCurvatures);
         Assert.Equal(segmentLengths, restoredSegmentLengths);
         Assert.Equal(speedLimits, restoredSpeedLimits);
@@ -53,6 +60,7 @@ public sealed class PreparedPathSpeedPlanTests
             restoredSegmentLengths,
             restoredSpeedLimits,
             restoredSpeeds,
+            new float[2],
             out _
         ));
     }
@@ -74,6 +82,7 @@ public sealed class PreparedPathSpeedPlanTests
             restoredSegmentLengths,
             restoredSpeedLimits,
             restoredSpeeds,
+            new float[2],
             out _
         ));
 
@@ -84,6 +93,7 @@ public sealed class PreparedPathSpeedPlanTests
             restoredSegmentLengths,
             restoredSpeedLimits,
             restoredSpeeds,
+            new float[2],
             out _
         ));
     }
@@ -106,6 +116,7 @@ public sealed class PreparedPathSpeedPlanTests
             restoredSegmentLengths,
             restoredSpeedLimits,
             restoredSpeeds,
+            new float[2],
             out _
         ));
     }
@@ -122,6 +133,7 @@ public sealed class PreparedPathSpeedPlanTests
             [2f, 0f],
             [31f, 29f],
             [28f, 27f],
+            [0f, -0.4f],
             maximumAbsoluteCurvature: 0.02f
         );
         return prepared;

@@ -54,4 +54,11 @@ public readonly record struct CarPhysicsStepInput(
     float TireEnergyEfficiency = 1f,
     float CorneringEfficiency = 1f,
     float LimitSettleUse = float.PositiveInfinity
-);
+)
+{
+    /// <summary>
+    /// How the road lies under the car this step. Defaults to flat, so a
+    /// caller that has no elevation data gets exactly the old behaviour.
+    /// </summary>
+    public RoadAttitude RoadAttitude { get; init; } = RoadAttitude.Flat;
+}
