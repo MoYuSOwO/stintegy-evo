@@ -103,19 +103,40 @@ public sealed class DirectDriveDuelEnvironment
         randomSeed: 0x545241494E494E47UL
     );
 
+    /// <summary>
+    /// What the car learns on. Gradient from Silverstone's flat airfield to
+    /// the simple layout's seven percent, and lean from a road circuit's two
+    /// and a half degrees to Zandvoort's eighteen.
+    /// </summary>
     private static readonly TrackChoice[] TrainingTracks =
     [
-        new("speedway", BuildSpeedwayTrack),
         new("simple-right", () => TrackFactory.SimpleTestTrack(isLeft: false)),
         new("simple-left", () => TrackFactory.SimpleTestTrack(isLeft: true)),
         new("silverstone", TrackFactory.SilverstoneStyleTestTrack),
-        new("shanghai", TrackFactory.ShanghaiStyleTestTrack)
+        new("shanghai", TrackFactory.ShanghaiStyleTestTrack),
+        new("zandvoort", TrackFactory.ZandvoortStyleTestTrack)
     ];
 
-    private static readonly TrackChoice HeldOutTrack = new(
-        "sepang",
-        TrackFactory.SepangStyleTestTrack
-    );
+    /// <summary>
+    /// What it is tested on, and every one of them asks for something past
+    /// the edge of what it was taught rather than between two things it
+    /// already knows. Monaco climbs harder than any training track, the
+    /// speedway leans further than any of them, and Sepang is neither —
+    /// just a circuit it has never seen.
+    ///
+    /// The old split had Sepang alone, whose one and a half percent and two
+    /// and a half degrees both sit comfortably inside the training range.
+    /// Passing that says a policy can interpolate, which was never the
+    /// question.
+    /// </summary>
+    private static readonly TrackChoice[] HeldOutTracks =
+    [
+        new("sepang", TrackFactory.SepangStyleTestTrack),
+        new("monaco", TrackFactory.MonacoStyleTestTrack),
+        new("speedway", BuildSpeedwayTrack)
+    ];
+
+    private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];
 
     private readonly ManualDrivingPolicy _manualPolicy = new();
     // The canonical mode-to-grip-allowance mapping, the same one the
@@ -601,13 +622,16 @@ public sealed class DirectDriveDuelEnvironment
     private static TrackChoice FindTrack(string trackFamily)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trackFamily);
-        if (string.Equals(
-                trackFamily,
-                HeldOutTrack.Name,
-                StringComparison.Ordinal
-            ))
+        foreach (TrackChoice heldOut in HeldOutTracks)
         {
-            return HeldOutTrack;
+            if (string.Equals(
+                    trackFamily,
+                    heldOut.Name,
+                    StringComparison.Ordinal
+                ))
+            {
+                return heldOut;
+            }
         }
 
         foreach (TrackChoice choice in TrainingTracks)

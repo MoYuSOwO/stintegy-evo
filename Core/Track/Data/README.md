@@ -33,3 +33,14 @@ centreline is retained and scaled from 5,537.35 metres to the official 5,543
 metres. The source left/right width proportions are preserved while total width
 is normalized to the circuit operator's published 16 metre minimum and 22
 metre maximum.
+
+`Zandvoort.csv` is projected from
+[bacinger/f1-circuits](https://github.com/bacinger/f1-circuits/blob/master/circuits/nl-1948.geojson),
+licensed under MIT; the complete upstream license is included as
+`LICENSE.bacinger-MIT`. Longitude and latitude are projected to local metres
+about the ring's centroid and the duplicated closing point is removed. The
+projected ring measures 4,260.2 metres against the published 4,259, so the
+runtime scaling barely moves it. The source LineString already begins on the
+start/finish straight, so unlike Monaco it needs no rotation. Width is
+assigned rather than sourced: twelve metres, which is a narrow permanent
+circuit and is what Zandvoort is.

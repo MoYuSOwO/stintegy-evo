@@ -1278,6 +1278,83 @@ public static class TrackFactory
         );
     }
 
+    // Circuit Zandvoort, the one modern Grand Prix venue that is actually
+    // banked. It was rebanked for the 2021 return: Hugenholtz, the slow
+    // hairpin, and Arie Luyendijk, the fast final corner, both carry
+    // eighteen degrees, which is speedway territory and nothing like the
+    // couple of degrees of drainage crossfall the rest of the calendar has.
+    // That is why it is here — every other road circuit teaches the car
+    // that a corner is flat.
+    private const float ZandvoortLengthMeters = 4_259f;
+    private const float ZandvoortBankTangent = 0.325f;   // eighteen degrees
+
+    // Where the two banked corners are, in metres from the start line. The
+    // source centreline carries a point every thirty-six metres, which over
+    // fourteen turns is too coarse to pick a corner out by its shape alone,
+    // so these are placed by the layout's structure instead: Hugenholtz is
+    // the tight hairpin after the opening sequence, and Arie Luyendijk is
+    // the last corner before the pit straight.
+    private const float ZandvoortHugenholtzStart = 860f;
+    private const float ZandvoortHugenholtzEnd = 980f;
+    private const float ZandvoortLuyendijkStart = 3_853f;
+    private const float ZandvoortLuyendijkEnd = 3_948f;
+
+    public static TrackData ZandvoortStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Zandvoort,
+            ZandvoortLengthMeters,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.ZandvoortHeights,
+            ZandvoortSurface
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
+    /// <summary>
+    /// The road circuit's drainage crossfall everywhere, with the two banked
+    /// corners laid over it. The extra bank is added in the direction the
+    /// corner already leans and weighted by how committed that lean is, so
+    /// it eases in and out with the corner rather than switching on at a
+    /// distance.
+    /// </summary>
+    private static TrackSurface ZandvoortSurface(TrackSurfaceContext context)
+    {
+        TrackSurface section = TrackSurfaces.RoadCircuit(context);
+        float extra = ZandvoortBankTangent * MathF.Max(
+            TrackSurfaces.SectionWeight(
+                context.DistanceMeters,
+                ZandvoortHugenholtzStart,
+                ZandvoortHugenholtzEnd,
+                35f,
+                context.LapLengthMeters
+            ),
+            TrackSurfaces.SectionWeight(
+                context.DistanceMeters,
+                ZandvoortLuyendijkStart,
+                ZandvoortLuyendijkEnd,
+                45f,
+                context.LapLengthMeters
+            )
+        );
+        if (extra <= 0f)
+            return section;
+
+        float lean = TrackSurfaces.CornerLean(
+            context.CentrelineCurvature,
+            ZandvoortBankReferenceCurvature
+        );
+        return section with { BankSlope = section.BankSlope + extra * lean };
+    }
+
+    private const float ZandvoortBankReferenceCurvature = 0.006f;
+
     // FIA Shanghai Grand Prix layout, including both snail complexes and the
     // 1.2 km back straight, scaled to the published 5.451 km length.
     public static TrackData ShanghaiStyleTestTrack()

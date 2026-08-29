@@ -144,6 +144,22 @@ public static class TrackElevation
     }
 
     /// <summary>
+    /// Zandvoort is built through coastal dunes and rides over them. The
+    /// lap climbs away from Tarzan into the Hunserug, crests before
+    /// Scheivlak and drops through it — the corner is famous for arriving
+    /// blind over the top — runs low along the back of the circuit, and
+    /// climbs again through the last sequence to the banked final corner.
+    /// Something over fifteen metres between the highest and lowest points,
+    /// which is a great deal for a circuit this short.
+    /// </summary>
+    public static readonly (float, float)[] ZandvoortHeights =
+    [
+        (0.00f, 4f), (0.10f, 2f), (0.22f, 11f), (0.32f, 16f),
+        (0.40f, 6f), (0.52f, 1f), (0.64f, 0f), (0.76f, 5f),
+        (0.86f, 12f), (0.94f, 9f)
+    ];
+
+    /// <summary>
     /// Monaco climbs harder than anywhere else on the calendar: out of
     /// Sainte Dévote up Beau Rivage to Casino, then down through Mirabeau
     /// and the hairpin to Portier and the tunnel at sea level, flat along
