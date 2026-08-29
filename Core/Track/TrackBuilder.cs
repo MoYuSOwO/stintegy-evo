@@ -8,7 +8,7 @@ namespace StintegyEVO.Core.Track;
 
 public class TrackBuilder
 {
-    private Func<float, TrackSurface>? _surfaceAtDistance;
+    private Func<TrackSurfaceContext, TrackSurface>? _surfaceAt;
 
     private static readonly IRefLineSolver DefaultRefLineSolver =
         new MinimumCurvatureRefLineSolver();
@@ -634,11 +634,46 @@ public class TrackBuilder
     /// pipeline untouched while still allowing a banking ramp, a hill, or
     /// an oval whose bank steepens toward the wall.
     /// </summary>
-    public TrackBuilder WithSurface(Func<float, TrackSurface> surfaceAtDistance)
+    /// <summary>
+    /// Supplies the road's out-of-plane shape, sampled once per node at
+    /// build time and told how sharply the road turns and how wide it is
+    /// there — which is what a construction model needs, since crossfall
+    /// scales with the width it must shed water across and a corner's
+    /// superelevation follows how tight it is. Taking a function rather
+    /// than per-segment arguments keeps the geometry pipeline untouched
+    /// while still allowing a banking ramp, a hill, or a speedway whose
+    /// bank steepens toward the wall.
+    /// </summary>
+    public TrackBuilder WithSurface(
+        Func<TrackSurfaceContext, TrackSurface> surfaceAt
+    )
     {
-        ArgumentNullException.ThrowIfNull(surfaceAtDistance);
-        _surfaceAtDistance = surfaceAtDistance;
+        ArgumentNullException.ThrowIfNull(surfaceAt);
+        _surfaceAt = surfaceAt;
         return this;
+    }
+
+    /// <summary>
+    /// How sharply the centreline turns here, taken from how the tangent
+    /// swings between its neighbours. The racing line's own curvature will
+    /// not do for this: a corner taken wide reads as almost straight, and a
+    /// road is built to the shape of the road.
+    /// </summary>
+    private static float CentrelineCurvature(
+        IReadOnlyList<RefLineTrackPoint> points,
+        int index
+    )
+    {
+        int count = points.Count;
+        if (count < 3)
+            return 0f;
+
+        Vector2 before = points[(index - 1 + count) % count].Tangent;
+        Vector2 after = points[(index + 1) % count].Tangent;
+        float turn = MathHelper.NormalizeAngle(
+            MathF.Atan2(after.Y, after.X) - MathF.Atan2(before.Y, before.X)
+        );
+        return turn / (2f * TrackData.StepLength);
     }
 
     public TrackBuilder AddStraight(float length, float? targetEndWidth = null, float? targetEndLeftBuffer = null, float? targetEndRightBuffer = null)
@@ -875,9 +910,13 @@ public class TrackBuilder
                     nodes[i].LeftBuffer,
                     nodes[i].RightBuffer,
                     refNodes[i],
-                    _surfaceAtDistance is null
+                    _surfaceAt is null
                         ? TrackSurface.Flat
-                        : _surfaceAtDistance(i * TrackData.StepLength)
+                        : _surfaceAt(new TrackSurfaceContext(
+                            i * TrackData.StepLength,
+                            CentrelineCurvature(refTrackPoints, i),
+                            refTrackPoints[i].Width * 0.5f
+                        ))
                 )
             );
         }
@@ -1012,6 +1051,45 @@ public static class TrackFactory
         );
     }
 
+    /// <summary>
+    /// A banked short track, which is where banking stops being a drainage
+    /// detail and becomes the corner. The turns run to about thirty-one
+    /// degrees at the wall against eighteen at the apron, so grip grows
+    /// with the load the corner itself presses down, and running high buys
+    /// bank at the price of distance. The ninety-metre turns are what make
+    /// that matter: a gentler speedway's corners are not the limit for
+    /// these cars, and banking a corner nobody was slowing for changes
+    /// nothing. No Grand Prix circuit in this file offers the trade; this
+    /// one exists so the physics that models it has somewhere to be true.
+    /// </summary>
+    public static TrackData BankedSpeedwayTestTrack()
+    {
+        TrackBuilder builder = new(
+            new Vector2(0f, 0f),
+            startWidth: 15f,
+            startLeftBuffer: 6f,
+            startRightBuffer: 6f
+        );
+        builder
+            .AddStraight(350f)
+            .AddTurn(180f, 90f)
+            .AddStraight(350f)
+            .AddTurn(180f, 90f)
+            .CloseLoop()
+            .WithSurface(TrackSurfaces.Speedway);
+        return builder.Build(
+            new TrackGridConfig
+            {
+                StartingLineIdx = 100,
+                GridCount = 20,
+                GridOffset = 5,
+                FirstGridIdx = 90,
+                IsFirstGridLeft = true,
+                GridStepDist = 9
+            }
+        );
+    }
+
     // FIA Arena Grand Prix layout: the source centerline and widths come from
     // the TUM FTM open racetrack database and are scaled to the FIA-published
     // 5.891 km centreline length.
@@ -1023,6 +1101,7 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
+        builder.WithSurface(TrackSurfaces.RoadCircuit);
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
@@ -1038,6 +1117,7 @@ public static class TrackFactory
             3f,
             3f
         );
+        builder.WithSurface(TrackSurfaces.RoadCircuit);
         return builder.Build(
             GrandPrixTestGrid(
                 gridOffsetMeters: 3.5f,
@@ -1058,6 +1138,7 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
+        builder.WithSurface(TrackSurfaces.RoadCircuit);
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );
@@ -1074,6 +1155,7 @@ public static class TrackFactory
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
+        builder.WithSurface(TrackSurfaces.RoadCircuit);
         return builder.Build(
             GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
         );

@@ -4,6 +4,17 @@ using StintegyEVO.Core.Track.RefLines;
 namespace StintegyEVO.Core.Track;
 
 /// <summary>
+/// What the builder knows about a point when it asks for the surface
+/// there: how far round the lap it is, how sharply the centreline turns,
+/// and how wide the road is at that point.
+/// </summary>
+public readonly record struct TrackSurfaceContext(
+    float DistanceMeters,
+    float CentrelineCurvature,
+    float HalfWidthMeters
+);
+
+/// <summary>
 /// The shape of the road out of plane at one point: how steeply it climbs
 /// along the way, and the section across it as
 /// <c>z(d) = z0 + Slope*d + Curvature*d^2</c>. The quadratic term is what

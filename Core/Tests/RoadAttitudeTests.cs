@@ -181,6 +181,123 @@ public sealed class RoadAttitudeTests
         );
     }
 
+    [Fact]
+    public void RoadCircuitsAreCrownedOnStraightsAndTiltIntoCorners()
+    {
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackSample straight = FlattestPoint(track);
+        TrackSample corner = track.Sample(SharpestPoint(track));
+
+        // A straight sheds water off both edges and leans neither way.
+        Assert.True(straight.BankCurvature < -1e-4f);
+        Assert.InRange(MathF.Abs(straight.BankSlope), 0f, 0.01f);
+
+        // A corner tilts into itself, and the tilt is the modest couple of
+        // degrees a road circuit actually has rather than a speedway's.
+        Assert.True(MathF.Abs(corner.BankSlope) > 0.02f);
+        Assert.InRange(MathF.Abs(corner.BankSlope), 0f, 0.05f);
+        Assert.Equal(
+            MathF.Sign(corner.RefCurvature),
+            MathF.Sign(corner.BankSlope)
+        );
+    }
+
+    [Fact]
+    public void EveryGrandPrixCircuitGetsTheSameConstructionModel()
+    {
+        foreach (TrackData track in new[]
+                 {
+                     TrackFactory.SilverstoneStyleTestTrack(),
+                     TrackFactory.MonacoStyleTestTrack(),
+                     TrackFactory.ShanghaiStyleTestTrack(),
+                     TrackFactory.SepangStyleTestTrack()
+                 })
+        {
+            TrackSample corner = track.Sample(SharpestPoint(track));
+            Assert.True(MathF.Abs(corner.BankSlope) > 0.01f);
+            Assert.InRange(MathF.Abs(corner.BankSlope), 0f, 0.05f);
+        }
+    }
+
+    [Fact]
+    public void TheSpeedwayIsBankedFarBeyondAnyRoadCircuit()
+    {
+        TrackData speedway = TrackFactory.BankedSpeedwayTestTrack();
+        TrackData road = TrackFactory.SilverstoneStyleTestTrack();
+        TrackSample turn = speedway.Sample(SharpestPoint(speedway));
+        TrackSample roadCorner = road.Sample(SharpestPoint(road));
+
+        // About thirty-one degrees at the wall against eighteen at the
+        // apron, an order beyond what a Grand Prix corner carries.
+        Assert.True(MathF.Abs(turn.BankSlope) > 8f * MathF.Abs(roadCorner.BankSlope));
+        float apron = turn.BankSlopeAt(-turn.HalfWidth + 1f);
+        float wall = turn.BankSlopeAt(turn.HalfWidth - 1f);
+        Assert.True(
+            MathF.Abs(wall) > MathF.Abs(apron) * 1.4f,
+            $"wall {wall:0.000} should be far steeper than apron {apron:0.000}"
+        );
+    }
+
+    [Fact]
+    public void TheSpeedwayIsQuickerThanTheSameShapeUnbanked()
+    {
+        float banked = LapDistance(TrackFactory.BankedSpeedwayTestTrack());
+        float flat = LapDistance(BuildFlatSpeedway());
+        // Measured at about four percent. Less than the corner speed alone
+        // would suggest, because the planner claims the demand the bank
+        // lifts off the tyres more readily than the load it presses on, and
+        // because a short track spends much of its lap accelerating out
+        // rather than cornering. The pin is set below that so it fails on a
+        // sign or a wiring mistake rather than on tuning.
+        Assert.True(
+            banked > flat * 1.03f,
+            $"banked speedway {banked:0} m should beat the flat one {flat:0} m"
+        );
+    }
+
+    private static float LapDistance(TrackData track)
+    {
+        RaceCar car = CreateCar(track, s: 10f, speed: 60f);
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(car);
+        for (int i = 0; i < 60 * 40; i++)
+            simulation.Step(1f / 60f);
+        return car.Progress.TotalDistance;
+    }
+
+    private static TrackData BuildFlatSpeedway()
+    {
+        return new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 15f,
+                startLeftBuffer: 6f,
+                startRightBuffer: 6f
+            )
+            .AddStraight(350f)
+            .AddTurn(180f, 90f)
+            .AddStraight(350f)
+            .AddTurn(180f, 90f)
+            .CloseLoop()
+            .Build(new TrackGridConfig());
+    }
+
+    private static TrackSample FlattestPoint(TrackData track)
+    {
+        TrackSample best = track.Sample(0f);
+        float bestCurvature = float.MaxValue;
+        for (float s = 0f; s < track.LengthMeters; s += 5f)
+        {
+            TrackSample sample = track.Sample(s);
+            float curvature = MathF.Abs(sample.RefCurvature);
+            if (curvature < bestCurvature)
+            {
+                bestCurvature = curvature;
+                best = sample;
+            }
+        }
+        return best;
+    }
+
     private static float SharpestPoint(TrackData track)
     {
         float bestS = 0f;
@@ -261,7 +378,7 @@ public sealed class RoadAttitudeTests
                 startWidth: 16f,
                 refLineSolver: CenterLineRefLineSolver.Instance
             )
-            .WithSurface(_ => bank)
+            .WithSurface(context => bank)
             .AddStraight(400f)
             .AddTurn(180f, 50f)
             .AddStraight(400f)
@@ -277,7 +394,7 @@ public sealed class RoadAttitudeTests
                 startWidth: 16f,
                 refLineSolver: CenterLineRefLineSolver.Instance
             )
-            .WithSurface(_ => new TrackSurface(
+            .WithSurface(context => new TrackSurface(
                 BankSlope: 0.45f,
                 BankCurvature: 0.012f
             ))
