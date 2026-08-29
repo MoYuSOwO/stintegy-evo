@@ -70,7 +70,16 @@ public sealed class DirectDriveDuelEnvironment
     /// </summary>
     private const float TyreSlipPenaltyPerSecond = 2f;
 
-    private const float TimePenaltyPerSecond = 0.01f;
+    /// <summary>
+    /// Nothing. Sony's reward has no clock in it at all, and the ablation
+    /// that replaced progress with a fixed step cost was the worst result on
+    /// the board — well outside the range the other settings moved within.
+    /// A reward paid per metre already prices a second, because the way to
+    /// earn more of it in the same second is to cover more ground; charging
+    /// for the second as well only subtracts a constant from every policy
+    /// and moves nothing.
+    /// </summary>
+    private const float TimePenaltyPerSecond = 0f;
 
     /// <summary>
     /// Price per unit of friction-circle usage taken beyond what the pit

@@ -91,6 +91,7 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
 
         // Not advice, just the actuator range the policy's [-1, 1] is
         // stretched onto: what this car can pull and push right now.
+        float gripAllowance = config.GetAccelerationUsage(car.Strategy);
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             state,
             car.CarConfig,
@@ -98,7 +99,7 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
             car.Strategy,
             state.Speed,
             state.Telemetry.ActualCurvature,
-            config.GetAccelerationUsage(car.Strategy)
+            gripAllowance
         );
         float driveLimit = MathF.Max(
             1f,
@@ -110,8 +111,22 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
             car.CarConfig.MaxCurvatureRequest
         );
 
+        // The brake and steering halves of the action are stretched onto
+        // fixed car constants, but the drive half is stretched onto a
+        // ceiling that moves with grip, battery and speed. Without this the
+        // same +0.5 buys four metres a second squared one tick and two and a
+        // half the next, and nothing in the observation says which.
+        // Reported as a fraction of the car's own peak so that it stays the
+        // same number on a different car.
+        float driveCeilingFraction = Math.Clamp(
+            driveLimit / MathF.Max(car.CarConfig.MaxDriveAcceleration, 1e-3f),
+            0f,
+            1f
+        );
+
         _observationBuilder.Build(
             in context,
+            new DirectDriveCarLimits(driveCeilingFraction, gripAllowance),
             _lastCurvatureNorm,
             _lastAccelerationNorm,
             _observation

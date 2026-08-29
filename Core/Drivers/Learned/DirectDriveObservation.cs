@@ -12,37 +12,128 @@ namespace StintegyEVO.Core.Drivers.Learned;
 /// the same physical situation on any circuit must produce the same vector.
 /// Forbidden by construction: absolute s, global coordinates, track length,
 /// lap counts, and the racing line's geometry — the road itself is given,
-/// the line is the policy's own problem. The analytic planner appears only
-/// as the coach block: a suggestion the policy may copy or ignore.
+/// the line is the policy's own problem.
+///
+/// Two rules the blocks below are built to keep. The road is given as
+/// geometry rather than as extracted quantities, because a curvature scalar
+/// is a lossy compression that silently drops everything the compressor was
+/// not thinking about — which is how gradient, banking, and run-off came to
+/// be missing from a car expected to race on gradient, banking, and run-off.
+/// And every quantity that belongs to the car rather than the road is
+/// dimensionless, a fraction of that car's own envelope, so that a policy
+/// is not silently learning one particular car's newtons.
 /// </summary>
 public static class DirectDriveObservation
 {
     /// <summary>
-    /// Log-spaced preview arc lengths in meters: dense where the next
-    /// second lives, sparse toward the planning horizon.
+    /// How far ahead the road is drawn, in seconds of travel rather than
+    /// metres. A fixed metre array cannot serve both ends of the speed
+    /// range: at twenty metres a second its far points are half a minute
+    /// away and mean nothing, and at sixty they arrive later than the
+    /// braking distance they were supposed to warn about. Scaling by speed
+    /// keeps each slot's meaning fixed — slot twelve is always three
+    /// seconds off, whatever the car is doing — which is also what stops
+    /// the input distribution from sliding as the policy gets faster.
     /// </summary>
-    public static readonly float[] PreviewDistancesMeters =
-    [
-        2f, 5f, 9f, 14f, 21f, 30f, 42f, 58f, 80f, 110f,
-        150f, 200f, 260f, 330f, 410f, 500f, 600f
-    ];
+    public const float PreviewHorizonSeconds = 6f;
 
-    public const int GeometryPointCount = 17;
-    public const int GeometryFloatsPerPoint = 4;
-    public const int EgoSize = 12;
-    public const int TireAndBatterySize = 13;
-    public const int ModeSize = 3;
+    /// <summary>
+    /// Floor on that horizon, so a car crawling out of a spin still sees
+    /// far enough to aim at something.
+    /// </summary>
+    public const float MinimumPreviewMeters = 60f;
+
+    public const int GeometryPointCount = 18;
+
+    /// <summary>
+    /// Three points across the road — left edge, centre, right edge — each
+    /// with a height, plus the run-off beyond each edge.
+    ///
+    /// Three points is not a sample of the cross section, it is the whole
+    /// of it: the section is <c>z(d) = z0 + BankSlope*d + BankCurvature*d^2</c>,
+    /// three coefficients, and three heights at known offsets determine
+    /// them exactly. Nothing is lost by giving points instead of the
+    /// coefficients, and what is gained is that gradient, banking, camber
+    /// and width all arrive through the one channel the network is already
+    /// learning to read.
+    /// </summary>
+    public const int GeometryFloatsPerPoint = 11;
+
+    /// <summary>
+    /// Four tyres of surface temperature, core temperature, wear and load,
+    /// then the battery's charge. The load is here because Sony's feature
+    /// list has it — "load on each tyre" — and because without it the
+    /// friction circle a corner is spending is not something the policy can
+    /// work out: grip is load times a coefficient, and it was being shown
+    /// neither.
+    /// </summary>
+    public const int TireAndBatterySize = 17;
+
+    /// <summary>
+    /// Only the overtake assist. The tyre and battery mode ordinals used to
+    /// live here; both are gone. The battery mode is enforced by the
+    /// hardware and already folded into the actuator range the policy's
+    /// output is stretched onto, so it cannot be disobeyed and need not be
+    /// seen. The tyre mode was a five-value index into the one number it
+    /// stands for, and that number is now given directly in
+    /// <see cref="RoadAndLimitsSize"/>.
+    /// </summary>
+    public const int ModeSize = 1;
+
     public const int AeroSize = 3;
+
+    /// <summary>
+    /// What the road is doing under this car and what the car can do about
+    /// it — thirteen numbers that were all being asked for and none of which
+    /// were being supplied.
+    ///
+    /// Four boundaries: how much room is left to each wall, and how much of
+    /// that room is run-off rather than track. A policy that cannot tell
+    /// twenty metres of tarmac from a barrier at the white line has no way
+    /// to know where running wide is cheap, and ends up pacing itself by
+    /// track width, which is what ours was doing.
+    ///
+    /// Three road: gradient, the cross slope actually under the car at its
+    /// own lateral offset, and the vertical bend. These are exactly the
+    /// three the physics takes, and the third cannot be recovered from the
+    /// preview at all, because the crest that unloads the car is between
+    /// the car and the first preview station.
+    ///
+    /// Five limits and strategy: the drive ceiling as a fraction of this
+    /// car's peak, the grip allowance the pit wall set, and the friction
+    /// circle each axle is actually using. The mode-excess penalty is
+    /// <c>max(frontUse, rearUse) - allowance</c>; both of its operands were
+    /// invisible, which is no way to be marked.
+    ///
+    /// Two indicators: whether the car is against a barrier right now,
+    /// since it is charged for the seconds it spends there, and whether
+    /// it is off the racing surface, since that is charged too. Both are
+    /// on Sony's list. The second is derivable from the edge distances
+    /// going negative, but a threshold the network has to discover is a
+    /// threshold it can discover late.
+    /// </summary>
+    public const int RoadAndLimitsSize = 13;
+
+    public const int EgoSize = 12;
     public const int OpponentCount = 6;
     public const int OpponentSize = 16;
 
     public const int GeometryOffset = 0;
-    public const int EgoOffset =
+    public const int TireAndBatteryOffset =
         GeometryOffset + GeometryPointCount * GeometryFloatsPerPoint;
-    public const int TireAndBatteryOffset = EgoOffset + EgoSize;
     public const int ModeOffset = TireAndBatteryOffset + TireAndBatterySize;
     public const int AeroOffset = ModeOffset + ModeSize;
-    public const int OpponentOffset = AeroOffset + AeroSize;
+    public const int RoadAndLimitsOffset = AeroOffset + AeroSize;
+
+    /// <summary>
+    /// Ego and opponents sit last and adjacent, because they are the two
+    /// blocks the previous frame is kept for and the copy is one contiguous
+    /// slice. When they were separated by the tyre, mode and aero blocks
+    /// that slice ran off the end of the opponents and the last car and a
+    /// bit was silently missing from every previous frame.
+    /// </summary>
+    public const int EgoOffset = RoadAndLimitsOffset + RoadAndLimitsSize;
+    public const int OpponentOffset = EgoOffset + EgoSize;
     public const int DynamicBlockOffset = EgoOffset;
     public const int DynamicBlockSize =
         EgoSize + OpponentCount * OpponentSize;
@@ -53,20 +144,47 @@ public static class DirectDriveObservation
 
     public const int ActionSize = 2;
 
-    internal const float DistanceScale = 600f;
+    internal const float DistanceScale = 400f;
     internal const float LateralScale = 30f;
     internal const float HalfWidthScale = 12f;
-    internal const float CurvatureScale = 20f;
+
+    /// <summary>
+    /// Climb along the preview, which over six seconds at racing speed is
+    /// tens of metres on a circuit with any relief at all.
+    /// </summary>
+    internal const float HeightScale = 20f;
+
+    /// <summary>
+    /// How much higher an edge sits than the centre — at most the half
+    /// width times the bank, so a couple of metres even at Daytona. Kept on
+    /// its own scale rather than sharing the climb's, because the banking
+    /// is otherwise the small difference between two large numbers and a
+    /// network reading it that way is reading noise.
+    /// </summary>
+    internal const float CrossHeightScale = 3f;
+
+    internal const float BufferScale = 20f;
     internal const float SpeedScale = 100f;
     internal const float AccelerationScale = 20f;
     internal const float YawRateScale = 2f;
     internal const float SideslipScale = 0.5f;
+    internal const float SlopeScale = 0.4f;
+    internal const float VerticalRateScale = 0.02f;
     internal const float TemperatureScale = 150f;
     internal const float RelativeLongitudinalScale = 100f;
     internal const float RelativeLateralScale = 20f;
     internal const float RelativeSpeedScale = 50f;
     internal const float AlongsideBodyMeters = 4.8f;
 }
+
+/// <summary>
+/// What the driver has worked out about its own car this tick and the
+/// observation cannot work out for itself.
+/// </summary>
+internal readonly record struct DirectDriveCarLimits(
+    float DriveCeilingFraction,
+    float GripAllowance
+);
 
 /// <summary>
 /// Builds direct-drive observations and keeps the one-tick memory that
@@ -85,6 +203,7 @@ public sealed class DirectDriveObservationBuilder
 
     internal void Build(
         in RaceDriverFrameContext context,
+        in DirectDriveCarLimits limits,
         float lastCurvatureNorm,
         float lastAccelerationNorm,
         Span<float> observation
@@ -109,7 +228,19 @@ public sealed class DirectDriveObservationBuilder
         );
         Vector2 left = new(-forward.Y, forward.X);
 
-        WriteGeometry(observation, track, pose, state.Position, forward, left);
+        WriteGeometry(
+            observation,
+            track,
+            pose,
+            state.Position,
+            state.Speed,
+            forward,
+            left
+        );
+        WriteTiresAndBattery(observation, car.CarConfig, state);
+        WriteModes(observation, state);
+        WriteAero(observation, state);
+        WriteRoadAndLimits(observation, car, state, pose, in limits);
         WriteEgo(
             observation,
             state,
@@ -117,9 +248,6 @@ public sealed class DirectDriveObservationBuilder
             lastCurvatureNorm,
             lastAccelerationNorm
         );
-        WriteTiresAndBattery(observation, state);
-        WriteModes(observation, car, state);
-        WriteAero(observation, state);
         WriteOpponents(
             observation,
             in context,
@@ -144,31 +272,154 @@ public sealed class DirectDriveObservationBuilder
         _hasPrevious = true;
     }
 
+    /// <summary>
+    /// How far ahead this car is shown the road, given how fast it is
+    /// going.
+    /// </summary>
+    public static float PreviewHorizonMeters(float speed) => MathF.Max(
+        DirectDriveObservation.MinimumPreviewMeters,
+        speed * DirectDriveObservation.PreviewHorizonSeconds
+    );
+
     private static void WriteGeometry(
         Span<float> observation,
         TrackData track,
         TrackPose pose,
         Vector2 egoPosition,
+        float speed,
         Vector2 forward,
         Vector2 left
     )
     {
+        float horizon = PreviewHorizonMeters(speed);
+        float spacing = horizon / DirectDriveObservation.GeometryPointCount;
+
+        // Height is not carried by a track sample, only the slope is, so the
+        // preview climbs by integrating it. The stations are evenly spaced,
+        // so a trapezoid between consecutive slopes is exact for a road whose
+        // gradient is piecewise linear, which is what the interpolant makes.
+        float height = 0f;
+        float previousGrade = pose.Sample.Grade;
+
         int cursor = DirectDriveObservation.GeometryOffset;
         for (int i = 0; i < DirectDriveObservation.GeometryPointCount; i++)
         {
-            float distance = DirectDriveObservation.PreviewDistancesMeters[i];
+            float distance = spacing * (i + 1);
             TrackSample sample = track.Sample(pose.S + distance);
-            Vector2 delta = sample.Center - egoPosition;
-            observation[cursor++] = Vector2.Dot(delta, forward) /
-                                    DirectDriveObservation.DistanceScale;
-            observation[cursor++] = Vector2.Dot(delta, left) /
-                                    DirectDriveObservation.LateralScale;
-            observation[cursor++] = sample.HalfWidth /
-                                    DirectDriveObservation.HalfWidthScale;
-            observation[cursor++] = sample.RefCurvature *
-                                    DirectDriveObservation.CurvatureScale;
+            height += 0.5f * (previousGrade + sample.Grade) * spacing;
+            previousGrade = sample.Grade;
+
+            float halfWidth = sample.HalfWidth;
+            // z(d) = z0 + BankSlope*d + BankCurvature*d^2, with the left edge
+            // at d = +halfWidth because the normal points left.
+            float camber = sample.BankCurvature * halfWidth * halfWidth;
+            float lean = sample.BankSlope * halfWidth;
+
+            WritePoint(
+                observation,
+                ref cursor,
+                sample.LeftEdge - egoPosition,
+                (lean + camber) / DirectDriveObservation.CrossHeightScale,
+                forward,
+                left
+            );
+            WritePoint(
+                observation,
+                ref cursor,
+                sample.Center - egoPosition,
+                height / DirectDriveObservation.HeightScale,
+                forward,
+                left
+            );
+            WritePoint(
+                observation,
+                ref cursor,
+                sample.RightEdge - egoPosition,
+                (camber - lean) / DirectDriveObservation.CrossHeightScale,
+                forward,
+                left
+            );
+
+            observation[cursor++] = sample.LeftBufferWidth /
+                                    DirectDriveObservation.BufferScale;
+            observation[cursor++] = sample.RightBufferWidth /
+                                    DirectDriveObservation.BufferScale;
         }
     }
+
+    /// <summary>
+    /// One preview point in the ego frame. The two edges carry their height
+    /// relative to the centre and the centre carries the climb, which is
+    /// the same three numbers as three absolute heights and is the pair of
+    /// scales on which both stay readable.
+    /// </summary>
+    private static void WritePoint(
+        Span<float> observation,
+        ref int cursor,
+        Vector2 delta,
+        float scaledHeight,
+        Vector2 forward,
+        Vector2 left
+    )
+    {
+        observation[cursor++] = Vector2.Dot(delta, forward) /
+                                DirectDriveObservation.DistanceScale;
+        observation[cursor++] = Vector2.Dot(delta, left) /
+                                DirectDriveObservation.LateralScale;
+        observation[cursor++] = scaledHeight;
+    }
+
+    private static void WriteRoadAndLimits(
+        Span<float> observation,
+        RaceCar car,
+        CarState state,
+        TrackPose pose,
+        in DirectDriveCarLimits limits
+    )
+    {
+        TrackSample sample = pose.Sample;
+        float halfWidth = sample.HalfWidth;
+        CarTelemetry telemetry = state.Telemetry;
+        int cursor = DirectDriveObservation.RoadAndLimitsOffset;
+
+        observation[cursor++] = (halfWidth - pose.D + sample.LeftBufferWidth) /
+                                DirectDriveObservation.BufferScale;
+        observation[cursor++] = (halfWidth + pose.D + sample.RightBufferWidth) /
+                                DirectDriveObservation.BufferScale;
+        observation[cursor++] = sample.LeftBufferWidth /
+                                DirectDriveObservation.BufferScale;
+        observation[cursor++] = sample.RightBufferWidth /
+                                DirectDriveObservation.BufferScale;
+
+        observation[cursor++] = sample.Grade /
+                                DirectDriveObservation.SlopeScale;
+        observation[cursor++] = sample.BankSlopeAt(pose.D) /
+                                DirectDriveObservation.SlopeScale;
+        observation[cursor++] = sample.VerticalRate /
+                                DirectDriveObservation.VerticalRateScale;
+
+        observation[cursor++] = limits.DriveCeilingFraction;
+        observation[cursor++] = limits.GripAllowance;
+        observation[cursor++] = CombinedUse(
+            telemetry.FrontLateralUse,
+            telemetry.FrontLongitudinalUse
+        );
+        observation[cursor++] = CombinedUse(
+            telemetry.RearLateralUse,
+            telemetry.RearLongitudinalUse
+        );
+        observation[cursor++] = car.BoundaryContactSeconds > 0f ? 1f : 0f;
+        observation[cursor] =
+            TrackBoundaryResolver.Classify(pose) == TrackRegion.RacingSurface
+                ? 0f
+                : 1f;
+    }
+
+    private static float CombinedUse(float lateral, float longitudinal) =>
+        MathF.Min(
+            1f,
+            MathF.Sqrt(lateral * lateral + longitudinal * longitudinal)
+        );
 
     private static void WriteEgo(
         Span<float> observation,
@@ -211,21 +462,29 @@ public sealed class DirectDriveObservationBuilder
 
     private static void WriteTiresAndBattery(
         Span<float> observation,
+        CarConfig config,
         CarState state
     )
     {
+        // A quarter of the car's own weight, so the number reads as one at
+        // rest on any car rather than as this car's newtons.
+        float staticCornerLoad = MathF.Max(
+            config.MassKg * 9.81f * 0.25f,
+            1f
+        );
         int cursor = DirectDriveObservation.TireAndBatteryOffset;
-        WriteTire(observation, ref cursor, state.FrontLeft);
-        WriteTire(observation, ref cursor, state.FrontRight);
-        WriteTire(observation, ref cursor, state.RearLeft);
-        WriteTire(observation, ref cursor, state.RearRight);
+        WriteTire(observation, ref cursor, state.FrontLeft, staticCornerLoad);
+        WriteTire(observation, ref cursor, state.FrontRight, staticCornerLoad);
+        WriteTire(observation, ref cursor, state.RearLeft, staticCornerLoad);
+        WriteTire(observation, ref cursor, state.RearRight, staticCornerLoad);
         observation[cursor] = state.BatterySoc;
     }
 
     private static void WriteTire(
         Span<float> observation,
         ref int cursor,
-        in TireState tire
+        in TireState tire,
+        float staticCornerLoad
     )
     {
         observation[cursor++] = tire.SurfaceTempC /
@@ -233,18 +492,12 @@ public sealed class DirectDriveObservationBuilder
         observation[cursor++] = tire.CoreTempC /
                                 DirectDriveObservation.TemperatureScale;
         observation[cursor++] = tire.Wear;
+        observation[cursor++] = tire.LoadN / staticCornerLoad;
     }
 
-    private static void WriteModes(
-        Span<float> observation,
-        RaceCar car,
-        CarState state
-    )
+    private static void WriteModes(Span<float> observation, CarState state)
     {
-        int cursor = DirectDriveObservation.ModeOffset;
-        observation[cursor++] = ((int)car.Strategy.TireMode - 1) / 4f;
-        observation[cursor++] = ((int)car.Strategy.BatteryMode - 1) / 4f;
-        observation[cursor] = state.OvertakeAssist;
+        observation[DirectDriveObservation.ModeOffset] = state.OvertakeAssist;
     }
 
     private static void WriteAero(Span<float> observation, CarState state)
