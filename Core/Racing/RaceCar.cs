@@ -37,6 +37,21 @@ public sealed class RaceCar
     public CarCollisionConfig Collision { get; }
     public DriverInput LastInput { get; internal set; }
     public TrackBoundaryContact? LastBoundaryContact { get; internal set; }
+
+    /// <summary>
+    /// How long this car spent against a barrier during the last call to
+    /// <see cref="RaceSimulation.Step"/>, in seconds.
+    ///
+    /// Whether a car touched something is a different question from how long
+    /// it leant on it, and a caller stepping the simulation a tenth of a
+    /// second at a time can only see the first. Scoring a race on that alone
+    /// prices a glance off the wall the same as scraping it the whole way,
+    /// which leaves a car that has already touched with no reason to get off
+    /// until the step ends.
+    /// </summary>
+    public float BoundaryContactSeconds { get; internal set; }
+
+    internal bool TouchedBoundaryThisSubstep { get; set; }
     public bool HitCarThisStep { get; internal set; }
 
     public void InstallFreshTires(TireConfig tireConfig)

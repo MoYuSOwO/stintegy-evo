@@ -65,6 +65,7 @@ public sealed class RaceSimulation
         foreach (RaceCar car in _cars)
         {
             car.LastBoundaryContact = null;
+            car.BoundaryContactSeconds = 0f;
             car.HitCarThisStep = false;
         }
 
@@ -393,14 +394,20 @@ public sealed class RaceSimulation
         {
             RaceCar car = _cars[i];
             car.State.CopyFrom(_predictedStates[i]);
+            car.TouchedBoundaryThisSubstep = false;
             if (_sweepContacts[i].HasValue)
+            {
                 car.LastBoundaryContact = _sweepContacts[i];
+                car.TouchedBoundaryThisSubstep = true;
+            }
         }
 
         ResolveContactsAndWalls();
 
         foreach (RaceCar car in _cars)
         {
+            if (car.TouchedBoundaryThisSubstep)
+                car.BoundaryContactSeconds += dt;
             TrackPose finalPose = Track.Project(car.State.Position);
             TrackRegion region = TrackBoundaryResolver.Classify(finalPose);
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
@@ -587,6 +594,7 @@ public sealed class RaceSimulation
             if (contact.HasValue)
             {
                 car.LastBoundaryContact = contact;
+                car.TouchedBoundaryThisSubstep = true;
                 resolvedAny = true;
             }
         }

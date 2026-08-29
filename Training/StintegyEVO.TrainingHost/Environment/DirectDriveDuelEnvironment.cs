@@ -52,6 +52,11 @@ public sealed class DirectDriveDuelEnvironment
     /// and scraping a barrier are both things you are doing, priced for as
     /// long as you do them, not events that end the race. Their reward
     /// function ends an episode for nothing but running out of time.
+    ///
+    /// The barrier is charged by the seconds actually spent against it,
+    /// which the simulation accumulates across its own substeps; leaving the
+    /// track is charged for the whole step, because where the car is at the
+    /// end of one is all the region test can say.
     /// </summary>
     private const float OffCoursePenaltyPerSpeedSquaredSecond = 1e-3f;
     private const float WallPenaltyPerSpeedSquaredSecond = 5e-3f;
@@ -317,7 +322,7 @@ public sealed class DirectDriveDuelEnvironment
         _terminal = terminalReason != TrainingTerminalReason.None;
 
         bool offCourse = _ego.Progress.Region != TrackRegion.RacingSurface;
-        bool againstTheWall = _ego.LastBoundaryContact.HasValue;
+        float wallSeconds = _ego.BoundaryContactSeconds;
         float speedSquared = _ego.State.Speed * _ego.State.Speed;
         float sliding =
             MathF.Min(MathF.Abs(_ego.State.Telemetry.OverLimit), 1f) *
@@ -339,10 +344,12 @@ public sealed class DirectDriveDuelEnvironment
             ContactPenalty: contact
                 ? (egoAtFault ? -20f : -2f)
                 : 0f,
-            WallPenalty: againstTheWall
-                ? -WallPenaltyPerSpeedSquaredSecond * speedSquared *
-                  AgentStepSeconds
-                : 0f,
+            // Priced by how long the car leant on it, not by whether it
+            // touched at all. Charging a whole step for a glance leaves a
+            // car that has already brushed with no reason to come off the
+            // barrier before the step is out.
+            WallPenalty:
+                -WallPenaltyPerSpeedSquaredSecond * speedSquared * wallSeconds,
             OffCoursePenalty: offCourse
                 ? -OffCoursePenaltyPerSpeedSquaredSecond * speedSquared *
                   AgentStepSeconds
