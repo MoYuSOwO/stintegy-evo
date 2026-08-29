@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -174,10 +175,11 @@ public sealed class VehicleSpeedPlanner
                         planningStep * 0.5f
                     ),
                     surface,
-                    lateralAccelerationLimit
+                    lateralAccelerationLimit,
+                    surface.RefOffset
                 );
                 curvatures[i] = curvature;
-                alongTrackGravity[i] = RoadAt(in surface)
+                alongTrackGravity[i] = RoadAt(in surface, surface.RefOffset)
                     .AlongTrackGravity(GravityMetersPerSecondSquared);
                 speedLimits[i] = LateralSpeedLimit(
                     curvature,
@@ -257,10 +259,17 @@ public sealed class VehicleSpeedPlanner
         );
     }
 
+    /// <summary>
+    /// Plans a path with nobody else on it. The track is optional only
+    /// because a caller may not have one; hand it over whenever there is
+    /// one, or the plan will be built for a road that is level and flat
+    /// wherever the real one climbs or leans.
+    /// </summary>
     public DynamicPathSpeedPlan PlanPredictedPath(
         VehicleSpeedLookahead destination,
         RaceCar car,
-        VehiclePathPrediction path
+        VehiclePathPrediction path,
+        TrackData? track = null
     )
     {
         TrafficConstraintMemory noTrafficMemory = default;
@@ -270,7 +279,7 @@ public sealed class VehicleSpeedPlanner
             destination,
             capturePreparedFreePlan: false,
             usePreparedFreePlan: false,
-            track: null,
+            track,
             frame: default,
             egoSnapshotIndex: -1,
             in noTrafficMemory,
@@ -415,12 +424,21 @@ public sealed class VehicleSpeedPlanner
                     if (track is not null)
                     {
                         TrackSample surface = track.Sample(point.ReferenceS);
+                        // Where this path runs across the road, not where the
+                        // reference line runs. On a progressively banked corner
+                        // those are two different surfaces, and the plan has to
+                        // price the one that will be under the wheels.
+                        float pathOffset = Vector2.Dot(
+                            point.Position - surface.Center,
+                            surface.Normal
+                        );
                         planningCurvature = BankedEquivalentCurvature(
                             planningCurvature,
                             surface,
-                            lateralAccelerationLimit
+                            lateralAccelerationLimit,
+                            pathOffset
                         );
-                        alongTrackGravity[i] = RoadAt(in surface)
+                        alongTrackGravity[i] = RoadAt(in surface, pathOffset)
                             .AlongTrackGravity(GravityMetersPerSecondSquared);
                     }
                     if (i == 0)
@@ -550,7 +568,8 @@ public sealed class VehicleSpeedPlanner
                     curvatures[1],
                     speeds[0],
                     segmentLengths[0],
-                    lateralAccelerationLimit
+                    lateralAccelerationLimit,
+                    SegmentGravity(alongTrackGravity, 0)
                 );
 
             float referenceAcceleration = segmentLengths[0] <=
@@ -569,11 +588,15 @@ public sealed class VehicleSpeedPlanner
                 // The kinematic quotient is the mean acceleration across the
                 // segment. Feed the controller the instantaneous acceleration at
                 // its start; the substep propagation above still determines v[1].
-                referenceAcceleration = MaximumNetDriveAcceleration(
-                    car,
-                    speeds[0],
-                    curvatures[0]
-                );
+                // The road is part of that instant: the profile was settled
+                // with the gradient in it, so dropping it here would hand the
+                // controller a flat-road number on a hill.
+                referenceAcceleration =
+                    MaximumNetDriveAcceleration(
+                        car,
+                        speeds[0],
+                        curvatures[0]
+                    ) + SegmentGravity(alongTrackGravity, 0);
             }
             float stepLength = path.LengthMeters / Math.Max(count - 1, 1);
             FillLookahead(
@@ -637,7 +660,13 @@ public sealed class VehicleSpeedPlanner
     /// banked corner finds more grip than this planned for, which is the
     /// right way round: the plan stays honest and the extra is upside.
     /// </summary>
-    private static RoadAttitude RoadAt(in TrackSample sample)
+    /// <summary>
+    /// The road as it lies at one place across its width. A cross-section
+    /// that curves — a crown, a bowl, a progressively banked corner — leans
+    /// by a different amount at every offset, so the caller has to say where
+    /// on the road the car will be.
+    /// </summary>
+    private static RoadAttitude RoadAt(in TrackSample sample, float offsetMeters)
     {
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
@@ -647,14 +676,15 @@ public sealed class VehicleSpeedPlanner
         }
         return new RoadAttitude(
             sample.Grade,
-            sample.BankSlopeAt(sample.RefOffset)
+            sample.BankSlopeAt(offsetMeters)
         );
     }
 
     private float BankedEquivalentCurvature(
         float curvature,
         in TrackSample sample,
-        float lateralAccelerationLimit
+        float lateralAccelerationLimit,
+        float offsetMeters
     )
     {
         if (sample.BankSlope == 0f && sample.BankCurvature == 0f)
@@ -664,7 +694,7 @@ public sealed class VehicleSpeedPlanner
         if (absoluteCurvature <= Config.CurvatureEpsilon)
             return curvature;
 
-        RoadAttitude road = RoadAt(in sample);
+        RoadAttitude road = RoadAt(in sample, offsetMeters);
         float cosine = road.NormalCosine;
         float assist = curvature >= 0f
             ? road.BankTangent * cosine

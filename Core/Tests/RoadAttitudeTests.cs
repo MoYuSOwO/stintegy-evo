@@ -582,6 +582,127 @@ public sealed class RoadAttitudeTests
         return state.Speed;
     }
 
+    [Fact]
+    public void ThePlanReadsTheBankWhereTheCarWillActuallyBe()
+    {
+        // A progressively banked corner is not one surface but a range of
+        // them, and the reference line is only one place across it. A plan
+        // that always reads the bank at the reference line prices a corner
+        // the car is not driving: run high on Daytona's banking and the plan
+        // has to see the steeper road, or the whole point of the high line
+        // is invisible to it.
+        TrackData track = BuildBankedOval();
+        float turnS = SharpestPoint(track);
+
+        float high = PlannedSpeedOnLine(track, turnS, offsetMeters: 5f);
+        float low = PlannedSpeedOnLine(track, turnS, offsetMeters: -5f);
+
+        Assert.True(
+            high > low * 1.02f,
+            $"the steeper high line ({high:0.0} m/s) should plan faster " +
+            $"than the shallow apron ({low:0.0} m/s)"
+        );
+    }
+
+    /// <summary>
+    /// Plans a path that holds one fixed offset from the centreline through
+    /// a corner. Both lines are given the same commanded curvature on
+    /// purpose, so the only thing that can separate them is the road each
+    /// one is standing on.
+    /// </summary>
+    private static float PlannedSpeedOnLine(
+        TrackData track,
+        float turnS,
+        float offsetMeters
+    )
+    {
+        const int points = 21;
+        const float step = 2f;
+        float startS = turnS - points * step * 0.5f;
+        RaceCar car = CreateCar(track, startS, speed: 85f);
+
+        VehiclePathPrediction path = new();
+        path.Reset(points);
+        for (int i = 0; i < points; i++)
+        {
+            float s = startS + i * step;
+            TrackSample sample = track.Sample(s);
+            path.Add(new VehiclePathPredictionPoint(
+                i * step,
+                sample.Center + sample.Normal * offsetMeters,
+                MathF.Atan2(sample.Tangent.Y, sample.Tangent.X),
+                s,
+                0f,
+                sample.RefCurvature,
+                sample.RefCurvature,
+                0f,
+                sample.RefCurvature,
+                85f
+            ));
+        }
+
+        VehicleSpeedPlanner planner = new();
+        return planner
+            .PlanPredictedPath(new VehicleSpeedLookahead(), car, path, track)
+            .Current.TargetSpeed;
+    }
+
+    [Fact]
+    public void TheControllerPaysForTheGradientItIsDrivingOn()
+    {
+        // The plan knowing about the hill is only half of it. The controller
+        // asks the axle for a number and the road adds its pull afterwards,
+        // so unless the gradient is answered on the way out, the only thing
+        // left to answer it is the proportional speed term — and a
+        // proportional term meets a standing pull with a standing error, so
+        // the car climbs slower than the plan it is obeying. Measured over
+        // twenty seconds of an eight percent oval, paying for it is worth
+        // 1.8% of the distance covered.
+        float expected = GravityMetersPerSecondSquared * 0.08f /
+                         MathF.Sqrt(1f + 0.08f * 0.08f);
+
+        // On a level road the term has to vanish outright: anything else
+        // would move every result on every flat circuit.
+        Assert.InRange(GradeCompensation(TrackSurface.Flat), -1e-4f, 1e-4f);
+        Assert.InRange(
+            GradeCompensation(new TrackSurface(Grade: 0.08f)),
+            expected * 0.98f,
+            expected * 1.02f
+        );
+        Assert.InRange(
+            GradeCompensation(new TrackSurface(Grade: -0.08f)),
+            -expected * 1.02f,
+            -expected * 0.98f
+        );
+    }
+
+    private const float GravityMetersPerSecondSquared = 9.80665f;
+
+    /// <summary>
+    /// What the driver adds to the axle request to answer the road, averaged
+    /// over a settled run.
+    /// </summary>
+    private static float GradeCompensation(TrackSurface surface)
+    {
+        TrackData track = BuildOval(surface);
+        RaceCar car = CreateCar(track, s: 10f, speed: 45f);
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(car);
+
+        ReferenceLineDriver driver = (ReferenceLineDriver)car.Driver;
+        double total = 0d;
+        int samples = 0;
+        for (int i = 0; i < 60 * 20; i++)
+        {
+            simulation.Step(1f / 60f);
+            if (i < 60 * 5)
+                continue;
+            total += driver.LastTelemetry.GradeCompensationAcceleration;
+            samples++;
+        }
+        return (float)(total / Math.Max(samples, 1));
+    }
+
     private static float RunSimulated(TrackSurface surface)
     {
         TrackData track = BuildOval(surface);
