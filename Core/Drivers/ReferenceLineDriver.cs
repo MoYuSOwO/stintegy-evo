@@ -655,13 +655,15 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
         TrackSample sample = frame.FrontSample;
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
-            sample.BankCurvature == 0f)
+            sample.BankCurvature == 0f &&
+            sample.VerticalCurvature == 0f)
         {
             return RoadAttitude.Flat;
         }
         return new RoadAttitude(
             sample.Grade,
-            sample.BankSlopeAt(frame.FrontPose.D)
+            sample.BankSlopeAt(frame.FrontPose.D),
+            sample.VerticalCurvature
         );
     }
 

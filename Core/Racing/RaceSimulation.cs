@@ -535,11 +535,16 @@ public sealed class RaceSimulation
     /// Reads the road under a car. The bank is taken at the car's own
     /// lateral offset rather than at the centreline, so a progressively
     /// banked corner really does reward the car that runs high.
+    ///
+    /// Where the car is round the lap and across it was worked out at the
+    /// end of the last substep and kept. Projecting again would be a third
+    /// search per car per substep to learn something that has not moved
+    /// half a metre, and every other reading this step is taken from the
+    /// same instant.
     /// </summary>
     private RoadAttitude SampleRoadAttitude(RaceCar car)
     {
-        TrackPose pose = Track.Project(car.State.Position);
-        TrackSample sample = pose.Sample;
+        TrackSample sample = Track.Sample(car.Progress.CurrentS);
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
             sample.BankCurvature == 0f &&
@@ -549,7 +554,7 @@ public sealed class RaceSimulation
         }
         return new RoadAttitude(
             sample.Grade,
-            sample.BankSlopeAt(pose.D),
+            sample.BankSlopeAt(car.Progress.CurrentD),
             sample.VerticalCurvature
         );
     }

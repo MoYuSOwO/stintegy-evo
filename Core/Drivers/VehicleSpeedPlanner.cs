@@ -670,7 +670,8 @@ public sealed class VehicleSpeedPlanner
     {
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
-            sample.BankCurvature == 0f)
+            sample.BankCurvature == 0f &&
+            sample.VerticalCurvature == 0f)
         {
             return RoadAttitude.Flat;
         }
