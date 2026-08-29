@@ -185,6 +185,11 @@ def main() -> int:
                     f"reward {window_reward / args.log_every:+.4f} "
                     f"alpha {stats.get('alpha', float('nan')):.3f} "
                     f"q {stats.get('q_mean', float('nan')):+.2f} "
+                    # The critic's own fit, which is the first thing to look
+                    # at before blaming capacity: a network too small to
+                    # represent its target shows up here as a loss that
+                    # stops falling while performance stops improving.
+                    f"closs {stats.get('critic_loss', float('nan')):.3f} "
                     f"{step * env.batch / max(elapsed, 1e-6):.0f} tps"
                 )
                 print(f"          {pieces}")
