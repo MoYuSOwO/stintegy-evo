@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from host_env import COMPONENT_NAMES, TERMINAL_NAMES, HostEnv
+from nstep import NStepBatcher
 from sac import SacAgent, SacConfig
 
 
@@ -130,6 +131,7 @@ def main() -> int:
             print(f"resumed from {args.resume}")
 
         obs = env.reset()
+        batcher = NStepBatcher(env.batch, config.n_step, config.gamma)
         window_reward = 0.0
         window_components = np.zeros(len(COMPONENT_NAMES))
         window_terminals: dict[str, int] = {}
@@ -148,9 +150,11 @@ def main() -> int:
             next_obs, reward, done, reason, components = env.step(action)
             # `next_obs` is already the post-reset observation on finished
             # lanes, so the terminal flag must stop the bootstrap there.
-            agent.buffer.add_batch(
+            ready = batcher.add(
                 obs, action, reward, next_obs, done.astype(np.float32)
             )
+            if ready is not None:
+                agent.buffer.add_batch(*ready)
             obs = next_obs
 
             window_reward += float(reward.mean())

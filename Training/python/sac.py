@@ -42,11 +42,23 @@ def default_device() -> str:
 @dataclass
 class SacConfig:
     hidden: tuple[int, ...] = (512, 512, 256)
-    gamma: float = 0.995
+    gamma: float = 0.9896
+    # How many steps of real reward a stored return carries before handing
+    # over to the critic. One leaves everything to a critic that is itself
+    # still learning; seven is what Sony used.
+    n_step: int = 7
     tau: float = 0.005
     actor_lr: float = 3e-4
     critic_lr: float = 3e-4
+    # Global gradient norm the critic optimizer is clipped to. A
+    # distributional critic's loss spikes more readily than a scalar one's,
+    # and one bad mini-batch should not be able to move the network far.
+    critic_clip_norm: float = 10.0
     alpha_lr: float = 3e-4
+    # Entropy coefficient. Automatic tuning drives this to a thousandth
+    # within ten thousand steps here, which is exploration switched off; a
+    # fixed value keeps a floor under it. Sony used 0.01 and did not tune it.
+    fixed_alpha: float | None = 0.01
     batch_size: int = 512
     buffer_capacity: int = 1_000_000
     start_steps: int = 10_000
@@ -159,6 +171,10 @@ class ReplayBuffer:
         self.reward = np.zeros((capacity, 1), dtype=np.float32)
         self.next_obs = np.zeros((capacity, obs_size), dtype=np.float32)
         self.done = np.zeros((capacity, 1), dtype=np.float32)
+        # How many steps each stored return actually spans. A window that
+        # was flushed at an episode boundary spans fewer than n, and the
+        # discount on its bootstrap has to match what it spans.
+        self.horizon = np.ones((capacity, 1), dtype=np.float32)
         self.size = 0
         self.cursor = 0
 
@@ -169,10 +185,12 @@ class ReplayBuffer:
         reward: np.ndarray,
         next_obs: np.ndarray,
         done: np.ndarray,
+        horizon: np.ndarray | None = None,
     ) -> None:
         count = obs.shape[0]
         indices = (self.cursor + np.arange(count)) % self.capacity
         self.obs[indices] = obs
+        self.horizon[indices, 0] = 1.0 if horizon is None else horizon
         self.action[indices] = action
         self.reward[indices, 0] = reward
         self.next_obs[indices] = next_obs
@@ -189,6 +207,7 @@ class ReplayBuffer:
             as_tensor(self.reward),
             as_tensor(self.next_obs),
             as_tensor(self.done),
+            as_tensor(self.horizon),
         )
 
 
@@ -237,6 +256,12 @@ class SacAgent:
             [self.log_alpha], lr=config.alpha_lr
         )
         self.target_entropy = -action_size * config.target_entropy_scale
+        self._fixed_alpha = (
+            None if config.fixed_alpha is None
+            else torch.tensor(
+                config.fixed_alpha, device=self.device, dtype=torch.float32
+            )
+        )
         self.buffer = ReplayBuffer(
             config.buffer_capacity, obs_size, action_size
         )
@@ -244,6 +269,8 @@ class SacAgent:
 
     @property
     def alpha(self) -> torch.Tensor:
+        if self._fixed_alpha is not None:
+            return self._fixed_alpha
         return self.log_alpha.exp()
 
     @torch.no_grad()
@@ -254,9 +281,13 @@ class SacAgent:
 
     def update(self) -> dict[str, float]:
         config = self.config
-        obs, action, reward, next_obs, done = self.buffer.sample(
+        obs, action, reward, next_obs, done, horizon = self.buffer.sample(
             config.batch_size, self.device
         )
+        # The bootstrap is discounted by how far the stored return already
+        # reached, which is n for a full window and less for one flushed at
+        # an episode boundary.
+        discount = config.gamma ** horizon
 
         with torch.no_grad():
             next_action, next_log_prob = self.actor(next_obs)
@@ -281,13 +312,13 @@ class SacAgent:
                     mean_q1 = target_q1.mean(dim=-1, keepdim=True)
                     mean_q2 = target_q2.mean(dim=-1, keepdim=True)
                     kept = torch.where(mean_q1 <= mean_q2, target_q1, target_q2)
-                target = reward + (1.0 - done) * config.gamma * (
+                target = reward + (1.0 - done) * discount * (
                     kept - self.alpha * next_log_prob
                 )
             else:
                 target_q = torch.min(target_q1, target_q2)
                 target_q -= self.alpha * next_log_prob
-                target = reward + (1.0 - done) * config.gamma * target_q
+                target = reward + (1.0 - done) * discount * target_q
 
         q1, q2 = self.critic(obs, action)
         if self.distributional:
@@ -299,6 +330,10 @@ class SacAgent:
             critic_loss = F.mse_loss(q1, target) + F.mse_loss(q2, target)
         self.critic_optimizer.zero_grad(set_to_none=True)
         critic_loss.backward()
+        if config.critic_clip_norm > 0.0:
+            torch.nn.utils.clip_grad_norm_(
+                self.critic.parameters(), config.critic_clip_norm
+            )
         self.critic_optimizer.step()
 
         for parameter in self.critic.parameters():
@@ -320,12 +355,13 @@ class SacAgent:
         for parameter in self.critic.parameters():
             parameter.requires_grad_(True)
 
-        alpha_loss = -(
-            self.log_alpha * (log_prob.detach() + self.target_entropy)
-        ).mean()
-        self.alpha_optimizer.zero_grad(set_to_none=True)
-        alpha_loss.backward()
-        self.alpha_optimizer.step()
+        if self._fixed_alpha is None:
+            alpha_loss = -(
+                self.log_alpha * (log_prob.detach() + self.target_entropy)
+            ).mean()
+            self.alpha_optimizer.zero_grad(set_to_none=True)
+            alpha_loss.backward()
+            self.alpha_optimizer.step()
 
         with torch.no_grad():
             for parameter, target_parameter in zip(
