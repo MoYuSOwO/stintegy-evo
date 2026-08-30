@@ -1300,6 +1300,133 @@ public static class TrackFactory
     private const float ZandvoortLuyendijkEnd = 3_948f;
 
     /// <summary>
+    /// A training circuit built for one hole in the coverage, found by
+    /// measuring rather than by guessing.
+    ///
+    /// Every banked corner the policy had ever driven was a hairpin. Twenty
+    /// degrees at Zandvoort sits on a twenty-five metre radius and nineteen
+    /// on the simple layouts sits on twenty, and both are taken at walking
+    /// pace by racing standards. Meanwhile every fast corner on every road
+    /// circuit here carries the same two and a half degrees of drainage
+    /// crossfall. So the joint distribution had banking and it had speed and
+    /// it never had the two together — and when Daytona asked for thirty-one
+    /// degrees at four hundred and fifty metres of radius, the policy spent a
+    /// sixth of the lap off the road.
+    ///
+    /// The corners here run from sixty metres of radius to four hundred, and
+    /// the banking rises with the radius rather than sitting on the slowest
+    /// corner: nothing at a hairpin, the full eighteen degrees by two hundred
+    /// and fifty metres. Eighteen is deliberately inside what has already
+    /// been trained on. The point is not to show the policy a steeper road,
+    /// it is to show it a fast one that leans — so that Daytona is left
+    /// extrapolating in the bank angle alone rather than in the whole
+    /// combination.
+    ///
+    /// Corners turn both ways for the same reason the simple layout comes in
+    /// a mirrored pair: a circuit that only ever leans one way teaches the
+    /// sign along with the lesson.
+    /// </summary>
+    public static TrackData BankedSweeperTestTrack()
+    {
+        // One copy of the geometry. The builder walks it and the banking is
+        // derived from the same walk, so a corner cannot be banked at an arc
+        // length it does not occupy — which is what happens when the layout
+        // is written once for the shape and again for the surface.
+        (float Straight, float TurnDegrees, float Radius)[] layout =
+        [
+            (700f, 120f, 300f),
+            (200f, -60f, 140f),
+            (150f, 150f, 200f),
+            (300f, -70f, 90f),
+            (200f, 140f, 400f),
+            (250f, 80f, 60f),
+        ];
+
+        var corners = new (float Start, float End, float Bank)[layout.Length];
+        float distance = 0f;
+        for (int i = 0; i < layout.Length; i++)
+        {
+            distance += layout[i].Straight;
+            float arc = layout[i].Radius *
+                        MathF.Abs(layout[i].TurnDegrees) * MathF.PI / 180f;
+            corners[i] = (
+                distance,
+                distance + arc,
+                BankFor(layout[i].Radius) *
+                MathF.CopySign(1f, layout[i].TurnDegrees)
+            );
+            distance += arc;
+        }
+
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            startWidth: 14f,
+            startLeftBuffer: GrandPrixTestBufferMeters,
+            startRightBuffer: GrandPrixTestBufferMeters
+        );
+        builder.WithSurface(context =>
+            BankedSweeperSurface(context, corners)
+        );
+        foreach ((float straight, float turn, float radius) in layout)
+            builder.AddStraight(straight).AddTurn(turn, radius);
+        return builder.CloseLoop().Build(new TrackGridConfig());
+    }
+
+    private const float BankedSweeperMaxBankTangent = 0.325f;  // eighteen degrees
+    private const float BankedSweeperFlatRadiusMeters = 60f;
+    private const float BankedSweeperFullRadiusMeters = 250f;
+    private const float BankedSweeperTransitionMeters = 60f;
+
+    /// <summary>
+    /// How much a corner of this radius leans. A hairpin gets nothing,
+    /// because hairpin banking is the one thing the training set already has
+    /// too much of; anything from two hundred and fifty metres upward gets
+    /// the full eighteen degrees. Smoothstepped so the middle radii do not
+    /// sit on a corner of the ramp.
+    /// </summary>
+    private static float BankFor(float radius)
+    {
+        float ramp = Math.Clamp(
+            (radius - BankedSweeperFlatRadiusMeters) /
+            (BankedSweeperFullRadiusMeters - BankedSweeperFlatRadiusMeters),
+            0f,
+            1f
+        );
+        return BankedSweeperMaxBankTangent * ramp * ramp * (3f - 2f * ramp);
+    }
+
+    /// <summary>
+    /// The road circuit's crossfall everywhere, with each corner's banking
+    /// wound on over sixty metres at either end of the arc it occupies.
+    ///
+    /// By arc length rather than by curvature, for the reason Daytona is:
+    /// curvature steps at a segment boundary, so banking read off it arrives
+    /// as most of a degree per metre and the car meets a banked corner's
+    /// lateral gravity inside one wheel rotation.
+    /// </summary>
+    private static TrackSurface BankedSweeperSurface(
+        TrackSurfaceContext context,
+        (float Start, float End, float Bank)[] corners
+    )
+    {
+        TrackSurface section = TrackSurfaces.RoadCircuit(context);
+        float extra = 0f;
+        foreach ((float start, float end, float bank) in corners)
+        {
+            extra += bank * TrackSurfaces.SectionWeight(
+                context.DistanceMeters,
+                start,
+                end,
+                BankedSweeperTransitionMeters,
+                context.LapLengthMeters
+            );
+        }
+        return extra == 0f
+            ? section
+            : section with { BankSlope = section.BankSlope + extra };
+    }
+
+    /// <summary>
     /// A superspeedway on the Daytona pattern: two long straights joined by
     /// two constant-radius turns banked at thirty-one degrees.
     ///
