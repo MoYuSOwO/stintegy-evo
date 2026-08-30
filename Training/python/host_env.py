@@ -10,6 +10,7 @@ the batch never stalls waiting for its slowest episode.
 
 from __future__ import annotations
 
+import os
 import struct
 import subprocess
 import sys
@@ -66,10 +67,15 @@ class HostEnv:
         host_project: str = DEFAULT_HOST_PROJECT,
         quiet: bool = True,
     ) -> None:
-        command = [
-            "dotnet", "run", "-c", "Release", "--project", host_project,
-            "--", "--batch", str(batch), "--seed-base", str(seed_base),
+        # A published self-contained host binary, when one is provided,
+        # spawns directly: no SDK on the machine, no rebuild on spawn, and
+        # an evaluation can never race a half-edited source tree. This is
+        # how the rented box runs; the laptop keeps the source path.
+        host_binary = os.environ.get("STINTEGY_HOST_BIN")
+        launcher = [host_binary] if host_binary else [
+            "dotnet", "run", "-c", "Release", "--project", host_project, "--",
         ]
+        command = launcher + ["--batch", str(batch), "--seed-base", str(seed_base)]
         if solo:
             command.append("--solo")
         if track:
