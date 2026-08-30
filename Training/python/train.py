@@ -63,6 +63,7 @@ TRACKS: dict[str, tuple[float, float, bool]] = {
     # Staged for the Monaco verdict; flags flip if they enter training.
     "singapore":      (4928.0, 101.969, False),
     "portimao":       (4653.0,  88.556, False),
+    "flat-sweeper":   (4946.0,  67.389, False),
 }
 
 # Four hundred seconds is two flying laps of the slowest circuit here at the

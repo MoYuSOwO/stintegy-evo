@@ -1333,14 +1333,7 @@ public static class TrackFactory
         // length it does not occupy — which is what happens when the layout
         // is written once for the shape and again for the surface.
         (float Straight, float TurnDegrees, float Radius)[] layout =
-        [
-            (700f, 120f, 300f),
-            (200f, -60f, 140f),
-            (150f, 150f, 200f),
-            (300f, -70f, 90f),
-            (200f, 140f, 400f),
-            (250f, 80f, 60f),
-        ];
+            SweeperLayout;
 
         var corners = new (float Start, float End, float Bank)[layout.Length];
         float distance = 0f;
@@ -1371,6 +1364,54 @@ public static class TrackFactory
             builder.AddStraight(straight).AddTurn(turn, radius);
         return builder.CloseLoop().Build(new TrackGridConfig());
     }
+
+    /// <summary>
+    /// The banked sweeper's layout with the banking left off — nothing but
+    /// the road circuit's drainage crossfall over the same sixty-to-four-
+    /// hundred-metre corners.
+    ///
+    /// It exists because the flat oval collapsed while everything else
+    /// improved: from eight seconds off the analytic lap to grinding the
+    /// wall, one evaluation at a time, as training attention moved to
+    /// banked sweepers and walled streets. A fast corner that is merely
+    /// flat had nothing anchoring it — the sweeper's big corners all lean,
+    /// the street circuits' are all tight — and the skill quietly drained
+    /// away. That hole touches shipped content, not just the synthetic
+    /// oval: Monza's long flat sweeps are the same family, and Monza
+    /// oscillated in step with the oval's slide.
+    ///
+    /// Sharing the layout is deliberate: paired with the banked original,
+    /// the two circuits differ in exactly one variable, which is what made
+    /// the flat/banked Daytona comparison worth having.
+    /// </summary>
+    public static TrackData FlatSweeperTestTrack()
+    {
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            startWidth: 14f,
+            startLeftBuffer: GrandPrixTestBufferMeters,
+            startRightBuffer: GrandPrixTestBufferMeters
+        );
+        builder.WithSurface(TrackSurfaces.RoadCircuit);
+        foreach ((float straight, float turn, float radius) in SweeperLayout)
+            builder.AddStraight(straight).AddTurn(turn, radius);
+        return builder.CloseLoop().Build(new TrackGridConfig());
+    }
+
+    /// <summary>
+    /// One copy of the sweeper's geometry, shared by the banked original
+    /// and the flat variant so the pair can never drift apart.
+    /// </summary>
+    private static readonly (float Straight, float TurnDegrees, float Radius)[]
+        SweeperLayout =
+    [
+        (700f, 120f, 300f),
+        (200f, -60f, 140f),
+        (150f, 150f, 200f),
+        (300f, -70f, 90f),
+        (200f, 140f, 400f),
+        (250f, 80f, 60f),
+    ];
 
     private const float BankedSweeperMaxBankTangent = 0.325f;  // eighteen degrees
     private const float BankedSweeperFlatRadiusMeters = 60f;

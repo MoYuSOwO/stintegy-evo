@@ -173,7 +173,8 @@ public sealed class DirectDriveDuelEnvironment
         // takes the training gradient past Monaco's 8.6 percent. Parked
         // here so the harness can evaluate them either way.
         new("singapore", TrackFactory.SingaporeStyleTestTrack),
-        new("portimao", TrackFactory.PortimaoStyleTestTrack)
+        new("portimao", TrackFactory.PortimaoStyleTestTrack),
+        new("flat-sweeper", TrackFactory.FlatSweeperTestTrack)
     ];
 
     private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];

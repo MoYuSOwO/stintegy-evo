@@ -49,6 +49,28 @@ public sealed class BankedSweeperTests
     }
 
     [Fact]
+    public void TheFlatVariantSharesTheLayoutAndOnlyTheLayout()
+    {
+        TrackData banked = TrackFactory.BankedSweeperTestTrack();
+        TrackData flat = TrackFactory.FlatSweeperTestTrack();
+        // Same geometry to the metre, or the pair no longer differs in
+        // exactly one variable and the comparison it exists for is dead.
+        Assert.Equal(banked.LengthMeters, flat.LengthMeters, 1);
+
+        float flatBank = 0f, bankedBank = 0f;
+        for (int s = 0; s < (int)flat.LengthMeters; s++)
+        {
+            flatBank = MathF.Max(
+                flatBank, MathF.Abs(flat.Sample(s).BankSlope));
+            bankedBank = MathF.Max(
+                bankedBank, MathF.Abs(banked.Sample(s).BankSlope));
+        }
+        // Crossfall only on the flat one; the full lean on the original.
+        Assert.True(flatBank < 0.05f, $"flat sweeper leans {flatBank:0.000}");
+        Assert.True(bankedBank > 0.3f, "the banked sweeper lost its banking");
+    }
+
+    [Fact]
     public void TheBankingWindsOnRatherThanArriving()
     {
         TrackData track = TrackFactory.BankedSweeperTestTrack();
