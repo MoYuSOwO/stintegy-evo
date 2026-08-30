@@ -116,6 +116,16 @@ public sealed class DirectDriveDuelEnvironment
     /// What the car learns on. Gradient from Silverstone's flat airfield to
     /// the simple layout's seven percent, and lean from a road circuit's two
     /// and a half degrees to Zandvoort's eighteen.
+    ///
+    /// The banked sweeper is here because measuring the rest of this list
+    /// showed every banked corner in it was a hairpin — twenty degrees on a
+    /// twenty-five metre radius at Zandvoort, nineteen on twenty at the
+    /// simple layouts — while every fast corner carried nothing but
+    /// drainage crossfall. Banking and speed were both present and never
+    /// together, and a policy taught that way spent a sixth of Daytona off
+    /// the road. The sweeper's corners run to four hundred metres of radius
+    /// at eighteen degrees, which is inside the lean already trained on and
+    /// well outside the speed it was ever trained at.
     /// </summary>
     private static readonly TrackChoice[] TrainingTracks =
     [
@@ -123,7 +133,8 @@ public sealed class DirectDriveDuelEnvironment
         new("simple-left", () => TrackFactory.SimpleTestTrack(isLeft: true)),
         new("silverstone", TrackFactory.SilverstoneStyleTestTrack),
         new("shanghai", TrackFactory.ShanghaiStyleTestTrack),
-        new("zandvoort", TrackFactory.ZandvoortStyleTestTrack)
+        new("zandvoort", TrackFactory.ZandvoortStyleTestTrack),
+        new("banked-sweeper", TrackFactory.BankedSweeperTestTrack)
     ];
 
     /// <summary>
