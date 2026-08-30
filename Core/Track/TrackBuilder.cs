@@ -1299,6 +1299,108 @@ public static class TrackFactory
     private const float ZandvoortLuyendijkStart = 3_853f;
     private const float ZandvoortLuyendijkEnd = 3_948f;
 
+    /// <summary>
+    /// A superspeedway on the Daytona pattern: two long straights joined by
+    /// two constant-radius turns banked at thirty-one degrees.
+    ///
+    /// It exists to test one thing the rest of the track set cannot. The
+    /// steepest banking anywhere else here is Zandvoort's Hugenholtz at
+    /// twenty degrees, and it is in the training set, so a policy held out
+    /// on Sepang, Monaco and a flat oval is never asked about banking it has
+    /// not already seen. Thirty-one degrees is half as much again as
+    /// anything trained on, and the difference is not decorative: the
+    /// lateral the tyres are asked for falls by a seventh at that angle
+    /// while the load on them rises, which is the whole reason a
+    /// superspeedway corner is taken flat out.
+    ///
+    /// The geometry is Daytona's to about two parts in a thousand — four
+    /// kilometres and change, turns of a thousand feet — and the banking is
+    /// its published thirty-one degrees in the turns and three on the
+    /// straights. The width is assigned rather than sourced: eighteen
+    /// metres, at the generous end of what a superspeedway runs, chosen so
+    /// that a policy failing here is failing at the banking and not at the
+    /// room, the way Monaco's ten and a half metres confounds its own test.
+    /// </summary>
+    public static TrackData DaytonaStyleTestTrack()
+    {
+        TrackBuilder builder = new(
+            Vector2.Zero,
+            startWidth: DaytonaWidthMeters,
+            startLeftBuffer: GrandPrixTestBufferMeters,
+            startRightBuffer: GrandPrixTestBufferMeters,
+            refLineSolver: CenterLineRefLineSolver.Instance
+        );
+        builder.WithSurface(DaytonaSurface);
+        return builder
+            .AddStraight(DaytonaStraightMeters)
+            .AddTurn(180f, DaytonaTurnRadiusMeters)
+            .AddStraight(DaytonaStraightMeters)
+            .AddTurn(180f, DaytonaTurnRadiusMeters)
+            .CloseLoop()
+            .Build(new TrackGridConfig());
+    }
+
+    private const float DaytonaWidthMeters = 18f;
+    private const float DaytonaStraightMeters = 1_050f;
+    private const float DaytonaTurnRadiusMeters = 305f;      // a thousand feet
+    private const float DaytonaTurnBankTangent = 0.6009f;    // thirty-one degrees
+    private const float DaytonaStraightBankTangent = 0.0524f; // three degrees
+
+    /// <summary>
+    /// Thirty-one degrees through the turns, three down the straights, with
+    /// a hundred metres of transition at each end of each turn.
+    ///
+    /// The transition is the point of doing this by arc length. Reading the
+    /// banking off the curvature is tempting on an oval — the turns are
+    /// exactly where the road bends — but the hyperbolic tangent saturates
+    /// within a fraction of the corner's curvature, so the bank arrives as a
+    /// step of a degree per metre and the car meets the lateral gravity of a
+    /// thirty-one degree corner in the space of one wheel rotation. A real
+    /// superspeedway spends a hundred metres or so winding the banking on,
+    /// and so does this.
+    ///
+    /// The turn boundaries are computed from the layout above rather than
+    /// written down, so there is no second copy of the geometry to get out
+    /// of step with the first.
+    ///
+    /// A superspeedway leans one way, toward the infield, rather than
+    /// crowning to shed water off both edges the way a road circuit does, so
+    /// this does not build on <see cref="TrackSurfaces.RoadCircuit"/>. Both
+    /// turns bend the same way, so the lean never changes sign.
+    /// </summary>
+    private static TrackSurface DaytonaSurface(TrackSurfaceContext context)
+    {
+        float turnLength = MathF.PI * DaytonaTurnRadiusMeters;
+        float firstTurnStart = DaytonaStraightMeters;
+        float firstTurnEnd = firstTurnStart + turnLength;
+        float secondTurnStart = firstTurnEnd + DaytonaStraightMeters;
+        float secondTurnEnd = secondTurnStart + turnLength;
+
+        float inTurn = MathF.Max(
+            TrackSurfaces.SectionWeight(
+                context.DistanceMeters,
+                firstTurnStart,
+                firstTurnEnd,
+                DaytonaTransitionMeters,
+                context.LapLengthMeters
+            ),
+            TrackSurfaces.SectionWeight(
+                context.DistanceMeters,
+                secondTurnStart,
+                secondTurnEnd,
+                DaytonaTransitionMeters,
+                context.LapLengthMeters
+            )
+        );
+        return new TrackSurface(
+            BankSlope: DaytonaStraightBankTangent +
+                       (DaytonaTurnBankTangent - DaytonaStraightBankTangent) *
+                       inTurn
+        );
+    }
+
+    private const float DaytonaTransitionMeters = 100f;
+
     public static TrackData ZandvoortStyleTestTrack()
     {
         TrackBuilder builder = TrackBuilder.FromClosedCenterline(

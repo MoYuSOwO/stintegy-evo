@@ -133,6 +133,15 @@ public sealed class DirectDriveDuelEnvironment
     /// speedway leans further than any of them, and Sepang is neither —
     /// just a circuit it has never seen.
     ///
+    /// Daytona is the banking half of that. The steepest bank trained on
+    /// is Zandvoort's twenty degrees; Daytona's turns are thirty-one, and
+    /// at that angle the road takes half the lateral the tyres would
+    /// otherwise carry. The analytic driver is two per cent slower there
+    /// than on the same oval laid flat, because its planner reads the
+    /// road as flat and pays the extra load without spending the extra
+    /// grip — so on this one circuit the analytic number is a floor for a
+    /// policy that can see the bank, not a ceiling.
+    ///
     /// The old split had Sepang alone, whose one and a half percent and two
     /// and a half degrees both sit comfortably inside the training range.
     /// Passing that says a policy can interpolate, which was never the
@@ -142,6 +151,7 @@ public sealed class DirectDriveDuelEnvironment
     [
         new("sepang", TrackFactory.SepangStyleTestTrack),
         new("monaco", TrackFactory.MonacoStyleTestTrack),
+        new("daytona", TrackFactory.DaytonaStyleTestTrack),
         new("speedway", BuildSpeedwayTrack)
     ];
 
