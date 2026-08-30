@@ -134,7 +134,8 @@ public sealed class DirectDriveDuelEnvironment
         new("silverstone", TrackFactory.SilverstoneStyleTestTrack),
         new("shanghai", TrackFactory.ShanghaiStyleTestTrack),
         new("zandvoort", TrackFactory.ZandvoortStyleTestTrack),
-        new("banked-sweeper", TrackFactory.BankedSweeperTestTrack)
+        new("banked-sweeper", TrackFactory.BankedSweeperTestTrack),
+        new("baku", TrackFactory.BakuStyleTestTrack)
     ];
 
     /// <summary>
@@ -164,11 +165,6 @@ public sealed class DirectDriveDuelEnvironment
         new("monaco", TrackFactory.MonacoStyleTestTrack),
         new("daytona", TrackFactory.DaytonaStyleTestTrack),
         new("speedway", BuildSpeedwayTrack),
-        // Baku is parked here so the harness can evaluate it; it moves to
-        // the training set at the next restart, where its castle squeeze
-        // makes Monaco's width an interpolation and its seafront straight
-        // is the longest flat-out run the policy trains on.
-        new("baku", TrackFactory.BakuStyleTestTrack),
         new("spa", TrackFactory.SpaStyleTestTrack),
         new("monza", TrackFactory.MonzaStyleTestTrack),
         new("interlagos", TrackFactory.InterlagosStyleTestTrack)

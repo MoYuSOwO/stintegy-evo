@@ -55,9 +55,8 @@ TRACKS: dict[str, tuple[float, float, bool]] = {
     "monaco":         (3337.0,  80.857, False),
     "daytona":        (4016.0,  54.572, False),
     "speedway":       (8512.0, 110.216, False),
-    # The second coverage round. Baku's flag flips to True when it enters
-    # the training set at the restart that picks these up.
-    "baku":           (6003.0, 107.705, False),
+    # The second coverage round. Baku trains; the other three examine.
+    "baku":           (6003.0, 107.705, True),
     "spa":            (7004.0, 118.991, False),
     "monza":          (5793.0,  90.783, False),
     "interlagos":     (4309.0,  79.434, False),
