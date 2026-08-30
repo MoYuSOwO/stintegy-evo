@@ -152,6 +152,54 @@ public static class TrackElevation
     /// Something over fifteen metres between the highest and lowest points,
     /// which is a great deal for a circuit this short.
     /// </summary>
+    /// <summary>
+    /// Baku is a seafront street circuit and mostly flat; the exception is
+    /// the climb along the old city wall into the castle section, which is
+    /// also where the road narrows to the tightest squeeze in the sport.
+    /// The grade tops out under seven percent on purpose: this circuit is
+    /// bound for the training set, and the training set's steepest climb
+    /// must stay below Monaco's 8.6 so that Monaco remains a gradient the
+    /// policy has never been asked for.
+    /// </summary>
+    public static readonly (float, float)[] BakuHeights =
+    [
+        (0.00f, 0f), (0.20f, 0f), (0.30f, 2f), (0.34f, 6f),
+        (0.39f, 24f), (0.44f, 26f), (0.52f, 14f), (0.62f, 4f),
+        (0.75f, 1f), (0.90f, 0f)
+    ];
+
+    /// <summary>
+    /// Authored in the style of the Ardennes original: a long descent to
+    /// the valley floor, the climb back along the top, and then the
+    /// signature — a fast drop followed by a compression and a climb far
+    /// steeper than anything in the training set. Held out precisely for
+    /// that climb: eleven-plus percent against a training maximum around
+    /// seven.
+    /// </summary>
+    public static readonly (float, float)[] SpaHeights =
+    [
+        (0.00f, 55f), (0.08f, 47f), (0.16f, 29f), (0.26f, 12f),
+        (0.36f, 4f), (0.44f, 0f), (0.52f, 7f), (0.62f, 20f),
+        (0.72f, 34f), (0.82f, 50f), (0.87f, 40f), (0.90f, 27f),
+        (0.92f, 25f), (0.955f, 48f)
+    ];
+
+    /// <summary>Monza is a park and the park is flat.</summary>
+    public static readonly (float, float)[] MonzaHeights =
+    [
+        (0.00f, 0f), (0.25f, 2f), (0.55f, -1f), (0.80f, 1f)
+    ];
+
+    /// <summary>
+    /// Rolling and anticlockwise, cut into a hillside: down from the
+    /// start, a low back stretch, and the long climb home.
+    /// </summary>
+    public static readonly (float, float)[] InterlagosHeights =
+    [
+        (0.00f, 12f), (0.10f, 4f), (0.22f, 0f), (0.36f, 6f),
+        (0.50f, 15f), (0.64f, 23f), (0.78f, 30f), (0.90f, 24f)
+    ];
+
     public static readonly (float, float)[] ZandvoortHeights =
     [
         (0.00f, 4f), (0.10f, 2f), (0.22f, 11f), (0.32f, 16f),

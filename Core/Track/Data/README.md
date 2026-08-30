@@ -44,3 +44,17 @@ runtime scaling barely moves it. The source LineString already begins on the
 start/finish straight, so unlike Monaco it needs no rotation. Width is
 assigned rather than sourced: twelve metres, which is a narrow permanent
 circuit and is what Zandvoort is.
+
+`Baku.csv`, `Spa.csv`, `Monza.csv` and `Interlagos.csv` are projected from
+[bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (`az-2016`,
+`be-1925`, `it-1922`, `br-1940`), licensed under MIT; the complete upstream
+license is included as `LICENSE.bacinger-MIT`. Longitude and latitude are
+projected to local metres about each ring's centroid and duplicated closing
+points are removed; projected lengths land within 1.1% of the published
+6,003, 7,004, 5,793 and 4,309 metres that the runtime scales them to. Baku
+and Spa are rotated to start on a straight (source points 83 and 118). All
+widths are assigned rather than sourced: Baku carries 13 m on the seafront
+straight, 12 m elsewhere, 10 m through the old town and 7.6 m through the
+castle squeeze, which is the narrowest point in the sport; the other three
+carry a flat 13, 12 and 12 m. Elevation is authored in the style of each
+venue, not surveyed.

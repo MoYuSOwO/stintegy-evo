@@ -1528,6 +1528,108 @@ public static class TrackFactory
 
     private const float DaytonaTransitionMeters = 100f;
 
+    /// <summary>
+    /// The narrow-street training circuit, and the counterpart of the
+    /// banked sweeper: that one existed because every banked corner in the
+    /// training set was slow, this one exists because every narrow road in
+    /// it was gentle. Monaco — ten and a half metres wide, 8.6 percent,
+    /// walls at the white line — failed while Shanghai, its equal for width
+    /// and corner radius, lapped cleanly; what training never contained was
+    /// narrow, climbing and walled at once. Baku is that, from life: the
+    /// castle squeeze is the tightest point in the sport at 7.6 metres,
+    /// tighter than Monaco, so Monaco's width becomes a question the
+    /// policy has seen — while its gradient stays past the training
+    /// range, because this circuit's climb tops out under seven percent.
+    /// The two-kilometre seafront straight is the longest in the training
+    /// set into the bargain, which the top-speed work will not mind.
+    /// </summary>
+    public static TrackData BakuStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Baku,
+            6_003f,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.BakuHeights,
+            TrackSurfaces.RoadCircuit
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
+    /// <summary>
+    /// Held out for one number: the climb after the compression, authored
+    /// past eleven percent against a training maximum around seven. It is
+    /// the gradient exam Monaco sets, separated from Monaco's confounders —
+    /// this road is wide and the walls are back from the line.
+    /// </summary>
+    public static TrackData SpaStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Spa,
+            7_004f,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.SpaHeights,
+            TrackSurfaces.RoadCircuit
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
+    /// <summary>
+    /// Held out as the road-circuit speed exam: long flat runs broken by
+    /// chicanes, which asks for the late hard braking from very high speed
+    /// that the pure oval never does.
+    /// </summary>
+    public static TrackData MonzaStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Monza,
+            5_793f,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.MonzaHeights,
+            TrackSurfaces.RoadCircuit
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
+    /// <summary>
+    /// Held out for rhythm: anticlockwise where most of the set turns
+    /// right, short, and rolling the whole way round.
+    /// </summary>
+    public static TrackData InterlagosStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Interlagos,
+            4_309f,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.InterlagosHeights,
+            TrackSurfaces.RoadCircuit
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
     public static TrackData ZandvoortStyleTestTrack()
     {
         TrackBuilder builder = TrackBuilder.FromClosedCenterline(

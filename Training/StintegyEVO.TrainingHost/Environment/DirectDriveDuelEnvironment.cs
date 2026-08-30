@@ -163,7 +163,15 @@ public sealed class DirectDriveDuelEnvironment
         new("sepang", TrackFactory.SepangStyleTestTrack),
         new("monaco", TrackFactory.MonacoStyleTestTrack),
         new("daytona", TrackFactory.DaytonaStyleTestTrack),
-        new("speedway", BuildSpeedwayTrack)
+        new("speedway", BuildSpeedwayTrack),
+        // Baku is parked here so the harness can evaluate it; it moves to
+        // the training set at the next restart, where its castle squeeze
+        // makes Monaco's width an interpolation and its seafront straight
+        // is the longest flat-out run the policy trains on.
+        new("baku", TrackFactory.BakuStyleTestTrack),
+        new("spa", TrackFactory.SpaStyleTestTrack),
+        new("monza", TrackFactory.MonzaStyleTestTrack),
+        new("interlagos", TrackFactory.InterlagosStyleTestTrack)
     ];
 
     private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];

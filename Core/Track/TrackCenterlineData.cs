@@ -31,6 +31,14 @@ internal static class TrackCenterlineData
         SepangPoints = new(() => LoadEmbeddedCsv("Sepang.csv"));
     private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
         ZandvoortPoints = new(() => LoadEmbeddedCsv("Zandvoort.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        BakuPoints = new(() => LoadEmbeddedCsv("Baku.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        SpaPoints = new(() => LoadEmbeddedCsv("Spa.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        MonzaPoints = new(() => LoadEmbeddedCsv("Monza.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        InterlagosPoints = new(() => LoadEmbeddedCsv("Interlagos.csv"));
 
     public static IReadOnlyList<TrackCenterlinePoint> Silverstone =>
         SilverstonePoints.Value;
@@ -42,6 +50,14 @@ internal static class TrackCenterlineData
         SepangPoints.Value;
     public static IReadOnlyList<TrackCenterlinePoint> Zandvoort =>
         ZandvoortPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Baku =>
+        BakuPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Spa =>
+        SpaPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Monza =>
+        MonzaPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Interlagos =>
+        InterlagosPoints.Value;
 
     private static IReadOnlyList<TrackCenterlinePoint> LoadEmbeddedCsv(
         string fileName,
