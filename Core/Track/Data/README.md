@@ -58,3 +58,12 @@ straight, 12 m elsewhere, 10 m through the old town and 7.6 m through the
 castle squeeze, which is the narrowest point in the sport; the other three
 carry a flat 13, 12 and 12 m. Elevation is authored in the style of each
 venue, not surveyed.
+
+`Singapore.csv` and `Portimao.csv` follow the same recipe from the same
+MIT-licensed source (`sg-2008`, `pt-2008`): centroid projection, duplicate
+closing point removed, projected lengths within 0.3% of the published 4,928
+and 4,653 metres. Singapore is rotated to start on a straight (source point
+21). Widths are assigned — 11 m streets, 14 m for the modern circuit — and
+elevation is authored in the style of each venue: Marina Bay honestly flat
+but for its bridges, the Algarve rollercoaster with its plunge past ten
+percent.

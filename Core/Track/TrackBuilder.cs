@@ -1630,6 +1630,58 @@ public static class TrackFactory
         );
     }
 
+    /// <summary>
+    /// The second narrow-street circuit, flat where Baku climbs. Between
+    /// them the street-circuit family separates its own dimensions: Baku
+    /// carries narrow-with-gradient, this carries narrow-with-nothing-else,
+    /// and Portimão carries gradient-with-width. Monaco, held out, is the
+    /// combination of all three.
+    /// </summary>
+    public static TrackData SingaporeStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Singapore,
+            4_928f,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.SingaporeHeights,
+            TrackSurfaces.RoadCircuit
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
+    /// <summary>
+    /// The gradient trainer. Baku's climb is deliberately capped under the
+    /// old training maximum so that Monaco's 8.6 percent stayed an exam;
+    /// this circuit retires that exam on purpose, taking the training range
+    /// past eleven percent on a road wide enough that gradient is the only
+    /// question being asked. Monaco then sits inside the envelope on every
+    /// axis and remains unseen only as a layout — which is the kind of
+    /// unseen the policy has been passing all along.
+    /// </summary>
+    public static TrackData PortimaoStyleTestTrack()
+    {
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            TrackCenterlineData.Portimao,
+            4_653f,
+            GrandPrixTestBufferMeters,
+            GrandPrixTestBufferMeters,
+            controlSpacingMeters: 12f
+        );
+        builder.WithSurface(TrackElevation.Profile(
+            TrackElevation.PortimaoHeights,
+            TrackSurfaces.RoadCircuit
+        ));
+        return builder.Build(
+            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
+        );
+    }
+
     public static TrackData ZandvoortStyleTestTrack()
     {
         TrackBuilder builder = TrackBuilder.FromClosedCenterline(

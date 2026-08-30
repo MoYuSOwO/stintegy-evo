@@ -167,7 +167,13 @@ public sealed class DirectDriveDuelEnvironment
         new("speedway", BuildSpeedwayTrack),
         new("spa", TrackFactory.SpaStyleTestTrack),
         new("monza", TrackFactory.MonzaStyleTestTrack),
-        new("interlagos", TrackFactory.InterlagosStyleTestTrack)
+        new("interlagos", TrackFactory.InterlagosStyleTestTrack),
+        // Staged for the Monaco verdict at 250k: if Baku alone has not
+        // cured it, Singapore thickens narrow-street coverage and Portimão
+        // takes the training gradient past Monaco's 8.6 percent. Parked
+        // here so the harness can evaluate them either way.
+        new("singapore", TrackFactory.SingaporeStyleTestTrack),
+        new("portimao", TrackFactory.PortimaoStyleTestTrack)
     ];
 
     private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];

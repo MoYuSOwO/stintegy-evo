@@ -200,6 +200,34 @@ public static class TrackElevation
         (0.50f, 15f), (0.64f, 23f), (0.78f, 30f), (0.90f, 24f)
     ];
 
+    /// <summary>
+    /// Marina Bay is famously flat — the only relief is the pair of bridge
+    /// crossings, a few metres each. Authored honestly: this circuit is in
+    /// the set for its walls and its width, and pretending it climbs would
+    /// cover a hole with fiction.
+    /// </summary>
+    public static readonly (float, float)[] SingaporeHeights =
+    [
+        (0.00f, 0f), (0.18f, 1f), (0.30f, 4f), (0.36f, 1f),
+        (0.55f, 0f), (0.72f, 3f), (0.80f, 0f)
+    ];
+
+    /// <summary>
+    /// The Algarve rollercoaster. Authored to what the venue is famous
+    /// for: blind crests and plunges, with the drop into turn one and the
+    /// climb to the final corner both past ten percent. This is the
+    /// gradient trainer — the one dimension of Monaco that Baku's capped
+    /// climb deliberately leaves out — carried on a road wide enough that
+    /// nothing else is being tested at the same time.
+    /// </summary>
+    public static readonly (float, float)[] PortimaoHeights =
+    [
+        (0.000f, 32f), (0.035f, 13f), (0.090f, 6f), (0.140f, 14f),
+        (0.190f, 3f), (0.270f, 11f), (0.330f, 2f), (0.420f, 9f),
+        (0.500f, 0f), (0.600f, 8f), (0.660f, 2f), (0.760f, 13f),
+        (0.820f, 6f), (0.880f, 9f), (0.930f, 26f)
+    ];
+
     public static readonly (float, float)[] ZandvoortHeights =
     [
         (0.00f, 4f), (0.10f, 2f), (0.22f, 11f), (0.32f, 16f),
