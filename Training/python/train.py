@@ -60,10 +60,9 @@ TRACKS: dict[str, tuple[float, float, bool]] = {
     "spa":            (7004.0, 118.991, False),
     "monza":          (5793.0,  90.783, False),
     "interlagos":     (4309.0,  79.434, False),
-    # Staged for the Monaco verdict; flags flip if they enter training.
-    "singapore":      (4928.0, 101.969, False),
-    "portimao":       (4653.0,  88.556, False),
-    "flat-sweeper":   (4946.0,  67.389, False),
+    "singapore":      (4928.0, 101.969, True),
+    "portimao":       (4653.0,  88.556, True),
+    "flat-sweeper":   (4946.0,  67.389, True),
 }
 
 # Four hundred seconds is two flying laps of the slowest circuit here at the
@@ -363,9 +362,15 @@ def main() -> int:
                 # checkpoint is chosen on: one number, in seconds a lap,
                 # and lower is better.
                 def mean_gap_of(names):
-                    done_ = [laps[n]["gap"] for n in names
-                             if math.isfinite(laps[n]["gap"])]
-                    return sum(done_) / len(done_) if done_ else float("inf")
+                    # A circuit the policy cannot lap counts as two minutes
+                    # against it, not as silence. Excluding DNFs let a
+                    # checkpoint set a best mean in the same evaluation
+                    # where a trained circuit stopped completing laps.
+                    return sum(
+                        min(laps[n]["gap"], 120.0)
+                        if math.isfinite(laps[n]["gap"]) else 120.0
+                        for n in names
+                    ) / len(names)
                 mean_gap = mean_gap_of(trained)
                 held_gap = mean_gap_of(held)
                 print(

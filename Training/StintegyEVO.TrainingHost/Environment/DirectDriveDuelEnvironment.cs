@@ -135,7 +135,15 @@ public sealed class DirectDriveDuelEnvironment
         new("shanghai", TrackFactory.ShanghaiStyleTestTrack),
         new("zandvoort", TrackFactory.ZandvoortStyleTestTrack),
         new("banked-sweeper", TrackFactory.BankedSweeperTestTrack),
-        new("baku", TrackFactory.BakuStyleTestTrack)
+        new("baku", TrackFactory.BakuStyleTestTrack),
+        // The Monaco prescription, admitted at the 300k verdict after a
+        // hundred and fifty thousand steps of Baku alone failed to move
+        // it: Singapore for narrow-flat, Portimão for the gradient past
+        // Monaco's own, and the flat sweeper for the fast flat corners
+        // that drained away while nothing anchored them.
+        new("singapore", TrackFactory.SingaporeStyleTestTrack),
+        new("portimao", TrackFactory.PortimaoStyleTestTrack),
+        new("flat-sweeper", TrackFactory.FlatSweeperTestTrack)
     ];
 
     /// <summary>
@@ -168,13 +176,6 @@ public sealed class DirectDriveDuelEnvironment
         new("spa", TrackFactory.SpaStyleTestTrack),
         new("monza", TrackFactory.MonzaStyleTestTrack),
         new("interlagos", TrackFactory.InterlagosStyleTestTrack),
-        // Staged for the Monaco verdict at 250k: if Baku alone has not
-        // cured it, Singapore thickens narrow-street coverage and Portimão
-        // takes the training gradient past Monaco's 8.6 percent. Parked
-        // here so the harness can evaluate them either way.
-        new("singapore", TrackFactory.SingaporeStyleTestTrack),
-        new("portimao", TrackFactory.PortimaoStyleTestTrack),
-        new("flat-sweeper", TrackFactory.FlatSweeperTestTrack)
     ];
 
     private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];
