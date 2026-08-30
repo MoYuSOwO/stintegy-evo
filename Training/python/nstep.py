@@ -34,9 +34,23 @@ class NStepBatcher:
         action: np.ndarray,
         reward: np.ndarray,
         next_obs: np.ndarray,
-        done: np.ndarray,
+        episode_end: np.ndarray,
+        terminal: np.ndarray,
     ) -> tuple[np.ndarray, ...] | None:
         """Take one step of every lane; return whatever is ready to store.
+
+        `episode_end` and `terminal` used to be one flag, and pulling them
+        apart is the point. An episode ending is a bookkeeping fact — the
+        window must flush, because the next state belongs to a different
+        episode. The future being worth nothing is a physical fact, and it
+        is only true when the car actually gave up. A timeout is the first
+        kind and not the second: the race went on, we merely stopped
+        watching, and teaching the critic that a car at full speed mid-lap
+        has no future — sixty-four times a minute, at states it cannot
+        distinguish from any other because the clock is not observable —
+        is teaching it to shave value off everything, most of all off the
+        behaviours whose payoff arrives late. Sony's trainer keeps a
+        separate time_out_fn for exactly this reason.
 
         Returns (obs, action, return, bootstrap_obs, done, horizon) or None
         when no lane has a complete window yet. `horizon` is how many steps
@@ -52,10 +66,10 @@ class NStepBatcher:
                 action[lane].copy(),
                 float(reward[lane]),
                 next_obs[lane].copy(),
-                bool(done[lane]),
+                bool(terminal[lane]),
             ))
 
-            if bool(done[lane]):
+            if bool(episode_end[lane]):
                 # The episode is over, so every window still open ends here
                 # with the horizon it managed and the terminal flag set.
                 while queue:

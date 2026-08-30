@@ -37,6 +37,7 @@ SPEED_SCALE = 100.0
 # Speed is the first slot of the ego block: geometry 198, tyres 17, mode 1,
 # aero 3, road and limits 13.
 EGO_SPEED = 232
+TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
 
 
 # The harness may know the track; the policy may not. Lap lengths in metres
@@ -102,7 +103,7 @@ def evaluate(
         crossed: list[float | None] = [None] * batch
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
-            obs, reward, done, reason, components, race = env.step(action)
+            obs, reward, done, reason, components, race, _ = env.step(action)
             now = (step + 1) * STEP_SECONDS
             off_course += components[COMPONENT_NAMES.index("off_course")]
             wall += components[COMPONENT_NAMES.index("wall")]
@@ -182,6 +183,7 @@ def main() -> int:
     parser.add_argument("--eval-every", type=int, default=25_000)
     parser.add_argument("--eval-steps", type=int, default=4_000)
     parser.add_argument("--eval-batch", type=int, default=2)
+    parser.add_argument("--episode-seconds", type=float, default=240.0)
     parser.add_argument("--log-every", type=int, default=1_000)
     parser.add_argument(
         "--checkpoint-dir",
@@ -229,6 +231,14 @@ def main() -> int:
         seed_base=args.seed,
         solo=args.solo,
         track=args.track,
+        # Four minutes, not the host's default sixty seconds. Sixty-second
+        # episodes meant no tyre ever got more than a minute old in
+        # training, and a four-hundred-second evaluation then drove the
+        # policy through tyre states it had never once observed — measured
+        # as a car crawling at eleven metres a second on half-worn tyres.
+        # Four minutes is also most of a lap of the longest circuit here,
+        # so a lap is something training actually contains.
+        episode_seconds=args.episode_seconds,
         quiet=True,
     ) as env:
         print(
@@ -257,11 +267,20 @@ def main() -> int:
             else:
                 action = agent.act(obs)
 
-            next_obs, reward, done, reason, components, _ = env.step(action)
-            # `next_obs` is already the post-reset observation on finished
-            # lanes, so the terminal flag must stop the bootstrap there.
+            next_obs, reward, done, reason, components, _, final_obs = (
+                env.step(action)
+            )
+            # An episode ending and the future being worth nothing are two
+            # different facts. Stalling is a real ending; a timeout is the
+            # clock running out on a race that was still going, so the
+            # learner bootstraps across it — from `final_obs`, the frame the
+            # clock stopped at, because `next_obs` on a finished lane is
+            # already the fresh episode's first frame.
+            terminal = done & (reason != TIMEOUT_REASON)
             ready = batcher.add(
-                obs, action, reward, next_obs, done.astype(np.float32)
+                obs, action, reward, final_obs,
+                done.astype(np.float32),
+                terminal.astype(np.float32),
             )
             if ready is not None:
                 agent.buffer.add_batch(*ready)

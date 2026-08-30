@@ -192,7 +192,14 @@ class HostEnv:
             payload, dtype="<f4", count=self.batch, offset=cursor
         ).astype(np.float64)
 
+        # The observation the episode actually ended on. The array returned
+        # below is what the policy acts on next, so finished lanes carry the
+        # fresh episode's first frame — but a learner bootstrapping across a
+        # timeout needs the state the clock stopped at, and once the reset
+        # has run this is the only copy of it.
+        final_obs = obs
         if done.any():
+            final_obs = obs.copy()
             seeds = self._next_seeds(self.batch)
             payload = done.astype(np.uint8).tobytes() + struct.pack(
                 f"<{self.batch}q", *seeds
@@ -202,7 +209,7 @@ class HostEnv:
             assert kind == KIND_MASKED_RESET_RESPONSE, kind
             obs = self._observations_from(reset_payload)
 
-        return obs, reward, done, reason, components, race_distance
+        return obs, reward, done, reason, components, race_distance, final_obs
 
     def close(self) -> None:
         try:
