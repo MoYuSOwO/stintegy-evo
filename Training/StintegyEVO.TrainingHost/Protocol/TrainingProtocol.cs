@@ -22,7 +22,14 @@ public readonly record struct TrainingMessageHeader(
 public static class TrainingProtocol
 {
     public const uint Magic = 0x53544556;
-    public const int Version = 1;
+    /// <summary>
+    /// Version 2 appends each lane's along-track race distance to the step
+    /// response. It is not an observation and never reaches the policy — the
+    /// harness needs it to time a lap, which nothing else in the protocol
+    /// could do: the progress reward is masked off course and the
+    /// observation is forbidden absolute position by design.
+    /// </summary>
+    public const int Version = 2;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

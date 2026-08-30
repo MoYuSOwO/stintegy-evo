@@ -63,7 +63,9 @@ public sealed class BatchedTrainingHost
             observationCount * sizeof(float) +
             batchSize * sizeof(float) +
             batchSize * sizeof(byte) * 2 +
-            batchSize * TrainingStepResult.ComponentCount * sizeof(float)
+            batchSize * TrainingStepResult.ComponentCount * sizeof(float) +
+            // The along-track race distance appended for the lap timer.
+            batchSize * sizeof(float)
         );
         if (stepResponseBytes > TrainingProtocol.MaxPayloadLength)
         {
@@ -260,6 +262,19 @@ public sealed class BatchedTrainingHost
                     _results[i].GetComponent(component)
                 );
             }
+        }
+
+        // Where each car is round the lap, which is the one thing a lap
+        // timer needs and nothing else here carries. Continuous across the
+        // start line and unaffected by leaving the road, unlike both the
+        // progress reward and the observation.
+        for (int i = 0; i < _batchSize; i++)
+        {
+            offset = WriteFloat(
+                _responseBuffer,
+                offset,
+                _environments[i].Ego.Progress.RaceDistanceMeters
+            );
         }
 
         TrainingProtocol.WriteMessage(

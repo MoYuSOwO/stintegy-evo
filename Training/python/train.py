@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import time
 from pathlib import Path
 
@@ -55,11 +56,9 @@ TRACKS: dict[str, tuple[float, float, bool]] = {
     "speedway":       (8512.0, 110.216, False),
 }
 
-# Ninety seconds does not reach the end of a lap of Silverstone, so the old
-# evaluation was reporting a standing start and part of a lap. Four minutes
-# with the first minute thrown away is a flying lap on every circuit here,
-# which is what a lap time means.
-EVAL_WARMUP_STEPS = 600
+# Four hundred seconds is two flying laps of the slowest circuit here at the
+# pace the policy currently drives it, and more of the quicker ones. Ninety
+# seconds did not reach the end of one lap of Silverstone.
 
 
 def evaluate(
@@ -70,55 +69,85 @@ def evaluate(
     track: str,
     steps: int,
 ) -> dict[str, float]:
-    """Flying-lap time on one circuit, and what it cost to get it."""
+    """The fastest complete lap the policy drives, and what it cost.
+
+    A lap is timed the way a lap is timed: by watching the car cross the
+    line. The host reports each car's along-track race distance, which runs
+    continuously through the start line and does not care whether the car is
+    on the road, so a crossing is that distance passing a multiple of the
+    lap length. The crossing moment is interpolated inside the step, and the
+    first lap is thrown away because it begins from a standstill.
+
+    Deriving a lap from average pace instead — which is what this used to do
+    — would fold two different things into one number, since the progress
+    reward is masked off course and a car spending a third of the lap in the
+    barriers would report a slow lap rather than a wrecked one.
+    """
     lap_metres, analytic, _ = TRACKS[track]
+    laps: list[float] = []
     with HostEnv(
-        batch=batch, seed_base=seed_base, solo=solo, track=track
+        batch=batch,
+        seed_base=seed_base,
+        solo=solo,
+        track=track,
+        episode_seconds=steps * STEP_SECONDS + 60.0,
     ) as env:
         obs = env.reset()
-        distance = np.zeros(batch, dtype=np.float64)
         off_course = np.zeros(batch, dtype=np.float64)
         wall = np.zeros(batch, dtype=np.float64)
         excess = np.zeros(batch, dtype=np.float64)
         speed_squared = 0.0
-        reasons: dict[str, int] = {}
+        stalls = 0
+        previous: np.ndarray | None = None
+        crossed: list[float | None] = [None] * batch
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
-            obs, reward, done, reason, components = env.step(action)
-            for lane in np.flatnonzero(done):
-                name = TERMINAL_NAMES[reason[lane]]
-                reasons[name] = reasons.get(name, 0) + 1
-            if step < EVAL_WARMUP_STEPS:
-                continue
-            distance += components[COMPONENT_NAMES.index("own_progress")]
+            obs, reward, done, reason, components, race = env.step(action)
+            now = (step + 1) * STEP_SECONDS
             off_course += components[COMPONENT_NAMES.index("off_course")]
             wall += components[COMPONENT_NAMES.index("wall")]
             excess += components[COMPONENT_NAMES.index("mode_excess")]
             speed_squared += float(
                 ((obs[:, EGO_SPEED] * SPEED_SCALE) ** 2).mean()
             )
+            for lane in np.flatnonzero(done):
+                if TERMINAL_NAMES[reason[lane]] == "stalled":
+                    stalls += 1
+                crossed[lane] = None
+            if previous is not None:
+                for lane in range(batch):
+                    if done[lane] or race[lane] <= previous[lane]:
+                        continue
+                    before = math.floor(previous[lane] / lap_metres)
+                    after = math.floor(race[lane] / lap_metres)
+                    for line in range(before + 1, after + 1):
+                        share = (line * lap_metres - previous[lane]) / (
+                            race[lane] - previous[lane]
+                        )
+                        at = now - STEP_SECONDS + share * STEP_SECONDS
+                        if crossed[lane] is not None:
+                            laps.append(at - crossed[lane])
+                        crossed[lane] = at
+            previous = race.copy()
+            if done.any():
+                previous = None
 
-    flying = (steps - EVAL_WARMUP_STEPS) * STEP_SECONDS
-    metres = distance.mean() / OWN_PROGRESS_RATE
-    lap = lap_metres * flying / max(metres, 1.0)
-    # The off-course penalty is a rate times speed squared times seconds, so
-    # the seconds come back out of it. Progress is masked off course, which
-    # is why a lap time alone can flatter a car that spends the lap beside
-    # the road rather than on it.
-    mean_speed_squared = speed_squared / (steps - EVAL_WARMUP_STEPS)
+    mean_speed_squared = speed_squared / steps
     off_seconds = (
         -off_course.mean() / (OFF_COURSE_RATE * mean_speed_squared)
         if mean_speed_squared > 1.0
         else 0.0
     )
+    best = min(laps) if laps else float("inf")
     return {
-        "lap": lap,
+        "lap": best,
+        "laps": float(len(laps)),
         "analytic": analytic,
-        "gap": lap - analytic,
+        "gap": best - analytic,
         "off_seconds": off_seconds,
         "wall": float(wall.mean()),
         "mode_excess": float(excess.mean()),
-        "stalls": float(reasons.get("stalled", 0)),
+        "stalls": float(stalls),
     }
 
 
@@ -133,7 +162,13 @@ def report(agent, args, seed_base: int) -> dict[str, dict[str, float]]:
     return out
 
 
+def gap_string(seconds: float) -> str:
+    return "     -- " if not math.isfinite(seconds) else f"{seconds:+7.2f}s"
+
+
 def lap_string(seconds: float) -> str:
+    if not math.isfinite(seconds):
+        return "     --  "
     return f"{int(seconds // 60)}:{seconds % 60:06.3f}"
 
 
@@ -145,8 +180,8 @@ def main() -> int:
     parser.add_argument("--solo", action="store_true")
     parser.add_argument("--track", default=None)
     parser.add_argument("--eval-every", type=int, default=25_000)
-    parser.add_argument("--eval-steps", type=int, default=2_400)
-    parser.add_argument("--eval-batch", type=int, default=4)
+    parser.add_argument("--eval-steps", type=int, default=4_000)
+    parser.add_argument("--eval-batch", type=int, default=2)
     parser.add_argument("--log-every", type=int, default=1_000)
     parser.add_argument(
         "--checkpoint-dir",
@@ -222,7 +257,7 @@ def main() -> int:
             else:
                 action = agent.act(obs)
 
-            next_obs, reward, done, reason, components = env.step(action)
+            next_obs, reward, done, reason, components, _ = env.step(action)
             # `next_obs` is already the post-reset observation on finished
             # lanes, so the terminal flag must stop the bootstrap there.
             ready = batcher.add(
@@ -282,6 +317,8 @@ def main() -> int:
                     for name in names:
                         r = laps[name]
                         flags = ""
+                        if r["laps"] < 1.0:
+                            flags += "  未完成一圈"
                         if r["off_seconds"] > 1.0:
                             flags += f"  出界 {r['off_seconds']:.0f}s"
                         if r["wall"] < -1.0:
@@ -292,21 +329,26 @@ def main() -> int:
                             f"    {group} {name:<15}"
                             f"{lap_string(r['lap']):>10}"
                             f"  解析 {lap_string(r['analytic']):>9}"
-                            f"  {r['gap']:+7.2f}s{flags}"
+                            f"  {gap_string(r['gap']):>8}{flags}"
                         )
                 # The mean gap over the trained circuits is what a best
                 # checkpoint is chosen on: one number, in seconds a lap,
                 # and lower is better.
-                mean_gap = sum(laps[n]["gap"] for n in trained) / len(trained)
-                held_gap = sum(laps[n]["gap"] for n in held) / len(held)
+                def mean_gap_of(names):
+                    done_ = [laps[n]["gap"] for n in names
+                             if math.isfinite(laps[n]["gap"])]
+                    return sum(done_) / len(done_) if done_ else float("inf")
+                mean_gap = mean_gap_of(trained)
+                held_gap = mean_gap_of(held)
                 print(
-                    f"    平均差  训练 {mean_gap:+.2f}s   保留 {held_gap:+.2f}s"
+                    f"    平均差  训练 {gap_string(mean_gap)}"
+                    f"   保留 {gap_string(held_gap)}"
                 )
                 agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
-                if -mean_gap > best_gap:
+                if math.isfinite(mean_gap) and -mean_gap > best_gap:
                     best_gap = -mean_gap
                     agent.save(str(checkpoint_dir / f"best{args.tag}.pt"))
-                    print(f"    saved best (训练平均差 {mean_gap:+.2f}s)")
+                    print(f"    saved best (训练平均差 {gap_string(mean_gap)})")
 
     print("training finished")
     return 0

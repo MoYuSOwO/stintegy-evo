@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 1
+VERSION = 2
 HEADER = struct.Struct("<IHHi")
 
 KIND_HELLO = 1
@@ -183,6 +183,14 @@ class HostEnv:
             count=self.batch * len(COMPONENT_NAMES),
             offset=cursor,
         ).reshape(len(COMPONENT_NAMES), self.batch).astype(np.float32)
+        cursor += self.batch * len(COMPONENT_NAMES) * 4
+        # Where each car is round the lap, continuous across the start line.
+        # Not an observation and never given to the policy: it is how the
+        # harness times a lap, which the progress reward cannot do because it
+        # is masked whenever a car is off the road.
+        race_distance = np.frombuffer(
+            payload, dtype="<f4", count=self.batch, offset=cursor
+        ).astype(np.float64)
 
         if done.any():
             seeds = self._next_seeds(self.batch)
@@ -194,7 +202,7 @@ class HostEnv:
             assert kind == KIND_MASKED_RESET_RESPONSE, kind
             obs = self._observations_from(reset_payload)
 
-        return obs, reward, done, reason, components
+        return obs, reward, done, reason, components, race_distance
 
     def close(self) -> None:
         try:
