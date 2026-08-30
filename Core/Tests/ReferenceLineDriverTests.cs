@@ -25,7 +25,7 @@ public sealed class ReferenceLineDriverTests
                 Position = start.RefPosition,
                 Heading = start.RefHeading,
                 Speed = 8f,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
         RaceSimulation simulation = new(track);
@@ -55,7 +55,7 @@ public sealed class ReferenceLineDriverTests
             $"expected a completed lap, got {car.Progress.TotalDistance:0.0}/{track.LengthMeters:0.0} m; " +
             $"s={car.Progress.CurrentS:0.0}, d={car.Progress.CurrentD:0.0}, " +
             $"speed={car.State.Speed:0.0}, region={car.Progress.Region}, " +
-            $"soc={car.State.BatterySoc:0.000}, wall={car.LastBoundaryContact.HasValue}"
+            $"soc={car.State.Energy.Primary:0.000}, wall={car.LastBoundaryContact.HasValue}"
         );
         Assert.True(
             wallContactFrames == 0,
@@ -263,14 +263,14 @@ public sealed class ReferenceLineDriverTests
             protectDriver,
             s: 100f,
             speed: 14f,
-            strategy: new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Normal)
+            strategy: new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal)
         );
         RaceDriverFrameContext attack = CreateContext(
             track,
             attackDriver,
             s: 100f,
             speed: 14f,
-            strategy: new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal)
+            strategy: new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal)
         );
 
         DriverInput protectInput = protectDriver.GetControl(in protect, 1f / 60f);
@@ -296,7 +296,7 @@ public sealed class ReferenceLineDriverTests
             Position = sample.RefPosition + sample.Normal * lateralError,
             Heading = sample.RefHeading,
             Speed = speed,
-            BatterySoc = 0.8f
+            Energy = PowertrainState.Filled(0.8f)
         };
         RaceCar car = new("test", new CarConfig(), WarmTires(), driver, state)
         {

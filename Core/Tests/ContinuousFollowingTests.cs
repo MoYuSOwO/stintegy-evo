@@ -162,7 +162,7 @@ public sealed class ContinuousFollowingTests
         );
         leader.Strategy = new CarStrategy(
             TireUsageMode.Normal,
-            BatteryOutputMode.Normal
+            PowerOutputMode.Normal
         );
         RaceCar follower = CreateCar(
             "variable-speed-follower",
@@ -172,7 +172,7 @@ public sealed class ContinuousFollowingTests
         );
         follower.Strategy = new CarStrategy(
             TireUsageMode.Attack,
-            BatteryOutputMode.Attack
+            PowerOutputMode.Attack
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(leader);
@@ -246,7 +246,7 @@ public sealed class ContinuousFollowingTests
         );
         leader.Strategy = new CarStrategy(
             TireUsageMode.Protect,
-            BatteryOutputMode.Save
+            PowerOutputMode.Save
         );
         RaceCar chaser = CreateCar(
             "chaser",
@@ -256,7 +256,7 @@ public sealed class ContinuousFollowingTests
         );
         chaser.Strategy = new CarStrategy(
             TireUsageMode.Attack,
-            BatteryOutputMode.Attack
+            PowerOutputMode.Attack
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(leader);
@@ -335,7 +335,7 @@ public sealed class ContinuousFollowingTests
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
     }

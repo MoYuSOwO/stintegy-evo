@@ -106,11 +106,11 @@ public sealed class VehicleSpeedPlannerTests
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar protect = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Save)
+            new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Save)
         );
         RaceCar attack = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Attack)
+            new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Attack)
         );
         float protectAverage = AverageSpeed(ReferenceLookahead(
             new VehicleSpeedPlanner(),
@@ -160,7 +160,7 @@ public sealed class VehicleSpeedPlannerTests
         RaceCar defaultCar = CreateCar(track, CarStrategy.Default);
         RaceCar lowDragCar = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack),
+            new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack),
             new CarConfig
             {
                 MassKg = 760f,
@@ -413,7 +413,7 @@ public sealed class VehicleSpeedPlannerTests
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack)
+            new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack)
         );
         car.State.Speed = 0f;
         VehicleSpeedPlanner planner = new();
@@ -589,7 +589,7 @@ public sealed class VehicleSpeedPlannerTests
                 Position = start.RefPosition,
                 Heading = start.RefHeading,
                 Speed = 20f,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         )
         {

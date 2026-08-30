@@ -165,7 +165,7 @@ public sealed class StanleyPathPredictorTests
                 SideslipAngleRadians = sideslip,
                 YawRateRadiansPerSecond = 0f,
                 Speed = 55f,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
         TrackPose pose = track.Project(car.State.Position);
@@ -410,7 +410,7 @@ public sealed class StanleyPathPredictorTests
                 Position = track.Grids[1].Position,
                 Heading = start.RefHeading,
                 Speed = 10f,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
         RaceSimulation simulation = new(track);
@@ -563,7 +563,7 @@ public sealed class StanleyPathPredictorTests
                 Position = start.RefPosition + start.Normal * lateralOffset,
                 Heading = start.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
     }

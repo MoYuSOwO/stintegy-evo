@@ -77,7 +77,7 @@ public sealed class VehicleSpeedPlanner
         ArgumentNullException.ThrowIfNull(car);
 
         _optimisticState.CopyFrom(car.State);
-        _optimisticState.BatterySoc = 1f;
+        _optimisticState.Energy = PowertrainState.Full;
         float currentSpeed = Math.Max(0f, car.State.Speed);
         float upper = Math.Max(
             InitialMaximumSpeedSearchMetersPerSecond,
@@ -1281,7 +1281,8 @@ public sealed class VehicleSpeedPlanner
     {
         return new PerformanceStateKey(
             car.Strategy,
-            Quantize(car.State.BatterySoc, 0.005f),
+            Quantize(car.State.Energy.Primary, 0.005f),
+            Quantize(car.State.Energy.Secondary, 0.005f),
             Quantize(car.State.AirVelocityDeficit, WakeStateStep),
             Quantize(car.State.WakeDownforceLoss, WakeStateStep),
             Quantize(car.State.DownforceVelocityDeficit, WakeStateStep),
@@ -1316,7 +1317,8 @@ public sealed class VehicleSpeedPlanner
 
     private readonly record struct PerformanceStateKey(
         CarStrategy Strategy,
-        int BatterySoc,
+        int PrimaryEnergy,
+        int SecondaryEnergy,
         int AirVelocityDeficit,
         int WakeDownforceLoss,
         int DownforceVelocityDeficit,

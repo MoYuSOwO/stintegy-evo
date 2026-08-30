@@ -679,7 +679,7 @@ public sealed class ReferenceLineHandoverTests
                 Position = start.RefPosition,
                 Heading = start.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
     }
