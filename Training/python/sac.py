@@ -55,10 +55,27 @@ class SacConfig:
     # and one bad mini-batch should not be able to move the network far.
     critic_clip_norm: float = 10.0
     alpha_lr: float = 3e-4
-    # Entropy coefficient. Automatic tuning drives this to a thousandth
-    # within ten thousand steps here, which is exploration switched off; a
-    # fixed value keeps a floor under it. Sony used 0.01 and did not tune it.
-    fixed_alpha: float | None = 0.01
+    # Entropy coefficient, tuned automatically. Sony fixed theirs at 0.01
+    # and that number was copied here without its units, which was a
+    # mistake worth spelling out because the shape of it recurs.
+    #
+    # Their progress reward is metres: ten hertz at fifty metres a second is
+    # about five per step. Ours is two hundredths of a reward per metre,
+    # which is five hundredths per step — a hundred times smaller. So an
+    # alpha of 0.01 is two parts in a thousand of their reward and a fifth
+    # of ours, and a policy paid a fifth of its earnings to stay random
+    # never sharpens. It showed up exactly as that: eighteen metres a second
+    # on every circuit from a banked oval to Monaco, flat from twenty
+    # thousand steps to ninety thousand, while the arm with automatic tuning
+    # started slower and was still climbing past thirty at a hundred and
+    # forty thousand.
+    #
+    # The comment this replaces read the collapse to a thousandth as
+    # exploration switched off. It is the opposite: the tuner is driving the
+    # policy toward its entropy target and a thousandth is what that target
+    # costs at this reward scale. A constant borrowed from a reward a
+    # hundred times larger is not a floor, it is a ceiling.
+    fixed_alpha: float | None = None
     batch_size: int = 512
     buffer_capacity: int = 1_000_000
     start_steps: int = 10_000
