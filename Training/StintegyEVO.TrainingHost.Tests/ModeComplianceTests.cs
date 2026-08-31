@@ -6,7 +6,7 @@ using Xunit;
 namespace StintegyEVO.TrainingHost.Tests;
 
 /// <summary>
-/// Pins the pit wall's authority over the learned driver. Battery modes are
+/// Pins the pit wall's authority over the learned driver. Output modes are
 /// capped by the powertrain, but nothing in the physics stops a car from
 /// spending more grip than its tire mode allots, so the steward penalty is
 /// the only thing that makes the strategy game's instruction real.
@@ -39,11 +39,16 @@ public sealed class ModeComplianceTests
         for (int seed = 0; seed < 60; seed++)
         {
             environment.ResetTrack("speedway", seed, observation);
-            float expected =
-                ((int)environment.EgoStrategy.TireMode - 1) / 4f;
+            // The tyre setting reaches the driver as the share of grip it is
+            // allowed to spend, in the road and limits block. It used to have
+            // a channel of its own in the mode block; that channel was
+            // removed as a quantity the car could already work out, and this
+            // test went on reading the slot rather than the number.
+            float expected = new TireConfig()
+                .GetAccelerationUsage(environment.EgoStrategy.TireMode);
             Assert.Equal(
                 expected,
-                observation[DirectDriveObservation.ModeOffset],
+                observation[DirectDriveObservation.RoadAndLimitsOffset + 8],
                 3
             );
         }

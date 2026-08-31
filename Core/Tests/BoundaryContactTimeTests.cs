@@ -98,7 +98,7 @@ public sealed class BoundaryContactTimeTests
                 Position = at.RefPosition,
                 Heading = at.RefHeading,
                 Speed = 25f,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
         RaceSimulation simulation = new(track);
@@ -136,7 +136,7 @@ public sealed class BoundaryContactTimeTests
                 Position = at.RefPosition,
                 Heading = at.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
     }

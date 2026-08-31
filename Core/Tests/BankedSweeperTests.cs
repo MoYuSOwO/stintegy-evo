@@ -113,7 +113,7 @@ public sealed class BankedSweeperTests
                 Position = start.RefPosition,
                 Heading = start.RefHeading,
                 Speed = 0f,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         );
         RaceSimulation simulation = new(track);

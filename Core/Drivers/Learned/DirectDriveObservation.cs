@@ -502,7 +502,11 @@ public sealed class DirectDriveObservationBuilder
         WriteTire(observation, ref cursor, state.FrontRight, staticCornerLoad);
         WriteTire(observation, ref cursor, state.RearLeft, staticCornerLoad);
         WriteTire(observation, ref cursor, state.RearRight, staticCornerLoad);
-        observation[cursor] = state.BatterySoc;
+        // The primary store only. A car with two of them - a hybrid -
+        // needs a second channel here, and adding one moves everything
+        // after it, so it waits for a generation of policies to end
+        // rather than quietly invalidating the current one.
+        observation[cursor] = state.Energy.Primary;
     }
 
     private static void WriteTire(

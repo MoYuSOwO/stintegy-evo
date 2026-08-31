@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using Godot;
 using StintegyEVO.GodotApp.Car;
 using StintegyEVO.GodotApp.Debug;
@@ -28,6 +29,7 @@ public partial class RaceView : Node2D
     private const float FollowCameraZoom = 3f;
 
     private readonly List<CarView> _carViews = [];
+    private readonly CarDashboard _dashboard = new();
     private readonly Label _telemetryLabel = new()
     {
         Position = new GVector2(12f, 42f),
@@ -126,13 +128,22 @@ public partial class RaceView : Node2D
         }
 
         int tireDelta = key.Keycode switch { Key.Q => -1, Key.E => 1, _ => 0 };
-        int batteryDelta = key.Keycode switch { Key.A => -1, Key.D => 1, _ => 0 };
-        if (tireDelta == 0 && batteryDelta == 0)
+        int powerDelta = key.Keycode switch { Key.A => -1, Key.D => 1, _ => 0 };
+        if (tireDelta == 0 && powerDelta == 0)
             return;
 
-        int tire = Math.Clamp((int)_playerCar.Strategy.TireMode + tireDelta, 1, 5);
-        int battery = Math.Clamp((int)_playerCar.Strategy.BatteryMode + batteryDelta, 1, 5);
-        _playerCar.Strategy = new CarStrategy((TireUsageMode)tire, (BatteryOutputMode)battery);
+        // Stepped against the ladders this car actually has rather than a
+        // remembered five, so a powertrain that offers a different number of
+        // settings is steppable the day it is fitted.
+        int tire = Math.Clamp(
+            (int)_playerCar.Strategy.TireMode + tireDelta,
+            1,
+            TireLadder.Usage.RungCount
+        );
+        int power = _playerCar.CarConfig.Powertrain.OutputLadder.Clamp(
+            _playerCar.Strategy.PowerRung + powerDelta
+        );
+        _playerCar.Strategy = new CarStrategy((TireUsageMode)tire, power);
         RefreshTelemetry();
         GetViewport().SetInputAsHandled();
     }
@@ -163,7 +174,7 @@ public partial class RaceView : Node2D
                 Position = start.Position,
                 Heading = startSample.RefHeading,
                 Speed = MathF.Max(0f, initialSpeedMetersPerSecond),
-                BatterySoc = 0.82f
+                Energy = PowertrainState.Filled(0.82f)
             }
         )
         {
@@ -263,9 +274,10 @@ public partial class RaceView : Node2D
         float frontTemp = (state.FrontLeft.SurfaceTempC + state.FrontRight.SurfaceTempC) * 0.5f;
         float rearTemp = (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
         string trafficStatus = TrafficStatus(_playerCar);
+        _dashboard.Refresh(_playerCar.CarConfig, state, _playerCar.Strategy);
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
-            $"SOC {state.BatterySoc * 100f:0.0}%  |  Tire {_playerCar.Strategy.TireMode}  Battery {_playerCar.Strategy.BatteryMode}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E tire  A/D batt\n" +
+            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.CarConfig.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
             $"Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C  |  Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
             $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
@@ -288,6 +300,45 @@ public partial class RaceView : Node2D
             $"Gap {telemetry.TrafficCurrentClearanceMeters:0.0} m  |  " +
             $"Plan {telemetry.TrafficConstraintDistanceMeters:0} m @ " +
             $"{telemetry.TrafficTargetSpeedMetersPerSecond * 3.6f:0} km/h";
+    }
+
+    /// <summary>
+    /// Every store the car carries and how much of each is left, named by the
+    /// powertrain rather than by this panel - so a car with a tank reads out
+    /// a tank here, and a hybrid reads out both of its stores, without the
+    /// panel being told either exists.
+    /// </summary>
+    private string StoresReadout()
+    {
+        StringBuilder readout = new();
+        foreach (DashboardResource resource in _dashboard.Resources)
+        {
+            if (readout.Length > 0)
+                readout.Append("  ");
+            readout.Append($"{resource.Label} {resource.Fraction * 100f:0.0}%");
+            if (resource.RemainingMassKg > 0f)
+                readout.Append($" ({resource.RemainingMassKg:0} kg)");
+        }
+
+        // Only worth the space when it is biting, which is when the car is
+        // about to feel wrong for a reason the driver cannot otherwise see.
+        if (_dashboard.OutputAvailability < 0.999f)
+            readout.Append($"  OUTPUT {_dashboard.OutputAvailability * 100f:0}%");
+        return readout.ToString();
+    }
+
+    private string ModesReadout()
+    {
+        StringBuilder readout = new();
+        foreach (DashboardMode mode in _dashboard.Modes)
+        {
+            if (readout.Length > 0)
+                readout.Append("  ");
+            readout.Append(
+                $"{mode.Label} {mode.Rung} {mode.Ordinal}/{mode.RungCount}"
+            );
+        }
+        return readout.ToString();
     }
 
     private static string WheelStatus(TireState tire)

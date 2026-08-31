@@ -91,7 +91,7 @@ public sealed class DirectDriveRaceDriver : IRaceDriver
 
         // Not advice, just the actuator range the policy's [-1, 1] is
         // stretched onto: what this car can pull and push right now.
-        float gripAllowance = config.GetAccelerationUsage(car.Strategy);
+        float gripAllowance = car.TireConfig.GetAccelerationUsage(car.Strategy);
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             state,
             car.CarConfig,

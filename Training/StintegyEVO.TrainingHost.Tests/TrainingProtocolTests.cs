@@ -131,7 +131,11 @@ public sealed class TrainingProtocolTests
                         batchSize * sizeof(float) +
                         batchSize * sizeof(byte) * 2 +
                         batchSize * TrainingStepResult.ComponentCount *
-                        sizeof(float);
+                        sizeof(float) +
+                        // Race distance per lane, added with protocol two so
+                        // a lap could be timed at the line rather than
+                        // guessed from an average pace.
+                        batchSize * sizeof(float);
         Assert.Equal(TrainingMessageKind.ResetResponse, reset.Kind);
         Assert.Equal(observationBytes, reset.Payload.Length);
         Assert.Equal(TrainingMessageKind.StepResponse, step.Kind);

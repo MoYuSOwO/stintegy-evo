@@ -11,48 +11,6 @@ namespace StintegyEVO.Core.Tests;
 public sealed class VehicleSpeedPlannerTests
 {
     [Fact]
-    /// <summary>
-    /// Leaning harder on the tyres is always at least as hard as leaning less,
-    /// the slider lands between the named settings, and a figure asked for
-    /// directly is honoured.
-    ///
-    /// The ordering is the part worth holding: a mode that says push has to
-    /// use no less grip than one that says protect, whatever the numbers are
-    /// retuned to. Asserting each setting equals the constant written beside
-    /// it in the configuration held nothing, since the only way to fail it was
-    /// to change that constant on purpose.
-    /// </summary>
-    public void LeaningHarderOnTheTiresNeverUsesLessGrip()
-    {
-        VehicleSpeedPlanningConfig config = new();
-        float protect = config.GetAccelerationUsage(TireUsageMode.Protect);
-        float light = config.GetAccelerationUsage(TireUsageMode.Light);
-        float normal = config.GetAccelerationUsage(TireUsageMode.Normal);
-        float push = config.GetAccelerationUsage(TireUsageMode.Push);
-        float attack = config.GetAccelerationUsage(TireUsageMode.Attack);
-
-        Assert.True(protect <= light);
-        Assert.True(light <= normal);
-        Assert.True(normal <= push);
-        Assert.True(push <= attack);
-
-        float between = config.GetAccelerationUsage(0.375f);
-        Assert.InRange(between, light, normal);
-        Assert.Equal((light + normal) * 0.5f, between, precision: 4);
-
-        // Somewhere the named settings do not land, so it is the custom value
-        // coming back and not one of them. Taken from the ends rather than
-        // written down, because where those ends sit is a calibration.
-        float betweenNamedSettings = (normal + push) * 0.5f;
-        Assert.Equal(
-            betweenNamedSettings,
-            config.GetAccelerationUsage(
-                CarStrategy.Default.WithTireGripUsage(betweenNamedSettings)
-            )
-        );
-    }
-
-    [Fact]
     public void ReferenceLookaheadUsesConfiguredLocalHorizon()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -106,11 +64,11 @@ public sealed class VehicleSpeedPlannerTests
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar protect = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Save)
+            new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Save)
         );
         RaceCar attack = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Attack)
+            new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Attack)
         );
         float protectAverage = AverageSpeed(ReferenceLookahead(
             new VehicleSpeedPlanner(),
@@ -160,7 +118,7 @@ public sealed class VehicleSpeedPlannerTests
         RaceCar defaultCar = CreateCar(track, CarStrategy.Default);
         RaceCar lowDragCar = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack),
+            new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack),
             new CarConfig
             {
                 MassKg = 760f,
@@ -413,7 +371,7 @@ public sealed class VehicleSpeedPlannerTests
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(
             track,
-            new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack)
+            new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack)
         );
         car.State.Speed = 0f;
         VehicleSpeedPlanner planner = new();
@@ -589,7 +547,7 @@ public sealed class VehicleSpeedPlannerTests
                 Position = start.RefPosition,
                 Heading = start.RefHeading,
                 Speed = 20f,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         )
         {
@@ -632,7 +590,7 @@ public sealed class VehicleSpeedPlannerTests
                 config.PredictionConvergenceHeadingErrorRadians,
             convergenceCurvatureError:
                 config.PredictionConvergenceCurvatureError,
-            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
             initialCommandedCurvature: initialCurvature
         );
     }

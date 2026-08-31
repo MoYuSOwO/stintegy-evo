@@ -453,7 +453,7 @@ public sealed class DirectDriveDuelEnvironment
             return 0f;
 
         CarTelemetry telemetry = _ego.State.Telemetry;
-        float allowance = _planningConfig.GetAccelerationUsage(_ego.Strategy);
+        float allowance = _ego.TireConfig.GetAccelerationUsage(_ego.Strategy);
         float frontUse = CombinedUse(
             telemetry.FrontLateralUse,
             telemetry.FrontLongitudinalUse
@@ -507,7 +507,7 @@ public sealed class DirectDriveDuelEnvironment
         // the other modes ask of it, however the observation reports them.
         EgoStrategy = new CarStrategy(
             (TireUsageMode)(random.NextInt(5) + 1),
-            (BatteryOutputMode)(random.NextInt(5) + 1)
+            (PowerOutputMode)(random.NextInt(5) + 1)
         );
 
         RaceEnvironment raceEnvironment = new()
@@ -642,7 +642,7 @@ public sealed class DirectDriveDuelEnvironment
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         )
         {

@@ -252,7 +252,7 @@ public sealed class DirectDriveRaceDriverTests
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         );
     }

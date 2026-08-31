@@ -926,7 +926,7 @@ public sealed class TrafficAvoidanceTests
                 Position = sample.RefPosition + sample.Normal * d,
                 Heading = sample.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         );
     }
@@ -954,7 +954,7 @@ public sealed class TrafficAvoidanceTests
                 Position = grid.Position,
                 Heading = sample.RefHeading,
                 Speed = 0f,
-                BatterySoc = 0.82f
+                Energy = PowertrainState.Filled(0.82f)
             }
         );
     }

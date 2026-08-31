@@ -16,12 +16,12 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 24f, batterySoc: 0.8f, tires);
         float startSpeed = state.Speed;
-        float startSoc = state.BatterySoc;
+        float startSoc = state.Energy.Primary;
 
         StepMany(state, car, tires, new DriverInput(0f, 4f), CarStrategy.Default, steps: 30);
 
         Assert.True(state.Speed > startSpeed, "speed should increase under positive drive request");
-        Assert.True(state.BatterySoc < startSoc, "battery SOC should fall when drive power is used");
+        Assert.True(state.Energy.Primary < startSoc, "battery SOC should fall when drive power is used");
         Assert.True(state.Telemetry.DrivePowerWatts > 0f, "drive power should be reported");
         Assert.True(state.Telemetry.ActualLongitudinalAccel > 0f, "net longitudinal accel should remain positive");
     }
@@ -33,12 +33,12 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 34f, batterySoc: 0.5f, tires);
         float startSpeed = state.Speed;
-        float startSoc = state.BatterySoc;
+        float startSoc = state.Energy.Primary;
 
         StepMany(state, car, tires, new DriverInput(0f, -7f), CarStrategy.Default, steps: 20);
 
         Assert.True(state.Speed < startSpeed, "speed should fall under brake request");
-        Assert.True(state.BatterySoc > startSoc, "battery SOC should rise from regen during braking");
+        Assert.True(state.Energy.Primary > startSoc, "battery SOC should rise from regen during braking");
         Assert.True(state.Telemetry.RegenPowerWatts > 0f, "regen power should be reported");
         Assert.True(state.Telemetry.ActualLongitudinalAccel < 0f, "net longitudinal accel should be negative");
     }
@@ -137,7 +137,7 @@ public sealed class CarPhysicsTests
         CarConfig car = new();
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        CarStrategy strategy = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         DriverInput input = new(0.018f, 7f);
 
         CarPhysics.Step(state, car, tires, PhysicsInput(input, strategy), 1f / 60f);
@@ -156,7 +156,7 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         // Most of the grip spent on the corner, so asking for drive on top of
         // it has to come out of the same circle.
         float curvature = CurvatureForGripShare(cornering, car, tires, attack, 0.9f);
@@ -313,7 +313,7 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeRearTiresHotAndWorn(state);
-        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         // Cornering near what the worn rear will bear and then asking for all
         // the drive there is. Drive alone cannot do it: the request is clipped
         // at the car's own maximum, so the way to make an axle let go is to
@@ -429,7 +429,7 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         // Cornering hard and asking for drive on top, which is where traction
         // control is meant to step in.
         float curvature = CurvatureForGripShare(controlled, car: controlledCar,
@@ -465,7 +465,7 @@ public sealed class CarPhysicsTests
         CarState sliding = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         sliding.Heading = -0.1f;
         sliding.SideslipAngleRadians = 0.1f;
-        CarStrategy attack = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
         float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
         CarPhysicsStepInput input =
@@ -499,8 +499,8 @@ public sealed class CarPhysicsTests
         CarState attack = CreateState(speed: 37f, batterySoc: 0.8f, tires);
         DriverInput input = new(0.014f, 0f);
 
-        StepMany(protect, car, tires, input, new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Normal), steps: 240);
-        StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal), steps: 240);
+        StepMany(protect, car, tires, input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal), steps: 240);
+        StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal), steps: 240);
 
         Assert.Equal(
             AverageSurfaceTemp(protect),
@@ -524,11 +524,11 @@ public sealed class CarPhysicsTests
         CarState attack = CreateState(speed: 50f, batterySoc: 0.8f, tires);
         DriverInput input = new(0f, car.MaxDriveAcceleration);
 
-        StepMany(save, car, tires, input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Save), steps: 60);
-        StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack), steps: 60);
+        StepMany(save, car, tires, input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Save), steps: 60);
+        StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack), steps: 60);
 
         Assert.True(attack.Speed > save.Speed, "attack battery mode should produce more straight-line speed");
-        Assert.True(attack.BatterySoc < save.BatterySoc, "attack battery mode should spend more energy");
+        Assert.True(attack.Energy.Primary < save.Energy.Primary, "attack battery mode should spend more energy");
         Assert.True(attack.Telemetry.DrivePowerWatts > save.Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
     }
 
@@ -545,16 +545,16 @@ public sealed class CarPhysicsTests
     /// </summary>
     public void DrivePowerFallsBetweenTheNamedSettings()
     {
-        CarConfig car = new();
-        float eco = car.GetDrivePowerLimitWatts(BatteryOutputMode.Eco);
-        float normal = car.GetDrivePowerLimitWatts(BatteryOutputMode.Normal);
-        float between = car.GetDrivePowerLimitWatts(0.375f);
+        ElectricPowertrain powertrain = ElectricPowertrain.Default;
+        float eco = powertrain.GetDrivePowerLimitWatts(PowerOutputMode.Eco);
+        float normal = powertrain.GetDrivePowerLimitWatts(PowerOutputMode.Normal);
+        float between = powertrain.GetDrivePowerLimitWatts(0.375f);
 
         Assert.InRange(between, MathF.Min(eco, normal), MathF.Max(eco, normal));
         Assert.Equal((eco + normal) * 0.5f, between, precision: 1);
         Assert.Equal(
             407000f,
-            car.GetDrivePowerLimitWatts(
+            powertrain.GetDrivePowerLimitWatts(
                 CarStrategy.Default.WithDrivePowerLimitWatts(407000f)
             )
         );
@@ -573,14 +573,14 @@ public sealed class CarPhysicsTests
             save,
             car,
             tires,
-            PhysicsInput(input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Save)),
+            PhysicsInput(input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Save)),
             1f / 60f
         );
         CarPhysics.Step(
             attack,
             car,
             tires,
-            PhysicsInput(input, new CarStrategy(TireUsageMode.Normal, BatteryOutputMode.Attack)),
+            PhysicsInput(input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack)),
             1f / 60f
         );
 
@@ -589,7 +589,7 @@ public sealed class CarPhysicsTests
             attack.Telemetry.RequestedLongitudinalAccel,
             precision: 5
         );
-        Assert.Equal(save.BatterySoc, attack.BatterySoc, precision: 7);
+        Assert.Equal(save.Energy.Primary, attack.Energy.Primary, precision: 7);
     }
 
     [Fact]
@@ -599,7 +599,7 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState full = CreateState(speed: 26f, batterySoc: 0.8f, tires);
         CarState low = CreateState(speed: 26f, batterySoc: 0.02f, tires);
-        CarStrategy strategy = new(TireUsageMode.Normal, BatteryOutputMode.Attack);
+        CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         DriverInput input = new(0f, 7f);
 
         CarPhysics.Step(full, car, tires, PhysicsInput(input, strategy), 1f / 60f);
@@ -624,8 +624,8 @@ public sealed class CarPhysicsTests
         CarState attack = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         DriverInput input = new(0.018f, 0f);
 
-        CarPhysics.Step(protect, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Protect, BatteryOutputMode.Normal)), 1f / 60f);
-        CarPhysics.Step(attack, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Attack, BatteryOutputMode.Normal)), 1f / 60f);
+        CarPhysics.Step(protect, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal)), 1f / 60f);
+        CarPhysics.Step(attack, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal)), 1f / 60f);
 
         Assert.Equal(
             protect.Telemetry.ActualCurvature,
@@ -1127,7 +1127,7 @@ public sealed class CarPhysicsTests
                 input = new DriverInput(0.005f, -5f);
             }
 
-            state.BatterySoc = 0.8f;
+            state.Energy = PowertrainState.Filled(0.8f);
             CarPhysics.Step(state, car, tires, PhysicsInput(input), dt);
         }
 
@@ -1849,7 +1849,7 @@ public sealed class CarPhysicsTests
         CarState state = new()
         {
             Speed = speed,
-            BatterySoc = batterySoc
+            Energy = PowertrainState.Filled(batterySoc)
         };
         state.InstallFreshTires(tires);
         return state;

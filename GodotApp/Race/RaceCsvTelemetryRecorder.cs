@@ -45,7 +45,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "physics_loss_mps2,rolling_loss_mps2,aero_loss_mps2,cornering_scrub_mps2," +
             "sideslip_loss_mps2,traction_control_cut_mps2," +
             "front_longitudinal_use,rear_longitudinal_use,drive_power_kw,regen_power_kw," +
-            "battery_soc,air_temp_c,track_temp_c," +
+            "primary_store,air_temp_c,track_temp_c," +
             "front_surface_temp_c,rear_surface_temp_c," +
             "front_core_temp_c,rear_core_temp_c,front_wear,rear_wear," +
             "fl_surface_temp_c,fr_surface_temp_c,rl_surface_temp_c,rr_surface_temp_c," +
@@ -161,7 +161,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             physics.RearLongitudinalUse,
             physics.DrivePowerWatts * 0.001f,
             physics.RegenPowerWatts * 0.001f,
-            car.State.BatterySoc,
+            car.State.Energy.Primary,
             environment.AirTempC,
             environment.TrackTempC,
             frontSurfaceTemp,

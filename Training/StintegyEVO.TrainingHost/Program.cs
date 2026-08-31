@@ -146,7 +146,7 @@ internal static class Program
                         "normal" => CarStrategy.Default,
                         "protect" => new CarStrategy(
                             TireUsageMode.Protect,
-                            BatteryOutputMode.Save
+                            PowerOutputMode.Save
                         ),
                         _ => throw new ArgumentException(
                             "--opponent-strategy must be normal or protect."
@@ -236,7 +236,7 @@ internal static class Program
                 new ReferenceLineDriver(),
                 new CarStrategy(
                     TireUsageMode.Attack,
-                    BatteryOutputMode.Attack
+                    PowerOutputMode.Attack
                 )
             );
             float normalProgress = MeasureSoloProgress(
@@ -247,7 +247,7 @@ internal static class Program
                 ),
                 new CarStrategy(
                     TireUsageMode.Normal,
-                    BatteryOutputMode.Normal
+                    PowerOutputMode.Normal
                 )
             );
             Console.WriteLine(
@@ -381,7 +381,7 @@ internal static class Program
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = 60f,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         )
         {
