@@ -138,7 +138,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car.Strategy,
             state.Speed,
             prepared.DesiredCurvature,
-            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            car.TireConfig.GetAccelerationUsage(car.Strategy),
             referenceAcceleration,
             frontBrakeBiasOffset: 0f,
             corneringEfficiency: performance.PaceEfficiency
@@ -503,7 +503,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
                 _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
                 _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
                 _speedPlanner.Config.PredictionConvergenceCurvatureError,
-                _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+                car.TireConfig.GetAccelerationUsage(car.Strategy),
                 initialCommandedCurvature,
                 stabilitySeed
             );
@@ -530,7 +530,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
                 _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
                 _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
                 _speedPlanner.Config.PredictionConvergenceCurvatureError,
-                _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+                car.TireConfig.GetAccelerationUsage(car.Strategy),
                 initialCommandedCurvature,
                 stabilitySeed
             );
@@ -587,7 +587,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             _speedPlanner.Config.PredictionConvergenceLateralErrorMeters,
             _speedPlanner.Config.PredictionConvergenceHeadingErrorRadians,
             _speedPlanner.Config.PredictionConvergenceCurvatureError,
-            _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            car.TireConfig.GetAccelerationUsage(car.Strategy),
             control.DesiredCurvature
         );
         DynamicPathSpeedPlan speedPlan = _speedPlanner.PlanPredictedPath(
@@ -731,7 +731,7 @@ public sealed class ReferenceLineDriver : IRaceDriver, ITrafficMotionPlanSource
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: _speedPlanner.Config.GetAccelerationUsage(car.Strategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
             corneringEfficiency: _performance?.PaceEfficiency ?? 1f
         );
         return MathF.Max(limits.LateralAccelerationLimit, 1e-3f);

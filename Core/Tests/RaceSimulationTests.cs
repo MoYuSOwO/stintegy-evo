@@ -180,7 +180,7 @@ public sealed class RaceSimulationTests
                 Position = start.Center + start.Normal * 3f,
                 Heading = start.RefHeading + 0.3f,
                 Speed = 40f,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         );
         PlanObserverDriver observerDriver = new("planned");
@@ -422,7 +422,7 @@ public sealed class RaceSimulationTests
             Position = start.Center + start.Normal * outsideLeftWallD,
             Heading = start.RefHeading,
             Speed = 0f,
-            BatterySoc = 0.8f
+            Energy = PowertrainState.Filled(0.8f)
         };
         RaceCar car = new(
             "wall-test",
@@ -460,7 +460,7 @@ public sealed class RaceSimulationTests
             Position = start.Center + start.Normal * centerD,
             Heading = MathF.Atan2(start.Normal.Y, start.Normal.X),
             Speed = 0f,
-            BatterySoc = 0.8f
+            Energy = PowertrainState.Filled(0.8f)
         };
 
         Assert.False(
@@ -487,7 +487,7 @@ public sealed class RaceSimulationTests
             Position = start.Center + start.Normal * centerD,
             Heading = MathF.Atan2(start.Normal.Y, start.Normal.X),
             Speed = 42f,
-            BatterySoc = 0.8f
+            Energy = PowertrainState.Filled(0.8f)
         };
         RaceCar car = new(
             "wall-sweep",
@@ -521,7 +521,7 @@ public sealed class RaceSimulationTests
             Position = start.Center + start.Normal * centerD,
             Heading = MathF.Atan2(-start.Normal.Y, -start.Normal.X),
             Speed = 42f,
-            BatterySoc = 0.8f
+            Energy = PowertrainState.Filled(0.8f)
         };
         RaceCar car = new(
             "right-wall-sweep",
@@ -782,7 +782,7 @@ public sealed class RaceSimulationTests
                 Position = start.Center,
                 Heading = start.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             },
             collision
         );
