@@ -485,7 +485,7 @@ public sealed class StanleyPathPredictorTests
                 config.PredictionConvergenceHeadingErrorRadians,
             convergenceCurvatureError:
                 config.PredictionConvergenceCurvatureError,
-            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
             initialCommandedCurvature: initialCurvature
         );
     }
@@ -522,7 +522,7 @@ public sealed class StanleyPathPredictorTests
                 config.PredictionConvergenceHeadingErrorRadians,
             convergenceCurvatureError:
                 config.PredictionConvergenceCurvatureError,
-            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
             initialCommandedCurvature: track.Project(car.State.Position)
                 .Sample.RefCurvature
         );

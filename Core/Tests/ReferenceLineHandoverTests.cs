@@ -448,7 +448,7 @@ public sealed class ReferenceLineHandoverTests
                 config.PredictionConvergenceHeadingErrorRadians,
             convergenceCurvatureError:
                 config.PredictionConvergenceCurvatureError,
-            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
             initialCommandedCurvature: control.DesiredCurvature
         );
         DynamicPathSpeedPlan speedPlan = planner.PlanPredictedPath(
@@ -568,7 +568,7 @@ public sealed class ReferenceLineHandoverTests
                 config.PredictionConvergenceHeadingErrorRadians,
             convergenceCurvatureError:
                 config.PredictionConvergenceCurvatureError,
-            gripUsage: config.GetAccelerationUsage(car.Strategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
             initialCommandedCurvature: baselineControl.DesiredCurvature
         );
         VehicleSpeedLookahead baselineSpeedPlan = new();
@@ -647,7 +647,7 @@ public sealed class ReferenceLineHandoverTests
                     config.PredictionConvergenceHeadingErrorRadians,
                 convergenceCurvatureError:
                     config.PredictionConvergenceCurvatureError,
-                gripUsage: config.GetAccelerationUsage(car.Strategy),
+                gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy),
                 initialCommandedCurvature: control.DesiredCurvature
             );
             DynamicPathSpeedPlan speedPlan = planner.PlanPredictedPath(
