@@ -33,6 +33,7 @@ from sac import SacAgent, SacConfig
 STEP_SECONDS = 0.1
 OWN_PROGRESS_RATE = 0.02
 OFF_COURSE_RATE = 1e-3
+WALL_RATE = 5e-3
 SPEED_SCALE = 100.0
 # Speed is the first slot of the ego block: geometry 198, tyres 17, mode 1,
 # aero 3, road and limits 13.
@@ -110,7 +111,21 @@ def evaluate(
 
     So: a lap is clean when nothing was charged against it for leaving the
     road or touching a barrier, and the headline lap time is the best clean
-    one. Everything the definition throws away is reported beside it rather
+    one. Beside it is the *charged* lap - the lap time with the seconds it
+    spent beyond the line and against a barrier added back at a second per
+    second - and that, not the clean lap, is what a checkpoint is ranked on.
+
+    The reason is that a clean lap is not always available to rank. At the
+    ten decisions a second the learned driver is held to, holding a line
+    is hard enough that a whole evaluation can go by without one circuit
+    producing a single clean lap from any driver at all. A ranking
+    criterion that is undefined in that case selects nothing, and a
+    project that cannot select a checkpoint cannot train. Charging the
+    excursions back keeps the ranking defined wherever laps are completed,
+    monotone in how far outside the lines the policy went, and impossible
+    to win by cutting - a corner cut pays for itself and then some.
+
+    Everything the definition throws away is reported beside it rather
     than silently dropped - how many laps were completed, how many were
     clean, what the dirty ones cost, whether the pit wall's instruction was
     obeyed, and what was left of the tyres and the store. The clean
@@ -119,6 +134,8 @@ def evaluate(
     lap_metres, analytic, _ = TRACKS[track]
     clean_laps: list[float] = []
     dirty_laps: list[float] = []
+    charged_laps: list[float] = []
+    off_per_lap: list[float] = []
     lanes_with_clean = 0
     with HostEnv(
         batch=batch,
@@ -133,7 +150,10 @@ def evaluate(
         wall = np.zeros(batch, dtype=np.float64)
         excess = np.zeros(batch, dtype=np.float64)
         # The same three, but only since this lane last crossed the line,
-        # which is what decides whether the lap it just finished counts.
+        # and in seconds rather than in penalty: a penalty is a rate times
+        # the square of a speed times a duration, so dividing it by the
+        # first two gives back the duration it was charged for. Seconds are
+        # what a lap can be charged in.
         lap_off = np.zeros(batch, dtype=np.float64)
         lap_wall = np.zeros(batch, dtype=np.float64)
         lap_excess = np.zeros(batch, dtype=np.float64)
@@ -152,12 +172,13 @@ def evaluate(
             off_course += step_off
             wall += step_wall
             excess += step_excess
-            lap_off += step_off
-            lap_wall += step_wall
-            lap_excess += step_excess
-            speed_squared += float(
-                ((obs[:, EGO_SPEED] * SPEED_SCALE) ** 2).mean()
+            v_squared = np.maximum(
+                (obs[:, EGO_SPEED] * SPEED_SCALE) ** 2, 1e-6
             )
+            lap_off += -step_off / (OFF_COURSE_RATE * v_squared)
+            lap_wall += -step_wall / (WALL_RATE * v_squared)
+            lap_excess += -step_excess
+            speed_squared += float(v_squared.mean())
             for lane in range(batch):
                 # A lane that ended its episode restarts the clock for
                 # itself alone. This used to blank one shared variable, so
@@ -186,7 +207,11 @@ def evaluate(
                     at = now - STEP_SECONDS + share * STEP_SECONDS
                     if crossed[lane] is not None:
                         lap = at - crossed[lane]
-                        if lap_off[lane] >= -1e-9 and lap_wall[lane] >= -1e-9:
+                        charged_laps.append(
+                            lap + lap_off[lane] + lap_wall[lane]
+                        )
+                        off_per_lap.append(lap_off[lane])
+                        if lap_off[lane] < 1e-6 and lap_wall[lane] < 1e-6:
                             clean_laps.append(lap)
                             if lane_clean[lane] == 0:
                                 lanes_with_clean += 1
@@ -206,8 +231,12 @@ def evaluate(
     )
     completed = len(clean_laps) + len(dirty_laps)
     best = min(clean_laps) if clean_laps else float("inf")
+    charged = min(charged_laps) if charged_laps else float("inf")
     return {
         "lap": best,
+        "charged_lap": charged,
+        "charged_gap": charged - analytic,
+        "off_per_lap": float(np.median(off_per_lap)) if off_per_lap else 0.0,
         "laps": float(completed),
         "clean_laps": float(len(clean_laps)),
         "clean_share": len(clean_laps) / completed if completed else 0.0,
@@ -441,13 +470,8 @@ def main() -> int:
                     for name in names:
                         r = laps[name]
                         flags = ""
-                        if r["clean_laps"] < 1.0:
-                            flags += (
-                                "  无干净圈" if r["laps"] < 1.0
-                                else f"  {r['laps']:.0f} 圈全脏"
-                            )
-                        if r["off_seconds"] > 1.0:
-                            flags += f"  出界 {r['off_seconds']:.0f}s"
+                        if r["laps"] < 1.0:
+                            flags += "  未完成一圈"
                         if r["wall"] < -1.0:
                             flags += f"  撞墙 {r['wall']:.0f}"
                         if r["mode_excess"] < -0.02:
@@ -456,11 +480,12 @@ def main() -> int:
                             flags += f"  退赛 {r['stalls']:.0f}"
                         print(
                             f"    {group} {name:<15}"
-                            f"{lap_string(r['lap']):>10}"
+                            f"  干净 {lap_string(r['lap']):>9}"
+                            f"  计罚 {lap_string(r['charged_lap']):>9}"
                             f"  解析 {lap_string(r['analytic']):>9}"
-                            f"  {gap_string(r['gap']):>8}"
-                            f"  干净 {r['clean_laps']:.0f}/{r['laps']:.0f}"
-                            f" ({r['lanes_with_clean']:.0f}/{r['lanes']:.0f} lane)"
+                            f"  {gap_string(r['charged_gap']):>8}"
+                            f"  {r['clean_laps']:.0f}/{r['laps']:.0f} 干净"
+                            f"  出界 {r['off_per_lap']:.1f}s/圈"
                             f"  胎耗 {r['tyre_wear'] * 100:.0f}%"
                             f"  余量 {r['store'] * 100:.0f}%{flags}"
                         )
@@ -475,31 +500,29 @@ def main() -> int:
                     # and, before laps had to be clean to count, let one
                     # lap driven half beside the road stand in for pace.
                     return sum(
-                        min(laps[n]["gap"], 120.0)
-                        if math.isfinite(laps[n]["gap"]) else 120.0
+                        min(laps[n]["charged_gap"], 120.0)
+                        if math.isfinite(laps[n]["charged_gap"]) else 120.0
                         for n in names
                     ) / len(names)
                 mean_gap = mean_gap_of(trained)
                 held_gap = mean_gap_of(held)
                 left, right = ("专家", "哨兵") if args.track else ("训练", "保留")
                 print(
-                    f"    平均差  {left} {gap_string(mean_gap)}"
+                    f"    计罚平均差  {left} {gap_string(mean_gap)}"
                     f"   {right} {gap_string(held_gap)}"
                 )
                 agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
-                # A checkpoint that laps nothing cleanly is not a best
+                # A checkpoint that completes nothing is not a best
                 # checkpoint, however flattering its mean happens to be.
-                clean_everywhere = all(
-                    laps[n]["clean_laps"] > 0 for n in trained
-                )
+                laps_everywhere = all(laps[n]["laps"] > 0 for n in trained)
                 if (
-                    clean_everywhere
+                    laps_everywhere
                     and math.isfinite(mean_gap)
                     and -mean_gap > best_gap
                 ):
                     best_gap = -mean_gap
                     agent.save(str(checkpoint_dir / f"best{args.tag}.pt"))
-                    print(f"    saved best (干净平均差 {gap_string(mean_gap)})")
+                    print(f"    saved best (计罚平均差 {gap_string(mean_gap)})")
 
     print("training finished")
     return 0
