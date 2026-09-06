@@ -423,20 +423,80 @@ class SacAgent:
         weight = (self.taus - (delta < 0).float()).abs()
         return (weight * huber).mean(dim=2).sum(dim=1).mean()
 
-    def save(self, path: str) -> None:
+    CHECKPOINT_FORMAT = 2
+
+    def save(self, path: str, step: int = 0) -> None:
+        """Everything needed to carry on, not just everything needed to drive.
+
+        The first format stored three tensors: the actor, the critic and the
+        entropy coefficient. Loading it and calling the result a resumed run
+        was wrong in four ways at once - the optimizers restarted with empty
+        Adam moments, the target critic was reset to the online one instead
+        of trailing it, the random streams began again, and the step counter
+        went back to one, which put the run back inside its initial window of
+        uniformly random actions. None of that is visible in a log line that
+        says "resumed from", and all of it changes what happens next.
+
+        A checkpoint that carries the optimizers, the target critic, the
+        random state and the step is a checkpoint a run can actually be
+        continued from. What it still does not carry is the replay buffer,
+        which is gigabytes; a load is therefore a warm start unless the
+        caller supplies one, and load() says which of the two it managed.
+        """
         torch.save(
             {
+                "format": self.CHECKPOINT_FORMAT,
+                "step": int(step),
                 "actor": self.actor.state_dict(),
                 "critic": self.critic.state_dict(),
+                "critic_target": self.critic_target.state_dict(),
                 "log_alpha": self.log_alpha.detach().cpu(),
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+                "alpha_optimizer": self.alpha_optimizer.state_dict(),
+                "torch_rng": torch.get_rng_state(),
+                "numpy_rng": np.random.get_state(),
             },
             path,
         )
 
-    def load(self, path: str) -> None:
-        state = torch.load(path, map_location=self.device)
+    def load(self, path: str) -> dict[str, object]:
+        """Restores what the file has, and reports what that was.
+
+        Returns the step the checkpoint was written at and whether the
+        optimizer and random state came with it. The caller is expected to
+        put that in the log, so that "continued" and "warm started" are
+        never again two words for the same line.
+        """
+        state = torch.load(path, map_location=self.device, weights_only=False)
         self.actor.load_state_dict(state["actor"])
         self.critic.load_state_dict(state["critic"])
-        self.critic_target.load_state_dict(state["critic"])
+        # A trailing target that has been reset to the online critic is not
+        # trailing anything; older files have no copy of it, and for those
+        # the reset is the best that can be done.
+        self.critic_target.load_state_dict(
+            state.get("critic_target", state["critic"])
+        )
         with torch.no_grad():
             self.log_alpha.copy_(state["log_alpha"].to(self.device))
+
+        restored_optimizers = all(
+            key in state
+            for key in ("actor_optimizer", "critic_optimizer", "alpha_optimizer")
+        )
+        if restored_optimizers:
+            self.actor_optimizer.load_state_dict(state["actor_optimizer"])
+            self.critic_optimizer.load_state_dict(state["critic_optimizer"])
+            self.alpha_optimizer.load_state_dict(state["alpha_optimizer"])
+
+        restored_rng = "torch_rng" in state and "numpy_rng" in state
+        if restored_rng:
+            torch.set_rng_state(state["torch_rng"].cpu())
+            np.random.set_state(state["numpy_rng"])
+
+        return {
+            "format": state.get("format", 1),
+            "step": int(state.get("step", 0)),
+            "optimizers": restored_optimizers,
+            "rng": restored_rng,
+        }

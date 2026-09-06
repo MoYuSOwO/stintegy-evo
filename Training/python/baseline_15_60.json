@@ -1,0 +1,460 @@
+{
+  "modes": [
+    3,
+    3
+  ],
+  "seed_base": 900001,
+  "lanes": 2,
+  "sim_seconds": 600.0,
+  "rates_hz": [
+    15.0,
+    60.0
+  ],
+  "driver": "analytic (ReferenceLineDriver)",
+  "definition": "clean = a lap charged nothing for leaving the road or touching a barrier; charged = lap time plus those seconds added back",
+  "note": "the agent step and the analytic driver's own decision period are set to the same rate at every rung, so a rung is one rate for everything on the circuit",
+  "tracks": {
+    "silverstone": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 107.05011027670774,
+        "charged_lap": 107.05011027670774,
+        "fastest_lap": 107.05011027670774,
+        "off_per_lap": 0.0,
+        "clean_laps": 7,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 9.13
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 103.61277898515019,
+        "charged_lap": 103.61277898515019,
+        "fastest_lap": 103.61277898515019,
+        "off_per_lap": 0.0,
+        "clean_laps": 9,
+        "laps": 9,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 19.96
+      }
+    },
+    "shanghai": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 106.20197721616228,
+        "charged_lap": 106.20197721616228,
+        "fastest_lap": 106.20197721616228,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 7.9
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 104.67349785774815,
+        "charged_lap": 104.67349785774815,
+        "fastest_lap": 104.67349785774815,
+        "off_per_lap": 0.0,
+        "clean_laps": 9,
+        "laps": 9,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 20.66
+      }
+    },
+    "zandvoort": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 84.08141987949955,
+        "charged_lap": 84.08141987949955,
+        "fastest_lap": 84.08141987949955,
+        "off_per_lap": 0.0,
+        "clean_laps": 12,
+        "laps": 12,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 6.81
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 83.35970529037564,
+        "charged_lap": 83.35970529037564,
+        "fastest_lap": 83.35970529037564,
+        "off_per_lap": 0.0,
+        "clean_laps": 12,
+        "laps": 12,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 21.48
+      }
+    },
+    "simple-right": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 36.640839942446156,
+        "charged_lap": 36.640839942446156,
+        "fastest_lap": 36.640839942446156,
+        "off_per_lap": 0.0,
+        "clean_laps": 31,
+        "laps": 31,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 7.01
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 36.33147467993697,
+        "charged_lap": 36.33147467993697,
+        "fastest_lap": 36.33147467993697,
+        "off_per_lap": 0.0,
+        "clean_laps": 31,
+        "laps": 31,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 24.33
+      }
+    },
+    "simple-left": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 36.65702874373457,
+        "charged_lap": 36.65702874373457,
+        "fastest_lap": 36.65702874373457,
+        "off_per_lap": 0.0,
+        "clean_laps": 31,
+        "laps": 31,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 7.29
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 36.30966864505509,
+        "charged_lap": 36.30966864505509,
+        "fastest_lap": 36.30966864505509,
+        "off_per_lap": 0.0,
+        "clean_laps": 31,
+        "laps": 31,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 24.74
+      }
+    },
+    "banked-sweeper": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 67.94048161574327,
+        "charged_lap": 67.94048161574327,
+        "fastest_lap": 67.94048161574327,
+        "off_per_lap": 0.0,
+        "clean_laps": 15,
+        "laps": 15,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 6.11
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 67.28483277654263,
+        "charged_lap": 67.28483277654263,
+        "fastest_lap": 67.28483277654263,
+        "off_per_lap": 0.0,
+        "clean_laps": 15,
+        "laps": 15,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 14.84
+      }
+    },
+    "sepang": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 106.57941805636568,
+        "charged_lap": 106.57941805636568,
+        "fastest_lap": 106.57941805636568,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 16.54
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 105.75401485959527,
+        "charged_lap": 105.75401485959527,
+        "fastest_lap": 105.75401485959527,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 58.51
+      }
+    },
+    "monaco": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 80.8478423927128,
+        "charged_lap": 80.8478423927128,
+        "fastest_lap": 80.8478423927128,
+        "off_per_lap": 0.0,
+        "clean_laps": 12,
+        "laps": 12,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 17.67
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 80.14345426077364,
+        "charged_lap": 80.14345426077364,
+        "fastest_lap": 80.14345426077364,
+        "off_per_lap": 0.0,
+        "clean_laps": 12,
+        "laps": 12,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 58.86
+      }
+    },
+    "daytona": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 54.165115766112244,
+        "charged_lap": 54.165115766112244,
+        "fastest_lap": 54.165115766112244,
+        "off_per_lap": 0.0,
+        "clean_laps": 20,
+        "laps": 20,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 7.04
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 54.118074561403546,
+        "charged_lap": 54.118074561403546,
+        "fastest_lap": 54.118074561403546,
+        "off_per_lap": 0.0,
+        "clean_laps": 20,
+        "laps": 20,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 21.18
+      }
+    },
+    "speedway": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 109.76618115680617,
+        "charged_lap": 109.76618115680617,
+        "fastest_lap": 109.76618115680617,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 6.36
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 109.83046080387543,
+        "charged_lap": 109.83046080387543,
+        "fastest_lap": 109.83046080387543,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 20.98
+      }
+    },
+    "baku": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 108.85602169365599,
+        "charged_lap": 108.85602169365599,
+        "fastest_lap": 108.85602169365599,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 19.89
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 106.88794191737786,
+        "charged_lap": 106.88794191737786,
+        "fastest_lap": 106.88794191737786,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 45.86
+      }
+    },
+    "spa": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 118.7846169522744,
+        "charged_lap": 118.7846169522744,
+        "fastest_lap": 118.7846169522744,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 23.63
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 118.07332177468966,
+        "charged_lap": 118.07332177468966,
+        "fastest_lap": 118.07332177468966,
+        "off_per_lap": 0.0,
+        "clean_laps": 8,
+        "laps": 8,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 53.88
+      }
+    },
+    "monza": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 93.96256764515815,
+        "charged_lap": 93.96256764515815,
+        "fastest_lap": 93.96256764515815,
+        "off_per_lap": 0.0,
+        "clean_laps": 10,
+        "laps": 10,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 20.15
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 91.58095714660055,
+        "charged_lap": 91.58095714660055,
+        "fastest_lap": 91.58095714660055,
+        "off_per_lap": 0.0,
+        "clean_laps": 10,
+        "laps": 10,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 47.66
+      }
+    },
+    "interlagos": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 80.57255679607452,
+        "charged_lap": 80.57255679607452,
+        "fastest_lap": 80.57255679607452,
+        "off_per_lap": 0.0,
+        "clean_laps": 12,
+        "laps": 12,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 18.15
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 79.80856656580937,
+        "charged_lap": 79.80856656580937,
+        "fastest_lap": 79.80856656580937,
+        "off_per_lap": 0.0,
+        "clean_laps": 12,
+        "laps": 12,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 44.19
+      }
+    },
+    "singapore": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 103.60643288377439,
+        "charged_lap": 103.60643288377439,
+        "fastest_lap": 103.60643288377439,
+        "off_per_lap": 0.0,
+        "clean_laps": 6,
+        "laps": 9,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 18.54
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 102.51365355442333,
+        "charged_lap": 102.51365355442333,
+        "fastest_lap": 102.51365355442333,
+        "off_per_lap": 0.0,
+        "clean_laps": 9,
+        "laps": 9,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 46.03
+      }
+    },
+    "portimao": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 89.18733267029558,
+        "charged_lap": 89.18733267029558,
+        "fastest_lap": 89.18733267029558,
+        "off_per_lap": 0.0,
+        "clean_laps": 11,
+        "laps": 11,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 16.74
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 88.1534533870909,
+        "charged_lap": 88.1534533870909,
+        "fastest_lap": 88.1534533870909,
+        "off_per_lap": 0.0,
+        "clean_laps": 11,
+        "laps": 11,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 45.08
+      }
+    },
+    "flat-sweeper": {
+      "15": {
+        "hz": 15.0,
+        "clean_lap": 68.07574185327874,
+        "charged_lap": 68.07574185327874,
+        "fastest_lap": 68.07574185327874,
+        "off_per_lap": 0.0,
+        "clean_laps": 15,
+        "laps": 15,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 9.45
+      },
+      "60": {
+        "hz": 60.0,
+        "clean_lap": 67.52850173750335,
+        "charged_lap": 67.52850173750335,
+        "fastest_lap": 67.52850173750335,
+        "off_per_lap": 0.0,
+        "clean_laps": 15,
+        "laps": 15,
+        "sim_seconds": 600.0,
+        "lanes": 2,
+        "wall_seconds": 21.76
+      }
+    }
+  }
+}

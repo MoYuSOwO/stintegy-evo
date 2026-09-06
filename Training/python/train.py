@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from host_env import (
     COMPONENT_NAMES, DEFAULT_DECISION_HZ, TERMINAL_NAMES, HostEnv,
@@ -48,25 +49,40 @@ TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
 # and the analytic driver's own flying lap over the same circuits, so the
 # log reports the gap in the unit a lap is actually measured in.
 TRACKS: dict[str, tuple[float, float, bool]] = {
-    # name: (lap metres, analytic flying lap seconds, in the training set)
-    "silverstone":    (5891.0, 101.974, True),
-    "shanghai":       (5451.0, 103.729, True),
-    "zandvoort":      (4259.0,  83.241, True),
-    "simple-right":   (1804.0,  36.160, True),
-    "simple-left":    (1804.0,  36.160, True),
-    "banked-sweeper": (4946.0,  67.348, True),
-    "sepang":         (5543.0, 105.714, False),
-    "monaco":         (3337.0,  80.857, False),
-    "daytona":        (4016.0,  54.572, False),
-    "speedway":       (8512.0, 110.216, False),
+    # name: (lap metres, analytic clean flying lap seconds, in the training set)
+    #
+    # The analytic driver's own best clean lap, measured through the same
+    # host, the same lap timer and the same definition of clean that a
+    # policy is measured by, at the same fifteen decisions a second, on the
+    # same Normal/Normal instruction. It used to be a column of constants
+    # whose conditions nobody had written down, which made every gap quoted
+    # against them a comparison between two different measurements.
+    #
+    # They turn out to have been close - most within a second of what a
+    # condition-matched measurement gives - so the numbers move little and
+    # the history stands. What changes is that they are now reproducible:
+    #     python3 frequency_sweep.py --rates 15,60
+    # writes baseline_15_60.json, and the sixty-hertz column in that file is
+    # what the analytic driver does in the game, where it is not held to the
+    # learner's rate.
+    "silverstone":    (5891.0, 107.050, True),
+    "shanghai":       (5451.0, 106.202, True),
+    "zandvoort":      (4259.0,  84.081, True),
+    "simple-right":   (1804.0,  36.641, True),
+    "simple-left":    (1804.0,  36.657, True),
+    "banked-sweeper": (4946.0,  67.940, True),
+    "sepang":         (5543.0, 106.579, False),
+    "monaco":         (3337.0,  80.848, False),
+    "daytona":        (4016.0,  54.165, False),
+    "speedway":       (8512.0, 109.766, False),
     # The second coverage round. Baku trains; the other three examine.
-    "baku":           (6003.0, 107.705, True),
-    "spa":            (7004.0, 118.991, False),
-    "monza":          (5793.0,  90.783, False),
-    "interlagos":     (4309.0,  79.434, False),
-    "singapore":      (4928.0, 101.969, True),
-    "portimao":       (4653.0,  88.556, True),
-    "flat-sweeper":   (4946.0,  67.389, True),
+    "baku":           (6003.0, 108.856, True),
+    "spa":            (7004.0, 118.785, False),
+    "monza":          (5793.0,  93.963, False),
+    "interlagos":     (4309.0,  80.573, False),
+    "singapore":      (4928.0, 103.606, True),
+    "portimao":       (4653.0,  89.187, True),
+    "flat-sweeper":   (4946.0,  68.076, True),
 }
 
 # Four hundred seconds is two flying laps of the slowest circuit here at the
@@ -355,6 +371,15 @@ def main() -> int:
         overrides["hidden"] = tuple(
             int(part) for part in args.hidden.split(",")
         )
+    # The seed reached the environment and the evaluation but never the
+    # learner: torch and numpy started wherever the interpreter left them,
+    # so the network's initialisation, the exploration noise and every
+    # minibatch draw were unrepeatable. Two runs of the same command were
+    # never the same experiment, which is fatal to any comparison that
+    # needs more than one seed to mean anything.
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
     config = SacConfig(**overrides)
     print(
         f"device: {config.device} hidden={config.hidden} "
@@ -381,9 +406,27 @@ def main() -> int:
             f"lanes={env.batch} solo={args.solo}"
         )
         agent = SacAgent(env.obs_size, env.action_size, config)
+        resumed_step = 0
+        run_kind = "fresh"
         if args.resume:
-            agent.load(args.resume)
-            print(f"resumed from {args.resume}")
+            restored = agent.load(args.resume)
+            # A resume that restores the weights and nothing else is a warm
+            # start: the optimizer moments are empty, the random streams
+            # begin again, and the step counter goes back to one, which puts
+            # the run back inside its window of uniformly random actions.
+            # Both are legitimate; conflating them is not, and the log has
+            # to say which happened because nothing downstream can tell.
+            full = restored["optimizers"] and restored["rng"]
+            run_kind = "continued" if full else "warm-start"
+            resumed_step = restored["step"] if full else 0
+            print(
+                f"{run_kind} from {args.resume} "
+                f"(format {restored['format']}, step {restored['step']}, "
+                f"optimizers {'yes' if restored['optimizers'] else 'no'}, "
+                f"rng {'yes' if restored['rng'] else 'no'}, "
+                f"replay no)"
+            )
+
 
         obs = env.reset()
         batcher = NStepBatcher(env.batch, config.n_step, config.gamma)
@@ -393,7 +436,7 @@ def main() -> int:
         best_gap = -np.inf
         started = time.time()
 
-        for step in range(1, args.steps + 1):
+        for step in range(resumed_step + 1, resumed_step + args.steps + 1):
             transitions = step * env.batch
             if transitions < config.start_steps:
                 action = np.random.uniform(
@@ -520,7 +563,9 @@ def main() -> int:
                     f"    计罚平均差  {left} {gap_string(mean_gap)}"
                     f"   {right} {gap_string(held_gap)}"
                 )
-                agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
+                agent.save(
+                    str(checkpoint_dir / f"latest{args.tag}.pt"), step
+                )
                 # A checkpoint that completes nothing is not a best
                 # checkpoint, however flattering its mean happens to be.
                 laps_everywhere = all(laps[n]["laps"] > 0 for n in trained)
@@ -530,7 +575,9 @@ def main() -> int:
                     and -mean_gap > best_gap
                 ):
                     best_gap = -mean_gap
-                    agent.save(str(checkpoint_dir / f"best{args.tag}.pt"))
+                    agent.save(
+                        str(checkpoint_dir / f"best{args.tag}.pt"), step
+                    )
                     print(f"    saved best (计罚平均差 {gap_string(mean_gap)})")
 
     print("training finished")
