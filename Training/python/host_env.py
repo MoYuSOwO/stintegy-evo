@@ -55,8 +55,6 @@ DEFAULT_HOST_PROJECT = str(
 
 
 class HostEnv:
-    """One host subprocess driving ``batch`` environments in lockstep."""
-
     def __init__(
         self,
         batch: int = 16,
@@ -66,7 +64,16 @@ class HostEnv:
         episode_seconds: float | None = None,
         host_project: str = DEFAULT_HOST_PROJECT,
         quiet: bool = True,
+        ego_modes: tuple[int, int] | None = None,
     ) -> None:
+        """One host subprocess driving ``batch`` environments in lockstep.
+
+        ``ego_modes`` fixes the pit-wall instruction - (tyre rung, power
+        rung), counted from one - for every episode instead of drawing it
+        from the seed. Training leaves it None so the policy meets all five
+        settings; evaluation sets it, because a lap time taken under an
+        instruction nobody wrote down is not comparable to another one.
+        """
         # A published self-contained host binary, when one is provided,
         # spawns directly: no SDK on the machine, no rebuild on spawn, and
         # an evaluation can never race a half-edited source tree. This is
@@ -82,6 +89,9 @@ class HostEnv:
             command += ["--track", track]
         if episode_seconds is not None:
             command += ["--episode-seconds", str(episode_seconds)]
+        if ego_modes is not None:
+            command += ["--ego-modes", f"{ego_modes[0]},{ego_modes[1]}"]
+        self.ego_modes = ego_modes
 
         self._process = subprocess.Popen(
             command,

@@ -187,6 +187,19 @@ public sealed class DirectDriveDuelEnvironment
     private readonly float _maximumForwardGapMeters;
     private readonly float _episodeDurationSeconds;
     private readonly CarStrategy _opponentStrategy;
+
+    /// <summary>
+    /// The instruction the ego is given, when the caller insists on one.
+    ///
+    /// Training leaves this null and draws a fresh instruction every
+    /// episode, because a policy that only ever sees Attack cannot learn
+    /// what the other settings ask of it. Evaluation sets it, because a
+    /// measurement taken under an instruction drawn from a seed and never
+    /// written down is not a measurement of anything: two checkpoints
+    /// compared that way can differ by which tyre mode their lanes happened
+    /// to draw.
+    /// </summary>
+    private readonly CarStrategy? _fixedEgoStrategy;
     /// <summary>
     /// How often the sparring partner rethinks. Ten a second, the same rate
     /// the agent decides at, which is both cheap and appropriately coarse.
@@ -234,7 +247,8 @@ public sealed class DirectDriveDuelEnvironment
         float episodeDurationSeconds = DefaultEpisodeDurationSeconds,
         CarStrategy? opponentStrategy = null,
         float opponentPace = 70f,
-        bool solo = false
+        bool solo = false,
+        CarStrategy? egoStrategy = null
     )
     {
         if (!float.IsFinite(minimumForwardGapMeters) ||
@@ -262,6 +276,7 @@ public sealed class DirectDriveDuelEnvironment
             throw new ArgumentOutOfRangeException(nameof(opponentPace));
         }
 
+        _fixedEgoStrategy = egoStrategy;
         _minimumForwardGapMeters = minimumForwardGapMeters;
         _maximumForwardGapMeters = maximumForwardGapMeters;
         _episodeDurationSeconds = episodeDurationSeconds;
@@ -512,10 +527,15 @@ public sealed class DirectDriveDuelEnvironment
         // Every episode draws a pit-wall instruction. Without this the
         // policy would only ever be told Attack and could never learn what
         // the other modes ask of it, however the observation reports them.
-        EgoStrategy = new CarStrategy(
+        // Drawn even when it is about to be overridden, so that a fixed
+        // instruction and a drawn one leave the random stream in the same
+        // place and everything after this - air temperature, track
+        // temperature, the opponent's gap - lands identically.
+        CarStrategy drawn = new(
             (TireUsageMode)(random.NextInt(5) + 1),
             (PowerOutputMode)(random.NextInt(5) + 1)
         );
+        EgoStrategy = _fixedEgoStrategy ?? drawn;
 
         RaceEnvironment raceEnvironment = new()
         {

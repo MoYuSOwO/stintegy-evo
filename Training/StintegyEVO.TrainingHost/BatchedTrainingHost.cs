@@ -38,7 +38,8 @@ public sealed class BatchedTrainingHost
             DirectDriveDuelEnvironment.DefaultEpisodeDurationSeconds,
         CarStrategy? opponentStrategy = null,
         float opponentPace = 70f,
-        bool solo = false
+        bool solo = false,
+        CarStrategy? egoStrategy = null
     )
     {
         if (batchSize <= 0)
@@ -99,7 +100,8 @@ public sealed class BatchedTrainingHost
                 episodeDurationSeconds,
                 opponentStrategy,
                 opponentPace,
-                solo
+                solo,
+                egoStrategy
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

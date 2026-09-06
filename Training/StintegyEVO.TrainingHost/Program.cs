@@ -31,6 +31,7 @@ internal static class Program
                 float maximumForwardGapMeters,
                 float episodeDurationSeconds,
                 CarStrategy opponentStrategy,
+                CarStrategy? egoStrategy,
                 float opponentPace,
                 bool solo
             ) =
@@ -44,7 +45,8 @@ internal static class Program
                 episodeDurationSeconds,
                 opponentStrategy,
                 opponentPace,
-                solo
+                solo,
+                egoStrategy
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -64,6 +66,7 @@ internal static class Program
         float MaximumForwardGapMeters,
         float EpisodeDurationSeconds,
         CarStrategy OpponentStrategy,
+        CarStrategy? EgoStrategy,
         float OpponentPace,
         bool Solo
     ) ParseOptions(string[] args)
@@ -80,6 +83,7 @@ internal static class Program
         CarStrategy opponentStrategy = CarStrategy.Default;
         float opponentPace = 70f;
         bool solo = false;
+        CarStrategy? egoStrategy = null;
         for (int i = 0; i < args.Length; i++)
         {
             string option = args[i];
@@ -153,6 +157,9 @@ internal static class Program
                         )
                     };
                     break;
+                case "--ego-modes":
+                    egoStrategy = ParseModes(option, value);
+                    break;
                 case "--opponent-pace":
                     opponentPace = ParseFiniteFloat(option, value);
                     if (opponentPace < 0f || opponentPace > 100f)
@@ -181,9 +188,31 @@ internal static class Program
             maximumForwardGapMeters,
             episodeDurationSeconds,
             opponentStrategy,
+            egoStrategy,
             opponentPace,
             solo
         );
+    }
+
+    /// <summary>
+    /// A pit-wall instruction written as "tyre,power", each a rung counted
+    /// from one. Evaluation uses it so that a measurement says which
+    /// instruction it was taken under instead of leaving it to a seed.
+    /// </summary>
+    private static CarStrategy ParseModes(string option, string value)
+    {
+        string[] parts = value.Split(',');
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[0], out int tire) ||
+            !int.TryParse(parts[1], out int power) ||
+            tire < 1 || tire > 5 || power < 1)
+        {
+            throw new ArgumentException(
+                $"{option} must be written tyre,power with rungs counted " +
+                "from one, for example 3,3."
+            );
+        }
+        return new CarStrategy((TireUsageMode)tire, power);
     }
 
     private static float ParseFiniteFloat(string option, string value)

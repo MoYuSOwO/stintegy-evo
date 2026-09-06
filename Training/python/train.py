@@ -70,6 +70,15 @@ TRACKS: dict[str, tuple[float, float, bool]] = {
 # seconds did not reach the end of one lap of Silverstone.
 
 
+EVALUATION_MODES = (3, 3)
+# Tyres, then the primary store: the tyre block is four wheels of surface
+# temperature, core temperature, wear and load, and the store's remaining
+# fraction is the slot after them.
+TIRE_BLOCK = 198
+WEAR_SLOTS = (TIRE_BLOCK + 2, TIRE_BLOCK + 6, TIRE_BLOCK + 10, TIRE_BLOCK + 14)
+PRIMARY_STORE = TIRE_BLOCK + 16
+
+
 def evaluate(
     agent: SacAgent,
     batch: int,
@@ -77,69 +86,117 @@ def evaluate(
     solo: bool,
     track: str,
     steps: int,
+    modes: tuple[int, int] = EVALUATION_MODES,
 ) -> dict[str, float]:
-    """The fastest complete lap the policy drives, and what it cost.
+    """What the policy did on this circuit, and whether it was allowed to.
 
     A lap is timed the way a lap is timed: by watching the car cross the
     line. The host reports each car's along-track race distance, which runs
-    continuously through the start line and does not care whether the car is
-    on the road, so a crossing is that distance passing a multiple of the
-    lap length. The crossing moment is interpolated inside the step, and the
-    first lap is thrown away because it begins from a standstill.
+    continuously through the start line and does not care whether the car
+    is on the road, so a crossing is that distance passing a multiple of
+    the lap length. The crossing moment is interpolated inside the step and
+    the first lap is thrown away because it begins from a standstill.
 
-    Deriving a lap from average pace instead — which is what this used to do
-    — would fold two different things into one number, since the progress
-    reward is masked off course and a car spending a third of the lap in the
-    barriers would report a slow lap rather than a wrecked one.
+    What is new here is that a lap now has to be legal to count. The
+    previous version put every completed lap into one list regardless of
+    what it cost, took the minimum over every lane, and reported that as
+    the policy's lap time - so the headline number could be, and on this
+    project was, a lap driven partly beside the road by whichever of two
+    lanes had drawn the most permissive tyre mode. Under the fixed
+    instruction used here, the early checkpoint's nineteen complete laps
+    contained no clean one at all and the late checkpoint's sixteen
+    contained one. A measurement that cannot tell those apart from a
+    genuine flying lap cannot be used to declare anything graduated.
+
+    So: a lap is clean when nothing was charged against it for leaving the
+    road or touching a barrier, and the headline lap time is the best clean
+    one. Everything the definition throws away is reported beside it rather
+    than silently dropped - how many laps were completed, how many were
+    clean, what the dirty ones cost, whether the pit wall's instruction was
+    obeyed, and what was left of the tyres and the store. The clean
+    definition is this environment's penalty accounting, not a scrutineer.
     """
     lap_metres, analytic, _ = TRACKS[track]
-    laps: list[float] = []
+    clean_laps: list[float] = []
+    dirty_laps: list[float] = []
+    lanes_with_clean = 0
     with HostEnv(
         batch=batch,
         seed_base=seed_base,
         solo=solo,
         track=track,
         episode_seconds=steps * STEP_SECONDS + 60.0,
+        ego_modes=modes,
     ) as env:
         obs = env.reset()
         off_course = np.zeros(batch, dtype=np.float64)
         wall = np.zeros(batch, dtype=np.float64)
         excess = np.zeros(batch, dtype=np.float64)
+        # The same three, but only since this lane last crossed the line,
+        # which is what decides whether the lap it just finished counts.
+        lap_off = np.zeros(batch, dtype=np.float64)
+        lap_wall = np.zeros(batch, dtype=np.float64)
+        lap_excess = np.zeros(batch, dtype=np.float64)
+        lane_clean = np.zeros(batch, dtype=np.int64)
         speed_squared = 0.0
         stalls = 0
-        previous: np.ndarray | None = None
+        previous: list[float | None] = [None] * batch
         crossed: list[float | None] = [None] * batch
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
             obs, reward, done, reason, components, race, _ = env.step(action)
             now = (step + 1) * STEP_SECONDS
-            off_course += components[COMPONENT_NAMES.index("off_course")]
-            wall += components[COMPONENT_NAMES.index("wall")]
-            excess += components[COMPONENT_NAMES.index("mode_excess")]
+            step_off = components[COMPONENT_NAMES.index("off_course")]
+            step_wall = components[COMPONENT_NAMES.index("wall")]
+            step_excess = components[COMPONENT_NAMES.index("mode_excess")]
+            off_course += step_off
+            wall += step_wall
+            excess += step_excess
+            lap_off += step_off
+            lap_wall += step_wall
+            lap_excess += step_excess
             speed_squared += float(
                 ((obs[:, EGO_SPEED] * SPEED_SCALE) ** 2).mean()
             )
-            for lane in np.flatnonzero(done):
-                if TERMINAL_NAMES[reason[lane]] == "stalled":
-                    stalls += 1
-                crossed[lane] = None
-            if previous is not None:
-                for lane in range(batch):
-                    if done[lane] or race[lane] <= previous[lane]:
-                        continue
-                    before = math.floor(previous[lane] / lap_metres)
-                    after = math.floor(race[lane] / lap_metres)
-                    for line in range(before + 1, after + 1):
-                        share = (line * lap_metres - previous[lane]) / (
-                            race[lane] - previous[lane]
-                        )
-                        at = now - STEP_SECONDS + share * STEP_SECONDS
-                        if crossed[lane] is not None:
-                            laps.append(at - crossed[lane])
-                        crossed[lane] = at
-            previous = race.copy()
-            if done.any():
-                previous = None
+            for lane in range(batch):
+                # A lane that ended its episode restarts the clock for
+                # itself alone. This used to blank one shared variable, so
+                # any lane finishing made every other lane skip its own
+                # line check for that step - a silently dropped lap in
+                # every batch that ever saw a terminal.
+                if done[lane]:
+                    if TERMINAL_NAMES[reason[lane]] == "stalled":
+                        stalls += 1
+                    crossed[lane] = None
+                    previous[lane] = None
+                    lap_off[lane] = 0.0
+                    lap_wall[lane] = 0.0
+                    lap_excess[lane] = 0.0
+                    continue
+                before_distance = previous[lane]
+                previous[lane] = float(race[lane])
+                if before_distance is None or race[lane] <= before_distance:
+                    continue
+                before = math.floor(before_distance / lap_metres)
+                after = math.floor(race[lane] / lap_metres)
+                for line in range(before + 1, after + 1):
+                    share = (line * lap_metres - before_distance) / (
+                        race[lane] - before_distance
+                    )
+                    at = now - STEP_SECONDS + share * STEP_SECONDS
+                    if crossed[lane] is not None:
+                        lap = at - crossed[lane]
+                        if lap_off[lane] >= -1e-9 and lap_wall[lane] >= -1e-9:
+                            clean_laps.append(lap)
+                            if lane_clean[lane] == 0:
+                                lanes_with_clean += 1
+                            lane_clean[lane] += 1
+                        else:
+                            dirty_laps.append(lap)
+                    crossed[lane] = at
+                    lap_off[lane] = 0.0
+                    lap_wall[lane] = 0.0
+                    lap_excess[lane] = 0.0
 
     mean_speed_squared = speed_squared / steps
     off_seconds = (
@@ -147,16 +204,25 @@ def evaluate(
         if mean_speed_squared > 1.0
         else 0.0
     )
-    best = min(laps) if laps else float("inf")
+    completed = len(clean_laps) + len(dirty_laps)
+    best = min(clean_laps) if clean_laps else float("inf")
     return {
         "lap": best,
-        "laps": float(len(laps)),
+        "laps": float(completed),
+        "clean_laps": float(len(clean_laps)),
+        "clean_share": len(clean_laps) / completed if completed else 0.0,
+        "lanes_with_clean": float(lanes_with_clean),
+        "lanes": float(batch),
+        "best_dirty": min(dirty_laps) if dirty_laps else float("inf"),
         "analytic": analytic,
         "gap": best - analytic,
         "off_seconds": off_seconds,
         "wall": float(wall.mean()),
         "mode_excess": float(excess.mean()),
         "stalls": float(stalls),
+        "tyre_wear": float(np.mean([obs[:, w] for w in WEAR_SLOTS])),
+        "store": float(obs[:, PRIMARY_STORE].mean()),
+        "modes": modes,
     }
 
 
@@ -363,7 +429,11 @@ def main() -> int:
                 laps = report(
                     agent, args, args.seed + 900_000, trained + held
                 )
-                print(f"  eval at step {step}    飞驰圈")
+                tyre, power = EVALUATION_MODES
+                print(
+                    f"  eval at step {step}    干净飞驰圈"
+                    f"  (档位 轮胎{tyre}/动力{power}, {args.eval_batch} lane)"
+                )
                 groups = (
                     ("专家", trained), ("哨兵", held)
                 ) if args.track else (("训练", trained), ("保留", held))
@@ -371,28 +441,39 @@ def main() -> int:
                     for name in names:
                         r = laps[name]
                         flags = ""
-                        if r["laps"] < 1.0:
-                            flags += "  未完成一圈"
+                        if r["clean_laps"] < 1.0:
+                            flags += (
+                                "  无干净圈" if r["laps"] < 1.0
+                                else f"  {r['laps']:.0f} 圈全脏"
+                            )
                         if r["off_seconds"] > 1.0:
                             flags += f"  出界 {r['off_seconds']:.0f}s"
                         if r["wall"] < -1.0:
                             flags += f"  撞墙 {r['wall']:.0f}"
+                        if r["mode_excess"] < -0.02:
+                            flags += f"  抗命 {r['mode_excess']:.2f}"
                         if r["stalls"] > 0:
                             flags += f"  退赛 {r['stalls']:.0f}"
                         print(
                             f"    {group} {name:<15}"
                             f"{lap_string(r['lap']):>10}"
                             f"  解析 {lap_string(r['analytic']):>9}"
-                            f"  {gap_string(r['gap']):>8}{flags}"
+                            f"  {gap_string(r['gap']):>8}"
+                            f"  干净 {r['clean_laps']:.0f}/{r['laps']:.0f}"
+                            f" ({r['lanes_with_clean']:.0f}/{r['lanes']:.0f} lane)"
+                            f"  胎耗 {r['tyre_wear'] * 100:.0f}%"
+                            f"  余量 {r['store'] * 100:.0f}%{flags}"
                         )
-                # The mean gap over the trained circuits is what a best
-                # checkpoint is chosen on: one number, in seconds a lap,
-                # and lower is better.
+                # The mean clean gap over the circuits that count is
+                # what a best checkpoint is chosen on: one number, in
+                # seconds a lap, and lower is better.
                 def mean_gap_of(names):
-                    # A circuit the policy cannot lap counts as two minutes
-                    # against it, not as silence. Excluding DNFs let a
-                    # checkpoint set a best mean in the same evaluation
-                    # where a trained circuit stopped completing laps.
+                    # A circuit the policy cannot lap cleanly counts as two
+                    # minutes against it, not as silence. Excluding those
+                    # let a checkpoint set a best mean in the same
+                    # evaluation where a circuit stopped completing laps -
+                    # and, before laps had to be clean to count, let one
+                    # lap driven half beside the road stand in for pace.
                     return sum(
                         min(laps[n]["gap"], 120.0)
                         if math.isfinite(laps[n]["gap"]) else 120.0
@@ -406,10 +487,19 @@ def main() -> int:
                     f"   {right} {gap_string(held_gap)}"
                 )
                 agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
-                if math.isfinite(mean_gap) and -mean_gap > best_gap:
+                # A checkpoint that laps nothing cleanly is not a best
+                # checkpoint, however flattering its mean happens to be.
+                clean_everywhere = all(
+                    laps[n]["clean_laps"] > 0 for n in trained
+                )
+                if (
+                    clean_everywhere
+                    and math.isfinite(mean_gap)
+                    and -mean_gap > best_gap
+                ):
                     best_gap = -mean_gap
                     agent.save(str(checkpoint_dir / f"best{args.tag}.pt"))
-                    print(f"    saved best (训练平均差 {gap_string(mean_gap)})")
+                    print(f"    saved best (干净平均差 {gap_string(mean_gap)})")
 
     print("training finished")
     return 0
