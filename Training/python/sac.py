@@ -42,11 +42,18 @@ def default_device() -> str:
 @dataclass
 class SacConfig:
     hidden: tuple[int, ...] = (512, 512, 256)
-    gamma: float = 0.9896
+    # The paper's 0.9896 at ten decisions a second, refolded for
+    # fifteen: 0.9896 ** (10/15). The time horizon is what was chosen, not
+    # the per-step number - about nine and a half seconds either way - and
+    # a discount copied across a change of rate silently divides it.
+    gamma: float = 0.9931
     # How many steps of real reward a stored return carries before handing
     # over to the critic. One leaves everything to a critic that is itself
     # still learning; seven is what Sony used.
-    n_step: int = 7
+    # Seven steps was 0.70 s of lookahead at ten a second; ten is 0.67 s
+    # at fifteen. Same reasoning as the discount: the quantity the paper
+    # chose is a duration.
+    n_step: int = 10
     tau: float = 0.005
     actor_lr: float = 3e-4
     critic_lr: float = 3e-4

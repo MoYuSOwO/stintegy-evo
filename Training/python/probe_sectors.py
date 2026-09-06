@@ -21,8 +21,7 @@ import numpy as np
 
 from host_env import HostEnv
 from sac import SacAgent, SacConfig
-
-STEP_SECONDS = 0.1
+from train import STEP_SECONDS
 ROAD_OFFSET = 219
 CEILING = ROAD_OFFSET + 7
 ALLOWANCE = ROAD_OFFSET + 8
@@ -97,7 +96,9 @@ def main() -> int:
     track = "silverstone"
     lap_metres = 5891.0
     bin_metres = 100.0
-    steps = 6000                       # ten minutes: several laps each lane
+    # Ten minutes of watching, in whatever number of steps the rate makes
+    # that: several laps in each lane on any circuit here.
+    steps = int(round(600.0 / STEP_SECONDS))
     seed_base = 900001                 # the evaluation's own seeds
     a_path, b_path = sys.argv[1], sys.argv[2]
 

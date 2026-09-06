@@ -168,7 +168,16 @@ public sealed class DirectDriveRaceDriverTests
         // Stations are spaced by speed, so a fixed index is a fixed time
         // ahead rather than a fixed distance — which is what pure pursuit
         // wants anyway, since its lookahead should grow with speed.
-        private const int AimPoint = 4;          // one and a half seconds
+        //
+        // Two thirds of a second. It used to aim at one and a half and
+        // multiply the answer by six, which is a lookahead too long to
+        // hold a corner propped up by a gain large enough to oscillate;
+        // the pair only held the road at all because a control held for a
+        // tenth of a second is a filtered control. Swept across aim points
+        // and gains once the decision rate moved, the honest corner of that
+        // space is the one with no fudge in it: aim near, ask for the
+        // curvature you computed.
+        private const int AimPoint = 1;
 
         public void Act(ReadOnlySpan<float> observation, Span<float> action)
         {
@@ -186,9 +195,21 @@ public sealed class DirectDriveRaceDriverTests
                 : 0f;
 
             // The interface takes curvature as a fraction of the car's own
-            // steering limit, and a hundredth of a per-metre is a long way
-            // round for these cars.
-            action[0] = Math.Clamp(curvature / 0.05f, -1f, 1f);
+            // steering limit, so normalising by anything else is a gain.
+            // This used to divide by a twentieth of a per-metre while the
+            // car's limit is roughly a third of one, which asked for six
+            // and a half times the curvature pure pursuit had just worked
+            // out. It held the road anyway only because a control held for
+            // a tenth of a second is a control that has been low-pass
+            // filtered; raising the decision rate took that filter away and
+            // the oscillation it had been hiding walked the car off the
+            // road. Normalised by the actual limit, the car is commanded
+            // the curvature it computed.
+            action[0] = Math.Clamp(
+                curvature / new CarConfig().MaxCurvatureRequest,
+                -1f,
+                1f
+            );
             action[1] = 0.25f;
         }
     }

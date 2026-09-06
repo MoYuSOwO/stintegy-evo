@@ -20,7 +20,9 @@ from pathlib import Path
 
 import numpy as np
 
-from host_env import COMPONENT_NAMES, TERMINAL_NAMES, HostEnv
+from host_env import (
+    COMPONENT_NAMES, DEFAULT_DECISION_HZ, TERMINAL_NAMES, HostEnv,
+)
 from nstep import NStepBatcher
 from sac import SacAgent, SacConfig
 
@@ -30,7 +32,8 @@ from sac import SacAgent, SacConfig
 # progress rate is what turns a reward back into metres, the step is what
 # turns steps back into seconds, and the off-course rate is what turns its
 # penalty back into the seconds spent beside the road.
-STEP_SECONDS = 0.1
+DECISION_HZ = DEFAULT_DECISION_HZ
+STEP_SECONDS = 1.0 / DECISION_HZ
 OWN_PROGRESS_RATE = 0.02
 OFF_COURSE_RATE = 1e-3
 WALL_RATE = 5e-3
@@ -86,7 +89,7 @@ def evaluate(
     seed_base: int,
     solo: bool,
     track: str,
-    steps: int,
+    seconds: float,
     modes: tuple[int, int] = EVALUATION_MODES,
 ) -> dict[str, float]:
     """What the policy did on this circuit, and whether it was allowed to.
@@ -142,9 +145,13 @@ def evaluate(
         seed_base=seed_base,
         solo=solo,
         track=track,
-        episode_seconds=steps * STEP_SECONDS + 60.0,
+        episode_seconds=seconds + 60.0,
         ego_modes=modes,
     ) as env:
+        # A budget in seconds, spent at whatever the rate is. Steps used
+        # to be the budget, which meant every change of rate silently
+        # changed how long an evaluation watched for.
+        steps = int(round(seconds / STEP_SECONDS))
         obs = env.reset()
         off_course = np.zeros(batch, dtype=np.float64)
         wall = np.zeros(batch, dtype=np.float64)
@@ -263,7 +270,7 @@ def report(
     for name in names:
         out[name] = evaluate(
             agent, args.eval_batch, seed_base, args.solo, name,
-            args.eval_steps,
+            args.eval_seconds,
         )
     return out
 
@@ -307,7 +314,9 @@ def main() -> int:
     parser.add_argument("--solo", action="store_true")
     parser.add_argument("--track", default=None)
     parser.add_argument("--eval-every", type=int, default=25_000)
-    parser.add_argument("--eval-steps", type=int, default=4_000)
+    # Four hundred seconds of watching, whatever the decision rate turns
+    # that into in steps.
+    parser.add_argument("--eval-seconds", type=float, default=400.0)
     parser.add_argument("--eval-batch", type=int, default=2)
     parser.add_argument("--episode-seconds", type=float, default=240.0)
     parser.add_argument("--log-every", type=int, default=1_000)

@@ -45,9 +45,26 @@ public enum DecisionClock
 /// the grip unused through a compression, which is to say wrong about
 /// exactly the ground the road model just added.
 ///
-/// Ten decisions a second, not thirty. Sony tested five to sixty on Gran
-/// Turismo and found nothing above ten worth having, and a decision is the
-/// expensive part of a step.
+/// Fifteen decisions a second. The project ran at ten for its whole first
+/// era on the strength of Sony finding nothing above ten worth having on
+/// Gran Turismo — but that finding belongs to their interface, where a
+/// policy commands a steering angle. This one commands a curvature and
+/// holds it flat until the next decision, and the car tracks that command
+/// through a yaw response of about a hundred and fifty milliseconds, so a
+/// hundred-millisecond period leaves barely one and a half corrections
+/// inside the plant's own time constant.
+///
+/// Measured rather than argued. The analytic driver — the same code at
+/// every rate, so whatever changes is the rate — was held to a ladder of
+/// periods on eleven circuits. Ten hertz is a cliff and not a slope: it
+/// spends whole seconds a lap outside the white lines and on two circuits
+/// cannot complete a clean lap at all, while fifteen puts every excursion
+/// to zero and takes fourteen to twenty-six seconds off the lap. Above
+/// fifteen the ladder is flat — thirty and sixty are worth tenths — while
+/// the wall clock keeps climbing. Fifteen is the first rung past the
+/// cliff, which is where this now sits.
+///
+/// Evidence: Training/python/frequency_sweep.json.
 ///
 /// <para><b>The decision contract.</b> A decision is two things at one
 /// instant: the observation is sampled, and the control it produces is
@@ -72,7 +89,7 @@ public enum DecisionClock
 /// </summary>
 public sealed class DirectDriveRaceDriver : IRaceDriver
 {
-    public const float DefaultDecisionHz = 10f;
+    public const float DefaultDecisionHz = 15f;
 
     private readonly IDrivingPolicy? _policy;
     private readonly VehicleSpeedPlanningConfig _planningConfig;

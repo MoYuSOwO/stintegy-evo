@@ -41,8 +41,8 @@ public sealed class BatchedTrainingHost
         bool solo = false,
         CarStrategy? egoStrategy = null,
         bool egoAnalytic = false,
-        float egoAnalyticHz = 10f,
-        float decisionHz = 10f
+        float egoAnalyticHz = 0f,
+        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz
     )
     {
         if (batchSize <= 0)
@@ -106,7 +106,10 @@ public sealed class BatchedTrainingHost
                 solo,
                 egoStrategy,
                 egoAnalytic,
-                egoAnalyticHz,
+                // Zero means match the agent step, so a reference measured
+                // without being told a rate is measured on the learner's
+                // terms rather than on a remembered constant.
+                egoAnalyticHz > 0f ? egoAnalyticHz : decisionHz,
                 decisionHz
             );
             ResetEnvironment(i, unchecked(seedBase + i));

@@ -94,8 +94,11 @@ internal static class Program
         bool solo = false;
         CarStrategy? egoStrategy = null;
         bool egoAnalytic = false;
-        float egoAnalyticHz = 10f;
-        float decisionHz = 10f;
+        // Zero means "whatever the agent step is", so that a
+        // reference measured without being told a rate is measured
+        // on the learner's terms.
+        float egoAnalyticHz = 0f;
+        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz;
         for (int i = 0; i < args.Length; i++)
         {
             string option = args[i];

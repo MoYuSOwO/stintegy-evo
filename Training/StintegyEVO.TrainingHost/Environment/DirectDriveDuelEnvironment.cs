@@ -22,10 +22,9 @@ public sealed class DirectDriveDuelEnvironment
 {
     /// <summary>
     /// How long one agent step lasts, which under the decision contract is
-    /// also how long one control is held for. Ten a second is what the
-    /// project inherited from the Gran Turismo paper; whether that transfers
-    /// to an interface that commands curvature rather than a steering angle
-    /// has never been measured here, so it is a number rather than a law.
+    /// also how long one control is held for. Fifteen a second, which is
+    /// the first rung past the cliff the frequency sweep found between ten
+    /// and fifteen; see the driver for the evidence.
     /// </summary>
     public const float DefaultAgentStepSeconds =
         1f / DirectDriveRaceDriver.DefaultDecisionHz;
@@ -81,6 +80,14 @@ public sealed class DirectDriveDuelEnvironment
     private const float TyreSlipPenaltyPerSecond = 2f;
 
     /// <summary>
+    /// What contact costs per second of it, at fault and not. Ten times a
+    /// second of it is what the old per-step figures of twenty and two
+    /// priced, so nothing changes at the rate they were chosen at.
+    /// </summary>
+    private const float AtFaultContactPenaltyPerSecond = 200f;
+    private const float ContactPenaltyPerSecond = 20f;
+
+    /// <summary>
     /// Nothing. Sony's reward has no clock in it at all, and the ablation
     /// that replaced progress with a fixed step cost was the worst result on
     /// the board — well outside the range the other settings moved within.
@@ -103,7 +110,7 @@ public sealed class DirectDriveDuelEnvironment
     /// game's premise rather than a suggestion. Subject to revision once
     /// training shows how the policy actually trades it.
     /// </summary>
-    private const float ModeExcessPenaltyRate = 0.1f;
+    private const float ModeExcessPenaltyPerSecond = 1f;
 
     internal static readonly DriverProfile TrainingOpponentProfile = new(
         "training-opponent",
@@ -239,6 +246,13 @@ public sealed class DirectDriveDuelEnvironment
     /// <summary>
     /// How often the sparring partner rethinks. Ten a second, the same rate
     /// the agent decides at, which is both cheap and appropriately coarse.
+    /// </summary>
+    /// <summary>
+    /// How often the scripted sparring partner replans. Deliberately left
+    /// at ten when the learned driver moved to fifteen: this is not a rate
+    /// inside the decision contract, it is a property of one opponent, and
+    /// changing it would change what the learner is sparring against for
+    /// no reason connected to the contract.
     /// </summary>
     private const float OpponentDecisionHz = 10f;
 
@@ -471,8 +485,14 @@ public sealed class DirectDriveDuelEnvironment
             PassReward: terminalReason == TrainingTerminalReason.Passed
                 ? 25f
                 : 0f,
+            // Also per second. The flag is "any contact during this
+            // step", so a sustained rub used to cost whatever the step
+            // rate happened to be; the price of leaning on somebody should
+            // be a property of the leaning.
             ContactPenalty: contact
-                ? (egoAtFault ? -20f : -2f)
+                ? (egoAtFault
+                    ? -AtFaultContactPenaltyPerSecond * AgentStepSeconds
+                    : -ContactPenaltyPerSecond * AgentStepSeconds)
                 : 0f,
             // Priced by how long the car leant on it, not by whether it
             // touched at all. Charging a whole step for a glance leaves a
@@ -530,7 +550,14 @@ public sealed class DirectDriveDuelEnvironment
             telemetry.RearLongitudinalUse
         );
         float excess = MathF.Max(frontUse, rearUse) - allowance;
-        return excess <= 0f ? 0f : -ModeExcessPenaltyRate * excess;
+        // Per second of disobedience, not per decision. Charged per
+        // decision it would have cost half again as much the moment the
+        // decision rate moved from ten to fifteen, with nothing in the
+        // change saying so - the same shape of mistake as reading a paper's
+        // entropy coefficient without reading its reward scale.
+        return excess <= 0f
+            ? 0f
+            : -ModeExcessPenaltyPerSecond * excess * AgentStepSeconds;
     }
 
     /// <summary>

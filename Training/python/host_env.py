@@ -20,6 +20,13 @@ import numpy as np
 
 MAGIC = 0x53544556
 VERSION = 2
+
+# The decision rate the host defaults to, mirrored from
+# DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
+# train.py because every script that drives the host needs it and none of
+# them should be carrying its own copy of a step length: a hundred
+# milliseconds was hardcoded in three places when the rate moved.
+DEFAULT_DECISION_HZ = 15.0
 HEADER = struct.Struct("<IHHi")
 
 KIND_HELLO = 1
@@ -104,7 +111,7 @@ class HostEnv:
             command += ["--analytic-hz", str(analytic_hz)]
         if decision_hz is not None:
             command += ["--decision-hz", str(decision_hz)]
-        self.step_seconds = 1.0 / (decision_hz or 10.0)
+        self.step_seconds = 1.0 / (decision_hz or DEFAULT_DECISION_HZ)
         self.ego_modes = ego_modes
         self.ego_analytic = ego_analytic
 
