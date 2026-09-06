@@ -39,7 +39,10 @@ public sealed class BatchedTrainingHost
         CarStrategy? opponentStrategy = null,
         float opponentPace = 70f,
         bool solo = false,
-        CarStrategy? egoStrategy = null
+        CarStrategy? egoStrategy = null,
+        bool egoAnalytic = false,
+        float egoAnalyticHz = 10f,
+        float decisionHz = 10f
     )
     {
         if (batchSize <= 0)
@@ -101,7 +104,10 @@ public sealed class BatchedTrainingHost
                 opponentStrategy,
                 opponentPace,
                 solo,
-                egoStrategy
+                egoStrategy,
+                egoAnalytic,
+                egoAnalyticHz,
+                decisionHz
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

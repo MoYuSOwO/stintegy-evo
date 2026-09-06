@@ -20,8 +20,18 @@ namespace StintegyEVO.TrainingHost.Environment;
 /// </summary>
 public sealed class DirectDriveDuelEnvironment
 {
-    public const float AgentStepSeconds =
+    /// <summary>
+    /// How long one agent step lasts, which under the decision contract is
+    /// also how long one control is held for. Ten a second is what the
+    /// project inherited from the Gran Turismo paper; whether that transfers
+    /// to an interface that commands curvature rather than a steering angle
+    /// has never been measured here, so it is a number rather than a law.
+    /// </summary>
+    public const float DefaultAgentStepSeconds =
         1f / DirectDriveRaceDriver.DefaultDecisionHz;
+
+    public float AgentStepSeconds => _agentStepSeconds;
+    private readonly float _agentStepSeconds;
     public const float DefaultEpisodeDurationSeconds = 60f;
     public const float DefaultMinimumForwardGapMeters = 12f;
     public const float DefaultMaximumForwardGapMeters = 28f;
@@ -200,6 +210,32 @@ public sealed class DirectDriveDuelEnvironment
     /// to draw.
     /// </summary>
     private readonly CarStrategy? _fixedEgoStrategy;
+
+    /// <summary>
+    /// Whether the analytic driver is at the wheel of the ego car.
+    ///
+    /// This is how the baseline every lap time is quoted against gets
+    /// measured on the same terms as the thing it judges: same circuit,
+    /// same car, same tyres, same pit-wall instruction, same ten decisions
+    /// a second, same definition of a clean lap, same timing loop. The
+    /// numbers it replaces were constants in a table, taken under
+    /// conditions that no longer exist and compared against laps that were
+    /// not required to be legal.
+    ///
+    /// The learned driver is still built when this is set, but only to
+    /// look: it samples the observation the harness reports and never
+    /// touches the controls.
+    /// </summary>
+    private readonly bool _egoAnalytic;
+
+    /// <summary>
+    /// How often the analytic reference is allowed to decide. Its own
+    /// design is every driver frame; the learned driver decides ten times
+    /// a second. Both are worth measuring and they are not the same
+    /// question - one asks what the shipped rule-based driver does, the
+    /// other asks what this circuit costs at ten hertz whoever is driving.
+    /// </summary>
+    private readonly float _egoAnalyticHz;
     /// <summary>
     /// How often the sparring partner rethinks. Ten a second, the same rate
     /// the agent decides at, which is both cheap and appropriately coarse.
@@ -248,9 +284,14 @@ public sealed class DirectDriveDuelEnvironment
         CarStrategy? opponentStrategy = null,
         float opponentPace = 70f,
         bool solo = false,
-        CarStrategy? egoStrategy = null
+        CarStrategy? egoStrategy = null,
+        bool egoAnalytic = false,
+        float egoAnalyticHz = OpponentDecisionHz,
+        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz
     )
     {
+        if (!float.IsFinite(decisionHz) || decisionHz <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(decisionHz));
         if (!float.IsFinite(minimumForwardGapMeters) ||
             minimumForwardGapMeters <= 0f)
         {
@@ -277,6 +318,9 @@ public sealed class DirectDriveDuelEnvironment
         }
 
         _fixedEgoStrategy = egoStrategy;
+        _egoAnalytic = egoAnalytic;
+        _egoAnalyticHz = egoAnalyticHz;
+        _agentStepSeconds = 1f / decisionHz;
         _minimumForwardGapMeters = minimumForwardGapMeters;
         _maximumForwardGapMeters = maximumForwardGapMeters;
         _episodeDurationSeconds = episodeDurationSeconds;
@@ -373,7 +417,8 @@ public sealed class DirectDriveDuelEnvironment
         // Committed before anything moves, so it drives every substep of
         // the interval it is credited with, and scaled by the ceilings the
         // observation that produced it reported.
-        _egoDriver.CommitAction(action);
+        if (!_egoAnalytic)
+            _egoDriver.CommitAction(action);
         float egoDistanceBefore = _ego.Progress.TotalDistance;
         float opponentDistanceBefore =
             _opponent?.Progress.TotalDistance ?? 0f;
@@ -546,16 +591,41 @@ public sealed class DirectDriveDuelEnvironment
         // Clocked from here: the agent step and the decision period are
         // the same interval, so the driver must not keep a second clock
         // that disagrees with it.
-        _egoDriver = DirectDriveRaceDriver.ExternallyClocked();
+        _egoDriver = DirectDriveRaceDriver.ExternallyClocked(
+            decisionHz: 1f / _agentStepSeconds
+        );
         _ego = CreateCar(
             "training-ego",
             track,
             EgoStartS,
             startSpeed,
-            _egoDriver,
+            _egoAnalytic
+                // At its own pace, not the sparring handicap: this is the
+                // reference, so it drives as well as the analytic stack
+                // knows how.
+                ? new HeldDecisionDriver(
+                    new ReferenceLineDriver(),
+                    _egoAnalyticHz
+                )
+                : _egoDriver,
             EgoStrategy
         );
         _simulation.AddCar(_ego);
+        if (_egoAnalytic)
+        {
+            // Not the car's driver, so nothing initialised it. It still
+            // needs its observation memory cleared, because that memory is
+            // what the previous-frame block is made of.
+            TrackPose egoPose = track.Project(_ego.State.Position);
+            RaceDriverInitContext observerContext = new(
+                _ego,
+                track,
+                egoPose,
+                raceEnvironment,
+                0f
+            );
+            _egoDriver.Initialize(in observerContext);
+        }
         if (_solo)
         {
             _opponent = null;

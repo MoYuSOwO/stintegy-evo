@@ -65,6 +65,9 @@ class HostEnv:
         host_project: str = DEFAULT_HOST_PROJECT,
         quiet: bool = True,
         ego_modes: tuple[int, int] | None = None,
+        ego_analytic: bool = False,
+        analytic_hz: float | None = None,
+        decision_hz: float | None = None,
     ) -> None:
         """One host subprocess driving ``batch`` environments in lockstep.
 
@@ -73,6 +76,10 @@ class HostEnv:
         from the seed. Training leaves it None so the policy meets all five
         settings; evaluation sets it, because a lap time taken under an
         instruction nobody wrote down is not comparable to another one.
+
+        ``ego_analytic`` puts the analytic driver at the wheel and ignores
+        the actions sent to it, which is how the baseline a learned lap is
+        quoted against gets measured on the learner's own terms.
         """
         # A published self-contained host binary, when one is provided,
         # spawns directly: no SDK on the machine, no rebuild on spawn, and
@@ -91,7 +98,15 @@ class HostEnv:
             command += ["--episode-seconds", str(episode_seconds)]
         if ego_modes is not None:
             command += ["--ego-modes", f"{ego_modes[0]},{ego_modes[1]}"]
+        if ego_analytic:
+            command.append("--ego-analytic")
+        if analytic_hz is not None:
+            command += ["--analytic-hz", str(analytic_hz)]
+        if decision_hz is not None:
+            command += ["--decision-hz", str(decision_hz)]
+        self.step_seconds = 1.0 / (decision_hz or 10.0)
         self.ego_modes = ego_modes
+        self.ego_analytic = ego_analytic
 
         self._process = subprocess.Popen(
             command,

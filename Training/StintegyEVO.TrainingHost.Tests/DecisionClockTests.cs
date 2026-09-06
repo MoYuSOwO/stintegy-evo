@@ -113,7 +113,7 @@ public sealed class DecisionClockTests
 
         Assert.Equal(DecisionClock.External, environment.EgoDriver.Clock);
         Assert.Equal(
-            DirectDriveDuelEnvironment.AgentStepSeconds,
+            environment.AgentStepSeconds,
             environment.EgoDriver.DecisionPeriodSeconds,
             6
         );

@@ -32,6 +32,9 @@ internal static class Program
                 float episodeDurationSeconds,
                 CarStrategy opponentStrategy,
                 CarStrategy? egoStrategy,
+                bool egoAnalytic,
+                float egoAnalyticHz,
+                float decisionHz,
                 float opponentPace,
                 bool solo
             ) =
@@ -46,7 +49,10 @@ internal static class Program
                 opponentStrategy,
                 opponentPace,
                 solo,
-                egoStrategy
+                egoStrategy,
+                egoAnalytic,
+                egoAnalyticHz,
+                decisionHz
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -67,6 +73,9 @@ internal static class Program
         float EpisodeDurationSeconds,
         CarStrategy OpponentStrategy,
         CarStrategy? EgoStrategy,
+        bool EgoAnalytic,
+        float EgoAnalyticHz,
+        float DecisionHz,
         float OpponentPace,
         bool Solo
     ) ParseOptions(string[] args)
@@ -84,9 +93,17 @@ internal static class Program
         float opponentPace = 70f;
         bool solo = false;
         CarStrategy? egoStrategy = null;
+        bool egoAnalytic = false;
+        float egoAnalyticHz = 10f;
+        float decisionHz = 10f;
         for (int i = 0; i < args.Length; i++)
         {
             string option = args[i];
+            if (option == "--ego-analytic")
+            {
+                egoAnalytic = true;
+                continue;
+            }
             if (option == "--solo")
             {
                 solo = true;
@@ -157,6 +174,12 @@ internal static class Program
                         )
                     };
                     break;
+                case "--decision-hz":
+                    decisionHz = ParsePositiveFloat(option, value);
+                    break;
+                case "--analytic-hz":
+                    egoAnalyticHz = ParsePositiveFloat(option, value);
+                    break;
                 case "--ego-modes":
                     egoStrategy = ParseModes(option, value);
                     break;
@@ -189,6 +212,9 @@ internal static class Program
             episodeDurationSeconds,
             opponentStrategy,
             egoStrategy,
+            egoAnalytic,
+            egoAnalyticHz,
+            decisionHz,
             opponentPace,
             solo
         );
