@@ -180,7 +180,6 @@ public sealed class DirectDriveDuelEnvironment
 
     private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];
 
-    private readonly ManualDrivingPolicy _manualPolicy = new();
     // The canonical mode-to-grip-allowance mapping, the same one the
     // analytic planner drives to.
     private readonly VehicleSpeedPlanningConfig _planningConfig = new();
@@ -220,6 +219,8 @@ public sealed class DirectDriveDuelEnvironment
         _simulation ?? throw new InvalidOperationException("Reset must be called first.");
     public RaceCar Ego =>
         _ego ?? throw new InvalidOperationException("Reset must be called first.");
+    public DirectDriveRaceDriver EgoDriver =>
+        _egoDriver ?? throw new InvalidOperationException("Reset must be called first.");
     public RaceCar Opponent =>
         _opponent ?? throw new InvalidOperationException(
             _solo
@@ -354,14 +355,20 @@ public sealed class DirectDriveDuelEnvironment
                 ? Math.Clamp(actionValues[i], -1f, 1f)
                 : 0f;
         }
-        _manualPolicy.SetAction(action);
+        // Committed before anything moves, so it drives every substep of
+        // the interval it is credited with, and scaled by the ceilings the
+        // observation that produced it reported.
+        _egoDriver.CommitAction(action);
         float egoDistanceBefore = _ego.Progress.TotalDistance;
         float opponentDistanceBefore =
             _opponent?.Progress.TotalDistance ?? 0f;
 
         _simulation.Step(AgentStepSeconds);
         _elapsedSeconds += AgentStepSeconds;
-        _egoDriver.LastObservation.CopyTo(observation);
+        // Sampled at the far end of the interval, which is the instant the
+        // next action will be committed at: one observation per decision,
+        // and it is the same instant on both sides of the pipe.
+        SampleObservation(observation);
 
         float egoProgress = _ego.Progress.TotalDistance - egoDistanceBefore;
         float opponentProgress = _opponent is null
@@ -516,7 +523,10 @@ public sealed class DirectDriveDuelEnvironment
             TrackTempC = random.NextSingle(22f, 45f)
         };
         _simulation = new RaceSimulation(track, raceEnvironment);
-        _egoDriver = new DirectDriveRaceDriver(_manualPolicy);
+        // Clocked from here: the agent step and the decision period are
+        // the same interval, so the driver must not keep a second clock
+        // that disagrees with it.
+        _egoDriver = DirectDriveRaceDriver.ExternallyClocked();
         _ego = CreateCar(
             "training-ego",
             track,
@@ -546,13 +556,15 @@ public sealed class DirectDriveDuelEnvironment
             _simulation.AddCar(_opponent);
         }
 
-        _manualPolicy.SetAction(stackalloc float[
-            DirectDriveObservation.ActionSize
-        ]);
+        // A hair of simulated time, only so that the telemetry an
+        // observation reads is the car's own rather than a default. It used
+        // to cost a decision as well - the driver's clock started here and
+        // every agent step afterwards was three-quarters out of phase with
+        // it - which is no longer possible now that the clock is ours.
         _simulation.Step(WarmupStepSeconds);
         _egoDistanceOrigin = _ego.Progress.TotalDistance;
         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
-        _egoDriver.LastObservation.CopyTo(observation);
+        SampleObservation(observation);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
         MaximumAbsoluteReferenceOffsetMeters = 0f;
         _elapsedSeconds = 0f;
@@ -593,6 +605,23 @@ public sealed class DirectDriveDuelEnvironment
         return _elapsedSeconds + 1e-6f >= _episodeDurationSeconds
             ? TrainingTerminalReason.Timeout
             : TrainingTerminalReason.None;
+    }
+
+    /// <summary>
+    /// The world as it stands right now, into the caller's span.
+    ///
+    /// Goes through the simulation's own frame capture rather than reading
+    /// whatever the driver last built, so the opponents in it are where
+    /// they are at this instant and not where they were when somebody last
+    /// drove. Solo and wheel-to-wheel take the same path; there is no
+    /// version of this that only works when the grid is empty.
+    /// </summary>
+    private void SampleObservation(Span<float> observation)
+    {
+        RaceDriverFrameContext context =
+            _simulation!.CaptureFrameContext(_ego!);
+        _egoDriver!.Observe(in context);
+        _egoDriver.LastObservation.CopyTo(observation);
     }
 
     private float CalculateSignedLeadDistance() =>
@@ -752,25 +781,5 @@ public sealed class DirectDriveDuelEnvironment
             value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
             return value ^ (value >> 31);
         }
-    }
-}
-
-/// <summary>
-/// The environment's hand on the wheel: holds the latest external action
-/// and hands it to the driver at its decision tick.
-/// </summary>
-internal sealed class ManualDrivingPolicy : IDrivingPolicy
-{
-    private readonly float[] _action =
-        new float[DirectDriveObservation.ActionSize];
-
-    public void SetAction(ReadOnlySpan<float> action)
-    {
-        action[..DirectDriveObservation.ActionSize].CopyTo(_action);
-    }
-
-    public void Act(ReadOnlySpan<float> observation, Span<float> action)
-    {
-        _action.CopyTo(action);
     }
 }
