@@ -160,15 +160,38 @@ def evaluate(
     }
 
 
-def report(agent, args, seed_base: int) -> dict[str, dict[str, float]]:
-    """Every circuit, trained and held out, as flying lap times."""
+def report(
+    agent, args, seed_base: int, names: list[str]
+) -> dict[str, dict[str, float]]:
+    """The requested circuits as flying lap times."""
     out: dict[str, dict[str, float]] = {}
-    for name in TRACKS:
+    for name in names:
         out[name] = evaluate(
             agent, args.eval_batch, seed_base, args.solo, name,
             args.eval_steps,
         )
     return out
+
+
+def eval_split(track: str | None) -> tuple[list[str], list[str]]:
+    """Which circuits an evaluation drives, and which of them count.
+
+    Joint training reads the whole table. A specialist reads its own
+    circuit plus two sentinels - simple-right as a health check and sepang
+    as a transfer probe - because evaluating seventeen circuits every
+    twenty-five thousand steps costs more wall clock than the training
+    between evaluations, for fifteen answers nobody is asking about. Only
+    the first list feeds the best-checkpoint choice, so a specialist is
+    judged on its own circuit alone.
+    """
+    if track:
+        sentinels = [
+            n for n in ("simple-right", "sepang") if n != track
+        ]
+        return [track], sentinels
+    trained = [n for n, (_, _, t) in TRACKS.items() if t]
+    held = [n for n, (_, _, t) in TRACKS.items() if not t]
+    return trained, held
 
 
 def gap_string(seconds: float) -> str:
@@ -336,11 +359,15 @@ def main() -> int:
                 window_terminals = {}
 
             if step % args.eval_every == 0:
-                laps = report(agent, args, args.seed + 900_000)
-                trained = [n for n, (_, _, t) in TRACKS.items() if t]
-                held = [n for n, (_, _, t) in TRACKS.items() if not t]
+                trained, held = eval_split(args.track)
+                laps = report(
+                    agent, args, args.seed + 900_000, trained + held
+                )
                 print(f"  eval at step {step}    飞驰圈")
-                for group, names in (("训练", trained), ("保留", held)):
+                groups = (
+                    ("专家", trained), ("哨兵", held)
+                ) if args.track else (("训练", trained), ("保留", held))
+                for group, names in groups:
                     for name in names:
                         r = laps[name]
                         flags = ""
@@ -373,9 +400,10 @@ def main() -> int:
                     ) / len(names)
                 mean_gap = mean_gap_of(trained)
                 held_gap = mean_gap_of(held)
+                left, right = ("专家", "哨兵") if args.track else ("训练", "保留")
                 print(
-                    f"    平均差  训练 {gap_string(mean_gap)}"
-                    f"   保留 {gap_string(held_gap)}"
+                    f"    平均差  {left} {gap_string(mean_gap)}"
+                    f"   {right} {gap_string(held_gap)}"
                 )
                 agent.save(str(checkpoint_dir / f"latest{args.tag}.pt"))
                 if math.isfinite(mean_gap) and -mean_gap > best_gap:
