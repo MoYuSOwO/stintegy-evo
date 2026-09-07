@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Godot;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Drivers.Learned;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 
@@ -34,6 +35,13 @@ public partial class RaceView3D : Node3D
     private bool _hudDirty;
     private bool _leaving;
     private static readonly string[] Liveries = ["#b93f30", "#e0bb53", "#507f80", "#ece5d1", "#3e6653", "#456583", "#c17b45", "#7a788b", "#77834b", "#393e42"];
+    /// <summary>
+    /// The same switch RaceView has, for the same checkpoint: the Silverstone
+    /// expert behind the wheel of the practice car, with the scripted driver
+    /// one unchecked box away for comparison.
+    /// </summary>
+    [Export] public bool UseLearnedDriver { get; set; } = true;
+    private const string LearnedPolicyPath = "res://Assets/Drivers/silverstone-expert.nn";
     public override async void _Ready()
     {
         var watch = Stopwatch.StartNew();
@@ -57,18 +65,47 @@ public partial class RaceView3D : Node3D
         for (int i = 0; i < 1; i++)
         {
             int number = i + 1; var start = track.Grids[number]; var sample = track.Sample(start.S);
-            string id = $"grid-{number:D2}";
-            var abilities = new DriverAbilities { Pace = Next(random, 84, 96), Consistency = Next(random, 82, 96), CarControl = Next(random, 84, 97), TireManagement = Next(random, 78, 94), Adaptability = Next(random, 82, 96), Reactions = Next(random, 82, 97), Awareness = Next(random, 82, 97), Overtaking = Next(random, 80, 96), Defending = Next(random, 80, 96) };
-            var driver = new ReferenceLineDriver(new DriverProfile(id, abilities, (ulong)random.NextInt64(1, long.MaxValue)));
-            var car = new RaceCar(id, new CarConfig(), new TireConfig { StartingSurfaceTempC = 86f, StartingCoreTempC = 84f }, driver,
-                new CarState { Position = start.Position, Heading = sample.RefHeading, Energy = PowertrainState.Filled(0.82f) });
+            IRaceDriver driver;
+            TireConfig tires;
+            float charge;
+            Color livery;
+            string id;
+            if (UseLearnedDriver)
+            {
+                byte[] weights = Godot.FileAccess.GetFileAsBytes(LearnedPolicyPath);
+                if (weights.Length == 0)
+                    throw new InvalidOperationException(
+                        $"No policy at {LearnedPolicyPath}. Export one with " +
+                        "Training/python/export_policy.py, or clear UseLearnedDriver.");
+                driver = new DirectDriveRaceDriver(MlpDrivingPolicy.FromBytes(weights));
+                // The car the evaluation graded: warm tyres, 80% charge, Normal/Normal.
+                id = $"learned-{number:D2}";
+                tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+                charge = 0.8f;
+                livery = Color.FromHtml("#4ad6a0");
+            }
+            else
+            {
+                var abilities = new DriverAbilities { Pace = Next(random, 84, 96), Consistency = Next(random, 82, 96), CarControl = Next(random, 84, 97), TireManagement = Next(random, 78, 94), Adaptability = Next(random, 82, 96), Reactions = Next(random, 82, 97), Awareness = Next(random, 82, 97), Overtaking = Next(random, 80, 96), Defending = Next(random, 80, 96) };
+                id = $"grid-{number:D2}";
+                driver = new ReferenceLineDriver(new DriverProfile(id, abilities, (ulong)random.NextInt64(1, long.MaxValue)));
+                tires = new TireConfig { StartingSurfaceTempC = 86f, StartingCoreTempC = 84f };
+                charge = 0.82f;
+                livery = Color.FromHtml(Liveries[i / 2]);
+            }
+            var car = new RaceCar(id, new CarConfig(), tires, driver,
+                new CarState { Position = start.Position, Heading = sample.RefHeading, Energy = PowertrainState.Filled(charge) });
+            if (UseLearnedDriver)
+                car.Strategy = new CarStrategy(TireUsageMode.Normal, 3);
             Simulation.AddCar(car);
-            var view = new FormulaCarView3D(); AddChild(view); view.Bind(car, Surface, Color.FromHtml(Liveries[i / 2]), number); _cars.Add(view);
+            var view = new FormulaCarView3D(); AddChild(view); view.Bind(car, Surface, livery, number); _cars.Add(view);
         }
         AddChild(_camera); _camera.Initialize(Surface);
         AddChild(_hud); _hud.Initialize(this); _hud.Refresh(0);
         _camera.Update(0, _cars[SelectedCarIndex]);
-        GD.Print($"LOWPOLY ready: {_cars.Count} car; circuit={track.LengthMeters:0}m; startup={watch.Elapsed.TotalSeconds:0.00}s");
+        GD.Print($"LOWPOLY ready: {_cars.Count} car; circuit={track.LengthMeters:0}m; " +
+            $"driver={(UseLearnedDriver ? $"learned ({DirectDriveRaceDriver.DefaultDecisionHz:0} Hz internal clock)" : "scripted")}; " +
+            $"startup={watch.Elapsed.TotalSeconds:0.00}s");
     }
     private static float Next(Random r, float min, float max) => min + (float)r.NextDouble() * (max - min);
     public override void _ExitTree() => _leaving = true;
