@@ -648,6 +648,18 @@ def main() -> int:
                 agent.save(
                     str(checkpoint_dir / f"latest{args.tag}.pt"), step
                 )
+                # And one that nothing overwrites. A checkpoint is twenty
+                # eight megabytes and an evaluation is twenty minutes of
+                # compute, so keeping every one of them is free and losing
+                # one is not: "best" tracks a single ranking criterion, and
+                # the run whose graduation asked for a clean lap, zero spins
+                # and a lap time in the band spent three evaluations
+                # watching the checkpoint that had all three get overwritten
+                # by one that was a hundredth of a second quicker on the
+                # criterion that only counts two of them.
+                agent.save(
+                    str(checkpoint_dir / f"eval{args.tag}-{step}.pt"), step
+                )
                 # A checkpoint that completes nothing is not a best
                 # checkpoint, however flattering its mean happens to be.
                 laps_everywhere = all(laps[n]["laps"] > 0 for n in trained)
