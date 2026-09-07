@@ -15,7 +15,14 @@ public sealed class CarState
     public float SideslipAngleRadians { get; set; }
     public float YawRateRadiansPerSecond { get; set; }
     public float Speed { get; set; }
-    public float BatterySoc { get; set; } = 1f;
+
+    /// <summary>
+    /// How much of each of its consumables the car has left. What the slots
+    /// mean is declared by the powertrain fitted to it - charge on an
+    /// electric car, fuel on a petrol one - so read them through that rather
+    /// than assuming.
+    /// </summary>
+    public PowertrainState Energy { get; set; } = PowertrainState.Full;
 
     public float FilteredLongitudinalAccel { get; set; }
     public float FilteredLateralAccel { get; set; }
@@ -80,7 +87,9 @@ public sealed class CarState
     public void Normalize()
     {
         Speed = Math.Max(0f, Speed);
-        BatterySoc = Math.Clamp(BatterySoc, 0f, 1f);
+        PowertrainState energy = Energy;
+        energy.Clamp();
+        Energy = energy;
         Heading = MathHelper.NormalizeAngle(Heading);
         SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
         AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
@@ -118,7 +127,7 @@ public sealed class CarState
             SideslipAngleRadians = SideslipAngleRadians,
             YawRateRadiansPerSecond = YawRateRadiansPerSecond,
             Speed = Speed,
-            BatterySoc = BatterySoc,
+            Energy = Energy,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
             AirVelocityDeficit = AirVelocityDeficit,
@@ -141,7 +150,7 @@ public sealed class CarState
         SideslipAngleRadians = other.SideslipAngleRadians;
         YawRateRadiansPerSecond = other.YawRateRadiansPerSecond;
         Speed = other.Speed;
-        BatterySoc = other.BatterySoc;
+        Energy = other.Energy;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
         AirVelocityDeficit = other.AirVelocityDeficit;

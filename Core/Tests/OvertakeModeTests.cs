@@ -122,11 +122,11 @@ public sealed class OvertakeModeTests
                 earned = true;
                 leader.Strategy = new CarStrategy(
                     TireUsageMode.Attack,
-                    BatteryOutputMode.Attack
+                    PowerOutputMode.Attack
                 );
                 chaser.Strategy = new CarStrategy(
                     TireUsageMode.Protect,
-                    BatteryOutputMode.Save
+                    PowerOutputMode.Save
                 );
             }
             float gapSeconds = RaceSimulation.OnTrackDistanceAhead(
@@ -368,7 +368,7 @@ public sealed class OvertakeModeTests
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = 45f,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
     }

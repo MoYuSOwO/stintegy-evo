@@ -788,7 +788,7 @@ public sealed class RoadAttitudeTests
             Position = Vector2.Zero,
             Heading = 0f,
             Speed = 50f,
-            BatterySoc = 0.8f
+            Energy = PowertrainState.Filled(0.8f)
         };
         CarPhysicsStepInput input = new(
             new DriverInput(0f, 0f),
@@ -1027,7 +1027,7 @@ public sealed class RoadAttitudeTests
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = speed,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         );
     }

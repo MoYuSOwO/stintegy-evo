@@ -62,7 +62,7 @@ public sealed class VehicleSpeedPlanner
             car.Strategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.GetAccelerationUsage(car.Strategy)
+            gripUsage: car.TireConfig.GetAccelerationUsage(car.Strategy)
         );
         return LateralSpeedLimit(
             curvature,
@@ -77,7 +77,7 @@ public sealed class VehicleSpeedPlanner
         ArgumentNullException.ThrowIfNull(car);
 
         _optimisticState.CopyFrom(car.State);
-        _optimisticState.BatterySoc = 1f;
+        _optimisticState.Energy = PowertrainState.Full;
         float currentSpeed = Math.Max(0f, car.State.Speed);
         float upper = Math.Max(
             InitialMaximumSpeedSearchMetersPerSecond,
@@ -953,7 +953,7 @@ public sealed class VehicleSpeedPlanner
             _planningState == null ? car.Strategy : _planningStrategy,
             speed,
             curvature,
-            Config.GetAccelerationUsage(_planningStrategy),
+            car.TireConfig.GetAccelerationUsage(_planningStrategy),
             assumedLongitudinalAcceleration,
             _driverModifiers.FrontBrakeBiasOffset,
             _driverModifiers.PaceEfficiency
@@ -1053,7 +1053,7 @@ public sealed class VehicleSpeedPlanner
             _planningStrategy,
             speed: 0f,
             curvature: 0f,
-            gripUsage: Config.GetAccelerationUsage(_planningStrategy),
+            gripUsage: car.TireConfig.GetAccelerationUsage(_planningStrategy),
             corneringEfficiency: _driverModifiers.PaceEfficiency
         );
     }
@@ -1151,7 +1151,7 @@ public sealed class VehicleSpeedPlanner
     )
     {
         CarState state = _planningState ?? car.State;
-        float gripUsage = Config.GetAccelerationUsage(_planningStrategy);
+        float gripUsage = car.TireConfig.GetAccelerationUsage(_planningStrategy);
         bool changed = false;
         for (int i = 0; i < count - 1; i++)
         {
@@ -1262,6 +1262,11 @@ public sealed class VehicleSpeedPlanner
                 car.State,
                 car.CarConfig
             );
+        // Checked when the compound changes rather than on every plan: it is
+        // the tyre's own invariant, and a modded compound is where a broken
+        // ladder would come from.
+        if (!ReferenceEquals(_planningTireConfig, car.TireConfig))
+            car.TireConfig.ValidateAccelerationLadder();
         _planningTireConfig = car.TireConfig;
         _planningState ??= new CarState();
         _planningState.CopyFrom(car.State);
@@ -1281,7 +1286,8 @@ public sealed class VehicleSpeedPlanner
     {
         return new PerformanceStateKey(
             car.Strategy,
-            Quantize(car.State.BatterySoc, 0.005f),
+            Quantize(car.State.Energy.Primary, 0.005f),
+            Quantize(car.State.Energy.Secondary, 0.005f),
             Quantize(car.State.AirVelocityDeficit, WakeStateStep),
             Quantize(car.State.WakeDownforceLoss, WakeStateStep),
             Quantize(car.State.DownforceVelocityDeficit, WakeStateStep),
@@ -1316,7 +1322,8 @@ public sealed class VehicleSpeedPlanner
 
     private readonly record struct PerformanceStateKey(
         CarStrategy Strategy,
-        int BatterySoc,
+        int PrimaryEnergy,
+        int SecondaryEnergy,
         int AirVelocityDeficit,
         int WakeDownforceLoss,
         int DownforceVelocityDeficit,
@@ -1362,26 +1369,6 @@ public sealed class VehicleSpeedPlanner
             throw new ArgumentOutOfRangeException(
                 nameof(config),
                 "Maximum speed estimate multiplier must be finite and at least one."
-            );
-        }
-        float protectUsage = config.ProtectAccelerationUsage;
-        float lightUsage = config.LightAccelerationUsage;
-        float normalUsage = config.NormalAccelerationUsage;
-        float pushUsage = config.PushAccelerationUsage;
-        float attackUsage = config.AttackAccelerationUsage;
-        ValidateAccelerationUsage(protectUsage);
-        ValidateAccelerationUsage(lightUsage);
-        ValidateAccelerationUsage(normalUsage);
-        ValidateAccelerationUsage(pushUsage);
-        ValidateAccelerationUsage(attackUsage);
-        if (!(protectUsage < lightUsage &&
-              lightUsage < normalUsage &&
-              normalUsage < pushUsage &&
-              pushUsage < attackUsage))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(config),
-                "Tire-mode acceleration usages must increase from Protect to Attack."
             );
         }
         if (config.DriveAccelerationUsage <= 0f || config.DriveAccelerationUsage > 1f)
@@ -1431,17 +1418,6 @@ public sealed class VehicleSpeedPlanner
             config.PredictionConvergenceCurvatureError < 0f)
         {
             throw new ArgumentOutOfRangeException(nameof(config), "Path prediction distances must be positive.");
-        }
-    }
-
-    private static void ValidateAccelerationUsage(float usage)
-    {
-        if (!float.IsFinite(usage) || usage <= 0f || usage > 1f)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(usage),
-                "Acceleration usage must be finite and in (0, 1]."
-            );
         }
     }
 

@@ -2,7 +2,21 @@ namespace StintegyEVO.Core.Cars;
 
 public sealed class CarConfig
 {
+    /// <summary>
+    /// What the car weighs without anything it burns off.
+    ///
+    /// Total mass is this plus whatever is left in the stores, which for an
+    /// electric car is the same number all race and for a petrol one is not.
+    /// Ask <see cref="CarPhysics.TotalMassKg"/> rather than reading this
+    /// wherever the answer wanted is how much car there is right now.
+    /// </summary>
     public float MassKg { get; init; } = 820f;
+
+    /// <summary>
+    /// What turns the wheels. Owns the stores the strategist spends, the
+    /// ladder they are spent on, and every number about either.
+    /// </summary>
+    public IPowertrain Powertrain { get; init; } = ElectricPowertrain.Default;
     public float WheelBaseMeters { get; init; } = 3.1f;
     public float TrackWidthMeters { get; init; } = 1.65f;
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
@@ -52,70 +66,6 @@ public sealed class CarConfig
     /// </summary>
     public float AntiLockActivationUse { get; init; } = 0.99f;
     public float AntiLockStrength { get; init; } = 0.65f;
-    public float MinPowerSpeed { get; init; } = 8f;
-    /// <summary>
-    /// Enough for the middle setting to finish a race on full power, and only
-    /// just.
-    ///
-    /// Sized against the distance the car is built to race - two hundred and
-    /// forty kilometres, between a Formula 2 feature race and a Formula 1 one,
-    /// forty four laps of a five and a half kilometre circuit. Normal comes
-    /// home with eight point eight per cent, which is eight tenths clear of
-    /// where the low charge limiter starts, so it runs the whole distance at
-    /// the power it was asked for and finishes with nothing to spare. Push and
-    /// Attack both end up inside the limiter, which is what a setting above the
-    /// middle one is supposed to mean: not something to leave on.
-    ///
-    /// It was set to a round number before and never checked against a race.
-    /// Run over one every setting ran itself flat, including the setting whose
-    /// whole job is to save, and finished the last laps crawling - Attack lost
-    /// half a minute on its final lap that way. Over the distance the five came
-    /// out within four tenths of each other, because whatever any of them
-    /// gained early it handed back at the end. That is not five settings.
-    ///
-    /// Worth being honest about what this still does not buy. Attack finishes
-    /// the distance twenty six seconds up on Normal even after the limiter has
-    /// taken its share, so leaving it on remains the right thing to do and the
-    /// choice is not yet a real one. The settings differ by less than three per
-    /// cent in what they consume, because a lap's energy goes mostly into
-    /// pushing air aside and that hardly cares where the power cap sits, and
-    /// running the last laps on the limiter costs about four seconds. What
-    /// would make these five a decision is a way of saving charge that costs a
-    /// little lap time and a lot of energy - off the throttle before the
-    /// braking zone, which is what energy management actually is - and there is
-    /// none of that here.
-    /// </summary>
-    public float BatteryCapacityJoules { get; init; } = 1470000000f;
-    public float BatteryDriveEfficiency { get; init; } = 0.92f;
-    /// <summary>
-    /// The charge below which the pack stops being able to give what it is
-    /// asked for, and how sharply it falls away underneath.
-    ///
-    /// A racing battery does not empty like a bucket. Its voltage sags as the
-    /// charge goes, so the power it can deliver goes with it, gently at first
-    /// and then not gently at all - and the last of it is never released,
-    /// because taking a cell that low ruins it. So the useful bottom of the
-    /// pack is well above zero, and a car that plans to use everything is
-    /// planning on charge that was never there.
-    ///
-    /// Which makes this the price of overspending, and it has to be a real
-    /// price. Taken away as a straight line from a low starting point, it was
-    /// not one: a car that finished a race on a quarter of what it should have
-    /// had still enjoyed most of its power the whole way, and running the tank
-    /// dry cost about four seconds against the twenty six that spending it
-    /// bought. Squared, and starting where a real pack starts to fade, missing
-    /// by a little costs a little and missing by a lot costs the race.
-    /// </summary>
-    public float LowSocPowerLimitStart { get; init; } = 0.20f;
-    public float LowSocPowerFalloffExponent { get; init; } = 2f;
-    public float RegenEfficiency { get; init; } = 0.56f;
-    public float RegenPowerCapWatts { get; init; } = 260000f;
-    public float SaveDrivePowerLimitWatts { get; init; } = 372000f;
-    public float EcoDrivePowerLimitWatts { get; init; } = 381000f;
-    public float NormalDrivePowerLimitWatts { get; init; } = 390000f;
-    public float PushDrivePowerLimitWatts { get; init; } = 400000f;
-    public float AttackDrivePowerLimitWatts { get; init; } = 409000f;
-
     public float RollingDragAccel { get; init; } = 0.18f;
     public float AeroDragAccelPerSpeedSquared { get; init; } = 0.0009f;
 
@@ -244,54 +194,4 @@ public sealed class CarConfig
 
     public float LoadTransferResponse { get; init; } = 8f;
     public float MinimumWheelLoadShare { get; init; } = 0.08f;
-
-    public float GetDrivePowerLimitWatts(BatteryOutputMode mode)
-    {
-        return mode switch
-        {
-            BatteryOutputMode.Save => SaveDrivePowerLimitWatts,
-            BatteryOutputMode.Eco => EcoDrivePowerLimitWatts,
-            BatteryOutputMode.Normal => NormalDrivePowerLimitWatts,
-            BatteryOutputMode.Push => PushDrivePowerLimitWatts,
-            BatteryOutputMode.Attack => AttackDrivePowerLimitWatts,
-            _ => NormalDrivePowerLimitWatts
-        };
-    }
-
-    public float GetDrivePowerLimitWatts(CarStrategy strategy)
-    {
-        if (!strategy.DrivePowerLimitWattsOverride.HasValue)
-            return GetDrivePowerLimitWatts(strategy.BatteryMode);
-
-        float minimum = Math.Min(
-            SaveDrivePowerLimitWatts,
-            AttackDrivePowerLimitWatts
-        );
-        float maximum = Math.Max(
-            SaveDrivePowerLimitWatts,
-            AttackDrivePowerLimitWatts
-        );
-        return Math.Clamp(
-            strategy.DrivePowerLimitWattsOverride.Value,
-            minimum,
-            maximum
-        );
-    }
-
-    public float GetDrivePowerLimitWatts(float sliderPosition)
-    {
-        float scaled = Math.Clamp(sliderPosition, 0f, 1f) * 4f;
-        int segment = Math.Min((int)scaled, 3);
-        float t = scaled - segment;
-        return segment switch
-        {
-            0 => Lerp(SaveDrivePowerLimitWatts, EcoDrivePowerLimitWatts, t),
-            1 => Lerp(EcoDrivePowerLimitWatts, NormalDrivePowerLimitWatts, t),
-            2 => Lerp(NormalDrivePowerLimitWatts, PushDrivePowerLimitWatts, t),
-            _ => Lerp(PushDrivePowerLimitWatts, AttackDrivePowerLimitWatts, t)
-        };
-    }
-
-    private static float Lerp(float from, float to, float t) =>
-        from + (to - from) * t;
 }

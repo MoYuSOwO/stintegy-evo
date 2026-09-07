@@ -19,6 +19,17 @@ public static class CarPhysics
     private const float DynamicYawBlendRange = 5f;
     private const float SideslipEnergyLossScale = 1f;
 
+    /// <summary>
+    /// How much car there is right now: the chassis plus whatever is left in
+    /// the stores. A constant for a car that carries a battery, which weighs
+    /// the same flat as full, and a falling number for a car that carries
+    /// fuel - which is most of why a petrol car's last lap is its quickest.
+    /// </summary>
+    public static float TotalMassKg(CarConfig config, in PowertrainState energy)
+    {
+        return config.MassKg + config.Powertrain.ConsumableMassKg(energy);
+    }
+
     internal static float EffectiveDownforceAccelPerSpeedSquared(
         CarState state,
         CarConfig config
@@ -46,8 +57,10 @@ public static class CarPhysics
     )
     {
         float lateralAcceleration = speed * speed * curvature;
+        float massKg = TotalMassKg(config, state.Energy);
         WheelLoads loads = CalculateWheelLoads(
             config,
+            massKg,
             assumedLongitudinalAcceleration,
             lateralAcceleration,
             speed,
@@ -59,11 +72,11 @@ public static class CarPhysics
         float frontGrip = (
             loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
             loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
-        ) / Math.Max(config.MassKg, Epsilon) * usage;
+        ) / Math.Max(massKg, Epsilon) * usage;
         float rearGrip = (
             loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
             loads.RearRight * CalculateTireMu(tires, state.RearRight)
-        ) / Math.Max(config.MassKg, Epsilon) * usage;
+        ) / Math.Max(massKg, Epsilon) * usage;
 
         float frontDemandShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
         float rearDemandShare = 1f - frontDemandShare;
@@ -100,15 +113,16 @@ public static class CarPhysics
             rearLongitudinal,
             config.FrontDriveShare
         );
-        float batteryDriveLimit = CalculateDriveAccelLimit(
-            state,
-            config,
+        float powertrainDriveLimit = config.Powertrain.DriveAccelerationLimit(
+            state.Energy,
             strategy,
-            speed
+            speed,
+            massKg,
+            config.MaxDriveAcceleration
         );
         float maximumDrive = Math.Min(
             config.MaxDriveAcceleration,
-            Math.Min(gripDriveLimit, batteryDriveLimit)
+            Math.Min(gripDriveLimit, powertrainDriveLimit)
         );
         float frontBrakeShare = BiasedFrontBrakeShare(
             frontLongitudinal,
@@ -162,8 +176,10 @@ public static class CarPhysics
         float corneringEfficiency
     )
     {
+        float massKg = TotalMassKg(config, state.Energy);
         WheelLoads loads = CalculateWheelLoads(
             config,
+            massKg,
             assumedLongitudinalAcceleration,
             speed * speed * curvature,
             speed,
@@ -172,7 +188,7 @@ public static class CarPhysics
             state.OvertakeAssist
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
-        float mass = Math.Max(config.MassKg, Epsilon);
+        float mass = Math.Max(massKg, Epsilon);
         float frontGrip = (
             loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
             loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
@@ -222,11 +238,17 @@ public static class CarPhysics
         float curvatureDemandScale = road.CurvatureDemandScale;
         float longitudinalDemandScale = road.LongitudinalDemandScale;
 
-        WheelLoads loads = CalculateWheelLoads(state, config, roadNormalGravity);
+        float massKg = TotalMassKg(config, state.Energy);
+        WheelLoads loads = CalculateWheelLoads(
+            state,
+            config,
+            massKg,
+            roadNormalGravity
+        );
         ApplyWheelLoads(state, loads);
 
-        float frontGrip = CalculateAxleGripAccel(config, tires, state.FrontLeft, state.FrontRight);
-        float rearGrip = CalculateAxleGripAccel(config, tires, state.RearLeft, state.RearRight);
+        float frontGrip = CalculateAxleGripAccel(massKg, tires, state.FrontLeft, state.FrontRight);
+        float rearGrip = CalculateAxleGripAccel(massKg, tires, state.RearLeft, state.RearRight);
         float totalGrip = Math.Max(Epsilon, frontGrip + rearGrip);
 
         float desiredCurvature = Math.Clamp(
@@ -252,6 +274,7 @@ public static class CarPhysics
         LateralRequests lateralRequests = AllocateLateralRequests(
             state,
             config,
+            massKg,
             requestedLateralAccel,
             referenceYawRate,
             dynamicYawBlend
@@ -267,7 +290,13 @@ public static class CarPhysics
         {
             float driveAccel = Math.Min(
                 desiredAccel,
-                CalculateDriveAccelLimit(state, config, input.Strategy)
+                config.Powertrain.DriveAccelerationLimit(
+                    state.Energy,
+                    input.Strategy,
+                    state.Speed,
+                    massKg,
+                    config.MaxDriveAcceleration
+                )
             );
             frontLongRequest = driveAccel * config.FrontDriveShare;
             rearLongRequest = driveAccel - frontLongRequest;
@@ -345,6 +374,7 @@ public static class CarPhysics
         float overLimit = Math.Max(front.OverLimit, rear.OverLimit);
         float actualYawAcceleration = CalculateYawAcceleration(
             config,
+            massKg,
             front.LateralAccel,
             rear.LateralAccel
         );
@@ -430,15 +460,21 @@ public static class CarPhysics
             1f
         );
 
-        float drivePowerWatts = UpdateBattery(
-            state,
-            config,
+        PowertrainSettlement settlement = config.Powertrain.Settle(
+            state.Energy,
             driveAccelActual,
             brakeAccelActual,
             averageSpeed,
+            massKg,
             dt
         );
-        float regenPowerWatts = CalculateRegenPower(config, brakeAccelActual, averageSpeed);
+        state.Energy = settlement.Energy;
+        float drivePowerWatts = settlement.DrawnPowerWatts;
+        float regenPowerWatts = config.Powertrain.RecoveredPowerWatts(
+            brakeAccelActual,
+            averageSpeed,
+            massKg
+        );
 
         float costedFrontOverLimit = CostedOverLimit(config, front.OverLimit);
         float costedRearOverLimit = CostedOverLimit(config, rear.OverLimit);
@@ -589,52 +625,6 @@ public static class CarPhysics
         );
 
         state.Normalize();
-    }
-
-    private static float CalculateDriveAccelLimit(
-        CarState state,
-        CarConfig config,
-        CarStrategy strategy
-    )
-    {
-        return CalculateDriveAccelLimit(
-            state,
-            config,
-            strategy,
-            state.Speed
-        );
-    }
-
-    private static float CalculateDriveAccelLimit(
-        CarState state,
-        CarConfig config,
-        CarStrategy strategy,
-        float speed
-    )
-    {
-        if (state.BatterySoc <= 0f)
-            return 0f;
-
-        float socFactor = 1f;
-        if (state.BatterySoc < config.LowSocPowerLimitStart)
-        {
-            socFactor = MathF.Pow(
-                Math.Clamp(
-                    state.BatterySoc /
-                    Math.Max(config.LowSocPowerLimitStart, Epsilon),
-                    0f,
-                    1f
-                ),
-                MathF.Max(config.LowSocPowerFalloffExponent, 1f)
-            );
-        }
-
-        float forceLimitedAccel = config.MaxDriveAcceleration;
-        float powerLimitedAccel =
-            config.GetDrivePowerLimitWatts(strategy) /
-            (config.MassKg * Math.Max(speed, config.MinPowerSpeed));
-
-        return Math.Min(forceLimitedAccel, powerLimitedAccel) * socFactor;
     }
 
     private static float RemainingLongitudinalGrip(float grip, float lateralAcceleration)
@@ -860,6 +850,7 @@ public static class CarPhysics
     private static LateralRequests AllocateLateralRequests(
         CarState state,
         CarConfig config,
+        float massKg,
         float totalLateralRequest,
         float referenceYawRate,
         float dynamicBlend
@@ -889,7 +880,7 @@ public static class CarPhysics
             ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared
         );
         float yawInertiaPerMass = Math.Max(config.YawInertiaKgM2, Epsilon) /
-                                  Math.Max(config.MassKg, Epsilon);
+                                  Math.Max(massKg, Epsilon);
         float dynamicFrontRequest = (
             rearMomentArm * totalLateralRequest +
             yawInertiaPerMass * desiredYawAcceleration
@@ -907,6 +898,7 @@ public static class CarPhysics
 
     private static float CalculateYawAcceleration(
         CarConfig config,
+        float massKg,
         float frontLateralAcceleration,
         float rearLateralAcceleration
     )
@@ -918,7 +910,7 @@ public static class CarPhysics
             1f
         );
         float frontMomentArm = wheelBase - rearMomentArm;
-        float yawMoment = config.MassKg * (
+        float yawMoment = massKg * (
             frontMomentArm * frontLateralAcceleration -
             rearMomentArm * rearLateralAcceleration
         );
@@ -1025,40 +1017,6 @@ public static class CarPhysics
     private static float CostedOverLimit(CarConfig config, float overLimit)
     {
         return Math.Clamp(overLimit, 0f, Math.Max(0f, config.OverLimitCostCap));
-    }
-
-    private static float UpdateBattery(
-        CarState state,
-        CarConfig config,
-        float driveAccel,
-        float brakeAccel,
-        float speed,
-        float dt
-    )
-    {
-        float drivePower = driveAccel <= 0f
-            ? 0f
-            : config.MassKg * driveAccel * speed / Math.Max(config.BatteryDriveEfficiency, Epsilon);
-        float regenPower = CalculateRegenPower(config, brakeAccel, speed);
-
-        float netEnergy = (drivePower - regenPower) * dt;
-
-        state.BatterySoc = Math.Clamp(
-            state.BatterySoc - netEnergy / Math.Max(config.BatteryCapacityJoules, Epsilon),
-            0f,
-            1f
-        );
-
-        return drivePower;
-    }
-
-    private static float CalculateRegenPower(CarConfig config, float brakeAccel, float speed)
-    {
-        if (brakeAccel <= 0f || speed <= 0f)
-            return 0f;
-
-        float brakePower = config.MassKg * brakeAccel * speed;
-        return Math.Min(brakePower * config.RegenEfficiency, config.RegenPowerCapWatts);
     }
 
     private static void UpdateTires(
@@ -1321,6 +1279,11 @@ public static class CarPhysics
         CarConfig config
     )
     {
+        // Chassis mass on purpose, not what the car weighs at this moment.
+        // This is the reference a tyre's work is counted against, and a
+        // reference that fell with the fuel load would cancel the very effect
+        // it is there to show: a car that has burned half its fuel presses
+        // its tyres less hard and should be recorded as working them less.
         return Math.Max(
             MinimumTireHeatLoadScale,
             tire.LoadN /
@@ -1361,19 +1324,16 @@ public static class CarPhysics
                (TireConfig.MaximumSpeedCoolingMultiplier - 1f) * speedFactor;
     }
 
-    private static WheelLoads CalculateWheelLoads(CarState state, CarConfig config)
-    {
-        return CalculateWheelLoads(state, config, Gravity);
-    }
-
     private static WheelLoads CalculateWheelLoads(
         CarState state,
         CarConfig config,
+        float massKg,
         float normalGravity
     )
     {
         return CalculateWheelLoads(
             config,
+            massKg,
             state.FilteredLongitudinalAccel,
             state.FilteredLateralAccel,
             state.Speed,
@@ -1401,6 +1361,7 @@ public static class CarPhysics
     /// </summary>
     private static WheelLoads CalculateWheelLoads(
         CarConfig config,
+        float massKg,
         float longitudinalAcceleration,
         float lateralAcceleration,
         float speed,
@@ -1416,14 +1377,14 @@ public static class CarPhysics
             wakeDownforceLoss,
             overtakeAssist
         ) * speed * speed;
-        float totalLoad = config.MassKg * (normalGravity + downforceAcceleration);
+        float totalLoad = massKg * (normalGravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
-        frontLoad -= config.MassKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
+        frontLoad -= massKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);
         frontLoad = Math.Clamp(frontLoad, 0f, totalLoad);
 
         float rearLoad = totalLoad - frontLoad;
-        float lateralTransfer = config.MassKg * lateralAcceleration * config.CenterOfGravityHeightMeters /
+        float lateralTransfer = massKg * lateralAcceleration * config.CenterOfGravityHeightMeters /
                                 Math.Max(config.TrackWidthMeters, Epsilon);
         float frontTransfer = lateralTransfer * frontLoad / Math.Max(totalLoad, Epsilon);
         float rearTransfer = lateralTransfer - frontTransfer;
@@ -1490,7 +1451,7 @@ public static class CarPhysics
     }
 
     private static float CalculateAxleGripAccel(
-        CarConfig config,
+        float massKg,
         TireConfig tires,
         TireState left,
         TireState right
@@ -1498,7 +1459,7 @@ public static class CarPhysics
     {
         float leftForce = left.LoadN * CalculateTireMu(tires, left);
         float rightForce = right.LoadN * CalculateTireMu(tires, right);
-        return (leftForce + rightForce) / Math.Max(config.MassKg, Epsilon);
+        return (leftForce + rightForce) / Math.Max(massKg, Epsilon);
     }
 
     private static float CalculateTireMu(TireConfig tires, TireState tire)

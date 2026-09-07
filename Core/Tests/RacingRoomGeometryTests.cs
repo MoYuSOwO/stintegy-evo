@@ -859,7 +859,7 @@ public sealed class RacingRoomGeometryTests
                 Position = sample.RefPosition + sample.Normal * d,
                 Heading = sample.RefHeading,
                 Speed = 20f,
-                BatterySoc = 0.8f
+                Energy = PowertrainState.Filled(0.8f)
             }
         );
     }

@@ -414,7 +414,7 @@ public sealed class DriverAbilityTests
                 Position = track.Grids[1].Position,
                 Heading = start.RefHeading,
                 Speed = 8f,
-                BatterySoc = 0.9f
+                Energy = PowertrainState.Filled(0.9f)
             }
         );
     }
@@ -424,7 +424,7 @@ public sealed class DriverAbilityTests
         CarState state = new()
         {
             Speed = 25f,
-            BatterySoc = 1f
+            Energy = PowertrainState.Filled(1f)
         };
         state.InstallFreshTires(tires);
         return state;
