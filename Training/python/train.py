@@ -327,6 +327,11 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=300_000)
     parser.add_argument("--batch", type=int, default=16)
     parser.add_argument("--seed", type=int, default=0)
+    # Pins the entropy coefficient instead of letting the tuner chase a
+    # target entropy. The tuner is under suspicion: it settles at a value
+    # that makes the entropy term a third of the objective, which is not
+    # the same objective the evaluation scores.
+    parser.add_argument("--fixed-alpha", type=float, default=None)
     parser.add_argument("--solo", action="store_true")
     parser.add_argument("--track", default=None)
     parser.add_argument("--eval-every", type=int, default=25_000)
@@ -367,6 +372,8 @@ def main() -> int:
         overrides["quantiles"] = args.quantiles
     if args.no_critic_layer_norm:
         overrides["critic_layer_norm"] = False
+    if args.fixed_alpha is not None:
+        overrides["fixed_alpha"] = args.fixed_alpha
     if args.hidden:
         overrides["hidden"] = tuple(
             int(part) for part in args.hidden.split(",")
@@ -384,7 +391,9 @@ def main() -> int:
     print(
         f"device: {config.device} hidden={config.hidden} "
         f"quantiles={config.quantiles} layer_norm={config.critic_layer_norm} "
-        f"updates/step={config.updates_per_step}"
+        f"updates/step={config.updates_per_step} "
+        f"alpha={'auto' if config.fixed_alpha is None else config.fixed_alpha} "
+        f"gamma={config.gamma} n_step={config.n_step} seed={args.seed}"
     )
     with HostEnv(
         batch=args.batch,
@@ -470,10 +479,14 @@ def main() -> int:
                 name = TERMINAL_NAMES[reason[lane]]
                 window_terminals[name] = window_terminals.get(name, 0) + 1
 
-            if (
-                transitions >= config.start_steps
-                and agent.buffer.size >= config.batch_size
-            ):
+            # Gated on what is in the buffer, not on how many steps have
+            # been counted. They are the same number for a run that starts
+            # from nothing and wildly different for one that resumes: the
+            # step counter carries over, so a warm start would find this
+            # gate already open and begin two updates a step against a
+            # buffer holding a few hundred nearly identical transitions.
+            # That does not continue a good checkpoint, it grinds it up.
+            if agent.buffer.size >= config.start_steps:
                 for _ in range(config.updates_per_step):
                     stats = agent.update()
             else:
