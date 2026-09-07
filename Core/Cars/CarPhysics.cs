@@ -26,6 +26,15 @@ public static class CarPhysics
     /// </summary>
     private const float MinimumSlipAngleSpeed = 3f;
 
+    /// <summary>
+    /// How loaded the car has to be, as a share of what its tyres can give
+    /// laterally, before the driver has wound on all the extra lock the
+    /// slip angles want. Below it the extra fades away, so turning in from
+    /// a straight line starts with the angle geometry asks for and nothing
+    /// else - which is what hands are actually doing at that moment.
+    /// </summary>
+    private const float FullSlipCompensationShare = 0.35f;
+
     private static readonly WheelId[] Wheels =
     {
         WheelId.FrontLeft,
@@ -1025,22 +1034,33 @@ public static class CarPhysics
             ) -
             TireSlipCurve.InverseEvaluate(rearShare / rearCapacity);
 
-        float kinematic = MathF.Atan(wheelBase * desiredCurvature);
-        float feedforward = kinematic + slipCompensation;
-
-        // A driver does not begin a left-hand corner by turning right.
+        // Faded in with the load, because the inversion above is a steady
+        // state and the car is not in one yet.
         //
-        // The inversion above is a steady state, and a steady state is only
-        // there to be inverted while both axles can hold the corner. Let
-        // the rear go far enough - a set of rears worn out under fresh
-        // fronts will do it - and what the arithmetic asks for is opposite
-        // lock before any slide exists, which then creates one the other
-        // way. Opposite lock is a reaction to a slide that is already
-        // happening; it belongs to the feedback below and to the driver's
-        // own hands, not to a feedforward.
-        feedforward = kinematic >= 0f
-            ? Math.Clamp(feedforward, 0f, maximum)
-            : Math.Clamp(feedforward, -maximum, 0f);
+        // Turning into a corner from a straight line, none of those slip
+        // angles exist: the tyres are pointed where the car is going, and
+        // the extra lock they will want is a thing to add as they take up
+        // load, which is what a driver's hands do. Applied in full from the
+        // first frame it is worse than useless - a car with a worn rear
+        // under fresh fronts wants a smaller angle than geometry, and on a
+        // strong enough asymmetry it wants a negative one, so the
+        // arithmetic asks for opposite lock before any slide exists and
+        // then makes one the other way.
+        // Measured against what the tyres can give rather than against what
+        // was asked for. Against the request it would never quite reach one
+        // - at the limit the car is always a little short of what it wanted
+        // - and the compensation would be permanently under-applied, which
+        // costs real cornering. Against the car's own capability it is one
+        // through any corner worth the name and zero only on the straight.
+        float loadedShare = FullSlipCompensationShare *
+                            MathF.Max(frontGrip + rearGrip, Epsilon);
+        float lateralLoad = Math.Clamp(
+            MathF.Abs(state.Telemetry.ActualLateralAccel) / loadedShare,
+            0f,
+            1f
+        );
+        float kinematic = MathF.Atan(wheelBase * desiredCurvature);
+        float feedforward = kinematic + slipCompensation * lateralLoad;
         float feedback = config.SteerCurvatureFeedbackGain * wheelBase *
                          (desiredCurvature - state.Telemetry.ActualCurvature);
         float target = Math.Clamp(feedforward + feedback, -maximum, maximum);
