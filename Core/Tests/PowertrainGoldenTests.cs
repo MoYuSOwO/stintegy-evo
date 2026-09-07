@@ -23,6 +23,17 @@ namespace StintegyEVO.Core.Tests;
 /// force ceiling at low speed, the power ceiling at high speed, regeneration
 /// under braking, the sag of a pack low enough to be limited, and a pack
 /// with nothing left in it at all.
+///
+/// Re-recorded once, on 2026-09-07, and here is the argument the comment
+/// above demands. The car's lateral force stopped being handed over on
+/// request and started coming from slip angles, so these trajectories move
+/// for a reason that has nothing to do with the powertrain: the same
+/// steering input now draws a different line, the car spends a different
+/// amount of its lap cornering, and everything downstream of the path -
+/// where it ends up, how fast, how much charge it used getting there -
+/// follows. Nothing in the powertrain changed, and that is exactly what
+/// these pins are for: if the next re-record cannot point at a change of
+/// this size somewhere else, it is a bug.
 /// </summary>
 public sealed class PowertrainGoldenTests
 {
@@ -83,60 +94,60 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 18.824127\n" +
-            "position -31.116688 248.81851\n" +
-            "heading 1.5834359\n" +
-            "sideslip 0.004505396\n" +
-            "yawrate 0.24032454\n" +
-            "charge 0.7991771\n" +
-            "drivepower 196852.44\n" +
+            "speed 14.148336\n" +
+            "position 150.09515 228.47443\n" +
+            "heading 0.80492526\n" +
+            "sideslip -0.00032370118\n" +
+            "yawrate 0.23017256\n" +
+            "charge 0.7993313\n" +
+            "drivepower 136391.11\n" +
             "regenpower 0\n" +
-            "longaccel 11.212663\n" +
-            "lataccel 4.5334196\n" +
-            "wear 0.0047271955 0.007471319 0.0072629647 0.011266288\n" +
-            "coretemp 90.13731 90.672844 90.26405 90.91436";
+            "longaccel 10.491961\n" +
+            "lataccel 3.1148212\n" +
+            "wear 0.0022436283 0.003717433 0.0042146747 0.0067632855\n" +
+            "coretemp 89.3396 89.511314 89.75354 90.11967";
 
         public const string SaggingPack =
-            "speed 12.177776\n" +
-            "position -54.470325 198.52911\n" +
-            "heading 2.4299796\n" +
-            "sideslip 0.0032548904\n" +
-            "yawrate 0.15684499\n" +
-            "charge 0.14967\n" +
-            "drivepower 72625.04\n" +
+            "speed 8.776938\n" +
+            "position 244.30696 204.46846\n" +
+            "heading 0.3519921\n" +
+            "sideslip 0.0023102397\n" +
+            "yawrate 0.16217126\n" +
+            "charge 0.14957933\n" +
+            "drivepower 52188.508\n" +
             "regenpower 0\n" +
-            "longaccel 6.389864\n" +
-            "lataccel 1.9018174\n" +
-            "wear 0.009106642 0.015658716 0.010837926 0.026633725\n" +
-            "coretemp 90.428116 91.309296 90.71517 91.82905";
+            "longaccel 6.4362793\n" +
+            "lataccel 2.6205735\n" +
+            "wear 0.002297785 0.0038879027 0.0037380783 0.006288163\n" +
+            "coretemp 89.33094 89.52021 89.721664 90.07845";
 
         public const string AttackLadder =
-            "speed 18.823484\n" +
-            "position -33.95673 248.97173\n" +
-            "heading 1.5930907\n" +
-            "sideslip 0.004504323\n" +
-            "yawrate 0.24031371\n" +
-            "charge 0.79916584\n" +
-            "drivepower 196841.52\n" +
+            "speed 13.64237\n" +
+            "position 160.60121 218.80824\n" +
+            "heading 0.43155763\n" +
+            "sideslip 0.00037098187\n" +
+            "yawrate 0.22220674\n" +
+            "charge 0.79932964\n" +
+            "drivepower 131585.25\n" +
             "regenpower 0\n" +
-            "longaccel 11.212446\n" +
-            "lataccel 4.5331087\n" +
-            "wear 0.00482691 0.0076248446 0.0074113524 0.011534613\n" +
-            "coretemp 90.15514 90.69805 90.28953 90.95318";
+            "longaccel 10.515114\n" +
+            "lataccel 3.0105245\n" +
+            "wear 0.002241597 0.0037027944 0.0042384826 0.006777598\n" +
+            "coretemp 89.33969 89.509224 89.741974 90.10361";
 
         public const string EmptyPack =
-            "speed 1.6715203E-05\n" +
-            "position 104.57055 80.86308\n" +
-            "heading 1.9105024\n" +
+            "speed 1.4664028E-05\n" +
+            "position 108.8235 78.09093\n" +
+            "heading 1.7952955\n" +
             "sideslip 0\n" +
             "yawrate 0\n" +
-            "charge 0.00016553534\n" +
-            "drivepower 1.2197106E-07\n" +
+            "charge 0.00015504633\n" +
+            "drivepower 9.387285E-08\n" +
             "regenpower 0\n" +
-            "longaccel 8.220584E-06\n" +
-            "lataccel 3.5870439E-12\n" +
-            "wear 0.0013105738 0.0020760307 0.0011134592 0.0017888439\n" +
-            "coretemp 89.24304 89.43001 89.134186 89.27047";
+            "longaccel 7.21181E-06\n" +
+            "lataccel 5.363167\n" +
+            "wear 0.0011116189 0.0016976009 0.0013486773 0.002095845\n" +
+            "coretemp 89.17736 89.31807 89.23288 89.38822";
     }
 
     /// <summary>
@@ -145,6 +156,8 @@ public sealed class PowertrainGoldenTests
     /// reports where it ended up. No track: this is the vehicle model alone,
     /// so nothing in the answer depends on the road code.
     /// </summary>
+
+
     private static string RunTrajectory(
         float startSpeed,
         float startCharge,

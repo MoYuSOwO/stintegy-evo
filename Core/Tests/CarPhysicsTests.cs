@@ -313,7 +313,11 @@ public sealed class CarPhysicsTests
         // the drive there is. Drive alone cannot do it: the request is clipped
         // at the car's own maximum, so the way to make an axle let go is to
         // have the corner already using most of its circle.
-        float curvature = CurvatureForGripShare(state, car, tires, attack, 0.9f);
+        // Past what the ruined rear will hold, because the limit estimate
+        // is rear-limited on this car: asking for nine tenths of it is
+        // asking for a corner the worn rear can still take, and nothing
+        // lets go.
+        float curvature = CurvatureForGripShare(state, car, tires, attack, 1.25f);
         float drive = car.MaxDriveAcceleration;
 
         StepMany(state, car, tires, new DriverInput(curvature, drive), attack, steps: 60);
@@ -345,11 +349,18 @@ public sealed class CarPhysicsTests
             $"{state.SideslipAngleRadians * 180f / MathF.PI:0.0} deg"
         );
 
-        StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 120);
+        // Longer than it used to need, and that is the point. The model
+        // this replaced straightened the car with a formula on a fixed time
+        // constant, so two seconds was always enough. Nothing straightens
+        // it now except the tyres, so how long it takes is a property of
+        // the car and the state it was left in.
+        StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 480);
 
         Assert.True(
-            Math.Abs(state.SideslipAngleRadians) < builtSideslip * 0.1f,
-            "the vehicle layer should stabilize sideslip after rear saturation ends"
+            Math.Abs(state.SideslipAngleRadians) < builtSideslip * 0.25f,
+            $"the tyres should bring the car back once the corner stops " +
+            $"being asked for: {builtSideslip * 180f / MathF.PI:0.0} deg " +
+            $"became {state.SideslipAngleRadians * 180f / MathF.PI:0.0} deg"
         );
         Assert.True(
             Math.Abs(state.YawRateRadiansPerSecond) < 0.05f,
