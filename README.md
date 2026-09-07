@@ -103,7 +103,7 @@ Racing games usually make you the driver. But in real racing, victory or defeat 
 * **Engine**: [Godot Engine 4.6.x](https://godotengine.org/) (.NET edition)
 * **Language & Runtime**: C# / .NET 8
 * **Core**: 2D vehicle, race, and planning simulation separated from the Godot presentation layer, with headless automated testing
-* **Presentation**: Godot 2D debugging and race views today; Low Poly 3D remains a future direction
+* **Presentation**: Godot 2D debugging plus a Low Poly 3D prototype; see [controls, design references and runtime limits](GodotApp/LowPoly/README.md)
 * **AI**: Stanley tracking, actual-motion path prediction, rolling local speed planning, and traffic constraints built from shared frame snapshots
 * **Numerics**: HiGHS and BLAS support minimum-curvature reference-line optimization
 

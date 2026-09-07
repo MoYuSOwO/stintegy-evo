@@ -4,10 +4,13 @@
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Nullable>enable</Nullable>
+    <Optimize>true</Optimize>
+    <!-- Editor runs load Debug output, but simulation hot paths must remain optimized. -->
+    <SimulationConfiguration Condition="'$(SimulationConfiguration)' == ''">Release</SimulationConfiguration>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="Core/StintegyEVO.Core.csproj" />
+    <ProjectReference Include="Core/StintegyEVO.Core.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
   </ItemGroup>
 
   <ItemGroup>
