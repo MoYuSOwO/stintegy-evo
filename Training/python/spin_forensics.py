@@ -241,7 +241,7 @@ def probe(
         history = [deque(maxlen=lead_steps) for _ in range(lanes)]
         steps = int(round(seconds / STEP_SECONDS))
 
-        for _ in range(steps):
+        for step_index in range(steps):
             action = agent.act(obs, deterministic=True)
             speed = _speed(obs)
             slip = _sideslip(obs)
@@ -291,6 +291,12 @@ def probe(
                     {
                         "kind": "退赛" if stalled else "旋转",
                         "lane": lane,
+                        # When in the session, not just where on the lap.
+                        # A driver that is clean on fresh tyres and loses
+                        # it on worn ones and a driver that is simply loose
+                        # produce the same total; only the clock separates
+                        # them.
+                        "t_seconds": step_index * STEP_SECONDS,
                         "station_m": float(station[lane]),
                         "speed_kph": (
                             float(lead[-1]["speed"] * 3.6)
@@ -362,6 +368,19 @@ def summarise(result: dict) -> None:
             f"{sum(1 for e in here if e['kind'] == '旋转'):>4}  "
             f"{sum(1 for e in here if e['kind'] == '退赛'):>4}"
         )
+
+    seconds = result["seconds"]
+    print("\n何时出的事（前后半场）与哪条车道")
+    half = seconds / 2.0
+    early = sum(1 for e in events if e.get("t_seconds", 0.0) < half)
+    print(f"  前半场 {early}   后半场 {len(events) - early}   "
+          f"（会话 {seconds:.0f} 秒，胎是越跑越旧的）")
+    lanes: dict[int, int] = {}
+    for e in events:
+        lanes[e["lane"]] = lanes.get(e["lane"], 0) + 1
+    print("  逐车道：" + "  ".join(
+        f"{lane}:{n}" for lane, n in sorted(lanes.items())
+    ))
 
     print("\n触发瞬间四轮所在表面")
     tally: dict[str, list[int]] = {}
