@@ -102,8 +102,13 @@ public static class CarPhysics
             ? float.PositiveInfinity
             : rearGrip / rearDemandShare;
         float extraction = Math.Clamp(corneringEfficiency, 0.05f, 1f);
+        // What the car can hold, not what it can touch. See
+        // TireSlipCurve.SustainablePeakShare: planning against the whole
+        // circle means arriving at every apex a tenth over what the tyres
+        // will give, and running wide by exactly that.
         float lateralLimit =
-            Math.Min(frontLateralLimit, rearLateralLimit) * extraction;
+            Math.Min(frontLateralLimit, rearLateralLimit) * extraction *
+            TireSlipCurve.SustainablePeakShare;
 
         // What the corner costs the tyre, which is not what the corner is
         // worth to the car. A driver who only gets part of the cornering out
@@ -224,7 +229,8 @@ public static class CarPhysics
         return MathF.Max(
             0f,
             MathF.Min(frontLimit, rearLimit) *
-            Math.Clamp(corneringEfficiency, 0.05f, 1f)
+            Math.Clamp(corneringEfficiency, 0.05f, 1f) *
+            TireSlipCurve.SustainablePeakShare
         );
     }
 

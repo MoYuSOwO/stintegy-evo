@@ -64,6 +64,25 @@ internal static class TireSlipCurve
         MathF.Tan(MathF.PI / (2f * Shape)) / PeakSlipAngleRadians;
 
     /// <summary>
+    /// How much of the instantaneous peak a car can actually hold.
+    ///
+    /// A peak is a peak: sit exactly on it and the next disturbance takes
+    /// force away rather than adding it, so nothing holds both ends of a
+    /// car there at once. The model this replaced could - it had no peak to
+    /// fall off - which is why the car's advertised cornering limit used to
+    /// be the whole friction circle and could be planned against to the
+    /// last percent.
+    ///
+    /// Measured on the constant-speed skidpad in the dynamics tests: the
+    /// car settles at a little under nine tenths of the grip its axles
+    /// have. Anything planning a corner speed has to plan against this
+    /// number and not the circle, or it arrives at every apex asking for a
+    /// tenth more than the tyres will give and running wide by exactly
+    /// that.
+    /// </summary>
+    public const float SustainablePeakShare = 0.9f;
+
+    /// <summary>
     /// Cornering stiffness at zero slip, as a share of the axle's grip per
     /// radian. Not used by the model - it falls out of the two numbers
     /// above - but it is the figure a chassis engineer would ask for, so it
