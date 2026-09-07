@@ -99,7 +99,7 @@ public partial class RaceView3D : Node3D
             }
         }
         float fraction = IsPaused ? 1f : Math.Clamp((float)(_sincePose / Math.Max(_coreMs / 1000.0, 1.0 / 60.0)), 0f, 1f);
-        foreach (var car in _cars) { car.Render(fraction); car.Select(car == _cars[SelectedCarIndex], CameraMode == 1); }
+        foreach (var car in _cars) { car.Render(fraction); car.Select(car == _cars[SelectedCarIndex], CameraMode == 2); }
         _camera.Update(delta, _cars[SelectedCarIndex]);
     }
     public void SetCameraMode(int mode) { _camera.SetMode(mode); _hudDirty = true; _hud.RefreshControls(); }

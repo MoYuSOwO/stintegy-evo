@@ -55,25 +55,36 @@ func run() -> void:
         await process_frame
         paused_frames += 1
     print("SMOKE paused frames=", paused_frames, " over ms=", Time.get_ticks_msec()-paused_started)
-    await capture("01-follow")
+    var car: Node3D = scene.get_node("Car_01")
+    var camera: Camera3D = scene.get_node("CameraRig/Lens")
+    check(camera.projection == Camera3D.PROJECTION_PERSPECTIVE, "Chase must use perspective")
+    check((camera.global_position - car.global_position).dot(car.global_basis.x) < -5, "Chase must sit behind the car")
+    check(not camera.is_position_behind(car.global_position), "Chase must look toward the car")
+    check(root.get_visible_rect().has_point(camera.unproject_position(car.global_position)), "Chase must frame the car")
+    await capture("01-chase")
     for mode in [2, 3]:
         press(KEY_2 if mode == 2 else KEY_3)
         await create_timer(0.3).timeout
         check(scene.get("CameraMode") == mode, "Camera shortcut did not switch")
-        await capture("02-aerial" if mode == 2 else "03-high-side")
+        check(camera.projection == Camera3D.PROJECTION_ORTHOGONAL, "Side and overview must use orthographic projection")
+        if mode == 2:
+            check(abs((camera.global_position - car.global_position).dot(car.global_basis.z)) > 20, "Side must view from beside the car")
+            check(camera.size < 60, "Side must frame local track, not the whole circuit")
+        else:
+            check(camera.size > 1000, "Overview must frame the complete circuit")
+        await capture("02-side" if mode == 2 else "03-overview")
     press(KEY_1)
     await process_frame
     press(KEY_RIGHT)
     await create_timer(0.3).timeout
     check(scene.get("SelectedCarIndex") == 0, "Single-car selection must remain valid")
-    var camera: Camera3D = scene.get_node("CameraRig/Lens")
-    var size_before := camera.size
+    var distance_before := camera.global_position.distance_to(car.global_position)
     var wheel := InputEventMouseButton.new()
     wheel.button_index = MOUSE_BUTTON_WHEEL_UP
     wheel.pressed = true
     Input.parse_input_event(wheel)
     await create_timer(0.5).timeout
-    check(camera.size < size_before, "Wheel did not zoom camera")
+    check(camera.global_position.distance_to(car.global_position) < distance_before, "Wheel did not zoom chase camera")
     root.size = Vector2i(1024, 640)
     await create_timer(0.3).timeout
     await capture("04-compact")

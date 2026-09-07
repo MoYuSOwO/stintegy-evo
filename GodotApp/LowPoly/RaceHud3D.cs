@@ -28,7 +28,7 @@ public partial class RaceHud3D : CanvasLayer
         _clock.Position = new(358, 19); _clock.AddThemeFontSizeOverride("font_size", 17); _clock.AddThemeColorOverride("font_color", Ink); header.AddChild(_clock);
         var controls = new HBoxContainer { Position = new(-529, 12), Size = new(510, 36), AnchorLeft = 1, AnchorRight = 1 };
         controls.AddThemeConstantOverride("separation", 5); header.AddChild(controls);
-        string[] names = ["1  FOLLOW", "2  AERIAL", "3  HIGH SIDE"];
+        string[] names = ["1  CHASE", "2  SIDE", "3  OVERVIEW"];
         for (int i = 0; i < 3; i++)
         {
             int mode = i + 1; var b = Button(names[i]); b.CustomMinimumSize = new(116, 36); b.Pressed += () => race.SetCameraMode(mode); controls.AddChild(b); _cameras[i] = b;

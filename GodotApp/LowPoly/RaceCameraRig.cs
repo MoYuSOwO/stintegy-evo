@@ -5,30 +5,55 @@ namespace StintegyEVO.GodotApp.LowPoly;
 
 public partial class RaceCameraRig : Node3D
 {
-    public Camera3D Lens { get; } = new() { Name = "Lens", Projection = Camera3D.ProjectionType.Orthogonal, Near = 0.3f, Far = 16000f, Current = true, KeepAspect = Camera3D.KeepAspectEnum.Height };
+    public Camera3D Lens { get; } = new() { Name = "Lens", Near = 0.3f, Far = 16000f, Current = true, KeepAspect = Camera3D.KeepAspectEnum.Height };
     public int Mode { get; private set; } = 1;
     private TrackSurfaceGeometry _surface = null!;
     private Vector3 _focus;
-    private float _zoom = 1f, _yaw = -0.65f;
+    private float _zoom = 1f, _orbit, _heading;
     private bool _snap = true;
     public void Initialize(TrackSurfaceGeometry surface) { _surface = surface; AddChild(Lens); }
-    public void SetMode(int mode) { Mode = Math.Clamp(mode, 1, 3); _zoom = 1; _yaw = Mode == 3 ? 0.12f : -0.65f; _snap = true; }
-    public void Zoom(float multiplier) => _zoom = Math.Clamp(_zoom * multiplier, Mode == 1 ? 0.45f : 0.35f, Mode == 1 ? 2.8f : 1.8f);
-    public void Orbit(float radians) => _yaw += radians;
+    public void SetMode(int mode) { Mode = Math.Clamp(mode, 1, 3); _zoom = 1; _orbit = 0; _snap = true; }
+    public void Zoom(float multiplier) => _zoom = Math.Clamp(_zoom * multiplier, Mode == 1 ? 0.65f : 0.35f, Mode == 3 ? 1.8f : 2.8f);
+    public void Orbit(float radians) => _orbit += radians;
     public void Update(double delta, FormulaCarView3D car)
     {
         if (_surface == null) return;
-        Vector3 center = LowPolyMesh.V((_surface.Minimum + _surface.Maximum) * 0.5f);
-        Vector3 desired = Mode == 1 ? car.GlobalPosition + car.GlobalBasis.X * 12f : center;
         float blend = _snap ? 1f : 1f - MathF.Exp(-8f * (float)delta);
-        _focus = _focus.Lerp(desired, blend);
-        float pitch = Mathf.DegToRad(Mode == 1 ? 53f : Mode == 2 ? 70f : 32f);
-        Vector3 offset = new(MathF.Sin(_yaw) * MathF.Cos(pitch), MathF.Sin(pitch), MathF.Cos(_yaw) * MathF.Cos(pitch));
-        float distance = Mode == 1 ? 180f : (_surface.Maximum - _surface.Minimum).Length() * 1.4f;
-        Lens.Position = _focus + offset * distance;
-        Lens.LookAt(_focus, Vector3.Up);
-        float size = Mode == 1 ? 58f : GlobalSize();
-        Lens.Size = Mathf.Lerp(Lens.Size, size * _zoom, blend);
+        float carHeading = MathF.Atan2(car.GlobalBasis.X.Z, car.GlobalBasis.X.X);
+        _heading = _snap ? carHeading : Mathf.LerpAngle(_heading, carHeading, 1f - MathF.Exp(-5f * (float)delta));
+        Vector3 forward = new(MathF.Cos(_heading), 0, MathF.Sin(_heading));
+        Vector3 side = forward.Cross(Vector3.Up);
+        Vector3 center = LowPolyMesh.V((_surface.Minimum + _surface.Maximum) * 0.5f);
+        _focus = _focus.Lerp(Mode == 3 ? center : car.GlobalPosition, blend);
+        if (Mode == 1)
+        {
+            // Perspective chase: stay behind the car as its heading changes, with a level horizon.
+            Lens.Projection = Camera3D.ProjectionType.Perspective;
+            Lens.Fov = 58f;
+            Vector3 offset = (-forward * 10f + Vector3.Up * 6f).Rotated(Vector3.Up, _orbit);
+            Lens.Position = _focus + offset * _zoom;
+            Lens.LookAt(_focus + forward * 5f + Vector3.Up * 0.7f, Vector3.Up);
+        }
+        else if (Mode == 2)
+        {
+            // A closer side-on composition keeps the silhouette and surrounding track readable.
+            Lens.Projection = Camera3D.ProjectionType.Orthogonal;
+            Vector3 offset = (side * 35f - forward * 10f + Vector3.Up * 30f).Rotated(Vector3.Up, _orbit);
+            Vector3 target = _focus + forward * 5f;
+            Lens.Position = target + offset;
+            Lens.LookAt(target, Vector3.Up);
+            Lens.Size = Mathf.Lerp(Lens.Size, 30f * _zoom, blend);
+        }
+        else
+        {
+            // Keep one clearly distinct global view for the complete circuit.
+            Lens.Projection = Camera3D.ProjectionType.Orthogonal;
+            float pitch = Mathf.DegToRad(38f), yaw = 0.12f + _orbit;
+            Vector3 offset = new(MathF.Sin(yaw) * MathF.Cos(pitch), MathF.Sin(pitch), MathF.Cos(yaw) * MathF.Cos(pitch));
+            Lens.Position = _focus + offset * (_surface.Maximum - _surface.Minimum).Length() * 1.4f;
+            Lens.LookAt(_focus, Vector3.Up);
+            Lens.Size = Mathf.Lerp(Lens.Size, GlobalSize() * _zoom, blend);
+        }
         _snap = false;
     }
     private float GlobalSize()

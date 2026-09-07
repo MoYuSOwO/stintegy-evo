@@ -17,20 +17,20 @@ Import `project.godot` with Godot **4.6.3 .NET** for normal editor use. The defa
 
 | Input | Action |
 |---|---|
-| 1 | Oblique car-follow camera |
-| 2 | Whole-circuit aerial camera |
-| 3 | Elevated side-on global camera |
+| 1 | Perspective rear chase, rotating with car heading (default) |
+| 2 | Close orthographic side-follow camera |
+| 3 | Elevated whole-circuit overview |
 | Scroll | Zoom current camera |
 | Right drag | Orbit current camera |
 | Left / Right | Select previous / next car |
 | Click running-order row | Select that car |
-| F | Toggle follow / aerial |
+| F | Toggle chase / side |
 | Space or Pause button | Pause / resume simulation |
 | Q / E | Lower / raise selected car's tire mode |
 | A / D | Lower / raise selected car's power mode |
 | H | Hide / show HUD |
 
-A full-circuit view necessarily renders individual cars very small at real-world scale. Use Follow to inspect cars and wheel-to-wheel spacing; the circuit map locates the selected car.
+A full-circuit view necessarily renders individual cars very small at real-world scale. Use Chase or Side to inspect cars and wheel-to-wheel spacing; the circuit map locates the selected car.
 
 ## Design references and how they informed this prototype
 
