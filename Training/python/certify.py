@@ -20,7 +20,13 @@ import numpy as np
 
 from host_env import HostEnv
 from sac import SacAgent, SacConfig
-from train import EVALUATION_MODES, band_note, evaluate, meets_reference_band
+from train import (
+    EVALUATION_MODES,
+    band_note,
+    evaluate,
+    meets_reference_band,
+    per_lap,
+)
 
 LANES = 12
 SECONDS = 600.0
@@ -65,7 +71,8 @@ def main() -> int:
         print(f"\n{path}")
         print(
             f"  圈数 {laps:.0f}  干净 {clean:.0f}  干净率 {share * 100:.1f}%  "
-            f"旋转 {r['spins']:.0f}  退赛 {r['stalls']:.0f}"
+            f"旋转 {r['spins']:.0f} ({per_lap(r['spins'], laps)})  "
+            f"退赛 {r['stalls']:.0f} ({per_lap(r['stalls'], laps)})"
         )
         print(
             f"  最快干净圈 {clock(r['lap'])}"
@@ -95,18 +102,23 @@ def main() -> int:
                         else "圈圈小蹭（出界分散在多圈）"
                     )
                 )
+        # Retirement joins the criterion as its own leg. A car stuck on
+        # the grass is not a slow lap, it is no lap, and averaging it into
+        # a clean-lap rate quietly forgives it.
         graduated = (
             r["spins"] == 0
+            and r["stalls"] == 0
             and share > 0.5
             and meets_reference_band(args.track, r["lap"])
         )
         print(
             "  毕业口径：" + (
-                "✅ 三项齐（零旋转 + 干净率过半 + 落带）"
+                "✅ 四项齐（零旋转 + 零退赛 + 干净率过半 + 落带）"
                 if graduated
                 else "❌ " + " / ".join(
                     x for x in (
                         f"旋转 {r['spins']:.0f}" if r["spins"] else None,
+                        f"退赛 {r['stalls']:.0f}" if r["stalls"] else None,
                         f"干净率 {share * 100:.0f}%" if share <= 0.5 else None,
                         "未落带" if not meets_reference_band(args.track, r["lap"]) else None,
                     ) if x

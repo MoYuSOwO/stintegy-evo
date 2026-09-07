@@ -252,4 +252,125 @@ public sealed class SurfaceGripTests
         }
         return best;
     }
+
+    /// <summary>
+    /// The edge reads the same on every circuit: road to the white line,
+    /// then a kerb that gets worse the further onto it you go, then grass.
+    ///
+    /// Two things are being pinned. The order of the three surfaces — the
+    /// kerb used to be the last strip of the racing surface, which meant a
+    /// wheel crossing the line went from full grip to less than half of it
+    /// inside one step. And the kerb's shape: it is a ramp across its whole
+    /// width, not a plateau. A plateau says the second centimetre past the
+    /// line costs what the fifty-ninth costs, and how far onto a kerb to
+    /// put the wheel is exactly the thing a driver meters.
+    /// </summary>
+    [Fact]
+    public void TheEdgeIsRoadThenKerbThenGrass()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample sample = track.Sample(120f);
+        float half = sample.HalfWidth;
+
+        // Racing surface right up to the line: a hand's width inside it is
+        // still worth a hundred per cent.
+        Assert.Equal(
+            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half - 0.1f), 3
+        );
+        // At the line itself the road has not been charged for yet.
+        Assert.Equal(
+            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half), 3
+        );
+        // At the kerb's outer edge it is worth the quoted kerb value, and
+        // that is where the strip ends rather than where it settles.
+        Assert.Equal(
+            SurfaceGrip.Kerb,
+            SurfaceGrip.StaticAt(sample, half + SurfaceGrip.KerbWidthMeters),
+            3
+        );
+        // Past the kerb, through the one remaining transition, grass.
+        Assert.Equal(
+            SurfaceGrip.Buffer,
+            SurfaceGrip.StaticAt(
+                sample,
+                half + SurfaceGrip.KerbWidthMeters
+                    + SurfaceGrip.TransitionMeters + 0.05f
+            ),
+            3
+        );
+    }
+
+    /// <summary>
+    /// Inside the kerb, deeper always costs more.
+    ///
+    /// This is what makes the strip a ramp rather than a threshold. It has
+    /// to be strict, not merely non-increasing: a flat stretch anywhere in
+    /// here is a range of depths the car cannot tell apart, and a driver
+    /// choosing how much kerb to take would have no gradient to follow
+    /// across it.
+    /// </summary>
+    [Fact]
+    public void ThePriceOfAKerbRisesWithHowFarOntoItYouGo()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample sample = track.Sample(120f);
+        float half = sample.HalfWidth;
+
+        const int steps = 60;
+        float previous = SurfaceGrip.StaticAt(sample, half);
+        for (int i = 1; i <= steps; i++)
+        {
+            float depth = SurfaceGrip.KerbWidthMeters * i / steps;
+            float grip = SurfaceGrip.StaticAt(sample, half + depth);
+            Assert.True(
+                grip < previous,
+                $"a centimetre further onto the kerb ({depth:0.000} m) must " +
+                $"cost something: {previous:0.00000} -> {grip:0.00000}"
+            );
+            previous = grip;
+        }
+
+        // And the ramp spans the whole quoted drop, so the kerb's outer
+        // edge is not secretly most of the way to grass.
+        Assert.Equal(
+            SurfaceGrip.Kerb,
+            SurfaceGrip.StaticAt(sample, half + SurfaceGrip.KerbWidthMeters),
+            4
+        );
+    }
+
+    /// <summary>
+    /// Every circuit has at least a kerb's width of run-off, everywhere.
+    /// The narrowest case the grammar allows is a street circuit: kerb,
+    /// then wall. A white line with a barrier immediately behind it is not
+    /// a narrow run-off, it is a case the edge grammar cannot describe,
+    /// so the builder floors it instead of letting it happen.
+    /// </summary>
+    [Theory]
+    [InlineData("monaco")]
+    [InlineData("baku")]
+    [InlineData("silverstone")]
+    public void NoCircuitHasLessRunOffThanAKerb(string name)
+    {
+        TrackData track = name switch
+        {
+            "monaco" => TrackFactory.MonacoStyleTestTrack(),
+            "baku" => TrackFactory.BakuStyleTestTrack(),
+            _ => TrackFactory.SilverstoneStyleTestTrack(),
+        };
+        float narrowest = float.MaxValue;
+        for (int s = 0; s < (int)track.LengthMeters; s++)
+        {
+            TrackSample sample = track.Sample(s);
+            narrowest = MathF.Min(
+                narrowest,
+                MathF.Min(sample.LeftBufferWidth, sample.RightBufferWidth)
+            );
+        }
+        Assert.True(
+            narrowest >= SurfaceGrip.MinimumBufferMeters - 1e-4f,
+            $"{name} has run-off {narrowest:0.000} m wide somewhere, " +
+            $"narrower than the {SurfaceGrip.MinimumBufferMeters:0.0} m kerb"
+        );
+    }
 }

@@ -342,6 +342,23 @@ def evaluate(
 
 
 
+def per_lap(events: float, laps: float) -> str:
+    """An event count in the unit the event happens in.
+
+    Six spins per twenty-five thousand steps is a number nobody can hold.
+    One spin every seven laps is a driver you can picture, and it is also
+    the unit graduation is written in -- zero spins in an evaluation
+    session -- so the training log and the verdict stop being quoted in
+    different currencies.
+    """
+    if laps < 0.5:
+        return "圈数不足"
+    if events <= 0:
+        return f"≈0/{laps:.0f} 圈"
+    per = laps / events
+    return f"≈1/{per:.0f} 圈" if per >= 1.0 else f"≈{events / laps:.1f}/圈"
+
+
 def clean_criterion_key(
     laps: dict[str, dict[str, float]], names: list[str]
 ) -> tuple[int, int, float]:
@@ -566,6 +583,10 @@ def main() -> int:
         # built to be read against: it should start high on a policy that
         # learned to live in the old free corner, and go to zero.
         window_spins = 0
+        window_metres = 0.0
+        previous_race = None
+        window_lap_metres, _unused_trained = TRACKS[args.track] \
+            if args.track else (TRACKS["silverstone"][0], None)
         # C3's key, and the charged mean beside it. Both are tracked
         # because the stopping rule is deliberately the looser of the two:
         # a run is only stagnant when neither the criterion that decides
@@ -592,9 +613,19 @@ def main() -> int:
             else:
                 action = agent.act(obs)
 
-            next_obs, reward, done, reason, components, _, final_obs, spins = (
+            next_obs, reward, done, reason, components, race, final_obs, spins = (
                 env.step(action)
             )
+            # Distance covered this step, per lane, so the window's events
+            # can be quoted per lap. Lanes that just re-seeded are skipped
+            # rather than differenced: their race distance restarts, and a
+            # negative delta is a new episode rather than a car reversing.
+            if previous_race is not None:
+                advanced = race - previous_race
+                window_metres += float(
+                    advanced[(advanced > 0.0) & ~done].sum()
+                )
+            previous_race = race.copy()
             # An episode ending and the future being worth nothing are two
             # different facts. Stalling is a real ending; a timeout is the
             # clock running out on a race that was still going, so the
@@ -651,9 +682,14 @@ def main() -> int:
                     f"closs {stats.get('critic_loss', float('nan')):.3f} "
                     f"{step * env.batch / max(elapsed, 1e-6):.0f} tps"
                 )
+                window_laps = window_metres / window_lap_metres
+                stalls = window_terminals.get("stalled", 0)
                 print(
                     f"          spins {window_spins} "
-                    f"({window_spins / args.log_every:.3f}/step)"
+                    f"({window_spins / args.log_every:.3f}/step, "
+                    f"{per_lap(window_spins, window_laps)})"
+                    f"  退赛 {stalls} ({per_lap(stalls, window_laps)})"
+                    f"  圈 {window_laps:.0f}"
                 )
                 print(f"          {pieces}")
                 print(f"          terminals {window_terminals or 'none'}")
@@ -686,6 +722,7 @@ def main() -> int:
                 window_components[:] = 0.0
                 window_terminals = {}
                 window_spins = 0
+                window_metres = 0.0
 
             if step % args.eval_every == 0:
                 trained, held = eval_split(args.track)
@@ -711,9 +748,15 @@ def main() -> int:
                         if r["mode_excess"] < -0.02:
                             flags += f"  抗命 {r['mode_excess']:.2f}"
                         if r["stalls"] > 0:
-                            flags += f"  退赛 {r['stalls']:.0f}"
+                            flags += (
+                                f"  退赛 {r['stalls']:.0f} "
+                                f"({per_lap(r['stalls'], r['laps'])})"
+                            )
                         if r["spins"] > 0:
-                            flags += f"  旋转 {r['spins']:.0f}"
+                            flags += (
+                                f"  旋转 {r['spins']:.0f} "
+                                f"({per_lap(r['spins'], r['laps'])})"
+                            )
                         print(
                             f"    {group} {name:<15}"
                             f"  干净 {lap_string(r['lap']):>9}"
@@ -751,8 +794,12 @@ def main() -> int:
                     f"    计罚平均圈  {left} {lap_string(mean_lap)}"
                     f"   {right} {lap_string(held_lap)}"
                 )
+                stalls_total = sum(laps[n]["stalls"] for n in trained)
                 print(
-                    f"    干净口径    旋转 {spins_total:.0f}"
+                    f"    干净口径    旋转 {spins_total:.0f} "
+                    f"({per_lap(spins_total, completed)})"
+                    f"  退赛 {stalls_total:.0f} "
+                    f"({per_lap(stalls_total, completed)})"
                     f"  干净 {clean_total:.0f}/{completed:.0f}"
                     f"  档位 {('无', '有', '过半')[key[1]]}"
                     f"  均速 {lap_string(-key[2])}"
