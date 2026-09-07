@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
@@ -438,7 +439,8 @@ public sealed class RaceSimulation
                 _stepLimitSettleUses[i]
             )
             {
-                RoadAttitude = SampleRoadAttitude(car)
+                RoadAttitude = SampleRoadAttitude(car),
+                SurfaceGrip = SampleWheelSurfaceGrip(car)
             };
 
             CarState startState = _startStates[i];
@@ -623,6 +625,46 @@ public sealed class RaceSimulation
     /// half a metre, and every other reading this step is taken from the
     /// same instant.
     /// </summary>
+    /// <summary>
+    /// What the road is worth under each of this car's four wheels.
+    ///
+    /// One projection, and it is one the car has already paid for: the
+    /// progress tracker keeps where the centre is, and where a wheel is
+    /// follows from that plus the car's heading and its own dimensions.
+    /// Projecting four times would buy a slightly better answer at four
+    /// times the price, and the difference is smaller than the width of
+    /// the smoothing at the road's edge.
+    ///
+    /// This is also the socket the rubber-and-water grid plugs into when it
+    /// arrives: four points already being asked what they are standing on,
+    /// with a second layer waiting behind the first.
+    /// </summary>
+    private WheelSurfaceGrip SampleWheelSurfaceGrip(RaceCar car)
+    {
+        TrackSample sample = Track.Sample(car.Progress.CurrentS);
+        float centre = car.Progress.CurrentD;
+        float heading = car.State.Heading;
+        Vector2 forward = new(MathF.Cos(heading), MathF.Sin(heading));
+        Vector2 left = new(-forward.Y, forward.X);
+        Vector2 normal = sample.Normal;
+        CarConfig config = car.CarConfig;
+        float halfTrack = MathF.Max(config.TrackWidthMeters, 0f) * 0.5f;
+
+        float OffsetOf(Vector2 fromCentre) =>
+            centre + Vector2.Dot(fromCentre, normal);
+
+        Vector2 front = forward * config.FrontAxleOffsetMeters;
+        Vector2 rear = -forward * config.RearAxleOffsetMeters;
+        Vector2 side = left * halfTrack;
+
+        return new WheelSurfaceGrip(
+            SurfaceGrip.At(sample, OffsetOf(front + side)),
+            SurfaceGrip.At(sample, OffsetOf(front - side)),
+            SurfaceGrip.At(sample, OffsetOf(rear + side)),
+            SurfaceGrip.At(sample, OffsetOf(rear - side))
+        );
+    }
+
     private RoadAttitude SampleRoadAttitude(RaceCar car)
     {
         TrackSample sample = Track.Sample(car.Progress.CurrentS);

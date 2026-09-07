@@ -242,6 +242,11 @@ public static class CarPhysics
 
         state.Normalize();
 
+        // What each wheel is standing on, before anything asks how much
+        // grip there is.
+        foreach (WheelId wheel in Wheels)
+            state.GetTire(wheel).SurfaceGrip = input.SurfaceGrip[wheel];
+
         // A car that has been declared lost is not being driven, so nothing
         // below this line runs: no request is read, no axle is resolved,
         // and the rotation is played rather than integrated.
@@ -1022,13 +1027,12 @@ public static class CarPhysics
     /// </summary>
     private static float RearMomentArm(CarConfig config)
     {
-        return MathF.Max(config.WheelBaseMeters, Epsilon) *
-               Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
+        return MathF.Max(config.RearAxleOffsetMeters, Epsilon);
     }
 
     private static float FrontMomentArm(CarConfig config)
     {
-        return MathF.Max(config.WheelBaseMeters, Epsilon) - RearMomentArm(config);
+        return MathF.Max(config.FrontAxleOffsetMeters, Epsilon);
     }
 
     /// <summary>
@@ -2168,8 +2172,15 @@ public static class CarPhysics
         TireState right
     )
     {
-        float leftForce = left.LoadN * CalculateTireMu(tires, left);
-        float rightForce = right.LoadN * CalculateTireMu(tires, right);
+        // Each wheel brings its own road with it. A car straddling the
+        // white line has one side of an axle on tarmac and the other on
+        // grass, and the axle is worth the sum of the two rather than the
+        // better of them - so half a car off the road is half an axle's
+        // grip gone, and the cost of running wide scales with how far.
+        float leftForce = left.LoadN * CalculateTireMu(tires, left) *
+                          MathF.Max(0f, left.SurfaceGrip);
+        float rightForce = right.LoadN * CalculateTireMu(tires, right) *
+                           MathF.Max(0f, right.SurfaceGrip);
         return (leftForce + rightForce) / Math.Max(massKg, Epsilon);
     }
 

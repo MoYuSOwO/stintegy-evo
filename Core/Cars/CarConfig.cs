@@ -1,3 +1,5 @@
+using System;
+
 namespace StintegyEVO.Core.Cars;
 
 public sealed class CarConfig
@@ -29,6 +31,21 @@ public sealed class CarConfig
     /// </summary>
     public float FrontLateralComplianceRatio { get; init; } = 1.4f;
     public float FrontDriveShare { get; init; } = 0f;
+    /// <summary>
+    /// Where the axles sit relative to the centre of mass. The front arm is
+    /// the longer one on this car, because the front carries less of the
+    /// weight and so the mass sits nearer the rear.
+    ///
+    /// Named here rather than recomputed wherever it is wanted: the yaw
+    /// balance needs it, and so does anything asking where a wheel is - and
+    /// two copies of the same formula is one copy waiting to disagree.
+    /// </summary>
+    public float RearAxleOffsetMeters =>
+        WheelBaseMeters * Math.Clamp(FrontStaticLoadShare, 0f, 1f);
+
+    public float FrontAxleOffsetMeters =>
+        WheelBaseMeters - RearAxleOffsetMeters;
+
     public float YawInertiaKgM2 { get; init; } = 1450f;
 
     /// <summary>

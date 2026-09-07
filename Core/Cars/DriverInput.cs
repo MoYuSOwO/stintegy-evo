@@ -107,4 +107,34 @@ public readonly record struct CarPhysicsStepInput(
     /// caller that has no elevation data gets exactly the old behaviour.
     /// </summary>
     public RoadAttitude RoadAttitude { get; init; } = RoadAttitude.Flat;
+
+    /// <summary>
+    /// What the road is worth under each wheel. Defaults to clean racing
+    /// surface all round, so a caller with no track under it - a bench
+    /// test, a predictor - gets exactly the old behaviour.
+    /// </summary>
+    public WheelSurfaceGrip SurfaceGrip { get; init; } = WheelSurfaceGrip.Clean;
+}
+
+/// <summary>
+/// The road's grip multiplier under each of the four wheels, sampled where
+/// each of them actually is.
+/// </summary>
+public readonly record struct WheelSurfaceGrip(
+    float FrontLeft,
+    float FrontRight,
+    float RearLeft,
+    float RearRight
+)
+{
+    public static readonly WheelSurfaceGrip Clean = new(1f, 1f, 1f, 1f);
+
+    public float this[WheelId wheel] => wheel switch
+    {
+        WheelId.FrontLeft => FrontLeft,
+        WheelId.FrontRight => FrontRight,
+        WheelId.RearLeft => RearLeft,
+        WheelId.RearRight => RearRight,
+        _ => 1f
+    };
 }
