@@ -29,6 +29,20 @@ internal static class TrackCenterlineData
         ShanghaiPoints = new(() => LoadEmbeddedCsv("Shanghai.csv"));
     private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
         SepangPoints = new(() => LoadEmbeddedCsv("Sepang.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        ZandvoortPoints = new(() => LoadEmbeddedCsv("Zandvoort.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        BakuPoints = new(() => LoadEmbeddedCsv("Baku.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        SpaPoints = new(() => LoadEmbeddedCsv("Spa.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        MonzaPoints = new(() => LoadEmbeddedCsv("Monza.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        InterlagosPoints = new(() => LoadEmbeddedCsv("Interlagos.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        SingaporePoints = new(() => LoadEmbeddedCsv("Singapore.csv"));
+    private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
+        PortimaoPoints = new(() => LoadEmbeddedCsv("Portimao.csv"));
 
     public static IReadOnlyList<TrackCenterlinePoint> Silverstone =>
         SilverstonePoints.Value;
@@ -38,6 +52,20 @@ internal static class TrackCenterlineData
         ShanghaiPoints.Value;
     public static IReadOnlyList<TrackCenterlinePoint> Sepang =>
         SepangPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Zandvoort =>
+        ZandvoortPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Baku =>
+        BakuPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Spa =>
+        SpaPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Monza =>
+        MonzaPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Interlagos =>
+        InterlagosPoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Singapore =>
+        SingaporePoints.Value;
+    public static IReadOnlyList<TrackCenterlinePoint> Portimao =>
+        PortimaoPoints.Value;
 
     private static IReadOnlyList<TrackCenterlinePoint> LoadEmbeddedCsv(
         string fileName,

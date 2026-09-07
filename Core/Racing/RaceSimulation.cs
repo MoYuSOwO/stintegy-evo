@@ -27,6 +27,7 @@ public sealed class RaceSimulation
     private TrafficMotionPlan?[] _previousTrafficMotionPlans = [];
     private int[] _overtakeAssistCrossings = [];
     private readonly RacingRoomCoordinator _racingRoomCoordinator = new();
+    private RacingRoomSnapshot _lastRacingRoom;
 
     public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
     {
@@ -63,7 +64,11 @@ public sealed class RaceSimulation
             return;
 
         foreach (RaceCar car in _cars)
+        {
             car.LastBoundaryContact = null;
+            car.BoundaryContactSeconds = 0f;
+            car.HitCarThisStep = false;
+        }
 
         float remainingDriverTime = dt;
         while (remainingDriverTime > MinimumStepSeconds)
@@ -87,6 +92,75 @@ public sealed class RaceSimulation
             }
             remainingDriverTime -= driverStep;
         }
+    }
+
+    /// <summary>
+    /// One more look at the grid with nobody driving on it.
+    ///
+    /// A driver evaluation and a look at the world are welded together in
+    /// <see cref="EvaluateDrivers"/>, which is right for a race: a driver
+    /// looks in order to act. It is wrong for a caller that has to hand the
+    /// world to something outside the simulation and wait for an answer,
+    /// because the answer arrives after the looking. This gives that caller
+    /// the same frame the drivers get, without anybody acting on it.
+    ///
+    /// What it refreshes and what it leaves alone is the whole design.
+    /// Positions, poses and the wake are recomputed, because those are what
+    /// an observation is mostly made of and they have moved since the last
+    /// evaluation. The racing-room coordinator and the traffic plans are
+    /// reused from that evaluation rather than run again: both carry memory
+    /// across frames, and a look at the world must not age anything. The
+    /// cost is that those two blocks are one driver frame stale, which is
+    /// sixteen milliseconds of adjudication geometry — cheaper by far than
+    /// a sample that quietly advances the race.
+    /// </summary>
+    public RaceDriverFrameContext CaptureFrameContext(RaceCar car)
+    {
+        ArgumentNullException.ThrowIfNull(car);
+
+        int carCount = _cars.Count;
+        int index = _cars.IndexOf(car);
+        if (index < 0)
+        {
+            throw new ArgumentException(
+                "That car is not in this race.",
+                nameof(car)
+            );
+        }
+
+        EnsureStepCapacity(carCount);
+
+        RaceCarSnapshot[] carSnapshots = new RaceCarSnapshot[carCount];
+        for (int i = 0; i < carCount; i++)
+        {
+            RaceCar other = _cars[i];
+            TrackPose pose = Track.Project(other.State.Position);
+            _stepPoses[i] = pose;
+            carSnapshots[i] = RaceCarSnapshot.Capture(
+                other,
+                pose,
+                Track.LengthMeters
+            );
+        }
+
+        ApplyWakeEffects(carSnapshots);
+
+        RaceFrameSnapshot frame = new(
+            RaceTimeSeconds,
+            carSnapshots,
+            _stepTrafficMotionPlans,
+            _previousTrafficMotionPlans,
+            _lastRacingRoom
+        );
+        return new RaceDriverFrameContext(
+            car,
+            Track,
+            _stepPoses[index],
+            Environment,
+            RaceTimeSeconds,
+            frame,
+            index
+        );
     }
 
     private void EvaluateDrivers(float dt)
@@ -127,6 +201,7 @@ public sealed class RaceSimulation
         RacingRoomSnapshot racingRoom = _racingRoomCoordinator.Update(
             carSnapshots
         );
+        _lastRacingRoom = racingRoom;
 
         // Planning is a write-only phase over one frozen physical snapshot.
         // No driver can read another driver's partially prepared plan. The
@@ -390,14 +465,20 @@ public sealed class RaceSimulation
         {
             RaceCar car = _cars[i];
             car.State.CopyFrom(_predictedStates[i]);
+            car.TouchedBoundaryThisSubstep = false;
             if (_sweepContacts[i].HasValue)
+            {
                 car.LastBoundaryContact = _sweepContacts[i];
+                car.TouchedBoundaryThisSubstep = true;
+            }
         }
 
         ResolveContactsAndWalls();
 
         foreach (RaceCar car in _cars)
         {
+            if (car.TouchedBoundaryThisSubstep)
+                car.BoundaryContactSeconds += dt;
             TrackPose finalPose = Track.Project(car.State.Position);
             TrackRegion region = TrackBoundaryResolver.Classify(finalPose);
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
@@ -584,6 +665,7 @@ public sealed class RaceSimulation
             if (contact.HasValue)
             {
                 car.LastBoundaryContact = contact;
+                car.TouchedBoundaryThisSubstep = true;
                 resolvedAny = true;
             }
         }

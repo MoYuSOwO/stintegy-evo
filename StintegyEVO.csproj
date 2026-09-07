@@ -16,5 +16,14 @@
   <ItemGroup>
     <Compile Remove=".godot/**/*.cs" />
     <Compile Remove="Core/**/*.cs" />
+    <!--
+      Both of these are their own projects with their own references, and
+      the SDK's default glob would otherwise compile their sources into the
+      game: the training host and its xunit tests, which the game does not
+      reference, and any git worktree checked out inside the repository,
+      which is a second copy of everything.
+    -->
+    <Compile Remove="Training/**/*.cs" />
+    <Compile Remove=".worktrees/**/*.cs" />
   </ItemGroup>
 </Project>

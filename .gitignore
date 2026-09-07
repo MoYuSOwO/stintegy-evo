@@ -10,3 +10,7 @@ gdunit4_testadapter_v5/
 .DS_Store
 **/bin/
 **/obj/
+
+# Training run logs. Finished rounds get archived deliberately with
+# `git add -f`; live ones should not ride along on `git add -A`.
+Training/python/*.log

@@ -10,6 +10,7 @@ using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.Track;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Drivers.Learned;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using GVector2 = Godot.Vector2;
@@ -24,9 +25,30 @@ public partial class RaceView : Node2D
     [Export] public bool ShowFrameStats { get; set; } = true;
     [Export] public bool ExportCsvTelemetry { get; set; }
 
+    /// <summary>
+    /// Whether the trained policy drives, or the scripted grid does.
+    ///
+    /// The checkpoint on the other side of this switch is a Silverstone
+    /// specialist trained alone, and what it is worth is a lap time against
+    /// the analytic driver on an empty circuit. So it gets an empty circuit:
+    /// one car, no traffic, the same instruction the evaluation used. Twenty
+    /// scripted cars in front of it would measure the queue rather than the
+    /// policy. Turn this off for the scripted grid this scene has always
+    /// had.
+    /// </summary>
+    [Export] public bool UseLearnedDriver { get; set; } = true;
+
     private const int DefaultGridCarCount = 20;
     private const int DefaultRosterSeed = 0x5345564F;
     private const float FollowCameraZoom = 3f;
+
+    /// <summary>
+    /// The trained actor, exported by Training/python/export_policy.py from
+    /// checkpoints/bestalpha002.pt — 325k steps, a 1:40.929 clean lap
+    /// against the analytic driver's 1:47.050.
+    /// </summary>
+    private const string LearnedPolicyPath =
+        "res://Assets/Drivers/silverstone-expert.nn";
 
     private readonly List<CarView> _carViews = [];
     private readonly CarDashboard _dashboard = new();
@@ -43,13 +65,19 @@ public partial class RaceView : Node2D
     private GVector2 _overviewCameraZoom = GVector2.One;
     private int _selectedCarIndex;
     private bool _followSelectedCar;
+    private LapBoard? _lapBoard;
+    private StreamWriter? _learnedTrace;
 
     public override void _Ready()
     {
         if (TrackRenderer == null)
             throw new InvalidOperationException("TrackRenderer is not assigned.");
 
-        TrackData track = TrackFactory.SimpleTestTrack();
+        // The circuit the shipped policy was trained on. The scripted grid
+        // is happy anywhere; the specialist is not, and a maiden voyage
+        // that put it somewhere else would be measuring generalization
+        // nobody has claimed.
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
         _simulation = new RaceSimulation(
             track,
             new RaceEnvironment
@@ -61,7 +89,10 @@ public partial class RaceView : Node2D
         TrackRenderer.Initialize(track);
         ConfigureCamera(track);
         CreateHud();
-        CreateDefaultGrid(track);
+        if (UseLearnedDriver)
+            CreateLearnedCar(track);
+        else
+            CreateDefaultGrid(track);
         if (ShowFrameStats)
         {
             _frameTimeMonitor = new FrameTimeMonitor();
@@ -77,7 +108,23 @@ public partial class RaceView : Node2D
             return;
 
         long coreStepStart = Stopwatch.GetTimestamp();
-        _simulation.Step(Mathf.Min((float)delta, 0.05f));
+        float step = Mathf.Min((float)delta, 0.05f);
+        _simulation.Step(step);
+        if (_lapBoard != null && _playerCar != null &&
+            _lapBoard.Update(_playerCar, _simulation.RaceTimeSeconds, step))
+        {
+            GD.Print($"Lap {_lapBoard.Laps}: {_lapBoard.Readout()}");
+        }
+        if (_learnedTrace != null && _playerCar != null &&
+            _playerCar.Driver is DirectDriveRaceDriver traced)
+        {
+            NVector2 at = _playerCar.State.Position;
+            _learnedTrace.WriteLine(
+                $"{_simulation.RaceTimeSeconds:0.###},{at.X:0.##},{at.Y:0.##}," +
+                $"{_playerCar.State.Speed:0.###},{traced.LastAction[0]:0.####}," +
+                $"{(_playerCar.Progress.Region == TrackRegion.RacingSurface ? 1 : 0)}"
+            );
+        }
         _frameTimeMonitor?.RecordCoreStep(
             Stopwatch.GetElapsedTime(coreStepStart).TotalMilliseconds
         );
@@ -98,6 +145,8 @@ public partial class RaceView : Node2D
     {
         _csvTelemetry?.Dispose();
         _csvTelemetry = null;
+        _learnedTrace?.Dispose();
+        _learnedTrace = null;
     }
 
     public override void _UnhandledInput(InputEvent inputEvent)
@@ -155,11 +204,13 @@ public partial class RaceView : Node2D
         CarStrategy strategy,
         Color color,
         IRaceDriver? driver = null,
-        float initialSpeedMetersPerSecond = 0f
+        float initialSpeedMetersPerSecond = 0f,
+        TireConfig? tireConfig = null,
+        float chargeFraction = 0.82f
     )
     {
         TrackSample startSample = track.Sample(start.S);
-        TireConfig tires = new()
+        TireConfig tires = tireConfig ?? new TireConfig
         {
             StartingSurfaceTempC = 86f,
             StartingCoreTempC = 84f
@@ -174,7 +225,7 @@ public partial class RaceView : Node2D
                 Position = start.Position,
                 Heading = startSample.RefHeading,
                 Speed = MathF.Max(0f, initialSpeedMetersPerSecond),
-                Energy = PowertrainState.Filled(0.82f)
+                Energy = PowertrainState.Filled(chargeFraction)
             }
         )
         {
@@ -187,6 +238,172 @@ public partial class RaceView : Node2D
         AddChild(view);
         _carViews.Add(view);
         return car;
+    }
+
+    /// <summary>
+    /// One car, driven by the trained policy on its own clock.
+    ///
+    /// The car is built to the conditions the evaluation quoted its lap
+    /// under rather than to this scene's usual ones: tyres at ninety
+    /// degrees, four fifths of a charge, and the Normal/Normal instruction
+    /// every evaluated lap was driven on. Those are the training host's
+    /// numbers, and a lap time is only comparable to another lap time when
+    /// the car underneath it is the same car.
+    ///
+    /// The clock, by contrast, is deliberately the other one. Training held
+    /// the driver externally because there the agent's step boundary is the
+    /// decision boundary; a race lets the driver time itself. Same contract,
+    /// different owner — and this is the first time anything has run the
+    /// internal side of it with a real policy behind it.
+    /// </summary>
+    private void CreateLearnedCar(TrackData track)
+    {
+        byte[] weights = Godot.FileAccess.GetFileAsBytes(LearnedPolicyPath);
+        if (weights.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"No policy at {LearnedPolicyPath}. Export one with " +
+                "Training/python/export_policy.py, or clear UseLearnedDriver."
+            );
+        }
+
+        MlpDrivingPolicy policy = MlpDrivingPolicy.FromBytes(weights);
+        DirectDriveRaceDriver driver = new(policy);
+        RaceCar car = AddRaceCar(
+            "learned-01",
+            track,
+            track.Grids[1],
+            new CarStrategy(TireUsageMode.Normal, 3),
+            Color.FromHtml("#4ad6a0"),
+            driver,
+            tireConfig: new TireConfig
+            {
+                StartingSurfaceTempC = 90f,
+                StartingCoreTempC = 90f
+            },
+            chargeFraction: 0.8f
+        );
+        _playerCar = car;
+        _followSelectedCar = true;
+        _lapBoard = new LapBoard(track.LengthMeters);
+        StartLearnedTraceIfRequested(track);
+
+        GD.Print(
+            $"Learned driver: {LearnedPolicyPath}, " +
+            $"{policy.Network.InputSize} in / {policy.Network.OutputSize} out, " +
+            $"{policy.Network.LayerCount} layers, " +
+            $"{DirectDriveRaceDriver.DefaultDecisionHz:0} Hz internal clock, " +
+            "strategy=Normal/Normal"
+        );
+    }
+
+    /// <summary>
+    /// Where the learned car actually went, if asked for.
+    ///
+    /// The existing CSV recorder is built around the analytic driver's
+    /// planner telemetry and writes nothing for a car that has no planner,
+    /// which is every learned car. This writes the four columns a line can
+    /// be drawn from, and the track's own edges beside them, so that
+    /// "it drives a racing line" is a picture somebody can look at rather
+    /// than a claim about a lap time.
+    ///
+    ///     STINTEGY_LEARNED_TRACE=/tmp/trace.csv godot --headless ...
+    /// </summary>
+    private void StartLearnedTraceIfRequested(TrackData track)
+    {
+        string? path =
+            System.Environment.GetEnvironmentVariable("STINTEGY_LEARNED_TRACE");
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        _learnedTrace = new StreamWriter(Path.GetFullPath(path));
+        _learnedTrace.WriteLine("time_s,x,y,speed_mps,curvature_cmd,on_track");
+        using StreamWriter edges = new(
+            Path.ChangeExtension(Path.GetFullPath(path), ".track.csv")
+        );
+        edges.WriteLine("s_m,left_x,left_y,center_x,center_y,right_x,right_y");
+        const int samples = 1200;
+        for (int i = 0; i <= samples; i++)
+        {
+            float s = track.LengthMeters * i / samples;
+            TrackSample sample = track.Sample(s);
+            NVector2 left = sample.LeftEdge;
+            NVector2 right = sample.RightEdge;
+            edges.WriteLine(
+                $"{s:0.###},{left.X:0.###},{left.Y:0.###}," +
+                $"{sample.Center.X:0.###},{sample.Center.Y:0.###}," +
+                $"{right.X:0.###},{right.Y:0.###}"
+            );
+        }
+        GD.Print($"Learned trace: {Path.GetFullPath(path)}");
+    }
+
+    /// <summary>
+    /// Lap times taken the way the evaluation takes them, so that the
+    /// number on this HUD and the number in the training log mean the same
+    /// thing. A lap is charged the seconds it spent off the racing surface
+    /// and the seconds it spent against a barrier; a lap charged nothing is
+    /// clean, and only a clean lap is quoted as a lap time.
+    /// </summary>
+    private sealed class LapBoard(float lapMeters)
+    {
+        private float _lapStartSeconds;
+        private float _offCourseSeconds;
+        private float _wallSecondsAtLapStart;
+        private int _lastLap = -1;
+
+        public float OffCourseThisLap => _offCourseSeconds;
+        public float LastLapSeconds { get; private set; }
+        public float LastLapCharged { get; private set; }
+        public float BestCleanSeconds { get; private set; } = float.PositiveInfinity;
+        public int Laps { get; private set; }
+        public int CleanLaps { get; private set; }
+
+        /// <summary>Returns true on the frame a lap is completed.</summary>
+        public bool Update(RaceCar car, float raceTimeSeconds, float dt)
+        {
+            if (car.Progress.Region != TrackRegion.RacingSurface)
+                _offCourseSeconds += dt;
+
+            int lap = (int)(car.Progress.RaceDistanceMeters / lapMeters);
+            if (lap == _lastLap)
+                return false;
+            bool completed = _lastLap >= 0;
+            if (completed)
+            {
+                LastLapSeconds = raceTimeSeconds - _lapStartSeconds;
+                float wall = car.BoundaryContactSeconds - _wallSecondsAtLapStart;
+                LastLapCharged = LastLapSeconds + _offCourseSeconds + wall;
+                Laps++;
+                if (_offCourseSeconds <= 0f && wall <= 0f)
+                {
+                    CleanLaps++;
+                    BestCleanSeconds = MathF.Min(BestCleanSeconds, LastLapSeconds);
+                }
+            }
+            _lastLap = lap;
+            _lapStartSeconds = raceTimeSeconds;
+            _offCourseSeconds = 0f;
+            _wallSecondsAtLapStart = car.BoundaryContactSeconds;
+            return completed;
+        }
+
+        public string Readout()
+        {
+            if (Laps == 0)
+                return $"Lap 1 in progress  |  off {_offCourseSeconds:0.00}s";
+            return
+                $"Last {Clock(LastLapSeconds)} (charged {Clock(LastLapCharged)})  |  " +
+                $"Best clean {Clock(BestCleanSeconds)}  |  " +
+                $"Clean {CleanLaps}/{Laps}  |  off {_offCourseSeconds:0.00}s";
+        }
+
+        private static string Clock(float seconds)
+        {
+            return float.IsFinite(seconds)
+                ? $"{(int)(seconds / 60f)}:{seconds % 60f:00.000}"
+                : "--:--.---";
+        }
     }
 
     private void CreateDefaultGrid(TrackData track)
@@ -285,8 +502,22 @@ public partial class RaceView : Node2D
             trafficStatus;
     }
 
-    private static string TrafficStatus(RaceCar car)
+    private string TrafficStatus(RaceCar car)
     {
+        // A learned car has no traffic evaluator to report on — collision
+        // avoidance is the policy's own skill — so this line shows what the
+        // policy last asked the car for instead, which is the one thing
+        // about it that is otherwise invisible.
+        if (car.Driver is DirectDriveRaceDriver learned)
+        {
+            ReadOnlySpan<float> action = learned.LastAction;
+            string board = _lapBoard?.Readout() ?? "no lap board";
+            return
+                $"Policy curvature {action[0]:+0.000;-0.000; 0.000}  " +
+                $"accel {action[1]:+0.000;-0.000; 0.000}  |  " +
+                $"Region {car.Progress.Region}  |  {board}";
+        }
+
         if (car.Driver is not ReferenceLineDriver driver)
             return "Traffic unavailable";
 

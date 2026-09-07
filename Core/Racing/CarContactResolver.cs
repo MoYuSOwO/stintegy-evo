@@ -107,6 +107,8 @@ public static class CarContactResolver
         if (!TryGetContact(a, b, out CarContact contact))
             return false;
 
+        a.HitCarThisStep = true;
+        b.HitCarThisStep = true;
         float invMassA = InverseMass(a);
         float invMassB = InverseMass(b);
         float invMassSum = invMassA + invMassB;

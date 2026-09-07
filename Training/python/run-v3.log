@@ -1,0 +1,949 @@
+device: cpu hidden=(512, 512, 256) quantiles=32 layer_norm=True updates/step=2
+env: obs=452 action=2 lanes=64 solo=True
+step    1000 transitions     64000 reward -0.1034 alpha 0.608 q +0.29 closs 95.910 1991 tps
+          own_progress=+0.0095 wall=-0.0014 off_course=-0.0077 tyre_slip=-0.0034 mode_excess=-0.0010 retirement=-0.0994
+          terminals {'stalled': 212, 'timeout': 30}
+step    2000 transitions    128000 reward -0.0091 alpha 0.337 q +0.81 closs 64.131 1771 tps
+          own_progress=+0.0074 wall=-0.0007 off_course=-0.0039 tyre_slip=-0.0018 mode_excess=-0.0007 retirement=-0.0094
+          terminals {'timeout': 93, 'stalled': 20}
+step    3000 transitions    192000 reward -0.0291 alpha 0.187 q +0.66 closs 32.581 1600 tps
+          own_progress=+0.0089 wall=-0.0013 off_course=-0.0033 tyre_slip=-0.0026 mode_excess=-0.0008 retirement=-0.0300
+          terminals {'timeout': 65, 'stalled': 64}
+step    4000 transitions    256000 reward -0.0021 alpha 0.104 q +0.28 closs 22.837 1524 tps
+          own_progress=+0.0098 wall=-0.0003 off_course=-0.0017 tyre_slip=-0.0026 mode_excess=-0.0008 retirement=-0.0066
+          terminals {'stalled': 14, 'timeout': 96}
+step    5000 transitions    320000 reward +0.0053 alpha 0.058 q -0.31 closs 11.262 1516 tps
+          own_progress=+0.0117 wall=-0.0001 off_course=-0.0011 tyre_slip=-0.0028 mode_excess=-0.0008 retirement=-0.0014
+          terminals {'timeout': 103, 'stalled': 3}
+step    6000 transitions    384000 reward +0.0059 alpha 0.033 q -0.26 closs 9.526 1529 tps
+          own_progress=+0.0139 wall=-0.0003 off_course=-0.0006 tyre_slip=-0.0030 mode_excess=-0.0008 retirement=-0.0033
+          terminals {'timeout': 103, 'stalled': 7}
+step    7000 transitions    448000 reward +0.0119 alpha 0.019 q -0.38 closs 6.794 1446 tps
+          own_progress=+0.0169 wall=-0.0004 off_course=-0.0005 tyre_slip=-0.0033 mode_excess=-0.0008
+          terminals {'timeout': 105}
+step    8000 transitions    512000 reward +0.0153 alpha 0.011 q +0.04 closs 7.160 1325 tps
+          own_progress=+0.0210 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0044 mode_excess=-0.0010
+          terminals {'timeout': 108}
+step    9000 transitions    576000 reward +0.0164 alpha 0.007 q -0.20 closs 5.352 1250 tps
+          own_progress=+0.0234 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0057 mode_excess=-0.0012
+          terminals {'timeout': 107}
+step   10000 transitions    640000 reward +0.0153 alpha 0.005 q +0.07 closs 4.793 1181 tps
+          own_progress=+0.0230 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0060 mode_excess=-0.0012
+          terminals {'timeout': 104}
+  eval  train progress +23.69 stalls 0 mode -1.353 | held-out(sepang) progress +22.76 stalls 0
+  saved best (progress +23.69)
+step   11000 transitions    704000 reward +0.0139 alpha 0.003 q +0.31 closs 3.380 1145 tps
+          own_progress=+0.0233 wall=-0.0011 off_course=-0.0005 tyre_slip=-0.0063 mode_excess=-0.0014
+          terminals {'timeout': 107}
+step   12000 transitions    768000 reward +0.0158 alpha 0.003 q +0.28 closs 4.627 1163 tps
+          own_progress=+0.0239 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0066 mode_excess=-0.0013
+          terminals {'timeout': 109}
+step   13000 transitions    832000 reward +0.0154 alpha 0.003 q +0.32 closs 3.341 1177 tps
+          own_progress=+0.0232 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0063 mode_excess=-0.0013
+          terminals {'timeout': 104}
+step   14000 transitions    896000 reward +0.0158 alpha 0.002 q +0.22 closs 3.466 1190 tps
+          own_progress=+0.0243 wall=-0.0004 off_course=-0.0004 tyre_slip=-0.0063 mode_excess=-0.0013
+          terminals {'timeout': 107}
+step   15000 transitions    960000 reward +0.0164 alpha 0.002 q +0.51 closs 3.124 1203 tps
+          own_progress=+0.0245 wall=-0.0004 off_course=-0.0003 tyre_slip=-0.0061 mode_excess=-0.0013
+          terminals {'timeout': 109}
+step   16000 transitions   1024000 reward +0.0165 alpha 0.002 q +0.59 closs 1.573 1189 tps
+          own_progress=+0.0242 wall=-0.0004 off_course=-0.0003 tyre_slip=-0.0058 mode_excess=-0.0013
+          terminals {'timeout': 102}
+step   17000 transitions   1088000 reward +0.0172 alpha 0.001 q +0.72 closs 0.692 1163 tps
+          own_progress=+0.0250 wall=-0.0004 off_course=-0.0003 tyre_slip=-0.0060 mode_excess=-0.0012
+          terminals {'timeout': 109}
+step   18000 transitions   1152000 reward +0.0183 alpha 0.001 q +0.78 closs 0.582 1175 tps
+          own_progress=+0.0258 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0063 mode_excess=-0.0012
+          terminals {'timeout': 108}
+step   19000 transitions   1216000 reward +0.0178 alpha 0.001 q +0.74 closs 1.025 1185 tps
+          own_progress=+0.0275 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0072 mode_excess=-0.0013 retirement=-0.0009
+          terminals {'timeout': 102, 'stalled': 2}
+step   20000 transitions   1280000 reward +0.0202 alpha 0.001 q +0.96 closs 0.249 1187 tps
+          own_progress=+0.0299 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0081 mode_excess=-0.0013
+          terminals {'timeout': 109}
+  eval  train progress +34.28 stalls 0 mode -1.457 | held-out(sepang) progress +35.78 stalls 0
+  saved best (progress +34.28)
+step   21000 transitions   1344000 reward +0.0218 alpha 0.001 q +0.99 closs 0.329 1146 tps
+          own_progress=+0.0310 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0073 mode_excess=-0.0011 retirement=-0.0005
+          terminals {'timeout': 108, 'stalled': 1}
+step   22000 transitions   1408000 reward +0.0263 alpha 0.001 q +1.07 closs 0.468 1153 tps
+          own_progress=+0.0351 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0074 mode_excess=-0.0012
+          terminals {'timeout': 103}
+step   23000 transitions   1472000 reward +0.0302 alpha 0.001 q +1.17 closs 3.449 1161 tps
+          own_progress=+0.0398 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0081 mode_excess=-0.0013
+          terminals {'timeout': 108}
+step   24000 transitions   1536000 reward +0.0363 alpha 0.002 q +1.33 closs 0.501 1169 tps
+          own_progress=+0.0466 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0085 mode_excess=-0.0015
+          terminals {'timeout': 109}
+step   25000 transitions   1600000 reward +0.0394 alpha 0.003 q +1.35 closs 0.700 1176 tps
+          own_progress=+0.0504 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0084 mode_excess=-0.0014 retirement=-0.0005
+          terminals {'timeout': 102, 'stalled': 1}
+step   26000 transitions   1664000 reward +0.0428 alpha 0.004 q +1.61 closs 0.800 1183 tps
+          own_progress=+0.0529 wall=-0.0000 off_course=-0.0009 tyre_slip=-0.0078 mode_excess=-0.0013
+          terminals {'timeout': 108}
+step   27000 transitions   1728000 reward +0.0446 alpha 0.005 q +1.75 closs 0.687 1189 tps
+          own_progress=+0.0550 wall=-0.0006 off_course=-0.0009 tyre_slip=-0.0075 mode_excess=-0.0014
+          terminals {'timeout': 109}
+step   28000 transitions   1792000 reward +0.0471 alpha 0.006 q +1.79 closs 1.472 1195 tps
+          own_progress=+0.0560 wall=-0.0000 off_course=-0.0007 tyre_slip=-0.0069 mode_excess=-0.0013
+          terminals {'timeout': 102}
+step   29000 transitions   1856000 reward +0.0501 alpha 0.006 q +1.99 closs 1.534 1205 tps
+          own_progress=+0.0580 wall=-0.0000 off_course=-0.0007 tyre_slip=-0.0060 mode_excess=-0.0012
+          terminals {'timeout': 107}
+step   30000 transitions   1920000 reward +0.0556 alpha 0.007 q +2.24 closs 1.262 1215 tps
+          own_progress=+0.0615 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0044 mode_excess=-0.0009
+          terminals {'timeout': 109}
+  eval  train progress +63.09 stalls 0 mode -0.636 | held-out(sepang) progress +66.83 stalls 0
+  saved best (progress +63.09)
+step   31000 transitions   1984000 reward +0.0588 alpha 0.007 q +2.49 closs 1.386 1216 tps
+          own_progress=+0.0631 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0029 mode_excess=-0.0008
+          terminals {'timeout': 104}
+step   32000 transitions   2048000 reward +0.0612 alpha 0.008 q +2.60 closs 1.305 1226 tps
+          own_progress=+0.0643 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0019 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step   33000 transitions   2112000 reward +0.0622 alpha 0.009 q +2.93 closs 1.553 1235 tps
+          own_progress=+0.0652 wall=-0.0001 off_course=-0.0004 tyre_slip=-0.0018 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step   34000 transitions   2176000 reward +0.0628 alpha 0.009 q +3.13 closs 1.385 1243 tps
+          own_progress=+0.0661 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0017 mode_excess=-0.0007 retirement=-0.0005
+          terminals {'timeout': 103, 'stalled': 1}
+step   35000 transitions   2240000 reward +0.0623 alpha 0.010 q +3.33 closs 1.539 1252 tps
+          own_progress=+0.0651 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0017 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step   36000 transitions   2304000 reward +0.0633 alpha 0.010 q +3.53 closs 1.363 1260 tps
+          own_progress=+0.0657 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0016 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step   37000 transitions   2368000 reward +0.0646 alpha 0.010 q +3.62 closs 1.806 1267 tps
+          own_progress=+0.0667 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0005
+          terminals {'timeout': 104}
+step   38000 transitions   2432000 reward +0.0642 alpha 0.011 q +3.86 closs 2.720 1275 tps
+          own_progress=+0.0662 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step   39000 transitions   2496000 reward +0.0641 alpha 0.012 q +3.90 closs 2.377 1282 tps
+          own_progress=+0.0659 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step   40000 transitions   2560000 reward +0.0634 alpha 0.011 q +3.95 closs 2.194 1289 tps
+          own_progress=+0.0657 wall=-0.0002 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 103}
+  eval  train progress +65.02 stalls 0 mode -0.061 | held-out(sepang) progress +66.74 stalls 0
+  saved best (progress +65.02)
+step   41000 transitions   2624000 reward +0.0633 alpha 0.011 q +4.09 closs 2.240 1288 tps
+          own_progress=+0.0657 wall=-0.0003 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step   42000 transitions   2688000 reward +0.0633 alpha 0.011 q +4.23 closs 2.289 1294 tps
+          own_progress=+0.0656 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0015 mode_excess=-0.0006
+          terminals {'timeout': 112}
+step   43000 transitions   2752000 reward +0.0623 alpha 0.010 q +4.24 closs 2.146 1300 tps
+          own_progress=+0.0650 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0019 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step   44000 transitions   2816000 reward +0.0634 alpha 0.010 q +4.30 closs 2.575 1306 tps
+          own_progress=+0.0658 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step   45000 transitions   2880000 reward +0.0637 alpha 0.010 q +4.45 closs 2.495 1312 tps
+          own_progress=+0.0661 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 111}
+step   46000 transitions   2944000 reward +0.0631 alpha 0.010 q +4.39 closs 2.116 1317 tps
+          own_progress=+0.0656 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step   47000 transitions   3008000 reward +0.0631 alpha 0.010 q +4.46 closs 1.943 1323 tps
+          own_progress=+0.0657 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0015 mode_excess=-0.0008
+          terminals {'timeout': 104}
+step   48000 transitions   3072000 reward +0.0639 alpha 0.010 q +4.35 closs 2.081 1328 tps
+          own_progress=+0.0664 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 111}
+step   49000 transitions   3136000 reward +0.0638 alpha 0.010 q +4.41 closs 1.683 1333 tps
+          own_progress=+0.0675 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0019 mode_excess=-0.0007 retirement=-0.0009
+          terminals {'timeout': 104, 'stalled': 2}
+step   50000 transitions   3200000 reward +0.0632 alpha 0.010 q +4.45 closs 1.586 1337 tps
+          own_progress=+0.0663 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0019 mode_excess=-0.0009
+          terminals {'timeout': 103}
+  eval  train progress +73.71 stalls 0 mode -0.121 | held-out(sepang) progress +73.61 stalls 0
+  saved best (progress +73.71)
+step   51000 transitions   3264000 reward +0.0646 alpha 0.010 q +4.44 closs 1.669 1335 tps
+          own_progress=+0.0674 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0018 mode_excess=-0.0007
+          terminals {'timeout': 112}
+step   52000 transitions   3328000 reward +0.0642 alpha 0.010 q +4.61 closs 1.932 1340 tps
+          own_progress=+0.0672 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0020 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step   53000 transitions   3392000 reward +0.0633 alpha 0.011 q +4.56 closs 1.372 1344 tps
+          own_progress=+0.0666 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0020 mode_excess=-0.0008
+          terminals {'timeout': 103}
+step   54000 transitions   3456000 reward +0.0632 alpha 0.011 q +4.47 closs 1.742 1349 tps
+          own_progress=+0.0667 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0023 mode_excess=-0.0008
+          terminals {'timeout': 111}
+step   55000 transitions   3520000 reward +0.0629 alpha 0.011 q +4.49 closs 1.369 1353 tps
+          own_progress=+0.0664 wall=-0.0002 off_course=-0.0004 tyre_slip=-0.0020 mode_excess=-0.0008
+          terminals {'timeout': 105}
+step   56000 transitions   3584000 reward +0.0640 alpha 0.011 q +4.53 closs 1.769 1357 tps
+          own_progress=+0.0670 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0020 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step   57000 transitions   3648000 reward +0.0645 alpha 0.012 q +4.54 closs 1.145 1360 tps
+          own_progress=+0.0676 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0019 mode_excess=-0.0009
+          terminals {'timeout': 111}
+step   58000 transitions   3712000 reward +0.0651 alpha 0.012 q +4.42 closs 1.378 1362 tps
+          own_progress=+0.0679 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0019 mode_excess=-0.0008
+          terminals {'timeout': 105}
+step   59000 transitions   3776000 reward +0.0651 alpha 0.012 q +4.40 closs 1.392 1366 tps
+          own_progress=+0.0682 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0018 mode_excess=-0.0008
+          terminals {'timeout': 104}
+step   60000 transitions   3840000 reward +0.0663 alpha 0.012 q +4.51 closs 1.235 1370 tps
+          own_progress=+0.0691 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0017 mode_excess=-0.0008
+          terminals {'timeout': 111}
+  eval  train progress +81.59 stalls 0 mode -0.212 | held-out(sepang) progress +80.54 stalls 0
+  saved best (progress +81.59)
+step   61000 transitions   3904000 reward +0.0660 alpha 0.012 q +4.59 closs 1.248 1368 tps
+          own_progress=+0.0687 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0018 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step   62000 transitions   3968000 reward +0.0672 alpha 0.013 q +4.53 closs 1.436 1371 tps
+          own_progress=+0.0698 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0017 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step   63000 transitions   4032000 reward +0.0664 alpha 0.012 q +4.55 closs 1.756 1375 tps
+          own_progress=+0.0693 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0018 mode_excess=-0.0009
+          terminals {'timeout': 110}
+step   64000 transitions   4096000 reward +0.0670 alpha 0.013 q +4.54 closs 1.677 1378 tps
+          own_progress=+0.0704 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0017 mode_excess=-0.0008 retirement=-0.0005
+          terminals {'timeout': 104, 'stalled': 1}
+step   65000 transitions   4160000 reward +0.0673 alpha 0.013 q +4.67 closs 1.450 1382 tps
+          own_progress=+0.0700 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0016 mode_excess=-0.0008
+          terminals {'timeout': 105}
+step   66000 transitions   4224000 reward +0.0676 alpha 0.013 q +4.69 closs 1.527 1385 tps
+          own_progress=+0.0701 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step   67000 transitions   4288000 reward +0.0667 alpha 0.013 q +4.73 closs 1.705 1388 tps
+          own_progress=+0.0695 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0017 mode_excess=-0.0008
+          terminals {'timeout': 105}
+step   68000 transitions   4352000 reward +0.0683 alpha 0.014 q +4.57 closs 1.420 1391 tps
+          own_progress=+0.0708 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step   69000 transitions   4416000 reward +0.0686 alpha 0.013 q +4.76 closs 1.009 1394 tps
+          own_progress=+0.0709 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step   70000 transitions   4480000 reward +0.0691 alpha 0.013 q +4.69 closs 1.357 1397 tps
+          own_progress=+0.0715 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0016 mode_excess=-0.0006
+          terminals {'timeout': 107}
+  eval  train progress +82.91 stalls 0 mode -0.226 | held-out(sepang) progress +82.05 stalls 0
+  saved best (progress +82.91)
+step   71000 transitions   4544000 reward +0.0697 alpha 0.014 q +4.85 closs 1.350 1395 tps
+          own_progress=+0.0723 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step   72000 transitions   4608000 reward +0.0697 alpha 0.014 q +4.82 closs 1.435 1397 tps
+          own_progress=+0.0723 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step   73000 transitions   4672000 reward +0.0698 alpha 0.013 q +4.86 closs 1.634 1400 tps
+          own_progress=+0.0725 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step   74000 transitions   4736000 reward +0.0685 alpha 0.013 q +4.74 closs 1.613 1403 tps
+          own_progress=+0.0712 wall=-0.0001 off_course=-0.0003 tyre_slip=-0.0017 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step   75000 transitions   4800000 reward +0.0678 alpha 0.013 q +4.88 closs 1.303 1405 tps
+          own_progress=+0.0711 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0018 mode_excess=-0.0007 retirement=-0.0005
+          terminals {'timeout': 107, 'stalled': 1}
+step   76000 transitions   4864000 reward +0.0695 alpha 0.013 q +4.94 closs 1.010 1408 tps
+          own_progress=+0.0722 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0016 mode_excess=-0.0008
+          terminals {'timeout': 104}
+step   77000 transitions   4928000 reward +0.0705 alpha 0.013 q +4.99 closs 1.284 1411 tps
+          own_progress=+0.0730 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step   78000 transitions   4992000 reward +0.0711 alpha 0.013 q +4.94 closs 1.821 1413 tps
+          own_progress=+0.0736 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step   79000 transitions   5056000 reward +0.0703 alpha 0.013 q +4.89 closs 1.133 1416 tps
+          own_progress=+0.0729 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step   80000 transitions   5120000 reward +0.0713 alpha 0.013 q +4.86 closs 1.165 1418 tps
+          own_progress=+0.0736 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0006
+          terminals {'timeout': 108}
+  eval  train progress +82.13 stalls 0 mode -0.127 | held-out(sepang) progress +81.71 stalls 0
+step   81000 transitions   5184000 reward +0.0704 alpha 0.013 q +5.14 closs 1.607 1416 tps
+          own_progress=+0.0728 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 103}
+step   82000 transitions   5248000 reward +0.0714 alpha 0.013 q +4.93 closs 1.596 1418 tps
+          own_progress=+0.0738 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step   83000 transitions   5312000 reward +0.0709 alpha 0.012 q +5.00 closs 1.579 1420 tps
+          own_progress=+0.0733 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step   84000 transitions   5376000 reward +0.0728 alpha 0.013 q +5.17 closs 1.823 1423 tps
+          own_progress=+0.0751 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0006
+          terminals {'timeout': 102}
+step   85000 transitions   5440000 reward +0.0718 alpha 0.013 q +5.00 closs 1.073 1425 tps
+          own_progress=+0.0742 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0015 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step   86000 transitions   5504000 reward +0.0711 alpha 0.012 q +5.07 closs 1.368 1427 tps
+          own_progress=+0.0736 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step   87000 transitions   5568000 reward +0.0717 alpha 0.012 q +5.20 closs 1.527 1429 tps
+          own_progress=+0.0742 wall=-0.0001 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0006
+          terminals {'timeout': 100}
+step   88000 transitions   5632000 reward +0.0720 alpha 0.012 q +5.05 closs 1.710 1431 tps
+          own_progress=+0.0743 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 112}
+step   89000 transitions   5696000 reward +0.0709 alpha 0.012 q +5.18 closs 1.661 1433 tps
+          own_progress=+0.0734 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0016 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step   90000 transitions   5760000 reward +0.0722 alpha 0.012 q +5.13 closs 1.875 1435 tps
+          own_progress=+0.0744 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0006
+          terminals {'timeout': 99}
+  eval  train progress +80.48 stalls 0 mode -0.251 | held-out(sepang) progress +78.61 stalls 0
+step   91000 transitions   5824000 reward +0.0723 alpha 0.012 q +5.27 closs 1.139 1433 tps
+          own_progress=+0.0746 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0006
+          terminals {'timeout': 113}
+step   92000 transitions   5888000 reward +0.0713 alpha 0.012 q +5.13 closs 1.423 1435 tps
+          own_progress=+0.0736 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step   93000 transitions   5952000 reward +0.0719 alpha 0.012 q +5.22 closs 1.555 1436 tps
+          own_progress=+0.0742 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 100}
+step   94000 transitions   6016000 reward +0.0715 alpha 0.012 q +5.17 closs 1.770 1438 tps
+          own_progress=+0.0741 wall=-0.0001 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 113}
+step   95000 transitions   6080000 reward +0.0715 alpha 0.011 q +5.17 closs 1.458 1440 tps
+          own_progress=+0.0743 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0015 mode_excess=-0.0007 retirement=-0.0005
+          terminals {'timeout': 105, 'stalled': 1}
+step   96000 transitions   6144000 reward +0.0721 alpha 0.012 q +5.18 closs 1.354 1442 tps
+          own_progress=+0.0745 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 101}
+step   97000 transitions   6208000 reward +0.0719 alpha 0.012 q +5.10 closs 1.329 1443 tps
+          own_progress=+0.0744 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 112}
+step   98000 transitions   6272000 reward +0.0723 alpha 0.012 q +5.22 closs 1.214 1445 tps
+          own_progress=+0.0746 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0015 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step   99000 transitions   6336000 reward +0.0718 alpha 0.011 q +5.25 closs 1.272 1447 tps
+          own_progress=+0.0741 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 101}
+step  100000 transitions   6400000 reward +0.0727 alpha 0.012 q +5.26 closs 1.115 1448 tps
+          own_progress=+0.0749 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 110}
+  eval  train progress +82.30 stalls 0 mode -0.210 | held-out(sepang) progress +77.74 stalls 0
+step  101000 transitions   6464000 reward +0.0715 alpha 0.011 q +5.27 closs 1.045 1446 tps
+          own_progress=+0.0739 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  102000 transitions   6528000 reward +0.0728 alpha 0.011 q +5.33 closs 1.233 1447 tps
+          own_progress=+0.0754 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006 retirement=-0.0005
+          terminals {'timeout': 100, 'stalled': 1}
+step  103000 transitions   6592000 reward +0.0729 alpha 0.011 q +5.23 closs 1.177 1449 tps
+          own_progress=+0.0751 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step  104000 transitions   6656000 reward +0.0730 alpha 0.011 q +5.20 closs 1.195 1450 tps
+          own_progress=+0.0752 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  105000 transitions   6720000 reward +0.0724 alpha 0.011 q +5.39 closs 0.908 1452 tps
+          own_progress=+0.0747 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0008
+          terminals {'timeout': 103}
+step  106000 transitions   6784000 reward +0.0723 alpha 0.011 q +5.25 closs 1.127 1453 tps
+          own_progress=+0.0746 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0014 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  107000 transitions   6848000 reward +0.0728 alpha 0.012 q +5.25 closs 1.417 1455 tps
+          own_progress=+0.0750 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  108000 transitions   6912000 reward +0.0735 alpha 0.012 q +5.43 closs 0.998 1456 tps
+          own_progress=+0.0757 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 103}
+step  109000 transitions   6976000 reward +0.0725 alpha 0.012 q +5.33 closs 1.104 1458 tps
+          own_progress=+0.0747 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step  110000 transitions   7040000 reward +0.0725 alpha 0.012 q +5.27 closs 1.059 1459 tps
+          own_progress=+0.0747 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 109}
+  eval  train progress +81.90 stalls 0 mode -0.205 | held-out(sepang) progress +81.38 stalls 0
+step  111000 transitions   7104000 reward +0.0731 alpha 0.012 q +5.39 closs 1.186 1457 tps
+          own_progress=+0.0752 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 102}
+step  112000 transitions   7168000 reward +0.0739 alpha 0.012 q +5.26 closs 1.559 1458 tps
+          own_progress=+0.0762 wall=-0.0001 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  113000 transitions   7232000 reward +0.0724 alpha 0.012 q +5.23 closs 1.149 1460 tps
+          own_progress=+0.0751 wall=-0.0001 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0006 retirement=-0.0005
+          terminals {'timeout': 107, 'stalled': 1}
+step  114000 transitions   7296000 reward +0.0723 alpha 0.012 q +5.12 closs 1.793 1461 tps
+          own_progress=+0.0745 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step  115000 transitions   7360000 reward +0.0708 alpha 0.012 q +5.24 closs 1.583 1462 tps
+          own_progress=+0.0737 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0015 mode_excess=-0.0006 retirement=-0.0005
+          terminals {'timeout': 107, 'stalled': 1}
+step  116000 transitions   7424000 reward +0.0732 alpha 0.012 q +5.26 closs 1.182 1464 tps
+          own_progress=+0.0755 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step  117000 transitions   7488000 reward +0.0735 alpha 0.012 q +5.21 closs 1.426 1465 tps
+          own_progress=+0.0758 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step  118000 transitions   7552000 reward +0.0728 alpha 0.012 q +5.29 closs 1.003 1466 tps
+          own_progress=+0.0751 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  119000 transitions   7616000 reward +0.0734 alpha 0.012 q +5.36 closs 0.996 1467 tps
+          own_progress=+0.0756 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step  120000 transitions   7680000 reward +0.0731 alpha 0.012 q +5.29 closs 1.224 1469 tps
+          own_progress=+0.0754 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 105}
+  eval  train progress +84.16 stalls 0 mode -0.184 | held-out(sepang) progress +81.54 stalls 0
+  saved best (progress +84.16)
+step  121000 transitions   7744000 reward +0.0715 alpha 0.012 q +5.25 closs 1.322 1466 tps
+          own_progress=+0.0739 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step  122000 transitions   7808000 reward +0.0738 alpha 0.012 q +5.37 closs 1.480 1468 tps
+          own_progress=+0.0758 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  123000 transitions   7872000 reward +0.0733 alpha 0.012 q +5.29 closs 1.175 1469 tps
+          own_progress=+0.0754 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  124000 transitions   7936000 reward +0.0733 alpha 0.012 q +5.17 closs 1.341 1470 tps
+          own_progress=+0.0755 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  125000 transitions   8000000 reward +0.0722 alpha 0.012 q +5.16 closs 1.379 1471 tps
+          own_progress=+0.0745 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0014 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  126000 transitions   8064000 reward +0.0735 alpha 0.012 q +5.30 closs 1.405 1472 tps
+          own_progress=+0.0758 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step  127000 transitions   8128000 reward +0.0739 alpha 0.012 q +5.38 closs 1.184 1474 tps
+          own_progress=+0.0761 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step  128000 transitions   8192000 reward +0.0746 alpha 0.012 q +5.36 closs 1.021 1475 tps
+          own_progress=+0.0767 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  129000 transitions   8256000 reward +0.0739 alpha 0.012 q +5.24 closs 1.046 1476 tps
+          own_progress=+0.0760 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  130000 transitions   8320000 reward +0.0749 alpha 0.012 q +5.42 closs 0.954 1477 tps
+          own_progress=+0.0768 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 104}
+  eval  train progress +84.87 stalls 0 mode -0.161 | held-out(sepang) progress +80.90 stalls 0
+  saved best (progress +84.87)
+step  131000 transitions   8384000 reward +0.0738 alpha 0.012 q +5.30 closs 1.549 1475 tps
+          own_progress=+0.0758 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  132000 transitions   8448000 reward +0.0751 alpha 0.012 q +5.29 closs 1.066 1476 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step  133000 transitions   8512000 reward +0.0746 alpha 0.012 q +5.30 closs 1.231 1477 tps
+          own_progress=+0.0768 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step  134000 transitions   8576000 reward +0.0740 alpha 0.012 q +5.30 closs 1.396 1478 tps
+          own_progress=+0.0762 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  135000 transitions   8640000 reward +0.0744 alpha 0.012 q +5.33 closs 1.178 1479 tps
+          own_progress=+0.0765 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  136000 transitions   8704000 reward +0.0736 alpha 0.012 q +5.40 closs 1.054 1480 tps
+          own_progress=+0.0757 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step  137000 transitions   8768000 reward +0.0733 alpha 0.012 q +5.38 closs 1.012 1481 tps
+          own_progress=+0.0755 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 108}
+step  138000 transitions   8832000 reward +0.0736 alpha 0.012 q +5.42 closs 1.048 1482 tps
+          own_progress=+0.0758 wall=-0.0001 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  139000 transitions   8896000 reward +0.0732 alpha 0.012 q +5.37 closs 1.055 1483 tps
+          own_progress=+0.0754 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  140000 transitions   8960000 reward +0.0741 alpha 0.012 q +5.39 closs 0.852 1484 tps
+          own_progress=+0.0768 wall=-0.0001 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007 retirement=-0.0005
+          terminals {'timeout': 108, 'stalled': 1}
+  eval  train progress +83.76 stalls 0 mode -0.193 | held-out(sepang) progress +81.47 stalls 0
+step  141000 transitions   9024000 reward +0.0736 alpha 0.012 q +5.43 closs 0.866 1483 tps
+          own_progress=+0.0758 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step  142000 transitions   9088000 reward +0.0738 alpha 0.012 q +5.52 closs 0.874 1484 tps
+          own_progress=+0.0758 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  143000 transitions   9152000 reward +0.0739 alpha 0.013 q +5.43 closs 0.972 1484 tps
+          own_progress=+0.0759 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  144000 transitions   9216000 reward +0.0745 alpha 0.013 q +5.42 closs 1.197 1485 tps
+          own_progress=+0.0765 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  145000 transitions   9280000 reward +0.0740 alpha 0.012 q +5.29 closs 1.437 1486 tps
+          own_progress=+0.0761 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  146000 transitions   9344000 reward +0.0741 alpha 0.012 q +5.35 closs 1.405 1487 tps
+          own_progress=+0.0762 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  147000 transitions   9408000 reward +0.0736 alpha 0.013 q +5.35 closs 1.112 1487 tps
+          own_progress=+0.0757 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step  148000 transitions   9472000 reward +0.0749 alpha 0.013 q +5.61 closs 0.747 1488 tps
+          own_progress=+0.0770 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  149000 transitions   9536000 reward +0.0748 alpha 0.013 q +5.43 closs 0.955 1489 tps
+          own_progress=+0.0769 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  150000 transitions   9600000 reward +0.0731 alpha 0.013 q +5.37 closs 1.188 1490 tps
+          own_progress=+0.0753 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 103}
+  eval  train progress +85.79 stalls 0 mode -0.141 | held-out(sepang) progress +83.53 stalls 0
+  saved best (progress +85.79)
+step  151000 transitions   9664000 reward +0.0755 alpha 0.013 q +5.49 closs 1.016 1488 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  152000 transitions   9728000 reward +0.0746 alpha 0.013 q +5.41 closs 0.974 1489 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007 retirement=-0.0005
+          terminals {'timeout': 109, 'stalled': 1}
+step  153000 transitions   9792000 reward +0.0747 alpha 0.013 q +5.35 closs 1.113 1490 tps
+          own_progress=+0.0767 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  154000 transitions   9856000 reward +0.0741 alpha 0.013 q +5.45 closs 0.990 1491 tps
+          own_progress=+0.0763 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step  155000 transitions   9920000 reward +0.0734 alpha 0.013 q +5.41 closs 0.999 1492 tps
+          own_progress=+0.0762 wall=-0.0002 off_course=-0.0003 tyre_slip=-0.0013 mode_excess=-0.0006 retirement=-0.0005
+          terminals {'timeout': 108, 'stalled': 1}
+step  156000 transitions   9984000 reward +0.0735 alpha 0.013 q +5.41 closs 0.773 1493 tps
+          own_progress=+0.0757 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0013 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  157000 transitions  10048000 reward +0.0749 alpha 0.013 q +5.43 closs 0.949 1493 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step  158000 transitions  10112000 reward +0.0744 alpha 0.013 q +5.42 closs 0.710 1494 tps
+          own_progress=+0.0764 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  159000 transitions  10176000 reward +0.0756 alpha 0.013 q +5.56 closs 0.790 1495 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 102}
+step  160000 transitions  10240000 reward +0.0750 alpha 0.013 q +5.40 closs 0.932 1496 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+  eval  train progress +86.19 stalls 0 mode -0.128 | held-out(sepang) progress +83.89 stalls 0
+  saved best (progress +86.19)
+step  161000 transitions  10304000 reward +0.0758 alpha 0.013 q +5.50 closs 0.751 1494 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  162000 transitions  10368000 reward +0.0752 alpha 0.013 q +5.38 closs 0.806 1494 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 102}
+step  163000 transitions  10432000 reward +0.0750 alpha 0.013 q +5.49 closs 1.138 1495 tps
+          own_progress=+0.0770 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  164000 transitions  10496000 reward +0.0747 alpha 0.013 q +5.48 closs 0.966 1496 tps
+          own_progress=+0.0768 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  165000 transitions  10560000 reward +0.0754 alpha 0.013 q +5.39 closs 1.137 1497 tps
+          own_progress=+0.0772 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0012 mode_excess=-0.0005
+          terminals {'timeout': 103}
+step  166000 transitions  10624000 reward +0.0749 alpha 0.013 q +5.50 closs 0.963 1498 tps
+          own_progress=+0.0768 wall=-0.0001 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  167000 transitions  10688000 reward +0.0750 alpha 0.013 q +5.47 closs 0.834 1498 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  168000 transitions  10752000 reward +0.0757 alpha 0.013 q +5.49 closs 1.455 1499 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  169000 transitions  10816000 reward +0.0754 alpha 0.013 q +5.36 closs 0.893 1500 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  170000 transitions  10880000 reward +0.0754 alpha 0.013 q +5.47 closs 1.080 1501 tps
+          own_progress=+0.0772 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+  eval  train progress +85.83 stalls 0 mode -0.120 | held-out(sepang) progress +83.76 stalls 0
+step  171000 transitions  10944000 reward +0.0757 alpha 0.013 q +5.66 closs 0.569 1499 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step  172000 transitions  11008000 reward +0.0748 alpha 0.013 q +5.44 closs 1.052 1499 tps
+          own_progress=+0.0768 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  173000 transitions  11072000 reward +0.0758 alpha 0.013 q +5.63 closs 1.015 1500 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step  174000 transitions  11136000 reward +0.0753 alpha 0.013 q +5.47 closs 0.732 1501 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  175000 transitions  11200000 reward +0.0756 alpha 0.013 q +5.53 closs 1.044 1501 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0005
+          terminals {'timeout': 105}
+step  176000 transitions  11264000 reward +0.0750 alpha 0.013 q +5.58 closs 0.720 1502 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  177000 transitions  11328000 reward +0.0756 alpha 0.013 q +5.51 closs 0.932 1503 tps
+          own_progress=+0.0776 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step  178000 transitions  11392000 reward +0.0762 alpha 0.013 q +5.55 closs 1.083 1503 tps
+          own_progress=+0.0781 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  179000 transitions  11456000 reward +0.0751 alpha 0.013 q +5.69 closs 1.245 1504 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  180000 transitions  11520000 reward +0.0754 alpha 0.013 q +5.59 closs 1.139 1505 tps
+          own_progress=+0.0774 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 104}
+  eval  train progress +86.55 stalls 0 mode -0.147 | held-out(sepang) progress +84.84 stalls 0
+  saved best (progress +86.55)
+step  181000 transitions  11584000 reward +0.0754 alpha 0.013 q +5.67 closs 0.705 1503 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  182000 transitions  11648000 reward +0.0747 alpha 0.013 q +5.55 closs 1.206 1504 tps
+          own_progress=+0.0766 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  183000 transitions  11712000 reward +0.0752 alpha 0.013 q +5.40 closs 1.102 1504 tps
+          own_progress=+0.0772 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  184000 transitions  11776000 reward +0.0751 alpha 0.013 q +5.50 closs 1.058 1505 tps
+          own_progress=+0.0769 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  185000 transitions  11840000 reward +0.0756 alpha 0.013 q +5.52 closs 0.902 1506 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  186000 transitions  11904000 reward +0.0757 alpha 0.014 q +5.56 closs 1.092 1506 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  187000 transitions  11968000 reward +0.0758 alpha 0.013 q +5.72 closs 0.572 1507 tps
+          own_progress=+0.0777 wall=-0.0001 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  188000 transitions  12032000 reward +0.0764 alpha 0.013 q +5.50 closs 1.015 1508 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  189000 transitions  12096000 reward +0.0751 alpha 0.013 q +5.52 closs 0.921 1508 tps
+          own_progress=+0.0770 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  190000 transitions  12160000 reward +0.0752 alpha 0.014 q +5.49 closs 0.711 1509 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 107}
+  eval  train progress +85.27 stalls 0 mode -0.186 | held-out(sepang) progress +83.59 stalls 0
+step  191000 transitions  12224000 reward +0.0752 alpha 0.013 q +5.37 closs 0.919 1507 tps
+          own_progress=+0.0772 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step  192000 transitions  12288000 reward +0.0753 alpha 0.013 q +5.43 closs 0.767 1508 tps
+          own_progress=+0.0774 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 105}
+step  193000 transitions  12352000 reward +0.0751 alpha 0.013 q +5.43 closs 0.887 1508 tps
+          own_progress=+0.0771 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step  194000 transitions  12416000 reward +0.0740 alpha 0.014 q +5.61 closs 0.804 1509 tps
+          own_progress=+0.0770 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006 retirement=-0.0009
+          terminals {'timeout': 106, 'stalled': 2}
+step  195000 transitions  12480000 reward +0.0743 alpha 0.013 q +5.59 closs 0.701 1510 tps
+          own_progress=+0.0764 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 104}
+step  196000 transitions  12544000 reward +0.0744 alpha 0.013 q +5.50 closs 0.961 1510 tps
+          own_progress=+0.0765 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  197000 transitions  12608000 reward +0.0754 alpha 0.014 q +5.65 closs 0.588 1511 tps
+          own_progress=+0.0774 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  198000 transitions  12672000 reward +0.0755 alpha 0.013 q +5.49 closs 1.228 1512 tps
+          own_progress=+0.0776 wall=-0.0002 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 106}
+step  199000 transitions  12736000 reward +0.0748 alpha 0.013 q +5.49 closs 1.187 1512 tps
+          own_progress=+0.0769 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  200000 transitions  12800000 reward +0.0756 alpha 0.013 q +5.49 closs 0.820 1513 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 104}
+  eval  train progress +84.20 stalls 0 mode -0.158 | held-out(sepang) progress +81.95 stalls 0
+step  201000 transitions  12864000 reward +0.0766 alpha 0.013 q +5.61 closs 0.902 1511 tps
+          own_progress=+0.0785 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  202000 transitions  12928000 reward +0.0749 alpha 0.013 q +5.51 closs 0.875 1511 tps
+          own_progress=+0.0769 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  203000 transitions  12992000 reward +0.0757 alpha 0.013 q +5.53 closs 0.958 1512 tps
+          own_progress=+0.0776 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  204000 transitions  13056000 reward +0.0759 alpha 0.013 q +5.59 closs 0.647 1513 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  205000 transitions  13120000 reward +0.0756 alpha 0.013 q +5.39 closs 1.029 1513 tps
+          own_progress=+0.0776 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  206000 transitions  13184000 reward +0.0745 alpha 0.013 q +5.57 closs 0.655 1514 tps
+          own_progress=+0.0764 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  207000 transitions  13248000 reward +0.0755 alpha 0.013 q +5.49 closs 1.189 1514 tps
+          own_progress=+0.0774 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  208000 transitions  13312000 reward +0.0745 alpha 0.013 q +5.51 closs 1.252 1515 tps
+          own_progress=+0.0767 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  209000 transitions  13376000 reward +0.0757 alpha 0.013 q +5.38 closs 0.942 1515 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 102}
+step  210000 transitions  13440000 reward +0.0759 alpha 0.013 q +5.46 closs 0.908 1516 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+  eval  train progress +85.56 stalls 0 mode -0.188 | held-out(sepang) progress +82.89 stalls 0
+step  211000 transitions  13504000 reward +0.0754 alpha 0.013 q +5.42 closs 0.609 1514 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  212000 transitions  13568000 reward +0.0757 alpha 0.013 q +5.49 closs 0.717 1515 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  213000 transitions  13632000 reward +0.0752 alpha 0.013 q +5.40 closs 0.911 1515 tps
+          own_progress=+0.0772 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  214000 transitions  13696000 reward +0.0753 alpha 0.013 q +5.52 closs 0.684 1516 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  215000 transitions  13760000 reward +0.0761 alpha 0.013 q +5.43 closs 0.904 1516 tps
+          own_progress=+0.0782 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  216000 transitions  13824000 reward +0.0756 alpha 0.014 q +5.42 closs 0.813 1517 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 108}
+step  217000 transitions  13888000 reward +0.0753 alpha 0.013 q +5.43 closs 1.045 1517 tps
+          own_progress=+0.0780 wall=-0.0002 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006 retirement=-0.0005
+          terminals {'timeout': 107, 'stalled': 1}
+step  218000 transitions  13952000 reward +0.0758 alpha 0.013 q +5.52 closs 0.697 1518 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  219000 transitions  14016000 reward +0.0765 alpha 0.013 q +5.46 closs 0.800 1518 tps
+          own_progress=+0.0785 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  220000 transitions  14080000 reward +0.0768 alpha 0.013 q +5.43 closs 0.892 1519 tps
+          own_progress=+0.0787 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+  eval  train progress +87.28 stalls 0 mode -0.147 | held-out(sepang) progress +84.78 stalls 0
+  saved best (progress +87.28)
+step  221000 transitions  14144000 reward +0.0756 alpha 0.013 q +5.39 closs 1.080 1517 tps
+          own_progress=+0.0775 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  222000 transitions  14208000 reward +0.0758 alpha 0.014 q +5.58 closs 0.992 1518 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  223000 transitions  14272000 reward +0.0758 alpha 0.014 q +5.63 closs 0.648 1518 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  224000 transitions  14336000 reward +0.0753 alpha 0.014 q +5.44 closs 0.787 1519 tps
+          own_progress=+0.0772 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  225000 transitions  14400000 reward +0.0755 alpha 0.014 q +5.53 closs 0.816 1519 tps
+          own_progress=+0.0774 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  226000 transitions  14464000 reward +0.0766 alpha 0.014 q +5.51 closs 0.739 1519 tps
+          own_progress=+0.0784 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step  227000 transitions  14528000 reward +0.0761 alpha 0.014 q +5.40 closs 0.751 1520 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  228000 transitions  14592000 reward +0.0757 alpha 0.014 q +5.48 closs 0.958 1520 tps
+          own_progress=+0.0776 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  229000 transitions  14656000 reward +0.0760 alpha 0.014 q +5.35 closs 0.764 1521 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step  230000 transitions  14720000 reward +0.0752 alpha 0.013 q +5.40 closs 1.128 1521 tps
+          own_progress=+0.0770 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 102}
+  eval  train progress +84.84 stalls 0 mode -0.156 | held-out(sepang) progress +83.48 stalls 0
+step  231000 transitions  14784000 reward +0.0755 alpha 0.014 q +5.40 closs 0.931 1520 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  232000 transitions  14848000 reward +0.0762 alpha 0.014 q +5.53 closs 0.929 1520 tps
+          own_progress=+0.0782 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  233000 transitions  14912000 reward +0.0761 alpha 0.014 q +5.45 closs 1.041 1521 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  234000 transitions  14976000 reward +0.0754 alpha 0.014 q +5.48 closs 0.785 1521 tps
+          own_progress=+0.0773 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0005
+          terminals {'timeout': 105}
+step  235000 transitions  15040000 reward +0.0761 alpha 0.014 q +5.48 closs 0.618 1521 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  236000 transitions  15104000 reward +0.0757 alpha 0.014 q +5.33 closs 1.049 1521 tps
+          own_progress=+0.0776 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  237000 transitions  15168000 reward +0.0759 alpha 0.014 q +5.53 closs 0.785 1522 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  238000 transitions  15232000 reward +0.0757 alpha 0.014 q +5.52 closs 0.906 1522 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  239000 transitions  15296000 reward +0.0762 alpha 0.014 q +5.63 closs 0.666 1523 tps
+          own_progress=+0.0780 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  240000 transitions  15360000 reward +0.0759 alpha 0.014 q +5.57 closs 0.704 1523 tps
+          own_progress=+0.0779 wall=-0.0001 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+  eval  train progress +87.00 stalls 0 mode -0.134 | held-out(sepang) progress +85.71 stalls 0
+step  241000 transitions  15424000 reward +0.0765 alpha 0.014 q +5.55 closs 0.938 1522 tps
+          own_progress=+0.0786 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  242000 transitions  15488000 reward +0.0766 alpha 0.014 q +5.47 closs 0.773 1522 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  243000 transitions  15552000 reward +0.0758 alpha 0.014 q +5.53 closs 0.758 1522 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  244000 transitions  15616000 reward +0.0768 alpha 0.013 q +5.46 closs 0.909 1523 tps
+          own_progress=+0.0787 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step  245000 transitions  15680000 reward +0.0769 alpha 0.013 q +5.54 closs 0.699 1523 tps
+          own_progress=+0.0787 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  246000 transitions  15744000 reward +0.0759 alpha 0.014 q +5.57 closs 0.596 1524 tps
+          own_progress=+0.0780 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  247000 transitions  15808000 reward +0.0760 alpha 0.014 q +5.56 closs 0.604 1524 tps
+          own_progress=+0.0781 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0007
+          terminals {'timeout': 111}
+step  248000 transitions  15872000 reward +0.0758 alpha 0.014 q +5.43 closs 0.914 1525 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  249000 transitions  15936000 reward +0.0768 alpha 0.014 q +5.54 closs 0.893 1525 tps
+          own_progress=+0.0786 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0005
+          terminals {'timeout': 103}
+step  250000 transitions  16000000 reward +0.0749 alpha 0.014 q +5.41 closs 0.834 1525 tps
+          own_progress=+0.0769 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0011 mode_excess=-0.0005
+          terminals {'timeout': 112}
+  eval  train progress +87.37 stalls 0 mode -0.128 | held-out(sepang) progress +85.72 stalls 0
+  saved best (progress +87.37)
+step  251000 transitions  16064000 reward +0.0760 alpha 0.014 q +5.51 closs 0.793 1524 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  252000 transitions  16128000 reward +0.0757 alpha 0.014 q +5.53 closs 0.642 1524 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 103}
+step  253000 transitions  16192000 reward +0.0758 alpha 0.014 q +5.52 closs 0.772 1525 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0012 mode_excess=-0.0006
+          terminals {'timeout': 112}
+step  254000 transitions  16256000 reward +0.0766 alpha 0.014 q +5.53 closs 0.936 1525 tps
+          own_progress=+0.0785 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  255000 transitions  16320000 reward +0.0761 alpha 0.013 q +5.51 closs 0.736 1526 tps
+          own_progress=+0.0780 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  256000 transitions  16384000 reward +0.0771 alpha 0.014 q +5.66 closs 0.639 1526 tps
+          own_progress=+0.0791 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 111}
+step  257000 transitions  16448000 reward +0.0747 alpha 0.014 q +5.67 closs 0.709 1526 tps
+          own_progress=+0.0766 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  258000 transitions  16512000 reward +0.0775 alpha 0.014 q +5.53 closs 0.908 1527 tps
+          own_progress=+0.0794 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  259000 transitions  16576000 reward +0.0759 alpha 0.014 q +5.41 closs 0.617 1527 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  260000 transitions  16640000 reward +0.0750 alpha 0.014 q +5.55 closs 0.787 1528 tps
+          own_progress=+0.0769 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+  eval  train progress +88.01 stalls 0 mode -0.131 | held-out(sepang) progress +85.06 stalls 0
+  saved best (progress +88.01)
+step  261000 transitions  16704000 reward +0.0757 alpha 0.014 q +5.53 closs 0.699 1526 tps
+          own_progress=+0.0776 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  262000 transitions  16768000 reward +0.0770 alpha 0.014 q +5.66 closs 0.747 1527 tps
+          own_progress=+0.0789 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0007
+          terminals {'timeout': 109}
+step  263000 transitions  16832000 reward +0.0760 alpha 0.014 q +5.62 closs 0.824 1527 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  264000 transitions  16896000 reward +0.0756 alpha 0.013 q +5.31 closs 0.879 1527 tps
+          own_progress=+0.0774 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  265000 transitions  16960000 reward +0.0764 alpha 0.014 q +5.57 closs 0.821 1528 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  266000 transitions  17024000 reward +0.0767 alpha 0.014 q +5.58 closs 0.817 1528 tps
+          own_progress=+0.0788 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  267000 transitions  17088000 reward +0.0764 alpha 0.014 q +5.54 closs 0.669 1529 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  268000 transitions  17152000 reward +0.0759 alpha 0.014 q +5.67 closs 0.822 1529 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  269000 transitions  17216000 reward +0.0766 alpha 0.014 q +5.58 closs 0.980 1529 tps
+          own_progress=+0.0784 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  270000 transitions  17280000 reward +0.0764 alpha 0.014 q +5.69 closs 0.735 1530 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+  eval  train progress +88.36 stalls 0 mode -0.124 | held-out(sepang) progress +87.27 stalls 0
+  saved best (progress +88.36)
+step  271000 transitions  17344000 reward +0.0771 alpha 0.014 q +5.64 closs 0.797 1528 tps
+          own_progress=+0.0790 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0007
+          terminals {'timeout': 110}
+step  272000 transitions  17408000 reward +0.0760 alpha 0.014 q +5.63 closs 0.831 1529 tps
+          own_progress=+0.0781 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  273000 transitions  17472000 reward +0.0750 alpha 0.014 q +5.52 closs 0.833 1529 tps
+          own_progress=+0.0770 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  274000 transitions  17536000 reward +0.0762 alpha 0.014 q +5.47 closs 0.990 1530 tps
+          own_progress=+0.0782 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  275000 transitions  17600000 reward +0.0749 alpha 0.014 q +5.52 closs 0.735 1530 tps
+          own_progress=+0.0779 wall=-0.0005 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006 retirement=-0.0005
+          terminals {'timeout': 103, 'stalled': 1}
+step  276000 transitions  17664000 reward +0.0762 alpha 0.014 q +5.37 closs 0.720 1530 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  277000 transitions  17728000 reward +0.0757 alpha 0.014 q +5.52 closs 0.688 1531 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  278000 transitions  17792000 reward +0.0766 alpha 0.014 q +5.54 closs 0.737 1531 tps
+          own_progress=+0.0783 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  279000 transitions  17856000 reward +0.0767 alpha 0.014 q +5.68 closs 0.629 1531 tps
+          own_progress=+0.0786 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0005
+          terminals {'timeout': 107}
+step  280000 transitions  17920000 reward +0.0765 alpha 0.013 q +5.40 closs 0.910 1532 tps
+          own_progress=+0.0784 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 109}
+  eval  train progress +87.47 stalls 0 mode -0.160 | held-out(sepang) progress +84.88 stalls 0
+step  281000 transitions  17984000 reward +0.0761 alpha 0.014 q +5.62 closs 0.640 1531 tps
+          own_progress=+0.0779 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  282000 transitions  18048000 reward +0.0767 alpha 0.014 q +5.53 closs 0.761 1531 tps
+          own_progress=+0.0786 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 107}
+step  283000 transitions  18112000 reward +0.0757 alpha 0.013 q +5.54 closs 0.870 1531 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  284000 transitions  18176000 reward +0.0770 alpha 0.014 q +5.61 closs 0.524 1532 tps
+          own_progress=+0.0789 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  285000 transitions  18240000 reward +0.0748 alpha 0.014 q +5.62 closs 0.630 1532 tps
+          own_progress=+0.0768 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0007
+          terminals {'timeout': 107}
+step  286000 transitions  18304000 reward +0.0773 alpha 0.014 q +5.59 closs 0.626 1532 tps
+          own_progress=+0.0792 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  287000 transitions  18368000 reward +0.0760 alpha 0.013 q +5.50 closs 0.673 1533 tps
+          own_progress=+0.0778 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 103}
+step  288000 transitions  18432000 reward +0.0763 alpha 0.014 q +5.58 closs 0.693 1533 tps
+          own_progress=+0.0782 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  289000 transitions  18496000 reward +0.0770 alpha 0.014 q +5.45 closs 0.799 1533 tps
+          own_progress=+0.0789 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 109}
+step  290000 transitions  18560000 reward +0.0774 alpha 0.014 q +5.38 closs 0.857 1534 tps
+          own_progress=+0.0791 wall=-0.0000 off_course=-0.0001 tyre_slip=-0.0010 mode_excess=-0.0005
+          terminals {'timeout': 105}
+  eval  train progress +87.17 stalls 0 mode -0.104 | held-out(sepang) progress +83.16 stalls 0
+step  291000 transitions  18624000 reward +0.0767 alpha 0.013 q +5.60 closs 1.135 1532 tps
+          own_progress=+0.0785 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 105}
+step  292000 transitions  18688000 reward +0.0766 alpha 0.013 q +5.56 closs 0.766 1533 tps
+          own_progress=+0.0784 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0005
+          terminals {'timeout': 110}
+step  293000 transitions  18752000 reward +0.0768 alpha 0.013 q +5.49 closs 0.766 1533 tps
+          own_progress=+0.0787 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  294000 transitions  18816000 reward +0.0778 alpha 0.014 q +5.46 closs 0.901 1533 tps
+          own_progress=+0.0797 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0005
+          terminals {'timeout': 105}
+step  295000 transitions  18880000 reward +0.0763 alpha 0.013 q +5.56 closs 0.629 1534 tps
+          own_progress=+0.0782 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  296000 transitions  18944000 reward +0.0767 alpha 0.013 q +5.50 closs 0.693 1534 tps
+          own_progress=+0.0786 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  297000 transitions  19008000 reward +0.0757 alpha 0.014 q +5.56 closs 0.836 1534 tps
+          own_progress=+0.0777 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 106}
+step  298000 transitions  19072000 reward +0.0773 alpha 0.014 q +5.53 closs 0.559 1535 tps
+          own_progress=+0.0791 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 110}
+step  299000 transitions  19136000 reward +0.0769 alpha 0.014 q +5.50 closs 0.904 1535 tps
+          own_progress=+0.0788 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0011 mode_excess=-0.0006
+          terminals {'timeout': 104}
+step  300000 transitions  19200000 reward +0.0769 alpha 0.014 q +5.40 closs 0.804 1535 tps
+          own_progress=+0.0788 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0010 mode_excess=-0.0006
+          terminals {'timeout': 106}
+  eval  train progress +87.99 stalls 0 mode -0.160 | held-out(sepang) progress +84.99 stalls 0
+training finished

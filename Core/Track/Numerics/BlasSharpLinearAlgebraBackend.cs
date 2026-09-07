@@ -27,6 +27,8 @@ public sealed class BlasSharpLinearAlgebraBackend(ILapackOperations lapack, stri
         return result;
     }
 
+    private static int _dumpIndex;
+
     public unsafe double[,] Solve(double[,] matrix, double[,] rhs)
     {
         int n = EnsureSquare(matrix);
@@ -35,6 +37,24 @@ public sealed class BlasSharpLinearAlgebraBackend(ILapackOperations lapack, stri
 
         double[] a = ToColumnMajor(matrix);
         double[] b = ToColumnMajor(rhs);
+
+        // Ground truth for a cross-platform numerics dispute: every system
+        // handed to LAPACK, written out before the call so an independent
+        // implementation on either machine can be shown the same bytes.
+        // Diagnostic only, dormant without the environment variable.
+        if (Environment.GetEnvironmentVariable("STINTEGY_DUMP_LA") is
+                { Length: > 0 } dumpPrefix &&
+            _dumpIndex < 4)
+        {
+            using var writer = new System.IO.BinaryWriter(
+                System.IO.File.Create($"{dumpPrefix}.{_dumpIndex++}"));
+            writer.Write(n);
+            writer.Write(rhs.GetLength(1));
+            foreach (double value in a)
+                writer.Write(value);
+            foreach (double value in b)
+                writer.Write(value);
+        }
         int[] pivot = new int[n];
         int nrhs = rhs.GetLength(1);
         int lda = n;
@@ -48,6 +68,24 @@ public sealed class BlasSharpLinearAlgebraBackend(ILapackOperations lapack, stri
             _lapack.Dgesv(&n, &nrhs, aPtr, &lda, pivotPtr, bPtr, &ldb, &info);
         }
 
+        if (info != 0 &&
+            Environment.GetEnvironmentVariable("STINTEGY_DUMP_LA_FAIL") is
+                { Length: > 0 } dumpPath)
+        {
+            // Ground truth for a cross-platform numerics dispute: the exact
+            // system this process asked LAPACK to solve, so an independent
+            // implementation can be shown the same bytes.
+            using var writer = new System.IO.BinaryWriter(
+                System.IO.File.Create(dumpPath));
+            writer.Write(n);
+            writer.Write(nrhs);
+            double[] aOriginal = ToColumnMajor(matrix);
+            foreach (double value in aOriginal)
+                writer.Write(value);
+            double[] bOriginal = ToColumnMajor(rhs);
+            foreach (double value in bOriginal)
+                writer.Write(value);
+        }
         ThrowIfLapackFailed(info, "Dgesv");
         return FromColumnMajor(b, n, nrhs);
     }

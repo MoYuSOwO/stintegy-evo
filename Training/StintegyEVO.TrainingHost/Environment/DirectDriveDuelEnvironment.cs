@@ -1,0 +1,902 @@
+using System.Numerics;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Drivers.Learned;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Track.RefLines;
+
+namespace StintegyEVO.TrainingHost.Environment;
+
+/// <summary>
+/// The direct-drive training environment: the ego car is driven by the
+/// learned interface with no behavior layers between policy and vehicle,
+/// while the scripted opponent keeps its full analytic stack as sparring
+/// partner. Contact is not terminal here — it carries a steward penalty
+/// with a crude at-fault reading and the race goes on, exactly as the
+/// training plan's safety chapter lays out. One agent step is one policy
+/// decision; the action chosen at step t steers the car through step t+1,
+/// a deliberate one-tick reaction latency.
+/// </summary>
+public sealed class DirectDriveDuelEnvironment
+{
+    /// <summary>
+    /// How long one agent step lasts, which under the decision contract is
+    /// also how long one control is held for. Fifteen a second, which is
+    /// the first rung past the cliff the frequency sweep found between ten
+    /// and fifteen; see the driver for the evidence.
+    /// </summary>
+    public const float DefaultAgentStepSeconds =
+        1f / DirectDriveRaceDriver.DefaultDecisionHz;
+
+    public float AgentStepSeconds => _agentStepSeconds;
+    private readonly float _agentStepSeconds;
+    public const float DefaultEpisodeDurationSeconds = 60f;
+    public const float DefaultMinimumForwardGapMeters = 12f;
+    public const float DefaultMaximumForwardGapMeters = 28f;
+
+    private const float PassHoldSeconds = 0.5f;
+    private const float StalledSpeedMetersPerSecond = 1f;
+    private const float StalledHoldSeconds = 2f;
+    private const float WarmupStepSeconds = 1e-6f;
+
+    /// <summary>
+    /// Reward per meter of the ego's own progress. The archived offset task
+    /// weighted this at a twentieth of this rate because relative progress
+    /// carried the signal there; driving itself is now the thing being
+    /// learned, so covering ground has to outweigh the per-step clock and
+    /// the action regularizers by a clear margin, and in the solo stage it
+    /// is the objective outright.
+    /// </summary>
+    /// <summary>
+    /// What a metre of track is worth. Raised fivefold from the rate the
+    /// first two rounds used, where a perfect lap earned less than the fixed
+    /// costs of driving it and the optimal policy was therefore to crawl.
+    /// </summary>
+    private const float OwnProgressRate = 0.02f;
+
+    /// <summary>
+    /// The penalties the road exacts, all per second and all proportional to
+    /// the square of the speed, after the shape Sony used: leaving the track
+    /// and scraping a barrier are both things you are doing, priced for as
+    /// long as you do them, not events that end the race. Their reward
+    /// function ends an episode for nothing but running out of time.
+    ///
+    /// The barrier is charged by the seconds actually spent against it,
+    /// which the simulation accumulates across its own substeps; leaving the
+    /// track is charged for the whole step, because where the car is at the
+    /// end of one is all the region test can say.
+    /// </summary>
+    private const float OffCoursePenaltyPerSpeedSquaredSecond = 1e-3f;
+    private const float WallPenaltyPerSpeedSquaredSecond = 5e-3f;
+
+    /// <summary>
+    /// Sliding, priced by how far past the tyres' limit the car is being
+    /// asked to go and how far sideways it has ended up as a result. This
+    /// stands where an action-smoothness penalty used to: what wants
+    /// discouraging is the car being out of shape, which is a thing the
+    /// physics can see, not the policy's hand being unsteady, which is not.
+    /// </summary>
+    private const float TyreSlipPenaltyPerSecond = 2f;
+
+    /// <summary>
+    /// What contact costs per second of it, at fault and not. Ten times a
+    /// second of it is what the old per-step figures of twenty and two
+    /// priced, so nothing changes at the rate they were chosen at.
+    /// </summary>
+    private const float AtFaultContactPenaltyPerSecond = 200f;
+    private const float ContactPenaltyPerSecond = 20f;
+
+    /// <summary>
+    /// Nothing. Sony's reward has no clock in it at all, and the ablation
+    /// that replaced progress with a fixed step cost was the worst result on
+    /// the board — well outside the range the other settings moved within.
+    /// A reward paid per metre already prices a second, because the way to
+    /// earn more of it in the same second is to cover more ground; charging
+    /// for the second as well only subtracts a constant from every policy
+    /// and moves nothing.
+    /// </summary>
+    private const float TimePenaltyPerSecond = 0f;
+
+    /// <summary>
+    /// Price per unit of friction-circle usage taken beyond what the pit
+    /// wall allotted, per agent step. A tire mode is exactly an instruction
+    /// about how much of the tire's grip the driver may spend, and the
+    /// physics never enforces it — only battery modes are hardware-capped —
+    /// so a learned driver would otherwise drive Attack while the wall
+    /// called Protect. Disobeying Protect outright buys on the order of one
+    /// percent more distance a lap; this rate prices that at roughly ten
+    /// times what it earns, which is what makes obedience the strategy
+    /// game's premise rather than a suggestion. Subject to revision once
+    /// training shows how the policy actually trades it.
+    /// </summary>
+    private const float ModeExcessPenaltyPerSecond = 1f;
+
+    internal static readonly DriverProfile TrainingOpponentProfile = new(
+        "training-opponent",
+        new DriverAbilities
+        {
+            Pace = 70f,
+            Consistency = 100f,
+            CarControl = 100f,
+            TireManagement = 80f,
+            Adaptability = 100f,
+            Reactions = 100f,
+            Awareness = 100f,
+            Overtaking = 100f,
+            Defending = 100f
+        },
+        randomSeed: 0x545241494E494E47UL
+    );
+
+    /// <summary>
+    /// What the car learns on. Gradient from Silverstone's flat airfield to
+    /// the simple layout's seven percent, and lean from a road circuit's two
+    /// and a half degrees to Zandvoort's eighteen.
+    ///
+    /// The banked sweeper is here because measuring the rest of this list
+    /// showed every banked corner in it was a hairpin — twenty degrees on a
+    /// twenty-five metre radius at Zandvoort, nineteen on twenty at the
+    /// simple layouts — while every fast corner carried nothing but
+    /// drainage crossfall. Banking and speed were both present and never
+    /// together, and a policy taught that way spent a sixth of Daytona off
+    /// the road. The sweeper's corners run to four hundred metres of radius
+    /// at eighteen degrees, which is inside the lean already trained on and
+    /// well outside the speed it was ever trained at.
+    /// </summary>
+    private static readonly TrackChoice[] TrainingTracks =
+    [
+        new("simple-right", () => TrackFactory.SimpleTestTrack(isLeft: false)),
+        new("simple-left", () => TrackFactory.SimpleTestTrack(isLeft: true)),
+        new("silverstone", TrackFactory.SilverstoneStyleTestTrack),
+        new("shanghai", TrackFactory.ShanghaiStyleTestTrack),
+        new("zandvoort", TrackFactory.ZandvoortStyleTestTrack),
+        new("banked-sweeper", TrackFactory.BankedSweeperTestTrack),
+        new("baku", TrackFactory.BakuStyleTestTrack),
+        // The Monaco prescription, admitted at the 300k verdict after a
+        // hundred and fifty thousand steps of Baku alone failed to move
+        // it: Singapore for narrow-flat, Portimão for the gradient past
+        // Monaco's own, and the flat sweeper for the fast flat corners
+        // that drained away while nothing anchored them.
+        new("singapore", TrackFactory.SingaporeStyleTestTrack),
+        new("portimao", TrackFactory.PortimaoStyleTestTrack),
+        new("flat-sweeper", TrackFactory.FlatSweeperTestTrack)
+    ];
+
+    /// <summary>
+    /// What it is tested on, and every one of them asks for something past
+    /// the edge of what it was taught rather than between two things it
+    /// already knows. Monaco climbs harder than any training track, the
+    /// speedway leans further than any of them, and Sepang is neither —
+    /// just a circuit it has never seen.
+    ///
+    /// Daytona is the banking half of that. The steepest bank trained on
+    /// is Zandvoort's twenty degrees; Daytona's turns are thirty-one, and
+    /// at that angle the road takes half the lateral the tyres would
+    /// otherwise carry. The analytic driver is two per cent slower there
+    /// than on the same oval laid flat, because its planner reads the
+    /// road as flat and pays the extra load without spending the extra
+    /// grip — so on this one circuit the analytic number is a floor for a
+    /// policy that can see the bank, not a ceiling.
+    ///
+    /// The old split had Sepang alone, whose one and a half percent and two
+    /// and a half degrees both sit comfortably inside the training range.
+    /// Passing that says a policy can interpolate, which was never the
+    /// question.
+    /// </summary>
+    private static readonly TrackChoice[] HeldOutTracks =
+    [
+        new("sepang", TrackFactory.SepangStyleTestTrack),
+        new("monaco", TrackFactory.MonacoStyleTestTrack),
+        new("daytona", TrackFactory.DaytonaStyleTestTrack),
+        new("speedway", BuildSpeedwayTrack),
+        new("spa", TrackFactory.SpaStyleTestTrack),
+        new("monza", TrackFactory.MonzaStyleTestTrack),
+        new("interlagos", TrackFactory.InterlagosStyleTestTrack),
+    ];
+
+    private static readonly TrackChoice HeldOutTrack = HeldOutTracks[0];
+
+    // The canonical mode-to-grip-allowance mapping, the same one the
+    // analytic planner drives to.
+    private readonly VehicleSpeedPlanningConfig _planningConfig = new();
+    private readonly float _minimumForwardGapMeters;
+    private readonly float _maximumForwardGapMeters;
+    private readonly float _episodeDurationSeconds;
+    private readonly CarStrategy _opponentStrategy;
+
+    /// <summary>
+    /// The instruction the ego is given, when the caller insists on one.
+    ///
+    /// Training leaves this null and draws a fresh instruction every
+    /// episode, because a policy that only ever sees Attack cannot learn
+    /// what the other settings ask of it. Evaluation sets it, because a
+    /// measurement taken under an instruction drawn from a seed and never
+    /// written down is not a measurement of anything: two checkpoints
+    /// compared that way can differ by which tyre mode their lanes happened
+    /// to draw.
+    /// </summary>
+    private readonly CarStrategy? _fixedEgoStrategy;
+
+    /// <summary>
+    /// Whether the analytic driver is at the wheel of the ego car.
+    ///
+    /// This is how the baseline every lap time is quoted against gets
+    /// measured on the same terms as the thing it judges: same circuit,
+    /// same car, same tyres, same pit-wall instruction, same ten decisions
+    /// a second, same definition of a clean lap, same timing loop. The
+    /// numbers it replaces were constants in a table, taken under
+    /// conditions that no longer exist and compared against laps that were
+    /// not required to be legal.
+    ///
+    /// The learned driver is still built when this is set, but only to
+    /// look: it samples the observation the harness reports and never
+    /// touches the controls.
+    /// </summary>
+    private readonly bool _egoAnalytic;
+
+    /// <summary>
+    /// How often the analytic reference is allowed to decide. Its own
+    /// design is every driver frame; the learned driver decides ten times
+    /// a second. Both are worth measuring and they are not the same
+    /// question - one asks what the shipped rule-based driver does, the
+    /// other asks what this circuit costs at ten hertz whoever is driving.
+    /// </summary>
+    private readonly float _egoAnalyticHz;
+    /// <summary>
+    /// How often the sparring partner rethinks. Ten a second, the same rate
+    /// the agent decides at, which is both cheap and appropriately coarse.
+    /// </summary>
+    /// <summary>
+    /// How often the scripted sparring partner replans. Deliberately left
+    /// at ten when the learned driver moved to fifteen: this is not a rate
+    /// inside the decision contract, it is a property of one opponent, and
+    /// changing it would change what the learner is sparring against for
+    /// no reason connected to the contract.
+    /// </summary>
+    private const float OpponentDecisionHz = 10f;
+
+    private readonly DriverProfile _opponentProfile;
+    private readonly bool _solo;
+    private RaceSimulation? _simulation;
+    private RaceCar? _ego;
+    private DirectDriveRaceDriver? _egoDriver;
+    private RaceCar? _opponent;
+    private float _elapsedSeconds;
+    private float _passHoldSeconds;
+    private float _stalledHoldSeconds;
+    private float _egoDistanceOrigin;
+    private float _opponentDistanceOrigin;
+    private bool _terminal;
+
+    public string TrackFamily { get; private set; } = string.Empty;
+    public float EgoStartS { get; private set; }
+    public float InitialForwardGapMeters { get; private set; }
+    public CarStrategy EgoStrategy { get; private set; } = CarStrategy.Default;
+    public float ElapsedSeconds => _elapsedSeconds;
+    public bool IsTerminal => _terminal;
+    public float SignedLeadDistanceMeters => CalculateSignedLeadDistance();
+    public float MinimumSignedLeadDistanceMeters { get; private set; }
+    public float MaximumAbsoluteReferenceOffsetMeters { get; private set; }
+    public RaceSimulation Simulation =>
+        _simulation ?? throw new InvalidOperationException("Reset must be called first.");
+    public RaceCar Ego =>
+        _ego ?? throw new InvalidOperationException("Reset must be called first.");
+    public DirectDriveRaceDriver EgoDriver =>
+        _egoDriver ?? throw new InvalidOperationException("Reset must be called first.");
+    public RaceCar Opponent =>
+        _opponent ?? throw new InvalidOperationException(
+            _solo
+                ? "A solo environment has no opponent."
+                : "Reset must be called first."
+        );
+
+    public DirectDriveDuelEnvironment(
+        float minimumForwardGapMeters = DefaultMinimumForwardGapMeters,
+        float maximumForwardGapMeters = DefaultMaximumForwardGapMeters,
+        float episodeDurationSeconds = DefaultEpisodeDurationSeconds,
+        CarStrategy? opponentStrategy = null,
+        float opponentPace = 70f,
+        bool solo = false,
+        CarStrategy? egoStrategy = null,
+        bool egoAnalytic = false,
+        float egoAnalyticHz = OpponentDecisionHz,
+        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz
+    )
+    {
+        if (!float.IsFinite(decisionHz) || decisionHz <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(decisionHz));
+        if (!float.IsFinite(minimumForwardGapMeters) ||
+            minimumForwardGapMeters <= 0f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(minimumForwardGapMeters)
+            );
+        }
+        if (!float.IsFinite(maximumForwardGapMeters) ||
+            maximumForwardGapMeters < minimumForwardGapMeters)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maximumForwardGapMeters)
+            );
+        }
+        if (!float.IsFinite(episodeDurationSeconds) ||
+            episodeDurationSeconds <= 0f)
+        {
+            throw new ArgumentOutOfRangeException(nameof(episodeDurationSeconds));
+        }
+        if (!float.IsFinite(opponentPace) ||
+            opponentPace < 0f || opponentPace > 100f)
+        {
+            throw new ArgumentOutOfRangeException(nameof(opponentPace));
+        }
+
+        _fixedEgoStrategy = egoStrategy;
+        _egoAnalytic = egoAnalytic;
+        _egoAnalyticHz = egoAnalyticHz;
+        _agentStepSeconds = 1f / decisionHz;
+        _minimumForwardGapMeters = minimumForwardGapMeters;
+        _maximumForwardGapMeters = maximumForwardGapMeters;
+        _episodeDurationSeconds = episodeDurationSeconds;
+        _opponentStrategy = opponentStrategy ?? CarStrategy.Default;
+        _opponentProfile = MathF.Abs(opponentPace - 70f) <= 1e-5f
+            ? TrainingOpponentProfile
+            : CreateOpponentProfile(opponentPace);
+        _solo = solo;
+    }
+
+    public void Reset(long seed, Span<float> observation)
+    {
+        StableRandom random = new(unchecked((ulong)seed));
+        TrackChoice choice = TrainingTracks[random.NextInt(TrainingTracks.Length)];
+        ResetCore(choice, ref random, observation);
+    }
+
+    public void ResetHeldOut(long seed, Span<float> observation)
+    {
+        StableRandom random = new(unchecked((ulong)seed));
+        ResetCore(HeldOutTrack, ref random, observation);
+    }
+
+    public void ResetTrack(
+        string trackFamily,
+        long seed,
+        Span<float> observation
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackFamily);
+        StableRandom random = new(unchecked((ulong)seed));
+        ResetCore(FindTrack(trackFamily), ref random, observation);
+    }
+
+    public void ResetScenario(
+        string trackFamily,
+        long seed,
+        float egoStartS,
+        float forwardGapMeters,
+        float startSpeedMetersPerSecond,
+        Span<float> observation
+    )
+    {
+        if (!float.IsFinite(egoStartS))
+            throw new ArgumentOutOfRangeException(nameof(egoStartS));
+        if (!float.IsFinite(forwardGapMeters) || forwardGapMeters <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(forwardGapMeters));
+        if (!float.IsFinite(startSpeedMetersPerSecond) ||
+            startSpeedMetersPerSecond < 0f)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(startSpeedMetersPerSecond)
+            );
+        }
+
+        StableRandom random = new(unchecked((ulong)seed));
+        ResetCore(
+            FindTrack(trackFamily),
+            ref random,
+            observation,
+            egoStartS,
+            forwardGapMeters,
+            startSpeedMetersPerSecond
+        );
+    }
+
+    public TrainingStepResult Step(
+        ReadOnlySpan<float> actionValues,
+        Span<float> observation
+    )
+    {
+        if (_simulation is null || _ego is null || _egoDriver is null)
+            throw new InvalidOperationException("Reset must be called before Step.");
+        if (_terminal)
+            throw new InvalidOperationException("Reset must be called after a terminal step.");
+        EnsureObservationSize(observation);
+        if (actionValues.Length != DirectDriveObservation.ActionSize)
+        {
+            throw new ArgumentException(
+                $"Action must contain exactly {DirectDriveObservation.ActionSize} values.",
+                nameof(actionValues)
+            );
+        }
+
+        Span<float> action = stackalloc float[
+            DirectDriveObservation.ActionSize
+        ];
+        for (int i = 0; i < action.Length; i++)
+        {
+            action[i] = float.IsFinite(actionValues[i])
+                ? Math.Clamp(actionValues[i], -1f, 1f)
+                : 0f;
+        }
+        // Committed before anything moves, so it drives every substep of
+        // the interval it is credited with, and scaled by the ceilings the
+        // observation that produced it reported.
+        if (!_egoAnalytic)
+            _egoDriver.CommitAction(action);
+        float egoDistanceBefore = _ego.Progress.TotalDistance;
+        float opponentDistanceBefore =
+            _opponent?.Progress.TotalDistance ?? 0f;
+
+        _simulation.Step(AgentStepSeconds);
+        _elapsedSeconds += AgentStepSeconds;
+        // Sampled at the far end of the interval, which is the instant the
+        // next action will be committed at: one observation per decision,
+        // and it is the same instant on both sides of the pipe.
+        SampleObservation(observation);
+
+        float egoProgress = _ego.Progress.TotalDistance - egoDistanceBefore;
+        float opponentProgress = _opponent is null
+            ? 0f
+            : _opponent.Progress.TotalDistance - opponentDistanceBefore;
+        float signedLeadDistance = CalculateSignedLeadDistance();
+        MinimumSignedLeadDistanceMeters = MathF.Min(
+            MinimumSignedLeadDistanceMeters,
+            signedLeadDistance
+        );
+        TrackPose egoPose = _simulation.Track.Project(_ego.State.Position);
+        MaximumAbsoluteReferenceOffsetMeters = MathF.Max(
+            MaximumAbsoluteReferenceOffsetMeters,
+            MathF.Abs(egoPose.D - egoPose.Sample.RefOffset)
+        );
+        bool contact = _ego.HitCarThisStep;
+        bool egoAtFault = contact && signedLeadDistance > 0f;
+        TrainingTerminalReason terminalReason = DetermineTerminalReason(
+            signedLeadDistance
+        );
+        _terminal = terminalReason != TrainingTerminalReason.None;
+
+        bool offCourse = _ego.Progress.Region != TrackRegion.RacingSurface;
+        float wallSeconds = _ego.BoundaryContactSeconds;
+        float speedSquared = _ego.State.Speed * _ego.State.Speed;
+        float sliding =
+            MathF.Min(MathF.Abs(_ego.State.Telemetry.OverLimit), 1f) *
+            MathF.Abs(_ego.State.SideslipAngleRadians);
+
+        return new TrainingStepResult(
+            terminalReason,
+            // Masked off course, so that cutting a corner cannot pay for
+            // itself with the ground it gains.
+            OwnProgressReward: offCourse
+                ? 0f
+                : OwnProgressRate * egoProgress,
+            RelativeProgressReward: _solo
+                ? 0f
+                : 0.1f * (egoProgress - opponentProgress),
+            PassReward: terminalReason == TrainingTerminalReason.Passed
+                ? 25f
+                : 0f,
+            // Also per second. The flag is "any contact during this
+            // step", so a sustained rub used to cost whatever the step
+            // rate happened to be; the price of leaning on somebody should
+            // be a property of the leaning.
+            ContactPenalty: contact
+                ? (egoAtFault
+                    ? -AtFaultContactPenaltyPerSecond * AgentStepSeconds
+                    : -ContactPenaltyPerSecond * AgentStepSeconds)
+                : 0f,
+            // Priced by how long the car leant on it, not by whether it
+            // touched at all. Charging a whole step for a glance leaves a
+            // car that has already brushed with no reason to come off the
+            // barrier before the step is out.
+            WallPenalty:
+                -WallPenaltyPerSpeedSquaredSecond * speedSquared * wallSeconds,
+            OffCoursePenalty: offCourse
+                ? -OffCoursePenaltyPerSpeedSquaredSecond * speedSquared *
+                  AgentStepSeconds
+                : 0f,
+            TyreSlipPenalty:
+                -TyreSlipPenaltyPerSecond * sliding * AgentStepSeconds,
+            TimePenalty: -TimePenaltyPerSecond * AgentStepSeconds,
+            TimeoutOutcome: terminalReason == TrainingTerminalReason.Timeout &&
+                            !_solo
+                ? Math.Clamp(-signedLeadDistance * 0.1f, -8f, 8f)
+                : 0f,
+            ModeExcessPenalty: ModeExcessPenalty(),
+            // Coming to a halt ends the episode, and an ending that costs
+            // nothing is worth more than any lap that risks the wall — so
+            // without this the surest way to stop losing points is to stop.
+            // A car parked on a race track has retired, and retiring is at
+            // least as expensive as running out of road.
+            RetirementPenalty: terminalReason == TrainingTerminalReason.Stalled
+                ? -30f
+                : 0f
+        );
+    }
+
+    /// <summary>
+    /// How far past its allotted share of the friction circle the car is
+    /// being driven. The tire mode maps to the same grip fraction the
+    /// analytic planner drives to, so the comparison is the instruction
+    /// itself rather than a proxy: at Attack the allowance is the whole
+    /// circle and no excess is possible, while at Protect anything above
+    /// about ninety-six percent is grip the wall did not authorize. The
+    /// reading is the last physics substep of the agent step, which
+    /// samples rather than integrates the excess; over an episode's
+    /// thousands of steps that average is what the policy optimizes.
+    /// </summary>
+    private float ModeExcessPenalty()
+    {
+        if (_ego is null)
+            return 0f;
+
+        CarTelemetry telemetry = _ego.State.Telemetry;
+        float allowance = _ego.TireConfig.GetAccelerationUsage(_ego.Strategy);
+        float frontUse = CombinedUse(
+            telemetry.FrontLateralUse,
+            telemetry.FrontLongitudinalUse
+        );
+        float rearUse = CombinedUse(
+            telemetry.RearLateralUse,
+            telemetry.RearLongitudinalUse
+        );
+        float excess = MathF.Max(frontUse, rearUse) - allowance;
+        // Per second of disobedience, not per decision. Charged per
+        // decision it would have cost half again as much the moment the
+        // decision rate moved from ten to fifteen, with nothing in the
+        // change saying so - the same shape of mistake as reading a paper's
+        // entropy coefficient without reading its reward scale.
+        return excess <= 0f
+            ? 0f
+            : -ModeExcessPenaltyPerSecond * excess * AgentStepSeconds;
+    }
+
+    /// <summary>
+    /// Share of the available friction circle actually being spent, capped
+    /// at the whole circle. A request beyond the circle does not buy grip —
+    /// it slides — and the physics already charges for that; counting it
+    /// here as well would conflate overdriving with disobeying the wall,
+    /// and the plan holds that a driver's self-inflicted costs are priced
+    /// by lap time, not by penalties.
+    /// </summary>
+    private static float CombinedUse(float lateral, float longitudinal) =>
+        MathF.Min(
+            1f,
+            MathF.Sqrt(lateral * lateral + longitudinal * longitudinal)
+        );
+
+    private void ResetCore(
+        TrackChoice choice,
+        ref StableRandom random,
+        Span<float> observation,
+        float? egoStartS = null,
+        float? forwardGapMeters = null,
+        float? startSpeedMetersPerSecond = null
+    )
+    {
+        EnsureObservationSize(observation);
+        TrackData track = choice.Track.Value;
+        TrackFamily = choice.Name;
+        EgoStartS = track.WrapS(
+            egoStartS ?? random.NextSingle(0f, track.LengthMeters)
+        );
+        InitialForwardGapMeters =
+            forwardGapMeters ?? random.NextSingle(
+                _minimumForwardGapMeters,
+                _maximumForwardGapMeters
+            );
+        float startSpeed = startSpeedMetersPerSecond ??
+                           EstimateStartSpeed(track, EgoStartS);
+        // Every episode draws a pit-wall instruction. Without this the
+        // policy would only ever be told Attack and could never learn what
+        // the other modes ask of it, however the observation reports them.
+        // Drawn even when it is about to be overridden, so that a fixed
+        // instruction and a drawn one leave the random stream in the same
+        // place and everything after this - air temperature, track
+        // temperature, the opponent's gap - lands identically.
+        CarStrategy drawn = new(
+            (TireUsageMode)(random.NextInt(5) + 1),
+            (PowerOutputMode)(random.NextInt(5) + 1)
+        );
+        EgoStrategy = _fixedEgoStrategy ?? drawn;
+
+        RaceEnvironment raceEnvironment = new()
+        {
+            AirTempC = random.NextSingle(18f, 32f),
+            TrackTempC = random.NextSingle(22f, 45f)
+        };
+        _simulation = new RaceSimulation(track, raceEnvironment);
+        // Clocked from here: the agent step and the decision period are
+        // the same interval, so the driver must not keep a second clock
+        // that disagrees with it.
+        _egoDriver = DirectDriveRaceDriver.ExternallyClocked(
+            decisionHz: 1f / _agentStepSeconds
+        );
+        _ego = CreateCar(
+            "training-ego",
+            track,
+            EgoStartS,
+            startSpeed,
+            _egoAnalytic
+                // At its own pace, not the sparring handicap: this is the
+                // reference, so it drives as well as the analytic stack
+                // knows how.
+                ? new HeldDecisionDriver(
+                    new ReferenceLineDriver(),
+                    _egoAnalyticHz
+                )
+                : _egoDriver,
+            EgoStrategy
+        );
+        _simulation.AddCar(_ego);
+        if (_egoAnalytic)
+        {
+            // Not the car's driver, so nothing initialised it. It still
+            // needs its observation memory cleared, because that memory is
+            // what the previous-frame block is made of.
+            TrackPose egoPose = track.Project(_ego.State.Position);
+            RaceDriverInitContext observerContext = new(
+                _ego,
+                track,
+                egoPose,
+                raceEnvironment,
+                0f
+            );
+            _egoDriver.Initialize(in observerContext);
+        }
+        if (_solo)
+        {
+            _opponent = null;
+        }
+        else
+        {
+            _opponent = CreateCar(
+                "training-opponent",
+                track,
+                EgoStartS + InitialForwardGapMeters,
+                startSpeed,
+                new HeldDecisionDriver(
+                    new ReferenceLineDriver(profile: _opponentProfile),
+                    OpponentDecisionHz
+                ),
+                _opponentStrategy
+            );
+            _simulation.AddCar(_opponent);
+        }
+
+        // A hair of simulated time, only so that the telemetry an
+        // observation reads is the car's own rather than a default. It used
+        // to cost a decision as well - the driver's clock started here and
+        // every agent step afterwards was three-quarters out of phase with
+        // it - which is no longer possible now that the clock is ours.
+        _simulation.Step(WarmupStepSeconds);
+        _egoDistanceOrigin = _ego.Progress.TotalDistance;
+        _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
+        SampleObservation(observation);
+        MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
+        MaximumAbsoluteReferenceOffsetMeters = 0f;
+        _elapsedSeconds = 0f;
+        _passHoldSeconds = 0f;
+        _stalledHoldSeconds = 0f;
+        _terminal = false;
+    }
+
+    private TrainingTerminalReason DetermineTerminalReason(
+        float signedLeadDistance
+    )
+    {
+        // Neither contact nor a barrier is terminal: both are priced for as
+        // long as they last and the race continues, the way real incidents
+        // do. An episode that ends the moment a car brushes something
+        // destroys every bit of learning that would have followed, and it
+        // teaches a policy that the cheapest race is a short one.
+        if (_opponent is not null)
+        {
+            float fullClearance =
+                Ego.Collision.HalfLengthMeters +
+                _opponent.Collision.HalfLengthMeters;
+            if (signedLeadDistance <= -fullClearance)
+                _passHoldSeconds += AgentStepSeconds;
+            else
+                _passHoldSeconds = 0f;
+            if (_passHoldSeconds + 1e-6f >= PassHoldSeconds)
+                return TrainingTerminalReason.Passed;
+        }
+
+        if (Ego.State.Speed < StalledSpeedMetersPerSecond)
+            _stalledHoldSeconds += AgentStepSeconds;
+        else
+            _stalledHoldSeconds = 0f;
+        if (_stalledHoldSeconds + 1e-6f >= StalledHoldSeconds)
+            return TrainingTerminalReason.Stalled;
+
+        return _elapsedSeconds + 1e-6f >= _episodeDurationSeconds
+            ? TrainingTerminalReason.Timeout
+            : TrainingTerminalReason.None;
+    }
+
+    /// <summary>
+    /// The world as it stands right now, into the caller's span.
+    ///
+    /// Goes through the simulation's own frame capture rather than reading
+    /// whatever the driver last built, so the opponents in it are where
+    /// they are at this instant and not where they were when somebody last
+    /// drove. Solo and wheel-to-wheel take the same path; there is no
+    /// version of this that only works when the grid is empty.
+    /// </summary>
+    private void SampleObservation(Span<float> observation)
+    {
+        RaceDriverFrameContext context =
+            _simulation!.CaptureFrameContext(_ego!);
+        _egoDriver!.Observe(in context);
+        _egoDriver.LastObservation.CopyTo(observation);
+    }
+
+    private float CalculateSignedLeadDistance() =>
+        _simulation is null || _ego is null || _opponent is null
+            ? 0f
+            : InitialForwardGapMeters +
+              (_opponent.Progress.TotalDistance - _opponentDistanceOrigin) -
+              (_ego.Progress.TotalDistance - _egoDistanceOrigin);
+
+    private static float EstimateStartSpeed(TrackData track, float s)
+    {
+        float maximumCurvature = 0f;
+        for (int i = 0; i < 6; i++)
+        {
+            maximumCurvature = MathF.Max(
+                maximumCurvature,
+                MathF.Abs(track.Sample(s + i * 8f).RefCurvature)
+            );
+        }
+        float lateralSafeSpeed = MathF.Sqrt(
+            18f / MathF.Max(maximumCurvature, 0.002f)
+        );
+        return Math.Clamp(lateralSafeSpeed * 0.75f, 20f, 60f);
+    }
+
+    private static RaceCar CreateCar(
+        string id,
+        TrackData track,
+        float s,
+        float speed,
+        IRaceDriver driver,
+        CarStrategy strategy
+    )
+    {
+        TrackSample sample = track.Sample(s);
+        return new RaceCar(
+            id,
+            new CarConfig(),
+            new TireConfig
+            {
+                StartingSurfaceTempC = 90f,
+                StartingCoreTempC = 90f
+            },
+            driver,
+            new CarState
+            {
+                Position = sample.RefPosition,
+                Heading = sample.RefHeading,
+                Speed = speed,
+                Energy = PowertrainState.Filled(0.8f)
+            }
+        )
+        {
+            Strategy = strategy
+        };
+    }
+
+    private static void EnsureObservationSize(Span<float> observation)
+    {
+        if (observation.Length != DirectDriveObservation.ObservationSize)
+        {
+            throw new ArgumentException(
+                $"Observation must contain exactly {DirectDriveObservation.ObservationSize} values.",
+                nameof(observation)
+            );
+        }
+    }
+
+    private static TrackChoice FindTrack(string trackFamily)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackFamily);
+        foreach (TrackChoice heldOut in HeldOutTracks)
+        {
+            if (string.Equals(
+                    trackFamily,
+                    heldOut.Name,
+                    StringComparison.Ordinal
+                ))
+            {
+                return heldOut;
+            }
+        }
+
+        foreach (TrackChoice choice in TrainingTracks)
+        {
+            if (string.Equals(
+                    trackFamily,
+                    choice.Name,
+                    StringComparison.Ordinal
+                ))
+            {
+                return choice;
+            }
+        }
+        throw new ArgumentOutOfRangeException(
+            nameof(trackFamily),
+            $"Unknown training track family '{trackFamily}'."
+        );
+    }
+
+    private static TrackData BuildSpeedwayTrack() =>
+        new TrackBuilder(
+                Vector2.Zero,
+                startWidth: 20f,
+                refLineSolver: CenterLineRefLineSolver.Instance
+            )
+            .AddStraight(3000f)
+            .AddTurn(180f, 400f)
+            .AddStraight(3000f)
+            .AddTurn(180f, 400f)
+            .CloseLoop()
+            .Build(new TrackGridConfig());
+
+    private static DriverProfile CreateOpponentProfile(float pace) =>
+        new(
+            $"training-opponent-{pace:0.##}",
+            TrainingOpponentProfile.Abilities with { Pace = pace },
+            TrainingOpponentProfile.RandomSeed
+        );
+
+    private readonly record struct TrackChoice(
+        string Name,
+        Lazy<TrackData> Track
+    )
+    {
+        public TrackChoice(string name, Func<TrackData> factory) : this(
+            name,
+            new Lazy<TrackData>(factory, isThreadSafe: true)
+        )
+        {
+        }
+    }
+
+    private struct StableRandom
+    {
+        private ulong _state;
+
+        public StableRandom(ulong seed)
+        {
+            _state = seed;
+        }
+
+        public int NextInt(int exclusiveMaximum) =>
+            (int)(NextUInt64() % (uint)exclusiveMaximum);
+
+        public float NextSingle() =>
+            (float)((NextUInt64() >> 40) * (1.0 / (1UL << 24)));
+
+        public float NextSingle(float minimum, float maximum) =>
+            minimum + (maximum - minimum) * NextSingle();
+
+        private ulong NextUInt64()
+        {
+            _state += 0x9E3779B97F4A7C15UL;
+            ulong value = _state;
+            value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
+            value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
+            return value ^ (value >> 31);
+        }
+    }
+}

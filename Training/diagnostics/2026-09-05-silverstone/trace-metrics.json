@@ -1,0 +1,118 @@
+[
+  {
+    "condition": "baseline",
+    "checkpoint": "bestsp1",
+    "trace_sha256": "2a6c3589658ca15b8b354f01bcbfe6d6aa66af4be82c2c0c0dd72d0c0fcc8525",
+    "mean_speed_mps": 49.417810597896576,
+    "mean_absolute_curvature_action_change": 0.006256770342493814,
+    "mean_end_wear": 0.1839844360947609,
+    "offcourse_seconds_per_lane": 6.25
+  },
+  {
+    "condition": "baseline",
+    "checkpoint": "latestsp1",
+    "trace_sha256": "928fd26b5bfe95a87f5df9f41f0d9ed3e4c3b6a184bc71b05b6213c26c203366",
+    "mean_speed_mps": 44.272174814105036,
+    "mean_absolute_curvature_action_change": 0.01962595917575163,
+    "mean_end_wear": 0.9964918792247772,
+    "offcourse_seconds_per_lane": 2.6500000000000004
+  },
+  {
+    "condition": "matched8",
+    "checkpoint": "bestsp1",
+    "trace_sha256": "6583d8ce9a096a91dc679ac0e540c865675d9e71c2a65e01b28f37e32529a0ab",
+    "mean_speed_mps": 49.71988301789761,
+    "mean_absolute_curvature_action_change": 0.006449164129402217,
+    "mean_end_wear": 0.19335691817104816,
+    "offcourse_seconds_per_lane": 6.075
+  },
+  {
+    "condition": "matched8",
+    "checkpoint": "latestsp1",
+    "trace_sha256": "f002f8b3166d64f128774c0495d5884a75e4bf476431847e7eeef23ba7cc82cf",
+    "mean_speed_mps": 44.10809981644154,
+    "mean_absolute_curvature_action_change": 0.019408638116407355,
+    "mean_end_wear": 0.9942158088088036,
+    "offcourse_seconds_per_lane": 1.9000000000000001
+  },
+  {
+    "condition": "normal8",
+    "checkpoint": "bestsp1",
+    "trace_sha256": "0ef5fd2dd31ecfa2a4ea4bc760530d3369666875992b2182861da5ffb8c3707a",
+    "mean_speed_mps": 49.650930800378326,
+    "mean_absolute_curvature_action_change": 0.00649243926950628,
+    "mean_end_wear": 0.19229256361722946,
+    "offcourse_seconds_per_lane": 5.862500000000001,
+    "mean_end_surface_temp_c": 100.66642475128174
+  },
+  {
+    "condition": "normal8",
+    "checkpoint": "latestsp1",
+    "trace_sha256": "06905544c558e4fe0ce32dba3fbad9d671df11a5a5d4cafedb098420a649c235",
+    "mean_speed_mps": 44.03253033554554,
+    "mean_absolute_curvature_action_change": 0.01969940945316908,
+    "mean_end_wear": 0.9983422681689262,
+    "offcourse_seconds_per_lane": 1.8875000000000002,
+    "mean_end_surface_temp_c": 108.36256790161133
+  },
+  {
+    "condition": "normal8-aligned",
+    "checkpoint": "bestsp1",
+    "trace_sha256": "0eb9574e420e7870a558f49d86f677ea7d6e59ea54972732243914eb1a2e07d2",
+    "mean_speed_mps": 50.04431188815832,
+    "mean_absolute_curvature_action_change": 0.00622613535009482,
+    "mean_end_wear": 0.18485019356012344,
+    "offcourse_seconds_per_lane": 11.700000000000001,
+    "mean_end_surface_temp_c": 99.11294555664062
+  },
+  {
+    "condition": "normal8-aligned",
+    "checkpoint": "latestsp1",
+    "trace_sha256": "9d3eaadc461e98d5a934359dc7ca81d0ac7487ff689aa30545cecb8dd580085c",
+    "mean_speed_mps": 44.24381428444386,
+    "mean_absolute_curvature_action_change": 0.028344679036198927,
+    "mean_end_wear": 0.9926939457654953,
+    "offcourse_seconds_per_lane": 6.6875,
+    "mean_end_surface_temp_c": 107.65150165557861
+  },
+  {
+    "condition": "normal8-no-wear",
+    "checkpoint": "bestsp1",
+    "trace_sha256": "89b3038c5ac706d427a286f6e1ae80677fdb3c3703d0da3378c827cbc3a4c147",
+    "mean_speed_mps": 49.611066685676576,
+    "mean_absolute_curvature_action_change": 0.0069032782927317855,
+    "mean_end_wear": 2.1239799210093224e-05,
+    "offcourse_seconds_per_lane": 8.6875,
+    "mean_end_surface_temp_c": 102.61378955841064
+  },
+  {
+    "condition": "normal8-no-wear",
+    "checkpoint": "latestsp1",
+    "trace_sha256": "b324746f0142b87febdd4a1d8688ee01293d0bd1a66ff89ee411796913bffd20",
+    "mean_speed_mps": 44.037922828868034,
+    "mean_absolute_curvature_action_change": 0.03815000609876649,
+    "mean_end_wear": 4.014831358745141e-05,
+    "offcourse_seconds_per_lane": 3.1,
+    "mean_end_surface_temp_c": 117.97914218902588
+  },
+  {
+    "condition": "stochastic8",
+    "checkpoint": "bestsp1",
+    "trace_sha256": "48b78ddf27dd6d4707669e9b5b596d131df8e27c44652d7681a5bc4d264aae7f",
+    "mean_speed_mps": 40.379965091298025,
+    "mean_absolute_curvature_action_change": 0.03561060303422598,
+    "mean_end_wear": 0.21126089803874493,
+    "offcourse_seconds_per_lane": 0.4,
+    "mean_end_surface_temp_c": 115.082444190979
+  },
+  {
+    "condition": "stochastic8",
+    "checkpoint": "latestsp1",
+    "trace_sha256": "5c48ce48118b973c34059a9d6cfbc52be683004c3263e2240f6994fd0112b619",
+    "mean_speed_mps": 38.40901285837094,
+    "mean_absolute_curvature_action_change": 0.0448528874227625,
+    "mean_end_wear": 0.9015272781252861,
+    "offcourse_seconds_per_lane": 0.5125000000000001,
+    "mean_end_surface_temp_c": 116.86165046691895
+  }
+]
