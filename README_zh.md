@@ -103,7 +103,7 @@ StintegyEVO 仍处于早期工程开发阶段，目前是一套**可以运行和
 *   **引擎**：[Godot Engine 4.6.x](https://godotengine.org/)（.NET 版）
 *   **语言与运行时**：C# / .NET 8
 *   **核心**：与 Godot 表现层分离的 2D 车辆、比赛和规划仿真，可无界面运行自动化测试
-*   **表现层**：当前为 Godot 2D 调试与比赛视图，Low Poly 3D 属于后续计划
+*   **表现层**：Godot 2D 调试视图与 Low Poly 3D 初版；[运行方式、三个镜头与设计参考](docs/LOWPOLY_3D_zh.md)
 *   **AI**：Stanley 跟踪、车辆运动路径预测、滚动局部速度规划及基于共享状态快照的交通约束
 *   **数值工具**：使用 HiGHS 与 BLAS 支撑最小曲率参考线优化
 
