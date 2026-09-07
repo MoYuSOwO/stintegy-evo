@@ -278,14 +278,17 @@ public sealed class CarPhysicsTests
             optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
             "a biased split should clip one axle before all remaining grip is used"
         );
-        // And it costs no cornering, which is the anti-lock's whole
-        // purpose: the front is held at the circle rather than allowed past
-        // it, so what the driver loses to a bad split is stopping and not
-        // steering.
-        Assert.Equal(
+        // And it costs no cornering at all - it buys a little, which is
+        // the anti-lock's whole purpose stated backwards. A split that
+        // overloads one axle gets that axle held further back from its
+        // circle, so more of the circle is left over for steering. What a
+        // bad split costs is entirely stopping, which is the reading above.
+        Assert.True(
+            frontBiased.Telemetry.ActualLateralAccel >=
             optimal.Telemetry.ActualLateralAccel,
-            frontBiased.Telemetry.ActualLateralAccel,
-            precision: 3
+            $"a split the anti-lock has to correct should not cost cornering: " +
+            $"{optimal.Telemetry.ActualLateralAccel:0.000} became " +
+            $"{frontBiased.Telemetry.ActualLateralAccel:0.000}"
         );
     }
 

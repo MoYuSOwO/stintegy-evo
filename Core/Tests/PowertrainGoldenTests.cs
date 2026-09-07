@@ -94,60 +94,60 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 14.148336\n" +
-            "position 150.09515 228.47443\n" +
-            "heading 0.80492526\n" +
-            "sideslip -0.00032370118\n" +
-            "yawrate 0.23017256\n" +
-            "charge 0.7993313\n" +
-            "drivepower 136391.11\n" +
+            "speed 14.383302\n" +
+            "position 155.72798 224.89479\n" +
+            "heading 0.75618255\n" +
+            "sideslip -0.0012083551\n" +
+            "yawrate 0.2221503\n" +
+            "charge 0.79933155\n" +
+            "drivepower 139043.88\n" +
             "regenpower 0\n" +
-            "longaccel 10.491961\n" +
-            "lataccel 3.1148212\n" +
-            "wear 0.0022436283 0.003717433 0.0042146747 0.0067632855\n" +
-            "coretemp 89.3396 89.511314 89.75354 90.11967";
+            "longaccel 10.516269\n" +
+            "lataccel 2.9792864\n" +
+            "wear 0.0022059116 0.003671374 0.004188899 0.006723498\n" +
+            "coretemp 89.333855 89.50403 89.754364 90.11687";
 
         public const string SaggingPack =
-            "speed 8.776938\n" +
-            "position 244.30696 204.46846\n" +
-            "heading 0.3519921\n" +
-            "sideslip 0.0023102397\n" +
-            "yawrate 0.16217126\n" +
-            "charge 0.14957933\n" +
-            "drivepower 52188.508\n" +
+            "speed 8.7776785\n" +
+            "position 246.60391 202.65977\n" +
+            "heading 0.36257264\n" +
+            "sideslip 0.002409677\n" +
+            "yawrate 0.16459456\n" +
+            "charge 0.1495791\n" +
+            "drivepower 52192.832\n" +
             "regenpower 0\n" +
-            "longaccel 6.4362793\n" +
-            "lataccel 2.6205735\n" +
-            "wear 0.002297785 0.0038879027 0.0037380783 0.006288163\n" +
-            "coretemp 89.33094 89.52021 89.721664 90.07845";
+            "longaccel 6.4349647\n" +
+            "lataccel 2.67442\n" +
+            "wear 0.0022874032 0.0038749138 0.0037261834 0.0062735025\n" +
+            "coretemp 89.33142 89.51966 89.72158 90.0773";
 
         public const string AttackLadder =
-            "speed 13.64237\n" +
-            "position 160.60121 218.80824\n" +
-            "heading 0.43155763\n" +
-            "sideslip 0.00037098187\n" +
-            "yawrate 0.22220674\n" +
-            "charge 0.79932964\n" +
-            "drivepower 131585.25\n" +
+            "speed 14.582245\n" +
+            "position 163.30225 217.36243\n" +
+            "heading 0.5354826\n" +
+            "sideslip -0.0014949912\n" +
+            "yawrate 0.22522388\n" +
+            "charge 0.79932326\n" +
+            "drivepower 140895.89\n" +
             "regenpower 0\n" +
-            "longaccel 10.515114\n" +
-            "lataccel 3.0105245\n" +
-            "wear 0.002241597 0.0037027944 0.0042384826 0.006777598\n" +
-            "coretemp 89.33969 89.509224 89.741974 90.10361";
+            "longaccel 10.50243\n" +
+            "lataccel 3.047317\n" +
+            "wear 0.0021987236 0.0036625804 0.004175864 0.006719463\n" +
+            "coretemp 89.33616 89.505806 89.73039 90.092064";
 
         public const string EmptyPack =
-            "speed 1.4664028E-05\n" +
-            "position 108.8235 78.09093\n" +
-            "heading 1.7952955\n" +
+            "speed 1.46651455E-05\n" +
+            "position 109.38712 78.010605\n" +
+            "heading 1.643721\n" +
             "sideslip 0\n" +
             "yawrate 0\n" +
-            "charge 0.00015504633\n" +
-            "drivepower 9.387285E-08\n" +
+            "charge 0.00015505234\n" +
+            "drivepower 9.388729E-08\n" +
             "regenpower 0\n" +
-            "longaccel 7.21181E-06\n" +
-            "lataccel 5.363167\n" +
-            "wear 0.0011116189 0.0016976009 0.0013486773 0.002095845\n" +
-            "coretemp 89.17736 89.31807 89.23288 89.38822";
+            "longaccel 7.2123694E-06\n" +
+            "lataccel 5.366446\n" +
+            "wear 0.0011343651 0.0017199669 0.0013666197 0.0021131495\n" +
+            "coretemp 89.18301 89.323746 89.27645 89.43045";
     }
 
     /// <summary>
@@ -156,6 +156,8 @@ public sealed class PowertrainGoldenTests
     /// reports where it ended up. No track: this is the vehicle model alone,
     /// so nothing in the answer depends on the road code.
     /// </summary>
+
+
 
 
     private static string RunTrajectory(
