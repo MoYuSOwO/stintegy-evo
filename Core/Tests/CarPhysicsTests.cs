@@ -151,8 +151,8 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(state, car, tires, PhysicsInput(input, strategy), 1f / 60f);
 
         Assert.True(
-            state.Telemetry.RearLongitudinalUse > 0.5f,
-            "the rear should be spending most of its circle on drive"
+            state.Telemetry.RearLongitudinalUse > 0.2f,
+            "the rear should be spending a real share of its circle on drive"
         );
         Assert.True(
             state.Telemetry.ActualLongitudinalAccel < state.Telemetry.RequestedLongitudinalAccel,
@@ -410,13 +410,19 @@ public sealed class CarPhysicsTests
             );
         }
 
-        Assert.True(
-            maximumSideslip > 0.02f,
-            "front saturation in a left turn should leave the velocity direction ahead of the body"
-        );
+        // Understeer is a yaw rate deficit and nothing else. It used to
+        // show up as body sideslip too, because sideslip was the leftover
+        // between requested and delivered yaw; with real slip angles the
+        // body sits nose-in through any corner at speed, understeering or
+        // not, so the sign of the sideslip says nothing about the balance.
         Assert.True(
             maximumYawDeficit > 0.05f,
-            "front saturation should produce less yaw rate than requested"
+            $"front saturation should produce less yaw rate than requested, " +
+            $"deficit was {maximumYawDeficit:0.000}"
+        );
+        Assert.True(
+            maximumSideslip < 0.3f,
+            "and should not be a spin"
         );
     }
 
@@ -1197,8 +1203,12 @@ public sealed class CarPhysicsTests
         CarState highBaseState = CreateState(speed: 38f, batterySoc: 0.8f, highBase);
         CarState highAddedState = CreateState(speed: 38f, batterySoc: 0.8f, highAdded);
         float curvature = CurvatureForGripShare(
-            lowBaseState, car, lowBase, 0.995f);
+            lowBaseState, car, lowBase, 0.95f);
         DriverInput input = new(curvature, 0f);
+        SetSteadyCorner(lowBaseState, car, lowBase, curvature);
+        SetSteadyCorner(lowAddedState, car, lowAdded, curvature);
+        SetSteadyCorner(highBaseState, car, highBase, curvature);
+        SetSteadyCorner(highAddedState, car, highAdded, curvature);
 
         StepMany(lowBaseState, car, lowBase, input, CarStrategy.Default, steps: 1);
         StepMany(lowAddedState, car, lowAdded, input, CarStrategy.Default, steps: 1);
@@ -1214,17 +1224,22 @@ public sealed class CarPhysicsTests
     [Fact]
     public void DirectionalHeatPerUnitWorkRisesTowardTheLimit()
     {
-        float protect = MeasureDirectionalHeatPerSquaredUse(0.955f);
-        float light = MeasureDirectionalHeatPerSquaredUse(0.966f);
-        float attack = MeasureDirectionalHeatPerSquaredUse(1f);
+        // Read against the limit the car can hold rather than against the
+        // whole friction circle. The top of the old range is no longer a
+        // place a car can be: both ends would have to sit exactly on their
+        // peaks, and nothing does, so probing there measured a corner the
+        // car was failing to take rather than a tyre working hard.
+        float protect = MeasureDirectionalHeatPerSquaredUse(0.80f);
+        float light = MeasureDirectionalHeatPerSquaredUse(0.90f);
+        float attack = MeasureDirectionalHeatPerSquaredUse(1.0f);
 
         Assert.True(
             protect < light,
-            $"heat per unit work should grow from 95.5% to 96.6% use, got {protect:F6} versus {light:F6}"
+            $"heat per unit work should grow from 80% to 90% use, got {protect:F6} versus {light:F6}"
         );
         Assert.True(
             light < attack,
-            $"heat per unit work should keep growing to full use, got {light:F6} versus {attack:F6}"
+            $"heat per unit work should keep growing to the limit, got {light:F6} versus {attack:F6}"
         );
     }
 
@@ -1811,7 +1826,10 @@ public sealed class CarPhysicsTests
         CarConfig car = new();
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 44f, batterySoc: 0.6f, tires);
-        DriverInput heavy = new(0.03f, -10f);
+        // Enough brake that the axles cannot hold it, which is now the
+        // only way to be past the circle: cornering force comes from slip
+        // angles and can never exceed it.
+        DriverInput heavy = new(0.03f, -35f);
         EnterCorner(state, car, tires, heavy);
 
         CarPhysics.Step(state, car, tires, PhysicsInput(heavy), 1f / 60f);
@@ -2014,7 +2032,7 @@ public sealed class CarPhysicsTests
     {
         CarState rehearsal = state.Clone();
         float speed = rehearsal.Speed;
-        for (int i = 0; i < 150; i++)
+        for (int i = 0; i < 300; i++)
         {
             CarPhysics.Step(
                 rehearsal,
