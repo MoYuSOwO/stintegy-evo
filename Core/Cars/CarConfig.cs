@@ -115,6 +115,22 @@ public sealed class CarConfig
     /// speed at 301 km/h, all of which is where a Formula 2 car lives.
     /// </summary>
     public float MaxBrakeAccel { get; init; } = 40f;
+    /// <summary>
+    /// Traction control and, below it, anti-lock.
+    ///
+    /// Read these as a stand-in for the driver's reflexes rather than as
+    /// electronics bolted to the car. What they model is the thing a driver
+    /// does between the pedal and the tyre - easing off the instant an axle
+    /// starts to go - and they live here because that reflex has to exist
+    /// for the car to be driveable at all, not because this class of car
+    /// carries the boxes.
+    ///
+    /// Which means their precision is a driver trait and will be modulated
+    /// by the ability ratings when those arrive: a great pair of hands
+    /// catches it early and gives back little, a poor pair catches it late
+    /// and gives back a lot. Anyone tuning these for realism should be
+    /// tuning a driver, not a control unit.
+    /// </summary>
     public float TractionControlActivationUse { get; init; } = 0.99f;
     public float TractionControlStrength { get; init; } = 0.65f;
 

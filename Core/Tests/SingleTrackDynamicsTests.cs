@@ -81,6 +81,51 @@ public sealed class SingleTrackDynamicsTests
     /// such thing: the tyres handed over whatever was requested until a
     /// circle stopped them, and the car simply cornered harder.
     /// </summary>
+    /// <summary>
+    /// The number on the sign has to be the number the car does.
+    ///
+    /// <see cref="TireSlipCurve.SustainablePeakShare"/> is the car's own
+    /// account of how much of its friction circle it can actually hold, and
+    /// everything that plans a corner speed reads it. It is a measured
+    /// figure, not a chosen one, and the thing it is measured against is the
+    /// constant-speed skidpad below - so this test exists to make the
+    /// measurement compulsory. Change the balance, the tyre curve, the
+    /// steering, anything that moves what the car will hold, and this fails
+    /// until somebody re-reads the skidpad and writes the new number down.
+    ///
+    /// The alternative is a sign nobody maintains, which is what the old
+    /// model left behind: it advertised the whole circle, which was true
+    /// when it could spend the whole circle and a tenth of a lie afterwards.
+    /// </summary>
+    [Fact]
+    public void TheAdvertisedGripMatchesWhatTheSkidpadMeasures()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        const float Speed = 60f;
+
+        float measured = 0f;
+        float grip = 0f;
+        for (int i = 1; i <= 30; i++)
+        {
+            (float lateral, bool spun, float axleGrip) =
+                SteadyCircle(car, tires, Speed, 0.0005f * i);
+            if (!spun && lateral > measured)
+            {
+                measured = lateral;
+                grip = axleGrip;
+            }
+        }
+
+        float measuredShare = measured / grip;
+        float advertised = TireSlipCurve.SustainablePeakShare;
+        _output.WriteLine(
+            $"skidpad holds {measuredShare:0.000} of the axles' grip; the " +
+            $"sign says {advertised:0.000}"
+        );
+        Assert.InRange(measuredShare, advertised - 0.05f, advertised + 0.05f);
+    }
+
     [Fact]
     public void AskingForMoreThanTheTyresHaveGivesUnderteerRatherThanGrip()
     {

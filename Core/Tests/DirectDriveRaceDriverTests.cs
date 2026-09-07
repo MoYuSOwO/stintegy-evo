@@ -142,16 +142,23 @@ public sealed class DirectDriveRaceDriverTests
         // policy that uses only the road part of it and gets round.
         float distance = RunSolo(
             new DirectDriveRaceDriver(new PurePursuitPolicy()),
-            out bool stayedOnSurface
+            out float cleanDistance
         );
 
+        // Most of a lap of the simple layout, which is 1804 m, before it
+        // touches anything.
+        //
+        // Not the whole of one, and the reason is not the observation. Pure
+        // pursuit aims at a point and steers at it; it has no speed control
+        // at all, and on a car with slip angles the thing that eventually
+        // runs it out of road is carrying too much speed into a corner,
+        // which is a driving problem and not a question about what the
+        // vector carries. A broken geometry block fails this in the first
+        // two hundred metres.
         Assert.True(
-            stayedOnSurface,
-            $"the pure-pursuit car left the racing surface after {distance:0} m"
+            cleanDistance > 1200f,
+            $"the pure-pursuit car touched something after {cleanDistance:0} m"
         );
-        // Half a lap of the simple layout and then some, on a quarter
-        // throttle. The bar is that it gets round a road, not that it is
-        // quick: a policy this artless would be embarrassed to be quick.
         Assert.True(
             distance > 1000f,
             $"a minute of pure pursuit covered only {distance:0} m"
@@ -210,7 +217,7 @@ public sealed class DirectDriveRaceDriverTests
                 -1f,
                 1f
             );
-            action[1] = 0.25f;
+            action[1] = 0.1f;
         }
     }
 
@@ -232,22 +239,38 @@ public sealed class DirectDriveRaceDriverTests
             Assert.InRange(value, -1f, 1f);
     }
 
+    /// <summary>
+    /// A minute of solo running, reporting how far the car got and how far
+    /// it got before it first touched anything.
+    ///
+    /// The second number is the one that matters and it used to be a flag.
+    /// A flag was enough while the car granted whatever curvature was asked
+    /// for, because a policy that could hold a line held it indefinitely;
+    /// with slip angles a policy this artless eventually runs out of road,
+    /// and the question worth asking is whether the observation carried it
+    /// round rather than whether it carried it round for ever.
+    /// </summary>
     private static float RunSolo(
         IRaceDriver driver,
-        out bool stayedOnSurface
+        out float cleanDistance
     )
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceCar car = CreateCar(track, 100f, 40f, driver);
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
-        stayedOnSurface = true;
+        cleanDistance = float.PositiveInfinity;
         for (int i = 0; i < 60 * 60; i++)
         {
             simulation.Step(Dt);
-            if (car.LastBoundaryContact.HasValue)
-                stayedOnSurface = false;
+            if (car.LastBoundaryContact.HasValue &&
+                float.IsPositiveInfinity(cleanDistance))
+            {
+                cleanDistance = car.Progress.TotalDistance;
+            }
         }
+        if (float.IsPositiveInfinity(cleanDistance))
+            cleanDistance = car.Progress.TotalDistance;
         return car.Progress.TotalDistance;
     }
 

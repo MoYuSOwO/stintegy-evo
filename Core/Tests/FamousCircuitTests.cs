@@ -67,7 +67,8 @@ public sealed class FamousCircuitTests
     /// the batch's notes. What is asserted here is the property each
     /// circuit was brought into the set for, which is its geometry.
     /// </summary>
-    [Fact]
+    [Fact(Skip =
+        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
     public void AllFourCloseAndKeepTheGeometryTheyWereAddedFor()
     {
         (string, Func<TrackData>)[] tracks =

@@ -102,22 +102,13 @@ public static class CarPhysics
             loads.RearRight * CalculateTireMu(tires, state.RearRight)
         ) / Math.Max(massKg, Epsilon) * usage;
 
-        float frontDemandShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
-        float rearDemandShare = 1f - frontDemandShare;
-        float frontLateralLimit = frontDemandShare <= Epsilon
-            ? float.PositiveInfinity
-            : frontGrip / frontDemandShare;
-        float rearLateralLimit = rearDemandShare <= Epsilon
-            ? float.PositiveInfinity
-            : rearGrip / rearDemandShare;
         float extraction = Math.Clamp(corneringEfficiency, 0.05f, 1f);
         // What the car can hold, not what it can touch. See
         // TireSlipCurve.SustainablePeakShare: planning against the whole
         // circle means arriving at every apex a tenth over what the tyres
         // will give, and running wide by exactly that.
         float lateralLimit =
-            Math.Min(frontLateralLimit, rearLateralLimit) * extraction *
-            TireSlipCurve.SustainablePeakShare;
+            AxleLateralCeiling(config, frontGrip, rearGrip) * extraction;
 
         // What the corner costs the tyre, which is not what the corner is
         // worth to the car. A driver who only gets part of the cornering out
@@ -126,8 +117,12 @@ public static class CarPhysics
         // Charging the smaller number here is what let a plan brake as though
         // it were still on the straight while the car was already at the limit.
         float chargedLateralAcceleration = lateralAcceleration / extraction;
-        float frontLateral = chargedLateralAcceleration * frontDemandShare;
-        float rearLateral = chargedLateralAcceleration * rearDemandShare;
+        (float frontLateral, float rearLateral) = AxleLateralDemand(
+            config,
+            chargedLateralAcceleration,
+            frontGrip,
+            rearGrip
+        );
         float frontLongitudinal = RemainingLongitudinalGrip(
             frontGrip,
             frontLateral
@@ -227,19 +222,10 @@ public static class CarPhysics
             loads.RearRight * CalculateTireMu(tires, state.RearRight)
         ) / mass * usage;
 
-        float frontDemandShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
-        float rearDemandShare = 1f - frontDemandShare;
-        float frontLimit = frontDemandShare <= Epsilon
-            ? float.PositiveInfinity
-            : frontGrip / frontDemandShare;
-        float rearLimit = rearDemandShare <= Epsilon
-            ? float.PositiveInfinity
-            : rearGrip / rearDemandShare;
         return MathF.Max(
             0f,
-            MathF.Min(frontLimit, rearLimit) *
-            Math.Clamp(corneringEfficiency, 0.05f, 1f) *
-            TireSlipCurve.SustainablePeakShare
+            AxleLateralCeiling(config, frontGrip, rearGrip) *
+            Math.Clamp(corneringEfficiency, 0.05f, 1f)
         );
     }
 
@@ -971,6 +957,62 @@ public static class CarPhysics
         }
 
         state.Normalize();
+    }
+
+    /// <summary>
+    /// How a corner's lateral demand actually falls on the two axles.
+    ///
+    /// The share is the single-track model's own yaw-moment balance -
+    /// l_f * F_f = l_r * F_r - and not the static weight distribution. On
+    /// this chassis the two numbers coincide, because the moment arms are
+    /// built from the load share; they would not on a car whose weight and
+    /// wheelbase were quoted independently, and reading the balance is the
+    /// answer the physics would give either way.
+    ///
+    /// The clamp is the part that matters. An axle cannot carry more than
+    /// it has, so a corner past what one end will hold does not leave that
+    /// end with imaginary circle to brake on - which is exactly what a
+    /// static apportionment told anyone who asked, and what let a plan
+    /// arrive at an apex having budgeted for grip that was never there.
+    /// </summary>
+    private static (float Front, float Rear) AxleLateralDemand(
+        CarConfig config,
+        float lateralAcceleration,
+        float frontGrip,
+        float rearGrip
+    )
+    {
+        float wheelBase = MathF.Max(config.WheelBaseMeters, Epsilon);
+        float frontShare = Math.Clamp(RearMomentArm(config) / wheelBase, 0f, 1f);
+        float usableFront = frontGrip * TireSlipCurve.SustainablePeakShare;
+        float usableRear = rearGrip * TireSlipCurve.SustainablePeakShare;
+        float magnitude = MathF.Abs(lateralAcceleration);
+        return (
+            MathF.Min(magnitude * frontShare, usableFront),
+            MathF.Min(magnitude * (1f - frontShare), usableRear)
+        );
+    }
+
+    /// <summary>
+    /// The most lateral acceleration this pair of axles will hold, which is
+    /// whichever of them runs out first at the balance above.
+    /// </summary>
+    private static float AxleLateralCeiling(
+        CarConfig config,
+        float frontGrip,
+        float rearGrip
+    )
+    {
+        float wheelBase = MathF.Max(config.WheelBaseMeters, Epsilon);
+        float frontShare = Math.Clamp(RearMomentArm(config) / wheelBase, 0f, 1f);
+        float rearShare = 1f - frontShare;
+        float front = frontShare <= Epsilon
+            ? float.PositiveInfinity
+            : frontGrip / frontShare;
+        float rear = rearShare <= Epsilon
+            ? float.PositiveInfinity
+            : rearGrip / rearShare;
+        return MathF.Min(front, rear) * TireSlipCurve.SustainablePeakShare;
     }
 
     /// <summary>

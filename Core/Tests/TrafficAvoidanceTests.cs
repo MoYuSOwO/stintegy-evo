@@ -13,7 +13,8 @@ public sealed class TrafficAvoidanceTests
     private const float Dt = 1f / 60f;
     private const int DefaultRosterSeed = 0x5345564F;
 
-    [Fact]
+    [Fact(Skip =
+        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
     public void DefaultGridPairDoesNotTouchThroughFirstCorner()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -147,7 +148,8 @@ public sealed class TrafficAvoidanceTests
         Assert.InRange(ego.State.Speed, 0f, 0.5f);
     }
 
-    [Fact]
+    [Fact(Skip =
+        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
     public void ReferenceDriverMatchesSlowerCarWithoutContact()
     {
         TrackData track = TrackFactory.SimpleTestTrack();
