@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using StintegyEVO.Core.Cars;
@@ -36,6 +37,12 @@ public partial class RaceView3D : Node3D
     public override async void _Ready()
     {
         var watch = Stopwatch.StartNew();
+        foreach (var assembly in new[] { typeof(RaceView3D).Assembly, typeof(RaceSimulation).Assembly })
+        {
+            var config = assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "unknown";
+            var debug = assembly.GetCustomAttribute<DebuggableAttribute>();
+            GD.Print($"LOWPOLY assembly: {assembly.GetName().Name}; configuration={config}; jit_optimization_disabled={debug?.IsJITOptimizerDisabled}; path={assembly.Location}");
+        }
         var loading = new CanvasLayer();
         var label = new Label { Text = "STINTEGY\n\nPreparing Silverstone…", Position = new Vector2(44, 44) };
         label.AddThemeFontSizeOverride("font_size", 24); loading.AddChild(label); AddChild(loading);

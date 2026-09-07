@@ -7,7 +7,7 @@ This presentation worktree starts at master `1c97008`. It uses the existing Core
 From this worktree:
 
 ```sh
-dotnet build StintegyEVO.csproj -p:Optimize=true
+dotnet build StintegyEVO.csproj
 /Applications/Godot_mono.app/Contents/MacOS/Godot --path .
 ```
 
@@ -60,3 +60,5 @@ dotnet test Core/Tests/StintegyEVO.Core.Tests.csproj -c Release --filter FullyQu
 The smoke script captures three camera views, a compact window and the running car under `.tmp/lowpoly/`, and exercises pause, selection, zoom and resume. Numerical tests guard against reversed transverse height, flat elevation and a discontinuity at the lap seam.
 
 `Tools/lowpoly_motion_smoke.gd` measures frozen frames and simulation cadence at 120, 60 and 30 FPS caps. Presentation timing tests cover fractional step accumulation and batched snapshot delivery.
+
+Editor builds enable presentation optimizations and reference Core in Release configuration, including through the solution's Debug/ExportDebug mappings. Startup logs report actual assembly configuration, optimization flags and loaded paths. This is an optimized editor view with Release Core, not an exported release engine. Build the full managed export configuration with `dotnet build StintegyEVO.csproj -c ExportRelease`; a standalone release package additionally needs Godot export templates. To debug Core explicitly, build the project with `-p:SimulationConfiguration=Debug -p:Optimize=false`.

@@ -7,7 +7,7 @@
 使用 Godot **4.6.3 .NET**，导入当前 worktree 的 `project.godot`，构建后运行。命令行方式：
 
 ```sh
-dotnet build StintegyEVO.csproj -p:Optimize=true
+dotnet build StintegyEVO.csproj
 /Applications/Godot_mono.app/Contents/MacOS/Godot --path .
 ```
 
@@ -64,3 +64,11 @@ dotnet test Core/Tests/StintegyEVO.Core.Tests.csproj -c Release --filter FullyQu
 截图位于 `.tmp/lowpoly/`。运行机器负载会影响结果，应将渲染和仿真耗时分开比较。
 
 运动时序回归：`--script res://Tools/lowpoly_motion_smoke.gd`，在 120／60／30 FPS 限制下记录车辆停帧数、位移速度分位数和仿真实时倍率。
+
+## 构建配置
+
+默认编辑器构建开启视图代码优化，并引用 `Release` 的 Core；解决方案的 Debug／ExportDebug 配置也映射到 Release Core。启动日志逐个打印视图和 Core 程序集的配置、JIT 优化禁用标志和实际路径，避免误测旧 DLL。
+
+Godot 4.6.3 编辑器读取 Debug 输出，所以这属于“优化后的编辑器视图 + Release Core”，不是完整导出的 Release 游戏。完整 C# 发布配置可用 `dotnet build StintegyEVO.csproj -c ExportRelease` 构建；可执行发布包仍需 Godot 的导出模板与 `--export-release`。如需逐行调试 Core，可直接构建项目并传入 `-p:SimulationConfiguration=Debug -p:Optimize=false`。
+
+参考：[Godot 4.6.3 程序集路径选择源码](https://github.com/godotengine/godot/blob/4.6.3-stable/modules/mono/godotsharp_dirs.cpp)。
