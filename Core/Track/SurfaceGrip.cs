@@ -31,28 +31,57 @@ public static class SurfaceGrip
     public const float RacingSurface = 1f;
 
     /// <summary>
-    /// The painted-and-ribbed strip at the edge of the road. Real kerbs
-    /// cost a little grip and a lot of composure; only the grip is modelled
-    /// here, and the strip is narrow enough that a car riding it has most
-    /// of itself still on the road.
+    /// The painted-and-ribbed strip at the edge of the road, and where it
+    /// lives: <b>beyond</b> the white line, at the head of the run-off,
+    /// never inside the racing surface.
+    ///
+    /// This is the one grammar every edge on every circuit is built from.
+    /// The racing surface is racing surface right up to its own line; the
+    /// first 0.6 m past that line is kerb; everything past the kerb is
+    /// grass. A car has the whole road, then a strip that costs it a
+    /// little, then a lot.
+    ///
+    /// It was the other way round once — the last 0.6 m of the road was
+    /// kerb and the run-off was uniformly slippery from the line outwards.
+    /// That put the price of a mistake entirely inside one step: the wheel
+    /// crossed the line and lost more than half its grip with nothing in
+    /// between. A real circuit does not do that, and neither does a real
+    /// driver's decision: riding a kerb is a choice with a small price,
+    /// and it is the price that makes it a choice.
+    ///
+    /// <see cref="Kerb"/> is what the kerb is worth at its outer edge, not
+    /// throughout: the strip is a ramp, not a plateau. See
+    /// <see cref="StaticAt"/>.
     /// </summary>
     public const float KerbWidthMeters = 0.6f;
     public const float Kerb = 0.9f;
 
     /// <summary>
-    /// Beyond the white line. A mixture of the things run-off is actually
-    /// made of - grass at about four tenths, gravel at about a third,
-    /// asphalt run-off at nearly full - taken at the pessimistic end,
-    /// because the run-off a driver reaches by mistake is rarely the paved
-    /// kind.
+    /// The narrowest run-off there is: kerb, then wall, and nothing else.
+    /// A street circuit. Every buffer is at least this wide, so that the
+    /// kerb always exists — the grammar has no case for a white line with
+    /// a wall immediately behind it, because on a real circuit there is
+    /// always something painted before the barrier.
+    /// </summary>
+    public const float MinimumBufferMeters = KerbWidthMeters;
+
+    /// <summary>
+    /// Beyond the kerb. A mixture of the things run-off is actually made
+    /// of — grass at about four tenths, gravel at about a third, asphalt
+    /// run-off at nearly full — taken at the pessimistic end, because the
+    /// run-off a driver reaches by mistake is rarely the paved kind.
     /// </summary>
     public const float Buffer = 0.45f;
 
     /// <summary>
-    /// How far a boundary is smeared over. A step change in grip is a step
-    /// change in the force on one corner of the car, which is a cliff for
-    /// anything integrating it and a cliff for anything learning against
-    /// it. Short enough that the edge is still an edge.
+    /// How far the kerb's outer boundary is smeared over. A step change in
+    /// grip is a step change in the force on one corner of the car, which
+    /// is a cliff for anything integrating it and a cliff for anything
+    /// learning against it. Short enough that the edge is still an edge.
+    ///
+    /// Only one boundary needs this now. The kerb's inner edge — the white
+    /// line itself — is no longer a step to be smoothed: the whole strip
+    /// is the transition.
     /// </summary>
     public const float TransitionMeters = 0.25f;
 
@@ -76,19 +105,21 @@ public static class SurfaceGrip
     {
         float half = MathF.Max(sample.HalfWidth, 0f);
         float distance = MathF.Abs(offset);
-        float kerbInner = MathF.Max(0f, half - KerbWidthMeters);
 
-        // Tarmac, then the kerb, then whatever is past the line. Written as
-        // two blends rather than three cases so that a circuit whose road
-        // is narrower than a kerb still gets a continuous answer.
-        float onKerb = SmoothStep(kerbInner, half, distance);
-        float pastLine = SmoothStep(
-            half,
-            half + TransitionMeters,
+        // The kerb is a ramp across its whole width rather than a plateau
+        // with a lip at each end. A plateau says the second centimetre past
+        // the line costs the same as the fifty-ninth, and that is the one
+        // thing about a kerb a driver actually meters: how far onto it to
+        // put the wheel. Pricing it by depth makes that a continuous
+        // decision instead of a threshold to be either side of.
+        float acrossKerb = SmoothStep(half, half + KerbWidthMeters, distance);
+        float ontoGrass = SmoothStep(
+            half + KerbWidthMeters,
+            half + KerbWidthMeters + TransitionMeters,
             distance
         );
-        float surface = RacingSurface + (Kerb - RacingSurface) * onKerb;
-        return surface + (Buffer - surface) * pastLine;
+        float surface = RacingSurface + (Kerb - RacingSurface) * acrossKerb;
+        return surface + (Buffer - surface) * ontoGrass;
     }
 
     private static float SmoothStep(float from, float to, float value)
