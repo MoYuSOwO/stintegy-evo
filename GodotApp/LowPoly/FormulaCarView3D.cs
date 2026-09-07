@@ -9,7 +9,8 @@ public partial class FormulaCarView3D : Node3D
     public RaceCar Car { get; private set; } = null!;
     public Color TeamColor { get; private set; }
     private TrackSurfaceGeometry _surface = null!;
-    private Transform3D _previous, _current;
+    private readonly record struct RenderPose(Transform3D Transform, float Steering);
+    private SnapshotTimeline<RenderPose> _poses = null!;
     private MeshInstance3D _selection = null!;
     private Label3D _number = null!;
     private readonly Node3D[] _wheels = new Node3D[4];
@@ -62,21 +63,30 @@ public partial class FormulaCarView3D : Node3D
             Visible = false
         };
         AddChild(_number);
-        Capture(); _previous = _current; Transform = _current;
+        var pose = MakePose(Car.State.Position, Car.State.Heading, Car.LastInput.DesiredCurvature);
+        _poses = new SnapshotTimeline<RenderPose>(pose); Transform = pose.Transform;
     }
     public void Select(bool selected, bool closeView) { _selection.Visible = selected && closeView; _number.Visible = selected && closeView; }
-    public void Capture()
+    public void Capture(double time, System.Numerics.Vector2 position, float heading, float curvature)
+        => _poses.Add(time, MakePose(position, heading, curvature));
+    private RenderPose MakePose(System.Numerics.Vector2 position, float heading, float curvature)
     {
-        _previous = _current;
-        var state = Car.State; var pose = _surface.Track.Project(state.Position);
+        var pose = _surface.Track.Project(position);
         float bank = pose.Sample.BankSlopeAt(pose.D);
         var t = pose.Sample.Tangent; var n = pose.Sample.Normal;
         float gx = pose.Sample.Grade * t.X + bank * n.X, gz = pose.Sample.Grade * t.Y + bank * n.Y;
-        Vector3 x = new(MathF.Cos(state.Heading), gx * MathF.Cos(state.Heading) + gz * MathF.Sin(state.Heading), MathF.Sin(state.Heading));
+        Vector3 x = new(MathF.Cos(heading), gx * MathF.Cos(heading) + gz * MathF.Sin(heading), MathF.Sin(heading));
         x = x.Normalized(); Vector3 up = new Vector3(-gx, 1, -gz).Normalized(); Vector3 z = x.Cross(up).Normalized();
-        _current = new Transform3D(new Basis(x, z.Cross(x).Normalized(), z), new Vector3(state.Position.X, _surface.Height(pose.S, pose.D) + 0.08f, state.Position.Y));
-        float steer = Math.Clamp(Car.LastInput.DesiredCurvature * 2.8f, -0.45f, 0.45f);
-        _wheels[0].Rotation = new Vector3(0, -steer, 0); _wheels[1].Rotation = new Vector3(0, -steer, 0);
+        var transform = new Transform3D(new Basis(x, z.Cross(x).Normalized(), z), new Vector3(position.X, _surface.Height(pose.S, pose.D) + 0.08f, position.Y));
+        float steer = Math.Clamp(curvature * 2.8f, -0.45f, 0.45f);
+        return new RenderPose(transform, steer);
     }
-    public void Render(float fraction) => Transform = _previous.InterpolateWith(_current, fraction);
+    public void Render(double time)
+    {
+        var (previous, next, fraction) = _poses.Sample(time);
+        Transform = previous.Transform.InterpolateWith(next.Transform, fraction);
+        float steering = Mathf.Lerp(previous.Steering, next.Steering, fraction);
+        _wheels[0].Rotation = new Vector3(0, -steering, 0);
+        _wheels[1].Rotation = new Vector3(0, -steering, 0);
+    }
 }

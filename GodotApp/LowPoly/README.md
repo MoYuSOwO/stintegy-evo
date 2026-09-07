@@ -46,7 +46,7 @@ Our art decisions: grey-green landscape, charcoal asphalt, ivory and vermilion k
 
 `TrackSurfaceGeometry` reconstructs height by integrating Core's Grade values with numerical seam correction. Bank and crown use the same polynomial as Core. Core's Silverstone elevation profile is already an approximation, not a surveyed height field. World axes are `(Core X, height, Core Y)`.
 
-Static meshes are built once in chunks. Cars interpolate the last two completed simulation poses on rendering frames. Core runs in one background task at a time at a fixed 1/60 s step. Presentation reads Core only between steps; car transforms and map positions are copied. Strategy commands apply between steps, and pausing lets at most the current in-flight step finish. There is no accumulated catch-up queue. The HUD updates five times per second. No Godot collision shapes or rigid bodies are added. The selected car's front wheels visualize the actual curvature request.
+Static meshes are built once in chunks. Cars interpolate timestamped simulation poses on a continuous playback clock with a 100 ms startup buffer. Core runs in one background task at a time at a fixed 1/60 s step; fractional frame time is retained, and a job can batch up to six steps at low rendering frame rates. Presentation reads Core only between steps; car transforms and map positions are copied. Strategy commands apply between steps, and pausing freezes playback and lets the current batch finish. Catch-up debt is bounded to 100 ms. The HUD updates five times per second. No Godot collision shapes or rigid bodies are added. The selected car's front wheels interpolate the actual curvature request with the body pose.
 
 `CORE` in the HUD measures one simulation step, not rendering cost. `SIM` estimates the maximum real-time factor from that cost (capped at 1x), not a race-speed setting. The inherited master rule drivers were measured at roughly 250 ms per 20-car step on this development machine; the worker keeps cameras/UI responsive but does not make the simulation real-time. This prototype deliberately does not substitute scripted movement or the learned-driver branch. Use actual graphical runs for GPU/frame-rate comparisons; a headless run does not establish rendering performance.
 
@@ -58,3 +58,5 @@ dotnet test Core/Tests/StintegyEVO.Core.Tests.csproj -c Release --filter FullyQu
 ```
 
 The smoke script captures three camera views, a compact window and the running car under `.tmp/lowpoly/`, and exercises pause, selection, zoom and resume. Numerical tests guard against reversed transverse height, flat elevation and a discontinuity at the lap seam.
+
+`Tools/lowpoly_motion_smoke.gd` measures frozen frames and simulation cadence at 120, 60 and 30 FPS caps. Presentation timing tests cover fractional step accumulation and batched snapshot delivery.

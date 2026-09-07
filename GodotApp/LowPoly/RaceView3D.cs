@@ -23,8 +23,12 @@ public partial class RaceView3D : Node3D
     private readonly RaceCameraRig _camera = new() { Name = "CameraRig" };
     private readonly RaceHud3D _hud = new() { Name = "RaceHud" };
     private readonly List<FormulaCarView3D> _cars = [];
-    private double _hudElapsed, _coreMs, _sincePose, _sinceStep;
-    private Task<double>? _step;
+    private double _hudElapsed, _coreMs, _renderTime, _warmup = 0.1;
+    private long _completedTicks;
+    private readonly FixedStepBudget _budget = new();
+    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float Curvature);
+    private sealed record StepBatch(double CoreMs, CarPose[][] Frames);
+    private Task<StepBatch>? _step;
     private readonly Queue<(int Car, int Tire, int Power)> _commands = [];
     private bool _hudDirty;
     private bool _leaving;
@@ -65,17 +69,26 @@ public partial class RaceView3D : Node3D
     public override void _Process(double delta)
     {
         if (Simulation == null || _cars.Count == 0) return;
-        _sincePose += delta; _sinceStep += delta; _hudElapsed += delta;
+        _hudElapsed += delta;
+        if (!IsPaused) _budget.Advance(delta);
         // The worker owns Core while stepping. Every Core read below occurs only after
         // completion; camera and map rendering consume copied poses, never live state.
         if (_step is { IsCompleted: true })
         {
-            try { _coreMs = _step.GetAwaiter().GetResult(); }
+            try
+            {
+                var batch = _step.GetAwaiter().GetResult();
+                _coreMs = batch.CoreMs;
+                foreach (var frame in batch.Frames)
+                {
+                    double time = ++_completedTicks * FixedStepBudget.StepSeconds;
+                    for (int i = 0; i < frame.Length; i++)
+                        _cars[i].Capture(time, frame[i].Position, frame[i].Heading, frame[i].Curvature);
+                }
+            }
             catch (Exception error) { IsPaused = true; GD.PushError(error.ToString()); }
             _step = null;
             RaceSeconds = Simulation.RaceTimeSeconds;
-            foreach (var car in _cars) car.Capture();
-            _sincePose = 0; _hudDirty = true;
         }
         if (_step == null)
         {
@@ -86,25 +99,42 @@ public partial class RaceView3D : Node3D
                     (BatteryOutputMode)Math.Clamp((int)car.Strategy.BatteryMode + command.Power, 1, 5));
             }
             if (_hudDirty || _hudElapsed >= 0.2) { _hud.Refresh(_coreMs); _hudDirty = false; _hudElapsed = 0; }
-            if (!IsPaused && _sinceStep >= 1.0 / 60.0)
+            int steps = IsPaused ? 0 : _budget.TakeSteps();
+            if (steps > 0)
             {
-                _sinceStep = 0;
                 var simulation = Simulation;
                 _step = Task.Run(() =>
                 {
                     long started = Stopwatch.GetTimestamp();
-                    simulation.Step(1f / 60f);
-                    return Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                    var frames = new CarPose[steps][];
+                    for (int tick = 0; tick < steps; tick++)
+                    {
+                        simulation.Step(1f / 60f);
+                        var frame = new CarPose[simulation.Cars.Count];
+                        for (int i = 0; i < frame.Length; i++)
+                        {
+                            var car = simulation.Cars[i];
+                            frame[i] = new CarPose(car.State.Position, car.State.Heading, car.LastInput.DesiredCurvature);
+                        }
+                        frames[tick] = frame;
+                    }
+                    return new StepBatch(Stopwatch.GetElapsedTime(started).TotalMilliseconds / steps, frames);
                 });
             }
         }
-        float fraction = IsPaused ? 1f : Math.Clamp((float)(_sincePose / Math.Max(_coreMs / 1000.0, 1.0 / 60.0)), 0f, 1f);
-        foreach (var car in _cars) { car.Render(fraction); car.Select(car == _cars[SelectedCarIndex], CameraMode == 2); }
+        if (!IsPaused)
+        {
+            double held = Math.Min(_warmup, delta);
+            _warmup -= held;
+            // Render on a continuous clock, buffered behind Core, never on job completion time.
+            _renderTime = Math.Min(_renderTime + delta - held, _completedTicks * FixedStepBudget.StepSeconds);
+        }
+        foreach (var car in _cars) { car.Render(_renderTime); car.Select(car == _cars[SelectedCarIndex], CameraMode == 2); }
         _camera.Update(delta, _cars[SelectedCarIndex]);
     }
     public void SetCameraMode(int mode) { _camera.SetMode(mode); _hudDirty = true; _hud.RefreshControls(); }
     public void SelectCar(int index) { SelectedCarIndex = (index % _cars.Count + _cars.Count) % _cars.Count; _hudDirty = true; }
-    public void TogglePause() { IsPaused = !IsPaused; _hudDirty = true; _hud.RefreshControls(); }
+    public void TogglePause() { IsPaused = !IsPaused; _budget.Reset(); _hudDirty = true; _hud.RefreshControls(); }
     public override void _UnhandledInput(InputEvent input)
     {
         if (Simulation == null || _cars.Count == 0) return;

@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Core.csproj" />
+    <Compile Include="../../GodotApp/LowPoly/PresentationTiming.cs" Link="Presentation/PresentationTiming.cs" />
     <Compile Include="../../GodotApp/LowPoly/TrackSurfaceGeometry.cs" Link="Presentation/TrackSurfaceGeometry.cs" />
   </ItemGroup>
 
