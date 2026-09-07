@@ -20,6 +20,12 @@ func press(code: Key) -> void:
     released.keycode = code
     Input.parse_input_event(released)
 
+func strategy_readout() -> String:
+    for label in scene.find_children("*", "Label", true, false):
+        if "Q / E" in label.text:
+            return label.text
+    return ""
+
 func capture(name: String) -> void:
     await RenderingServer.frame_post_draw
     var image := root.get_texture().get_image()
@@ -49,6 +55,15 @@ func run() -> void:
     var frozen: float = scene.get("RaceSeconds")
     await create_timer(0.3).timeout
     check(is_equal_approx(frozen, scene.get("RaceSeconds")), "Pause must stop Core race time")
+    var original_strategy := strategy_readout()
+    check(not original_strategy.is_empty(), "Strategy readout is missing")
+    for keys in [[KEY_E, KEY_Q], [KEY_D, KEY_A]]:
+        press(keys[0])
+        await create_timer(0.3).timeout
+        check(strategy_readout() != original_strategy, "Strategy control must update the fitted car's dashboard")
+        press(keys[1])
+        await create_timer(0.3).timeout
+        check(strategy_readout() == original_strategy, "Strategy control must restore its previous rung")
     var paused_started := Time.get_ticks_msec()
     var paused_frames := 0
     while Time.get_ticks_msec()-paused_started < 2000:

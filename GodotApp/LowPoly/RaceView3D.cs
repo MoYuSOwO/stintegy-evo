@@ -61,7 +61,7 @@ public partial class RaceView3D : Node3D
             var abilities = new DriverAbilities { Pace = Next(random, 84, 96), Consistency = Next(random, 82, 96), CarControl = Next(random, 84, 97), TireManagement = Next(random, 78, 94), Adaptability = Next(random, 82, 96), Reactions = Next(random, 82, 97), Awareness = Next(random, 82, 97), Overtaking = Next(random, 80, 96), Defending = Next(random, 80, 96) };
             var driver = new ReferenceLineDriver(new DriverProfile(id, abilities, (ulong)random.NextInt64(1, long.MaxValue)));
             var car = new RaceCar(id, new CarConfig(), new TireConfig { StartingSurfaceTempC = 86f, StartingCoreTempC = 84f }, driver,
-                new CarState { Position = start.Position, Heading = sample.RefHeading, BatterySoc = 0.82f });
+                new CarState { Position = start.Position, Heading = sample.RefHeading, Energy = PowertrainState.Filled(0.82f) });
             Simulation.AddCar(car);
             var view = new FormulaCarView3D(); AddChild(view); view.Bind(car, Surface, Color.FromHtml(Liveries[i / 2]), number); _cars.Add(view);
         }
@@ -102,8 +102,8 @@ public partial class RaceView3D : Node3D
             while (_commands.TryDequeue(out var command))
             {
                 var car = Simulation.Cars[command.Car];
-                car.Strategy = new CarStrategy((TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, 5),
-                    (BatteryOutputMode)Math.Clamp((int)car.Strategy.BatteryMode + command.Power, 1, 5));
+                car.Strategy = new CarStrategy((TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, TireLadder.Usage.RungCount),
+                    car.CarConfig.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power));
             }
             if (_hudDirty || _hudElapsed >= 0.2) { _hud.Refresh(_coreMs); _hudDirty = false; _hudElapsed = 0; }
             int steps = IsPaused ? 0 : _budget.TakeSteps();

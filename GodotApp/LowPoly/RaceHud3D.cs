@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using Godot;
-using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Cars;
 
 namespace StintegyEVO.GodotApp.LowPoly;
 
@@ -12,6 +12,7 @@ public partial class RaceHud3D : CanvasLayer
     private readonly Button[] _rows = new Button[8];
     private readonly int[] _rowCars = new int[8];
     private readonly CircuitMap _map = new();
+    private readonly CarDashboard _dashboard = new();
     private Button _pause = null!;
     private RaceView3D _race = null!;
     private static readonly Color Paper = Color.FromHtml("#eeeadef5"), Ink = Color.FromHtml("#25312f"), Muted = Color.FromHtml("#647269");
@@ -62,7 +63,10 @@ public partial class RaceHud3D : CanvasLayer
         _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    LAP {car.Progress.Lap + 1:00}";
         _speed.Text = $"{car.State.Speed * 3.6f:000} km/h";
         float wear = (car.State.FrontLeft.Wear + car.State.FrontRight.Wear + car.State.RearLeft.Wear + car.State.RearRight.Wear) / 4;
-        _strategy.Text = $"TYRES   {car.Strategy.TireMode,-10}  Q / E\nPOWER   {car.Strategy.BatteryMode,-10}  A / D\nENERGY  {car.State.BatterySoc * 100:0}%     TYRE LIFE  {(1 - wear) * 100:0}%";
+        _dashboard.Refresh(car.CarConfig, car.State, car.Strategy);
+        var tireMode = _dashboard.Modes[0]; var powerMode = _dashboard.Modes[1];
+        string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
+        _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung,-10}  Q / E\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung,-10}  A / D\n{stores}     TYRE LIFE  {(1 - wear) * 100:0}%";
         var ordered = sim.Cars.Select((c, i) => (Car: c, Index: i)).OrderByDescending(x => x.Car.Progress.RaceDistanceMeters).ToArray();
         for (int i = 0; i < _rows.Length; i++)
         {
