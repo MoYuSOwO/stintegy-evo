@@ -317,6 +317,12 @@ def evaluate(
         "lap": best,
         "charged_lap": charged,
         "off_per_lap": float(np.median(off_per_lap)) if off_per_lap else 0.0,
+        # Every lap's charge, not just the middle one. The median says how
+        # much a typical lap costs; the shape says what kind of driver this
+        # is - a clean one with an occasional big mistake looks nothing like
+        # one that clips every corner, and they need different fixing.
+        "off_each_lap": list(off_per_lap),
+        "clean_lap_times": list(clean_laps),
         "laps": float(completed),
         "clean_laps": float(len(clean_laps)),
         "clean_share": len(clean_laps) / completed if completed else 0.0,
@@ -333,6 +339,44 @@ def evaluate(
         "store": float(obs[:, PRIMARY_STORE].mean()),
         "modes": modes,
     }
+
+
+
+def clean_criterion_key(
+    laps: dict[str, dict[str, float]], names: list[str]
+) -> tuple[int, int, float]:
+    """How good a checkpoint is under the criterion graduation actually
+    uses, as a tuple that sorts larger-is-better.
+
+    Lexicographic, and the order is the argument. A checkpoint that never
+    loses the car beats one that is quicker and does; among those, one that
+    laps cleanly most of the time beats one that manages it occasionally,
+    which beats one that never does; and only inside a tier does pace
+    decide. The charged lap - the ranking this project has used since
+    clean laps stopped being reliably available - survives as the tiebreak
+    inside the tier where there is no clean lap to compare, which is the
+    one place it was ever the only defined answer.
+
+    The alternative is what the slip-angle batch's own gate 2 did: rank on
+    charged lap alone, and watch a checkpoint with a clean lap, no spins
+    and a time inside the band get overwritten by one two hundredths of a
+    second quicker that had none of those things.
+    """
+    spins = sum(laps[n]["spins"] for n in names)
+    completed = sum(laps[n]["laps"] for n in names)
+    clean = sum(laps[n]["clean_laps"] for n in names)
+    share = clean / completed if completed else 0.0
+    tier = 2 if share > 0.5 else (1 if clean > 0 else 0)
+
+    def circuit_pace(name: str) -> float:
+        times = laps[name].get("clean_lap_times") or []
+        if tier > 0 and times:
+            return float(np.mean(times))
+        charged = laps[name]["charged_lap"]
+        return charged if math.isfinite(charged) else 240.0
+
+    pace = sum(circuit_pace(n) for n in names) / len(names)
+    return (1 if spins == 0 else 0, tier, -pace)
 
 
 def report(
@@ -415,6 +459,25 @@ def main() -> int:
     )
     parser.add_argument("--hidden", default=None, help='e.g. "256,256"')
     parser.add_argument("--tag", default="", help="suffix for checkpoint files")
+    # The recipe, as flags. Every threshold here is relative to something
+    # the run measured itself; none of them is a figure borrowed from a
+    # paper written about another problem.
+    parser.add_argument(
+        "--alpha-rebound-ratio", type=float, default=2.0,
+        help="freeze alpha once it climbs this many times above its own floor",
+    )
+    parser.add_argument(
+        "--alpha-rebound-windows", type=int, default=3,
+        help="consecutive log windows above that ratio before freezing",
+    )
+    parser.add_argument(
+        "--alpha-freeze-cap", type=int, default=75_000,
+        help="freeze alpha at its floor after this many steps regardless",
+    )
+    parser.add_argument(
+        "--stop-after-stale", type=int, default=3,
+        help="stop once this many evaluations improve neither line",
+    )
     args = parser.parse_args()
 
     checkpoint_dir = Path(args.checkpoint_dir)
@@ -503,7 +566,21 @@ def main() -> int:
         # built to be read against: it should start high on a policy that
         # learned to live in the old free corner, and go to zero.
         window_spins = 0
-        best_gap = -np.inf
+        # C3's key, and the charged mean beside it. Both are tracked
+        # because the stopping rule is deliberately the looser of the two:
+        # a run is only stagnant when neither the criterion that decides
+        # graduation nor the one that decides pace has moved.
+        best_key: tuple[int, int, float] | None = None
+        best_charged = math.inf
+        stale_evaluations = 0
+        # The alpha valley detector. The tuner is allowed to discover what
+        # this problem's entropy is worth; when it starts climbing back out
+        # of the floor it found, the floor is what gets kept. Every part of
+        # the judgement is relative - a historical minimum and a multiple of
+        # it - so nothing here is a constant borrowed from another problem.
+        alpha_floor = math.inf
+        alpha_rebound_windows = 0
+        alpha_frozen = args.fixed_alpha is not None
         started = time.time()
 
         for step in range(resumed_step + 1, resumed_step + args.steps + 1):
@@ -580,6 +657,31 @@ def main() -> int:
                 )
                 print(f"          {pieces}")
                 print(f"          terminals {window_terminals or 'none'}")
+
+                observed = stats.get("alpha")
+                if not alpha_frozen and observed is not None and observed > 0:
+                    alpha_floor = min(alpha_floor, float(observed))
+                    if observed > alpha_floor * args.alpha_rebound_ratio:
+                        alpha_rebound_windows += 1
+                    else:
+                        alpha_rebound_windows = 0
+                    forced = step - resumed_step >= args.alpha_freeze_cap
+                    if (
+                        alpha_rebound_windows >= args.alpha_rebound_windows
+                        or forced
+                    ):
+                        agent.freeze_alpha(alpha_floor)
+                        alpha_frozen = True
+                        print(
+                            f"          alpha frozen at {alpha_floor:.4f} "
+                            + (
+                                "(step cap)"
+                                if forced
+                                else f"(rebounded above "
+                                     f"{args.alpha_rebound_ratio:g}x for "
+                                     f"{alpha_rebound_windows} windows)"
+                            )
+                        )
                 window_reward = 0.0
                 window_components[:] = 0.0
                 window_terminals = {}
@@ -641,9 +743,19 @@ def main() -> int:
                 mean_lap = mean_lap_of(trained)
                 held_lap = mean_lap_of(held)
                 left, right = ("专家", "哨兵") if args.track else ("训练", "保留")
+                key = clean_criterion_key(laps, trained)
+                spins_total = sum(laps[n]["spins"] for n in trained)
+                completed = sum(laps[n]["laps"] for n in trained)
+                clean_total = sum(laps[n]["clean_laps"] for n in trained)
                 print(
                     f"    计罚平均圈  {left} {lap_string(mean_lap)}"
                     f"   {right} {lap_string(held_lap)}"
+                )
+                print(
+                    f"    干净口径    旋转 {spins_total:.0f}"
+                    f"  干净 {clean_total:.0f}/{completed:.0f}"
+                    f"  档位 {('无', '有', '过半')[key[1]]}"
+                    f"  均速 {lap_string(-key[2])}"
                 )
                 agent.save(
                     str(checkpoint_dir / f"latest{args.tag}.pt"), step
@@ -663,16 +775,47 @@ def main() -> int:
                 # A checkpoint that completes nothing is not a best
                 # checkpoint, however flattering its mean happens to be.
                 laps_everywhere = all(laps[n]["laps"] > 0 for n in trained)
-                if (
+                improved_criterion = (
+                    laps_everywhere and (best_key is None or key > best_key)
+                )
+                improved_pace = (
                     laps_everywhere
                     and math.isfinite(mean_lap)
-                    and -mean_lap > best_gap
-                ):
-                    best_gap = -mean_lap
+                    and mean_lap < best_charged
+                )
+                if improved_criterion:
+                    best_key = key
                     agent.save(
                         str(checkpoint_dir / f"best{args.tag}.pt"), step
                     )
-                    print(f"    saved best (计罚平均圈 {lap_string(mean_lap)})")
+                    print(
+                        f"    saved best (旋转 {spins_total:.0f}, 干净档 "
+                        f"{('无', '有', '过半')[key[1]]}, 均速 "
+                        f"{lap_string(-key[2])})"
+                    )
+                if improved_pace:
+                    best_charged = mean_lap
+
+                # Stagnant only when neither line has moved. The strict
+                # criterion can sit still for a long time while the car is
+                # still finding pace, and pace can plateau while the car is
+                # still learning to keep it clean; stopping on either alone
+                # throws away the half of the run that was still working.
+                if improved_criterion or improved_pace:
+                    stale_evaluations = 0
+                else:
+                    stale_evaluations += 1
+                    print(
+                        f"    无进步 {stale_evaluations}/"
+                        f"{args.stop_after_stale} 评"
+                    )
+                    if stale_evaluations >= args.stop_after_stale:
+                        print(
+                            f"training stopped at step {step}: neither the "
+                            f"clean criterion nor the charged mean improved "
+                            f"for {stale_evaluations} evaluations"
+                        )
+                        break
 
     print("training finished")
     return 0

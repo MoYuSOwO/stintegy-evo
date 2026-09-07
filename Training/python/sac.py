@@ -291,6 +291,17 @@ class SacAgent:
         )
         self.action_size = action_size
 
+    def freeze_alpha(self, value: float) -> None:
+        """Pin the entropy coefficient here for the rest of the run.
+
+        The tuner is for discovering what this problem's entropy is worth;
+        once it has found the floor, holding it there is what production
+        looks like. Auto to discover, fixed to run.
+        """
+        self._fixed_alpha = torch.tensor(
+            value, device=self.device, dtype=torch.float32
+        )
+
     @property
     def alpha(self) -> torch.Tensor:
         if self._fixed_alpha is not None:
