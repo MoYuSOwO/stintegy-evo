@@ -252,4 +252,88 @@ public sealed class SurfaceGripTests
         }
         return best;
     }
+
+    /// <summary>
+    /// The edge reads the same on every circuit: road to the white line,
+    /// kerb for the first 0.6 m past it, grass beyond.
+    ///
+    /// The order of the three is the point. The kerb used to be the last
+    /// strip of the racing surface, which meant a wheel crossing the line
+    /// went from full grip to less than half of it inside one step. Now
+    /// the road is worth its full value right up to its own line, and the
+    /// first thing past the line is the cheap mistake rather than the
+    /// expensive one.
+    /// </summary>
+    [Fact]
+    public void TheEdgeIsRoadThenKerbThenGrass()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample sample = track.Sample(120f);
+        float half = sample.HalfWidth;
+
+        // Racing surface right up to the line: a hand's width inside it
+        // is still worth a hundred per cent.
+        Assert.Equal(
+            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half - 0.1f), 3
+        );
+        // Past the line, through the transition, on the kerb.
+        Assert.Equal(
+            SurfaceGrip.Kerb,
+            SurfaceGrip.StaticAt(
+                sample, half + SurfaceGrip.TransitionMeters + 0.05f
+            ),
+            3
+        );
+        // Past the kerb, through the second transition, on the grass.
+        Assert.Equal(
+            SurfaceGrip.Buffer,
+            SurfaceGrip.StaticAt(
+                sample,
+                half + SurfaceGrip.KerbWidthMeters
+                    + SurfaceGrip.TransitionMeters + 0.05f
+            ),
+            3
+        );
+        // Halfway across the kerb is worth more than the grass and less
+        // than the road, which is the whole reason the strip exists.
+        float onKerb = SurfaceGrip.StaticAt(
+            sample, half + SurfaceGrip.KerbWidthMeters * 0.5f
+        );
+        Assert.InRange(onKerb, SurfaceGrip.Buffer + 0.05f, SurfaceGrip.RacingSurface);
+    }
+
+    /// <summary>
+    /// Every circuit has at least a kerb's width of run-off, everywhere.
+    /// The narrowest case the grammar allows is a street circuit: kerb,
+    /// then wall. A white line with a barrier immediately behind it is not
+    /// a narrow run-off, it is a case the edge grammar cannot describe,
+    /// so the builder floors it instead of letting it happen.
+    /// </summary>
+    [Theory]
+    [InlineData("monaco")]
+    [InlineData("baku")]
+    [InlineData("silverstone")]
+    public void NoCircuitHasLessRunOffThanAKerb(string name)
+    {
+        TrackData track = name switch
+        {
+            "monaco" => TrackFactory.MonacoStyleTestTrack(),
+            "baku" => TrackFactory.BakuStyleTestTrack(),
+            _ => TrackFactory.SilverstoneStyleTestTrack(),
+        };
+        float narrowest = float.MaxValue;
+        for (int s = 0; s < (int)track.LengthMeters; s++)
+        {
+            TrackSample sample = track.Sample(s);
+            narrowest = MathF.Min(
+                narrowest,
+                MathF.Min(sample.LeftBufferWidth, sample.RightBufferWidth)
+            );
+        }
+        Assert.True(
+            narrowest >= SurfaceGrip.MinimumBufferMeters - 1e-4f,
+            $"{name} has run-off {narrowest:0.000} m wide somewhere, " +
+            $"narrower than the {SurfaceGrip.MinimumBufferMeters:0.0} m kerb"
+        );
+    }
 }

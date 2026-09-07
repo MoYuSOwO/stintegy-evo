@@ -13,12 +13,23 @@ public class TrackBuilder
     private static readonly IRefLineSolver DefaultRefLineSolver =
         new MinimumCurvatureRefLineSolver();
 
+    /// <summary>
+    /// One metre of road. The buffers are floored on the way in rather
+    /// than checked on the way out: run-off narrower than a kerb is not a
+    /// narrow run-off, it is a white line with a barrier behind it, and
+    /// the edge grammar has no such case. Every path into the builder --
+    /// the hand-written straights and arcs, the surveyed centrelines, and
+    /// the resampling that runs over both -- goes through here, so this is
+    /// the one place the floor has to hold.
+    /// </summary>
     private readonly struct BuilderNode(Vector2 center, float width, float leftBuffer, float rightBuffer)
     {
         public readonly Vector2 Center = center;
         public readonly float Width = width;
-        public readonly float LeftBuffer = leftBuffer;
-        public readonly float RightBuffer = rightBuffer;
+        public readonly float LeftBuffer =
+            Math.Max(leftBuffer, SurfaceGrip.MinimumBufferMeters);
+        public readonly float RightBuffer =
+            Math.Max(rightBuffer, SurfaceGrip.MinimumBufferMeters);
     }
 
     private readonly record struct SmoothedCenterlinePoint(
