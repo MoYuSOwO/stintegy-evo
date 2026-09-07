@@ -291,6 +291,19 @@ public sealed class DirectDriveDuelEnvironment
                 : "Reset must be called first."
         );
 
+    /// <summary>
+    /// How many times the ego was declared lost during the last step.
+    /// Reported as an event rather than a running total so a lane that
+    /// re-seeds mid-run cannot make the count go backwards, and so summing
+    /// it over a session is the whole of the arithmetic.
+    ///
+    /// Not an observation and never given to the policy - a spin is
+    /// perceptible through the speed, the yaw rate and the line the car is
+    /// suddenly not on. This is for the scoreboard, which needs to say
+    /// whether a lap was driven or survived.
+    /// </summary>
+    public int SpinEventsThisStep { get; private set; }
+
     public DirectDriveDuelEnvironment(
         float minimumForwardGapMeters = DefaultMinimumForwardGapMeters,
         float maximumForwardGapMeters = DefaultMaximumForwardGapMeters,
@@ -436,8 +449,10 @@ public sealed class DirectDriveDuelEnvironment
         float egoDistanceBefore = _ego.Progress.TotalDistance;
         float opponentDistanceBefore =
             _opponent?.Progress.TotalDistance ?? 0f;
+        int spinsBefore = _ego.State.SpinEvents;
 
         _simulation.Step(AgentStepSeconds);
+        SpinEventsThisStep = _ego.State.SpinEvents - spinsBefore;
         _elapsedSeconds += AgentStepSeconds;
         // Sampled at the far end of the interval, which is the instant the
         // next action will be committed at: one observation per decision,
@@ -466,6 +481,14 @@ public sealed class DirectDriveDuelEnvironment
         _terminal = terminalReason != TrainingTerminalReason.None;
 
         bool offCourse = _ego.Progress.Region != TrackRegion.RacingSurface;
+        // Ground covered while spinning is not ground the driver drove, and
+        // it is the same argument that masks the progress reward off the
+        // road: a way of covering distance that the driver is not in charge
+        // of must not pay, or the cheapest lap is the one thrown away at the
+        // right angle. The episode is not ended by it - a spin costs a race,
+        // not a career, and a driver who is never allowed to finish a spin
+        // never learns what the seconds afterwards are worth.
+        bool spinning = _ego.State.Spinning;
         float wallSeconds = _ego.BoundaryContactSeconds;
         float speedSquared = _ego.State.Speed * _ego.State.Speed;
         float sliding =
@@ -476,7 +499,7 @@ public sealed class DirectDriveDuelEnvironment
             terminalReason,
             // Masked off course, so that cutting a corner cannot pay for
             // itself with the ground it gains.
-            OwnProgressReward: offCourse
+            OwnProgressReward: offCourse || spinning
                 ? 0f
                 : OwnProgressRate * egoProgress,
             RelativeProgressReward: _solo
@@ -584,6 +607,7 @@ public sealed class DirectDriveDuelEnvironment
     )
     {
         EnsureObservationSize(observation);
+        SpinEventsThisStep = 0;
         TrackData track = choice.Track.Value;
         TrackFamily = choice.Name;
         EgoStartS = track.WrapS(

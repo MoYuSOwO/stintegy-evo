@@ -28,8 +28,14 @@ public static class TrainingProtocol
     /// harness needs it to time a lap, which nothing else in the protocol
     /// could do: the progress reward is masked off course and the
     /// observation is forbidden absolute position by design.
+    ///
+    /// Version 3 appends the number of spin events each lane began during
+    /// the step, for the same reason and on the same terms. A lap that was
+    /// survived rather than driven has to be tellable from one that was not,
+    /// and the policy is no more entitled to be told it spun than it is to be
+    /// told where on Earth it is.
     /// </summary>
-    public const int Version = 2;
+    public const int Version = 3;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

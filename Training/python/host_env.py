@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 2
+VERSION = 3
 
 # The decision rate the host defaults to, mirrored from
 # DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
@@ -189,10 +189,11 @@ class HostEnv:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Advance every lane, then re-seed the lanes that finished.
 
-        Returns ``(next_obs, reward, done, reason, components)``. The
-        returned ``next_obs`` is the post-reset observation for finished
-        lanes, so the caller must store the transition using the terminal
-        flag rather than bootstrapping through it.
+        Returns ``(next_obs, reward, done, reason, components,
+        race_distance, final_obs, spins)``. The returned ``next_obs`` is the
+        post-reset observation for finished lanes, so the caller must store
+        the transition using the terminal flag rather than bootstrapping
+        through it.
         """
         flat = np.ascontiguousarray(
             np.clip(actions, -1.0, 1.0), dtype="<f4"
@@ -229,6 +230,13 @@ class HostEnv:
         race_distance = np.frombuffer(
             payload, dtype="<f4", count=self.batch, offset=cursor
         ).astype(np.float64)
+        cursor += self.batch * 4
+        # Spins begun during this step, per lane. An event count rather than
+        # a running total, so a lane that re-seeds cannot make the number go
+        # backwards and summing is the whole of the arithmetic.
+        spins = np.frombuffer(
+            payload, dtype=np.uint8, count=self.batch, offset=cursor
+        ).astype(np.int64)
 
         # The observation the episode actually ended on. The array returned
         # below is what the policy acts on next, so finished lanes carry the
@@ -247,7 +255,10 @@ class HostEnv:
             assert kind == KIND_MASKED_RESET_RESPONSE, kind
             obs = self._observations_from(reset_payload)
 
-        return obs, reward, done, reason, components, race_distance, final_obs
+        return (
+            obs, reward, done, reason, components, race_distance, final_obs,
+            spins,
+        )
 
     def close(self) -> None:
         try:

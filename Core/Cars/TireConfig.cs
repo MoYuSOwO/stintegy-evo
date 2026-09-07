@@ -14,6 +14,26 @@ public sealed class TireConfig
     // car approaches the friction-circle limit; the transition stays smooth.
     public const float DirectionalHeatRampStartUse = 0.90f;
     public const float MinimumDirectionalHeatScale = 0.20f;
+    /// <summary>
+    /// Where the partial-slip heat branch starts, as a share of the
+    /// friction circle.
+    ///
+    /// DORMANT since the lateral model was rebuilt on slip angles, and
+    /// deliberately left where it is. "Use" was an unbounded request under
+    /// the old model - a car could ask for twice its circle, and the
+    /// measured ceiling was 2.002 - so this branch fired through every fast
+    /// corner. It is a bounded delivery now, the measured ceiling is 0.966,
+    /// and nothing ever reaches this line again.
+    ///
+    /// Not lowered here on purpose: moving it re-opens the whole tyre
+    /// temperature calibration, and that is not a thing to do in the middle
+    /// of a physics batch's gates. It is filed in the tyre batch's list in
+    /// the design notes, to be re-read in the same pass that re-reads heat
+    /// against slip-angle semantics - the wear side has already moved to
+    /// force times sliding, and the heat side owes the same visit.
+    ///
+    /// Dead code may live. It may not go unmarked.
+    /// </summary>
     public const float NearLimitHeatStartUse = 0.99f;
     public const float NearLimitWearExponent = 8f;
     public const float OverLimitHeatRate = 6f;

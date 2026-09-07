@@ -69,7 +69,9 @@ public sealed class BatchedTrainingHost
             batchSize * sizeof(byte) * 2 +
             batchSize * TrainingStepResult.ComponentCount * sizeof(float) +
             // The along-track race distance appended for the lap timer.
-            batchSize * sizeof(float)
+            batchSize * sizeof(float) +
+            // And the spin events begun this step, for the scoreboard.
+            batchSize * sizeof(byte)
         );
         if (stepResponseBytes > TrainingProtocol.MaxPayloadLength)
         {
@@ -285,6 +287,19 @@ public sealed class BatchedTrainingHost
                 _responseBuffer,
                 offset,
                 _environments[i].Ego.Progress.RaceDistanceMeters
+            );
+        }
+
+        // How many times each lane was declared lost during this step. A
+        // byte because a fifteenth of a second cannot hold two spins, and the
+        // clamp is there so that a bug upstream shows up as a saturated count
+        // rather than as a wrapped one.
+        for (int i = 0; i < _batchSize; i++)
+        {
+            _responseBuffer[offset++] = (byte)Math.Clamp(
+                _environments[i].SpinEventsThisStep,
+                0,
+                255
             );
         }
 

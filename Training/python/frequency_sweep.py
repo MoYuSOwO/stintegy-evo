@@ -72,6 +72,7 @@ def measure(
     dirty: list[float] = []
     charged: list[float] = []
     off_each: list[float] = []
+    spin_events = 0
 
     started = time.perf_counter()
     with HostEnv(
@@ -94,7 +95,8 @@ def measure(
         crossed: list[float | None] = [None] * LANES
         previous: list[float | None] = [None] * LANES
         for step in range(steps):
-            obs, _, done, _, components, race, _ = env.step(idle)
+            obs, _, done, _, components, race, _, spins = env.step(idle)
+            spin_events += int(spins.sum())
             now = (step + 1) * step_seconds
             # A penalty is a rate times a squared speed times a duration,
             # so dividing by the first two gives the duration back.
@@ -143,6 +145,11 @@ def measure(
         "charged_lap": min(charged) if charged else float("inf"),
         "fastest_lap": min(clean + dirty) if (clean or dirty) else float("inf"),
         "off_per_lap": float(np.median(off_each)) if off_each else 0.0,
+        # The analytic driver is the calibration of the limit zone: it has
+        # never gone past five degrees of sideslip, so any spin here is the
+        # verdict line set too close to the road rather than a driver who
+        # deserved one.
+        "spins": spin_events,
         "clean_laps": len(clean),
         "laps": len(clean) + len(dirty),
         "sim_seconds": SIM_SECONDS,
@@ -185,12 +192,13 @@ def main() -> int:
 
     out: dict[str, dict[str, dict[str, float]]] = {}
     for name in wanted:
-        lap_metres, table_value, _ = TRACKS[name]
+        lap_metres, _ = TRACKS[name]
         out[name] = {}
-        print(f"\n{name}  (table {table_value:.3f}s)", flush=True)
+        print(f"\n{name}", flush=True)
         print(
             f"    {'Hz':>4}  {'clean':>9}  {'charged':>9}  {'fastest':>9}"
-            f"  {'off s/lap':>9}  {'clean/laps':>10}  {'wall s':>7}",
+            f"  {'off s/lap':>9}  {'clean/laps':>10}  {'spins':>5}"
+            f"  {'wall s':>7}",
             flush=True,
         )
         for hz in RATES:
@@ -202,6 +210,7 @@ def main() -> int:
                 f"  {clock(result['fastest_lap']):>9}"
                 f"  {result['off_per_lap']:9.2f}"
                 f"  {result['clean_laps']:4d}/{result['laps']:<5d}"
+                f"  {result['spins']:5d}"
                 f"  {result['wall_seconds']:7.1f}",
                 flush=True,
             )

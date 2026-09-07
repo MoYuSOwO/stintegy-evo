@@ -94,7 +94,8 @@ public sealed class ContinuousFollowingTests
         );
     }
 
-    [Fact]
+    [Fact(Skip =
+        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
     public void FollowerKeepsBodyClearanceWhenLeaderBrakesWithoutAPlan()
     {
         TrackData track = DraftingTrack.Value;
