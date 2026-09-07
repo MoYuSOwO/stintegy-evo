@@ -8,6 +8,7 @@ script = ExtResource("1_race")
 TrackRenderer = NodePath("Track")
 Camera = NodePath("Camera2D")
 ShowFrameStats = true
+UseLearnedDriver = true
 
 [node name="Track" type="Node2D" parent="."]
 script = ExtResource("2_track")
