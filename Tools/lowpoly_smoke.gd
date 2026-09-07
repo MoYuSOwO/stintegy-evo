@@ -38,8 +38,14 @@ func run() -> void:
     while scene.get_node_or_null("CameraRig/Lens") == null and Time.get_ticks_msec()-loading_started < 120000:
         await process_frame
     await process_frame
-    check(scene.get_node("Car_20") != null, "Twenty-car grid is missing")
-    check(scene.get("IsPaused"), "Preview should start paused")
+    var cars := scene.get_children().filter(func(child): return child.name.begins_with("Car_"))
+    check(cars.size() == 1, "Default practice must contain exactly one car")
+    check(scene.get("SelectedCarIndex") == 0, "Follow camera must select the only car")
+    check(not scene.get("IsPaused"), "Solo practice should start automatically")
+    await create_timer(1.0).timeout
+    check(scene.get("RaceSeconds") > 0, "Default practice must advance automatically")
+    press(KEY_SPACE)
+    await create_timer(1.0).timeout
     var frozen: float = scene.get("RaceSeconds")
     await create_timer(0.3).timeout
     check(is_equal_approx(frozen, scene.get("RaceSeconds")), "Pause must stop Core race time")
@@ -57,10 +63,9 @@ func run() -> void:
         await capture("02-aerial" if mode == 2 else "03-high-side")
     press(KEY_1)
     await process_frame
-    var selected_before: int = scene.get("SelectedCarIndex")
     press(KEY_RIGHT)
     await create_timer(0.3).timeout
-    check(scene.get("SelectedCarIndex") == (selected_before + 1) % 20, "Car selection did not advance")
+    check(scene.get("SelectedCarIndex") == 0, "Single-car selection must remain valid")
     var camera: Camera3D = scene.get_node("CameraRig/Lens")
     var size_before := camera.size
     var wheel := InputEventMouseButton.new()

@@ -1,6 +1,6 @@
 # Low-poly 3D prototype
 
-This presentation worktree starts at master `1c97008`. It uses the existing Core simulation and 20 rule drivers. It does not include the uncommitted learned-driver work in the other checkout.
+This presentation worktree starts at master `1c97008`. It uses the existing Core simulation and one rule driver for solo practice. It does not include the uncommitted learned-driver work in the other checkout.
 
 ## Run
 
@@ -11,7 +11,7 @@ dotnet build StintegyEVO.csproj -p:Optimize=true
 /Applications/Godot_mono.app/Contents/MacOS/Godot --path .
 ```
 
-Import `project.godot` with Godot **4.6.3 .NET** for normal editor use. The default scene is `Levels/lowpoly.tscn`. It starts paused on the grid: use RUN or Space to start. A loading label remains responsive while the existing reference-line solver prepares Silverstone. The original `Levels/root.tscn` remains available for 2D debugging.
+Import `project.godot` with Godot **4.6.3 .NET** for normal editor use. The default scene is `Levels/lowpoly.tscn`. It starts a single-car practice session automatically: use Space to pause or resume. A loading label remains responsive while the existing reference-line solver prepares Silverstone. The original `Levels/root.tscn` remains available for 2D debugging.
 
 ## Controls
 
@@ -57,4 +57,4 @@ dotnet test Core/Tests/StintegyEVO.Core.Tests.csproj -c Release --filter FullyQu
 /Applications/Godot_mono.app/Contents/MacOS/Godot --path . --script res://Tools/lowpoly_smoke.gd
 ```
 
-The smoke script captures three camera views, a compact window and running cars under `.tmp/lowpoly/`, and exercises pause, selection, zoom and resume. Numerical tests guard against reversed transverse height, flat elevation and a discontinuity at the lap seam.
+The smoke script captures three camera views, a compact window and the running car under `.tmp/lowpoly/`, and exercises pause, selection, zoom and resume. Numerical tests guard against reversed transverse height, flat elevation and a discontinuity at the lap seam.

@@ -14,8 +14,8 @@ public partial class RaceView3D : Node3D
 {
     public RaceSimulation Simulation { get; private set; } = null!;
     public TrackSurfaceGeometry Surface => _circuit.Surface;
-    public int SelectedCarIndex { get; private set; } = 6;
-    public bool IsPaused { get; private set; } = true;
+    public int SelectedCarIndex { get; private set; }
+    public bool IsPaused { get; private set; }
     public int CameraMode => _camera.Mode;
     public float RaceSeconds { get; private set; }
     public float SimulationRate => _coreMs > 0 ? MathF.Min(1f, 1000f / (60f * (float)_coreMs)) : 1f;
@@ -43,7 +43,7 @@ public partial class RaceView3D : Node3D
         Simulation = new RaceSimulation(track, new RaceEnvironment { AirTempC = 25f, TrackTempC = 35f });
         AddChild(_circuit); _circuit.Initialize(track); CreateLighting();
         var random = new Random(0x5345564F);
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < 1; i++)
         {
             int number = i + 1; var start = track.Grids[number]; var sample = track.Sample(start.S);
             string id = $"grid-{number:D2}";
@@ -57,14 +57,14 @@ public partial class RaceView3D : Node3D
         AddChild(_camera); _camera.Initialize(Surface);
         AddChild(_hud); _hud.Initialize(this); _hud.Refresh(0);
         _camera.Update(0, _cars[SelectedCarIndex]);
-        GD.Print($"LOWPOLY ready: 20 cars; circuit={track.LengthMeters:0}m; startup={watch.Elapsed.TotalSeconds:0.00}s");
+        GD.Print($"LOWPOLY ready: {_cars.Count} car; circuit={track.LengthMeters:0}m; startup={watch.Elapsed.TotalSeconds:0.00}s");
     }
     private static float Next(Random r, float min, float max) => min + (float)r.NextDouble() * (max - min);
     public override void _ExitTree() => _leaving = true;
 
     public override void _Process(double delta)
     {
-        if (Simulation == null || _cars.Count != 20) return;
+        if (Simulation == null || _cars.Count == 0) return;
         _sincePose += delta; _sinceStep += delta; _hudElapsed += delta;
         // The worker owns Core while stepping. Every Core read below occurs only after
         // completion; camera and map rendering consume copied poses, never live state.
@@ -107,7 +107,7 @@ public partial class RaceView3D : Node3D
     public void TogglePause() { IsPaused = !IsPaused; _hudDirty = true; _hud.RefreshControls(); }
     public override void _UnhandledInput(InputEvent input)
     {
-        if (Simulation == null || _cars.Count != 20) return;
+        if (Simulation == null || _cars.Count == 0) return;
         if (input is InputEventMouseButton mouse && mouse.Pressed)
         {
             if (mouse.ButtonIndex == MouseButton.WheelUp) _camera.Zoom(0.88f);
