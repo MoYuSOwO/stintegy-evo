@@ -35,6 +35,22 @@ import numpy as np
 from host_env import TERMINAL_NAMES, HostEnv
 from train import EGO_SPEED, EVALUATION_MODES, STEP_SECONDS, TRACKS
 
+# The road-and-limits block sits immediately before the ego block. Its
+# first four slots are the distance from the car's centre to each wall and
+# the width of each buffer, all divided by the same scale -- which is
+# enough to recover the half-width of the road and where the car is
+# across it, without adding a channel to the protocol.
+ROAD_BLOCK = EGO_SPEED - 13
+BUFFER_SCALE = 20.0
+
+# Where the wheels are, relative to the car's centre. Only the track width
+# matters here: the wheels' fore-and-aft positions move them across the
+# road only through the car's yaw relative to the track, which this cannot
+# see. At ten degrees of yaw that is about a quarter of a metre on the
+# front axle -- enough to blur which side of a boundary a wheel is on in a
+# genuinely marginal case, not enough to move a histogram.
+HALF_TRACK_METRES = 0.8
+
 # Ego block layout: speed, longitudinal accel, lateral accel, yaw rate,
 # sideslip. The scales are the observation writer's own
 # (Core/Drivers/Learned/DirectDriveObservation.cs).
@@ -80,6 +96,42 @@ def _yaw_rate(obs: np.ndarray) -> np.ndarray:
 def _sideslip(obs: np.ndarray) -> np.ndarray:
     return obs[:, EGO_SIDESLIP] * SIDESLIP_SCALE
 
+
+def _road(obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Half the road's width, and how far the car is from its middle.
+
+    Positive offset is to the right of travel, matching the simulation's
+    own convention: its normal is the mathematical right, so d grows to
+    the right.
+    """
+    to_left_wall = obs[:, ROAD_BLOCK] * BUFFER_SCALE
+    to_right_wall = obs[:, ROAD_BLOCK + 1] * BUFFER_SCALE
+    left_buffer = obs[:, ROAD_BLOCK + 2] * BUFFER_SCALE
+    right_buffer = obs[:, ROAD_BLOCK + 3] * BUFFER_SCALE
+    to_left_line = to_left_wall - left_buffer
+    to_right_line = to_right_wall - right_buffer
+    half_width = 0.5 * (to_left_line + to_right_line)
+    offset = 0.5 * (to_right_line - to_left_line)
+    return half_width, offset
+
+
+def surface_of(offset: float, half_width: float) -> str:
+    """Which of the edge grammar's three surfaces a wheel is on.
+
+    Tarmac to the white line, kerb for the first 0.6 m past it, grass
+    beyond that -- the same three the physics prices, named rather than
+    numbered so a histogram reads as a sentence.
+    """
+    past = abs(offset) - half_width
+    if past <= 0.0:
+        return "柏油"
+    return "路肩" if past <= 0.6 else "草"
+
+
+def wheel_surfaces(offset: float, half_width: float) -> str:
+    left = surface_of(offset - HALF_TRACK_METRES, half_width)
+    right = surface_of(offset + HALF_TRACK_METRES, half_width)
+    return left if left == right else f"{left}/{right}"
 
 def build_corner_map(
     curvature_sum: np.ndarray, curvature_count: np.ndarray, lap_metres: float
@@ -193,6 +245,7 @@ def probe(
             action = agent.act(obs, deterministic=True)
             speed = _speed(obs)
             slip = _sideslip(obs)
+            half_width, offset = _road(obs)
             for lane in range(lanes):
                 history[lane].append(
                     {
@@ -200,6 +253,11 @@ def probe(
                         "accel_cmd": float(action[lane, 1]),
                         "speed": float(speed[lane]),
                         "sideslip_deg": float(math.degrees(slip[lane])),
+                        "offset_m": float(offset[lane]),
+                        "half_width_m": float(half_width[lane]),
+                        "surfaces": wheel_surfaces(
+                            float(offset[lane]), float(half_width[lane])
+                        ),
                     }
                 )
             obs, _, done, reason, _, race, final_obs, spins = env.step(action)
@@ -243,6 +301,10 @@ def probe(
                             float(lead[-1]["sideslip_deg"])
                             if lead
                             else float("nan")
+                        ),
+                        "surfaces": lead[-1]["surfaces"] if lead else "?",
+                        "offset_m": (
+                            float(lead[-1]["offset_m"]) if lead else float("nan")
                         ),
                         "lead": lead,
                     }
@@ -301,9 +363,20 @@ def summarise(result: dict) -> None:
             f"{sum(1 for e in here if e['kind'] == '退赛'):>4}"
         )
 
+    print("\n触发瞬间四轮所在表面")
+    tally: dict[str, list[int]] = {}
+    for event in events:
+        slot = tally.setdefault(event.get("surfaces", "?"), [0, 0])
+        slot[0 if event["kind"] == "旋转" else 1] += 1
+    for surfaces, (spun, retired) in sorted(
+        tally.items(), key=lambda kv: -sum(kv[1])
+    ):
+        print(f"  {surfaces:<10}  旋转 {spun:>3}  退赛 {retired:>3}")
+
     print("\n逐次事故（前 1 秒指令取该秒极值，占车自身上限的比例）")
     print(
         f"  {'类型':<5} {'位置':<6} {'桩号':>8} {'时速':>7} {'侧滑':>7}"
+        f"  {'左右轮':<10} {'横位':>6}"
         f"  {'曲率峰':>7} {'刹车峰':>7} {'曲率末':>7}"
     )
     for event in sorted(events, key=lambda e: e["station_m"]):
@@ -318,6 +391,7 @@ def summarise(result: dict) -> None:
             f"  {event['kind']:<5} {event['corner']:<6} "
             f"{event['station_m']:8.0f} {event['speed_kph']:7.1f} "
             f"{event['sideslip_deg']:7.1f}"
+            f"  {event.get('surfaces', '?'):<10} {event.get('offset_m', 0.0):6.2f}"
             f"  {curvature_peak:7.2f} {brake_peak:7.2f} {curvature_last:7.2f}"
         )
 
