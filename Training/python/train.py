@@ -84,35 +84,62 @@ TRACKS: dict[str, tuple[float, bool]] = {
 # seconds did not reach the end of one lap of Silverstone.
 
 
-# What a real car of this class does over this length of road, in seconds:
-# a qualifying lap and a race lap. Silverstone's model circuit is 5891 m
-# against the real 5891 m, and the chassis is calibrated to Formula 2 -
-# 3.5 g cornering, 4.1 g braking, 301 km/h - so these are the numbers a
-# graduating driver has to land between rather than a gap to a script.
+# What a real car of this class does over this length of road, in seconds.
+#
+# The evaluation runs eighty percent charge, Normal tyres, Normal power and
+# warm rubber, and that is a race configuration - so it is scored against a
+# race lap and not a qualifying one. A single band, with the qualifying
+# figure kept only as an alarm line.
+#
+# The circuit is Silverstone-*style*: the length is the real 5891 m and the
+# character is the real one, but it is not a corner-by-corner replica. A
+# second of soft edge on each side keeps this a yardstick rather than a
+# vernier.
 #
 # Only circuits whose model geometry has been checked against the real one
 # belong here. A band nobody has verified is a target nobody can fail.
-REFERENCE_BANDS: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
-    # name: ((qualifying low, high), (race low, high))
-    "silverstone": ((98.0, 100.0), (102.0, 105.0)),
+REFERENCE_BANDS: dict[str, tuple[float, float, float]] = {
+    # name: (race band low, race band high, qualifying band low)
+    "silverstone": (102.0, 105.0, 98.0),
 }
+
+# The tolerance the "style" in the circuit's name buys.
+BAND_SOFT_EDGE_SECONDS = 1.0
 
 
 def band_note(track: str, seconds: float) -> str:
-    """Where a lap sits against the reference band, when there is one."""
+    """Where a lap sits against the reference band, when there is one.
+
+    Graduation is "no slower than the top of the race band". Being quicker
+    than the band is not a failure - it is the point - but there is a line
+    past which it stops being a compliment: a race configuration that beats
+    the bottom of the *qualifying* band is not a fast policy, it is a
+    suspicion that the car is too generous, and it is read the way a
+    leakage alarm is read rather than as a record.
+    """
     band = REFERENCE_BANDS.get(track)
     if band is None or not math.isfinite(seconds):
         return ""
-    (qualifying_low, qualifying_high), (race_low, race_high) = band
-    if seconds <= qualifying_low:
-        return "  快过参考带"
-    if seconds <= qualifying_high:
-        return "  排位带"
-    if seconds < race_low:
-        return "  带间"
-    if seconds <= race_high:
+    race_low, race_high, qualifying_low = band
+    edge = BAND_SOFT_EDGE_SECONDS
+    if seconds < qualifying_low - edge:
+        return "  ⚠物理过宽嫌疑"
+    if seconds < race_low - edge:
+        return "  超正赛带"
+    if seconds <= race_high + edge:
         return "  正赛带"
-    return "  慢于参考带"
+    return "  慢于正赛带"
+
+
+def meets_reference_band(track: str, seconds: float) -> bool:
+    """Whether a lap clears the graduation line: no slower than the top of
+    the race band, and not so fast that the car itself is in question."""
+    band = REFERENCE_BANDS.get(track)
+    if band is None or not math.isfinite(seconds):
+        return False
+    race_low, race_high, qualifying_low = band
+    edge = BAND_SOFT_EDGE_SECONDS
+    return qualifying_low - edge <= seconds <= race_high + edge
 
 
 EVALUATION_MODES = (3, 3)

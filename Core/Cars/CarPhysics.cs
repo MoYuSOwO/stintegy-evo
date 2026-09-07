@@ -860,28 +860,51 @@ public static class CarPhysics
             CalculateWheelLoads(state, config, massKg, roadNormalGravity)
         );
 
-        // The tyres are along for the ride: they cool, they creep back
-        // towards the ambient, and they are charged nothing. The seconds
-        // are the bill, and adding a set of flat spots on top would be
-        // charging the same mistake twice.
+        // The tyres are charged for the spin, on the same terms as any
+        // other sliding: force times how fast the rubber is being dragged
+        // across the road.
+        //
+        // They used to be charged nothing, on the argument that the seconds
+        // were the bill and a set of flat spots would be charging the same
+        // mistake twice. That was wrong, and wrong in the way that matters:
+        // a spin that costs no rubber is a free reset button, both false to
+        // the thing being modelled and available to be leant on. The force
+        // is what the road is taking off the car and the dragging is total,
+        // so the scrub weight sits at its ceiling; flat spots as a thing
+        // with a shape of their own belong to a damage model that does not
+        // exist yet, and one lump charge stands in until it does.
         float coolingAirSpeed = averageSpeed *
                                 (1f - Math.Clamp(state.AirVelocityDeficit, 0f, 1f));
         float tireWakeDownforceLoss =
             EffectiveTireWakeDownforceLoss(state, config);
+        float frontSpinGrip = CalculateAxleGripAccel(
+            massKg, tires, state.FrontLeft, state.FrontRight
+        );
+        float rearSpinGrip = CalculateAxleGripAccel(
+            massKg, tires, state.RearLeft, state.RearRight
+        );
         foreach (WheelId wheel in Wheels)
         {
+            bool front = wheel is WheelId.FrontLeft or WheelId.FrontRight;
+            float axleGrip = front ? frontSpinGrip : rearSpinGrip;
+            float scrubForce = MathF.Min(
+                1f,
+                SingleTrackDynamicsLimits
+                    .SpinScrubDecelerationMetersPerSecondSquared /
+                MathF.Max(axleGrip, Epsilon)
+            );
             UpdateTires(
                 state.GetTire(wheel),
                 config,
                 tires,
-                0f,
-                0f,
+                scrubForce * MaximumScrubWeight,
                 0f,
                 0f,
                 1f,
                 1f,
+                1f,
                 0f,
-                0f,
+                1f,
                 input.AirTempC,
                 input.TrackTempC,
                 averageSpeed,
@@ -1085,6 +1108,15 @@ public static class CarPhysics
         // angle where it stops paying; one who cannot keeps winding it on
         // and gets nothing back for it. Infinity, which is what a learned
         // driver is handed, means no ceiling at all.
+        //
+        // The steady-state inversion above holds the front at its peak for
+        // the same reason, and that is a professional's hands: they do not
+        // wind lock on past the angle the tyre wants. A driver who does is
+        // exactly what a low CarControl rating looks like, and the amount
+        // by which they may is the knob - zero for the best hands, positive
+        // for the worst, front tyres scrubbed accordingly. Same family as
+        // the settle ceiling below, and it belongs to the ability era; the
+        // blueprint is drawn here and nothing is built.
         if (float.IsFinite(limitSettleUse))
         {
             float ceiling = TireSlipCurve.PeakSlipAngleRadians * limitSettleUse;
