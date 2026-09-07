@@ -142,6 +142,7 @@ public class TrackBuilder
             sampleCount,
             sampledLength
         );
+        samples = SmoothHeadingProfile(samples, sampledLength);
         samples = EnsureSymmetricCorridorFeasible(samples, sampledLength);
         (float[] leftBuffers, float[] rightBuffers) = CalculateAdaptiveBuffers(
             samples,
@@ -224,6 +225,161 @@ public class TrackBuilder
             );
         }
         return result;
+    }
+
+    /// <summary>
+    /// How much the road is allowed to turn inside the averaging window.
+    ///
+    /// The window is not a fixed length, and that is the whole design. A
+    /// fixed thirty metres was tried first and rounded real corners off by
+    /// as much as forty-six per cent, because these circuits do not hold a
+    /// constant radius for thirty metres -- a twenty-three metre hairpin
+    /// has an apex about that long in total. But a fixed window short
+    /// enough to keep the hairpin is too short to do anything to a
+    /// straight.
+    ///
+    /// The resolution is that the two ends of the road need opposite
+    /// treatment for the same reason. Where the road turns hard, the
+    /// signal is enormous compared with the survey's error and needs no
+    /// help; where it barely turns at all, the error is all there is. So
+    /// the window is the distance over which the road turns this much:
+    /// tens of metres on a straight, a couple of metres at an apex.
+    /// </summary>
+    private const float HeadingSmoothingTurnRadians = 0.02f;
+
+    /// <summary>Bounds on that window's half-width, in metres. The upper
+    /// one keeps the filter from reaching across a whole straight into the
+    /// corners at both ends; the lower one keeps it doing something.</summary>
+    private const float HeadingSmoothingMinHalfMetres = 2f;
+    private const float HeadingSmoothingMaxHalfMetres = 25f;
+
+    /// <summary>
+    /// Average the rate the road turns at, not where it is, and average it
+    /// over a distance that shortens as the road tightens.
+    ///
+    /// Smoothing positions cuts corners: a box filter across a hairpin
+    /// pulls the apex metres towards the inside and the road ends up
+    /// somewhere the road is not. Smoothing heading increments leaves any
+    /// constant-radius arc exactly where it was, because the average of a
+    /// constant is that constant. What is left to protect is the apex of a
+    /// corner too short to have a constant stretch, and the variable
+    /// window does that: see <see cref="HeadingSmoothingTurnRadians"/>.
+    ///
+    /// Two invariants are structural rather than lucky. The increments are
+    /// re-centred after filtering so they sum to exactly what they summed
+    /// to before, which is the total turn; and the step between nodes is
+    /// untouched, so the lap is exactly as long afterwards. What is not
+    /// free is closure -- re-integrating perturbed headings lands a little
+    /// away from where it started -- so that error is spread linearly
+    /// round the lap and the result is rescaled and resampled. The heading
+    /// that ramp costs is the closing error over the lap length, orders
+    /// below the dither being removed.
+    /// </summary>
+    private static SmoothedCenterlinePoint[] SmoothHeadingProfile(
+        SmoothedCenterlinePoint[] samples,
+        float targetLength
+    )
+    {
+        int count = samples.Length;
+        if (count < 8)
+            return samples;
+
+        float step = targetLength / count;
+        if (step <= 1e-4f)
+            return samples;
+
+        float[] heading = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            Vector2 delta =
+                samples[(i + 1) % count].Center - samples[i].Center;
+            heading[i] = MathF.Atan2(delta.Y, delta.X);
+        }
+
+        float[] turn = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            turn[i] = MathHelper.NormalizeAngle(
+                heading[(i + 1) % count] - heading[i]
+            );
+        }
+
+        // How hard the road is turning here, read over a fixed stretch
+        // before any filtering. It only chooses the window width, so it
+        // wants to be robust rather than sharp.
+        const int probeHalf = 10;
+        float[] magnitude = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            float accumulated = 0f;
+            for (int k = -probeHalf; k < probeHalf; k++)
+                accumulated += turn[((i + k) % count + count) % count];
+            magnitude[i] =
+                MathF.Abs(accumulated) / (2f * probeHalf * step);
+        }
+
+        int minHalf = Math.Max(
+            1, (int)MathF.Round(HeadingSmoothingMinHalfMetres / step)
+        );
+        int maxHalf = Math.Max(
+            minHalf, (int)MathF.Round(HeadingSmoothingMaxHalfMetres / step)
+        );
+        if (2 * maxHalf + 1 >= count)
+            return samples;
+
+        // Each node spreads its own turn over its own window, rather than
+        // each node collecting the average of one. The two are the same
+        // operation when the window is a fixed width and different when it
+        // is not, and that difference is the reason for writing it this way
+        // round: spreading conserves the total turn exactly, node by node,
+        // because every node's contribution is divided by exactly the
+        // number of places it is divided among. Collecting does not. The
+        // first version of this method collected, lost a few per cent of
+        // the lap's turn, and the loss came back as a constant bend of
+        // twenty-kilometre radius under the straights -- a closing error of
+        // tens of metres, and every corner sitting up to sixty metres from
+        // where the survey put it.
+        float[] smoothed = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            float reach = magnitude[i] > 1e-7f
+                ? HeadingSmoothingTurnRadians / magnitude[i] / step
+                : maxHalf;
+            int half = (int)MathF.Round(
+                Math.Clamp(reach, minHalf, maxHalf)
+            );
+            float share = turn[i] / (2 * half + 1);
+            for (int k = -half; k <= half; k++)
+                smoothed[((i + k) % count + count) % count] += share;
+        }
+
+        Vector2[] centers = new Vector2[count];
+        centers[0] = samples[0].Center;
+        float angle = heading[0];
+        for (int i = 1; i < count; i++)
+        {
+            centers[i] = centers[i - 1]
+                + step * new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+            angle += smoothed[i - 1];
+        }
+
+        Vector2 closingError = centers[count - 1]
+            + step * new Vector2(MathF.Cos(angle), MathF.Sin(angle))
+            - centers[0];
+        SmoothedCenterlinePoint[] adjusted =
+            new SmoothedCenterlinePoint[count];
+        for (int i = 0; i < count; i++)
+        {
+            adjusted[i] = new SmoothedCenterlinePoint(
+                centers[i] - closingError * ((float)i / count),
+                samples[i].Width
+            );
+        }
+
+        float adjustedLength = ClosedSmoothedLength(adjusted);
+        if (adjustedLength <= 1e-3f)
+            return samples;
+        return ResampleSmoothedPoints(adjusted, count, targetLength);
     }
 
     private static SmoothedCenterlinePoint[] EnsureSymmetricCorridorFeasible(

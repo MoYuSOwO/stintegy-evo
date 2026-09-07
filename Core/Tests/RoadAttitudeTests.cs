@@ -6,6 +6,7 @@ using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Core.Track.RefLines;
+using StintegyEVO.Core.Util;
 using Xunit;
 
 namespace StintegyEVO.Core.Tests;
@@ -725,18 +726,40 @@ public sealed class RoadAttitudeTests
             .Build(new TrackGridConfig());
     }
 
+    /// <summary>
+    /// The straightest piece of road, judged by the road.
+    ///
+    /// This used to ask the racing line, and the racing line is the wrong
+    /// witness: a minimum-curvature line runs through an inflection —
+    /// curvature exactly zero — in the middle of a corner, where the road
+    /// is banked and is supposed to be. The cross slope is written from
+    /// the centreline's curvature, so that is what has to be asked here
+    /// for the question to be about the same road the answer is about.
+    /// The window is the one the surface layer itself reads over.
+    /// </summary>
     private static TrackSample FlattestPoint(TrackData track)
     {
+        const int half = 8;
         TrackSample best = track.Sample(0f);
         float bestCurvature = float.MaxValue;
-        for (float s = 0f; s < track.LengthMeters; s += 5f)
+        int length = (int)track.LengthMeters;
+        for (int s = 0; s < length; s += 5)
         {
-            TrackSample sample = track.Sample(s);
-            float curvature = MathF.Abs(sample.RefCurvature);
+            float turn = 0f;
+            for (int step = -half; step < half; step++)
+            {
+                Vector2 a = track.Sample((s + step + length) % length).Tangent;
+                Vector2 b =
+                    track.Sample((s + step + 1 + length) % length).Tangent;
+                turn += MathHelper.NormalizeAngle(
+                    MathF.Atan2(b.Y, b.X) - MathF.Atan2(a.Y, a.X)
+                );
+            }
+            float curvature = MathF.Abs(turn) / (2f * half);
             if (curvature < bestCurvature)
             {
                 bestCurvature = curvature;
-                best = sample;
+                best = track.Sample(s);
             }
         }
         return best;
