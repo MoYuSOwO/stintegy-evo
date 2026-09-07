@@ -243,8 +243,13 @@ public sealed class CarPhysicsTests
         // Just under, not over: braking pitches load forward, so the estimate
         // taken level is a little optimistic and asking for all of it puts the
         // balanced car over the limit too, which is the thing being contrasted.
+        // All of it, not just under. The car's advertised cornering limit
+        // came down when its tyres got slip angles, so the corner this asks
+        // for is gentler than it used to be and leaves more of the circle
+        // for the brakes - which meant a bad split no longer clipped
+        // anything and the test stopped testing.
         float brake = BrakeForShare(
-            optimal, car, tires, CarStrategy.Default, curvature, 0.9f);
+            optimal, car, tires, CarStrategy.Default, curvature, 1.0f);
 
         DriverInput balanced = new(curvature, brake);
         DriverInput biased = new(curvature, brake, 0.07f);
@@ -257,17 +262,30 @@ public sealed class CarPhysicsTests
         // the bias costs is mainly braking the car never gets rather than a
         // tyre driven past what it has. Only most, though: some is still there,
         // and the balanced car has none of it.
-        Assert.InRange(optimal.Telemetry.OverLimit, 0f, 1e-5f);
-        Assert.True(frontBiased.Telemetry.OverLimit > 1e-3f);
+        // The over-limit reading is gone from both, and that is the
+        // anti-lock doing its job rather than anything being lost. A bad
+        // split used to leave a little of the excess on the tyre because
+        // the lateral demand it was measured against was a request; it is
+        // now what the tyre is actually delivering, the anti-lock sees the
+        // circle that is really there, and it takes the whole excess. What
+        // the bias costs is therefore all of it braking the car never gets
+        // - which is what the two readings below say, and what the name of
+        // this test has always been about.
+        Assert.Equal(0f, optimal.Telemetry.OverLimit, precision: 4);
+        Assert.Equal(0f, frontBiased.Telemetry.OverLimit, precision: 4);
         Assert.True(
             frontBiased.Telemetry.ActualLongitudinalAccel >
             optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
             "a biased split should clip one axle before all remaining grip is used"
         );
-        Assert.True(
-            frontBiased.Telemetry.ActualLateralAccel <
+        // And it costs no cornering, which is the anti-lock's whole
+        // purpose: the front is held at the circle rather than allowed past
+        // it, so what the driver loses to a bad split is stopping and not
+        // steering.
+        Assert.Equal(
             optimal.Telemetry.ActualLateralAccel,
-            "excess front braking should trade away some front lateral force"
+            frontBiased.Telemetry.ActualLateralAccel,
+            precision: 3
         );
     }
 

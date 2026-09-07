@@ -1334,13 +1334,17 @@ public static class CarPhysics
         float rearSlipAngle
     )
     {
-        return MathF.Max(
-            0f,
-            TireSlipCurve.PastPeak(rearSlipAngle) -
-            TireSlipCurve.PastPeak(
+        // Compared uncapped and clamped afterwards. Capping each side first
+        // would make this read zero in the middle of the worst slide there
+        // is, which is the one moment it exists to report.
+        return Math.Clamp(
+            TireSlipCurve.UncappedPastPeak(rearSlipAngle) -
+            TireSlipCurve.UncappedPastPeak(
                 frontSlipAngle,
                 config.FrontPeakSlipAngleRatio
-            )
+            ),
+            0f,
+            1f
         );
     }
 

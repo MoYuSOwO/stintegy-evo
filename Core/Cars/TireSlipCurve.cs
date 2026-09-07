@@ -129,16 +129,34 @@ internal static class TireSlipCurve
 
     /// <summary>
     /// How far past its peak this slip angle is, as a fraction of the peak,
-    /// capped at one. This is what a driver feels as the axle letting go,
-    /// and what the tyre is charged extra scrub for.
+    /// capped at one. This is what the tyre is charged extra scrub for, and
+    /// the cap is what keeps a spin from billing a set of tyres for the
+    /// whole race.
     /// </summary>
     public static float PastPeak(float slipAngleRadians, float peakScale = 1f)
     {
+        return Math.Clamp(UncappedPastPeak(slipAngleRadians, peakScale), 0f, 1f);
+    }
+
+    /// <summary>
+    /// The same figure with no ceiling on it.
+    ///
+    /// Needed wherever two axles are compared rather than charged. Capping
+    /// each side first makes the comparison read zero exactly when it
+    /// matters most: a car sideways at sixty degrees has both ends far past
+    /// their peaks, both capped figures sit at one, and the difference - the
+    /// number that is supposed to say the rear is the end that went - comes
+    /// out as nothing at all.
+    /// </summary>
+    public static float UncappedPastPeak(
+        float slipAngleRadians,
+        float peakScale = 1f
+    )
+    {
         float scale = MathF.Max(peakScale, 0.05f);
-        return Math.Clamp(
-            MathF.Abs(slipAngleRadians) / (PeakSlipAngleRadians * scale) - 1f,
+        return MathF.Max(
             0f,
-            1f
+            MathF.Abs(slipAngleRadians) / (PeakSlipAngleRadians * scale) - 1f
         );
     }
 }
