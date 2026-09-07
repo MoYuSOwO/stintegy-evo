@@ -48,6 +48,10 @@ public static class SurfaceGrip
     /// between. A real circuit does not do that, and neither does a real
     /// driver's decision: riding a kerb is a choice with a small price,
     /// and it is the price that makes it a choice.
+    ///
+    /// <see cref="Kerb"/> is what the kerb is worth at its outer edge, not
+    /// throughout: the strip is a ramp, not a plateau. See
+    /// <see cref="StaticAt"/>.
     /// </summary>
     public const float KerbWidthMeters = 0.6f;
     public const float Kerb = 0.9f;
@@ -70,13 +74,14 @@ public static class SurfaceGrip
     public const float Buffer = 0.45f;
 
     /// <summary>
-    /// How far a boundary is smeared over. A step change in grip is a step
-    /// change in the force on one corner of the car, which is a cliff for
-    /// anything integrating it and a cliff for anything learning against
-    /// it. Short enough that the edge is still an edge.
+    /// How far the kerb's outer boundary is smeared over. A step change in
+    /// grip is a step change in the force on one corner of the car, which
+    /// is a cliff for anything integrating it and a cliff for anything
+    /// learning against it. Short enough that the edge is still an edge.
     ///
-    /// There are two boundaries now — tarmac to kerb at the white line,
-    /// and kerb to grass 0.6 m past it — and both use this same distance.
+    /// Only one boundary needs this now. The kerb's inner edge — the white
+    /// line itself — is no longer a step to be smoothed: the whole strip
+    /// is the transition.
     /// </summary>
     public const float TransitionMeters = 0.25f;
 
@@ -101,16 +106,19 @@ public static class SurfaceGrip
         float half = MathF.Max(sample.HalfWidth, 0f);
         float distance = MathF.Abs(offset);
 
-        // Two blends rather than three cases, so that every offset gets a
-        // continuous answer and no circuit's geometry can fall between the
-        // branches.
-        float ontoKerb = SmoothStep(half, half + TransitionMeters, distance);
+        // The kerb is a ramp across its whole width rather than a plateau
+        // with a lip at each end. A plateau says the second centimetre past
+        // the line costs the same as the fifty-ninth, and that is the one
+        // thing about a kerb a driver actually meters: how far onto it to
+        // put the wheel. Pricing it by depth makes that a continuous
+        // decision instead of a threshold to be either side of.
+        float acrossKerb = SmoothStep(half, half + KerbWidthMeters, distance);
         float ontoGrass = SmoothStep(
             half + KerbWidthMeters,
             half + KerbWidthMeters + TransitionMeters,
             distance
         );
-        float surface = RacingSurface + (Kerb - RacingSurface) * ontoKerb;
+        float surface = RacingSurface + (Kerb - RacingSurface) * acrossKerb;
         return surface + (Buffer - surface) * ontoGrass;
     }
 
