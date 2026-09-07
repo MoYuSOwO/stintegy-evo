@@ -1003,6 +1003,7 @@ public static class CarPhysics
     )
     {
         float wheelBase = MathF.Max(config.WheelBaseMeters, Epsilon);
+        float maximum = MathF.Max(config.MaxSteerAngleRadians, 0f);
         float frontArm = FrontMomentArm(config);
         float rearArm = RearMomentArm(config);
 
@@ -1024,11 +1025,24 @@ public static class CarPhysics
             ) -
             TireSlipCurve.InverseEvaluate(rearShare / rearCapacity);
 
-        float feedforward =
-            MathF.Atan(wheelBase * desiredCurvature) + slipCompensation;
+        float kinematic = MathF.Atan(wheelBase * desiredCurvature);
+        float feedforward = kinematic + slipCompensation;
+
+        // A driver does not begin a left-hand corner by turning right.
+        //
+        // The inversion above is a steady state, and a steady state is only
+        // there to be inverted while both axles can hold the corner. Let
+        // the rear go far enough - a set of rears worn out under fresh
+        // fronts will do it - and what the arithmetic asks for is opposite
+        // lock before any slide exists, which then creates one the other
+        // way. Opposite lock is a reaction to a slide that is already
+        // happening; it belongs to the feedback below and to the driver's
+        // own hands, not to a feedforward.
+        feedforward = kinematic >= 0f
+            ? Math.Clamp(feedforward, 0f, maximum)
+            : Math.Clamp(feedforward, -maximum, 0f);
         float feedback = config.SteerCurvatureFeedbackGain * wheelBase *
                          (desiredCurvature - state.Telemetry.ActualCurvature);
-        float maximum = MathF.Max(config.MaxSteerAngleRadians, 0f);
         float target = Math.Clamp(feedforward + feedback, -maximum, maximum);
 
         // Feel for the limit, carried over from the model this replaces. A
