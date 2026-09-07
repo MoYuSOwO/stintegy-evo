@@ -1,0 +1,255 @@
+using System;
+using System.Numerics;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Track;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace StintegyEVO.Core.Tests;
+
+/// <summary>
+/// Leaving the road costs grip, per wheel, continuously.
+///
+/// It used to cost a penalty term: the training environment noticed a
+/// region flag and subtracted reward, and the evaluation added the seconds
+/// back at a rate. That is a rule about a line, and rules about lines
+/// invite arguments about lines - how far over, for how long, and whether
+/// the gain was worth the fine. Grass is slippery. A car with two wheels on
+/// it has less grip, is slower for having them there, and nobody has to
+/// adjudicate anything.
+/// </summary>
+public sealed class SurfaceGripTests
+{
+    private readonly ITestOutputHelper _output;
+    public SurfaceGripTests(ITestOutputHelper output) => _output = output;
+
+    [Fact]
+    public void TheRoadOnlyEverGetsWorseAsYouLeaveIt()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample sample = track.Sample(0f);
+        float half = sample.HalfWidth;
+
+        float previous = float.MaxValue;
+        for (int i = 0; i <= 200; i++)
+        {
+            float offset = (half + 2f) * i / 200f;
+            float grip = SurfaceGrip.StaticAt(sample, offset);
+            Assert.True(
+                grip <= previous + 1e-5f,
+                $"grip rose on the way out, at {offset:0.00} m"
+            );
+            if (i > 0)
+            {
+                Assert.True(
+                    previous - grip < 0.15f,
+                    $"a cliff in the grip at {offset:0.00} m: " +
+                    $"{previous:0.000} then {grip:0.000}"
+                );
+            }
+            previous = grip;
+        }
+
+        Assert.Equal(SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, 0f), 3);
+        Assert.Equal(
+            SurfaceGrip.Buffer,
+            SurfaceGrip.StaticAt(sample, half + 2f),
+            3
+        );
+        // Symmetric: which side of the centre line has never mattered.
+        Assert.Equal(
+            SurfaceGrip.StaticAt(sample, half * 0.9f),
+            SurfaceGrip.StaticAt(sample, -half * 0.9f),
+            5
+        );
+    }
+
+    /// <summary>
+    /// Two wheels over the line and two on it: the axle is worth the sum of
+    /// what each wheel is standing on, so the car loses grip in proportion
+    /// to how much of itself it put on the grass.
+    /// </summary>
+    [Fact]
+    public void StraddlingTheLineCostsGripInProportion()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample sample = track.Sample(0f);
+        float half = sample.HalfWidth;
+        CarConfig car = new();
+        float halfTrack = car.TrackWidthMeters * 0.5f;
+
+        float previousInner = float.MaxValue;
+        float previousOuter = float.MaxValue;
+        _output.WriteLine("  车心偏移    外侧轮    内侧轮");
+        for (int i = 0; i <= 8; i++)
+        {
+            // Straight ahead, so the wheels sit a half track width either
+            // side of the centre of the car.
+            float centre = half - halfTrack + 0.25f * i;
+            float outer = SurfaceGrip.StaticAt(sample, centre + halfTrack);
+            float inner = SurfaceGrip.StaticAt(sample, centre - halfTrack);
+            _output.WriteLine(
+                $"  {centre,8:0.00}  {outer,8:0.000}  {inner,8:0.000}"
+            );
+
+            Assert.True(
+                outer <= inner + 1e-5f,
+                "the wheel nearer the edge cannot have more grip than the " +
+                "one further in"
+            );
+            Assert.True(outer <= previousOuter + 1e-5f);
+            Assert.True(inner <= previousInner + 1e-5f);
+            previousOuter = outer;
+            previousInner = inner;
+        }
+
+        // And at the end of that walk the two are far apart, which is the
+        // whole point: one axle, two different roads.
+        float wideCentre = half + 0.25f;
+        Assert.True(
+            SurfaceGrip.StaticAt(sample, wideCentre - halfTrack) -
+            SurfaceGrip.StaticAt(sample, wideCentre + halfTrack) > 0.2f,
+            "a car straddling the line should have a measurably better " +
+            "inside wheel than outside one"
+        );
+    }
+
+    /// <summary>
+    /// The simulation asks per wheel, and the answer follows the car's
+    /// attitude rather than its centre alone.
+    /// </summary>
+    [Fact]
+    public void TheSimulationSamplesEachWheelWhereItActuallyIs()
+    {
+        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackSample sample = track.Sample(0f);
+        CarConfig config = new();
+        float half = sample.HalfWidth;
+
+        RaceCar car = new(
+            "straddle",
+            config,
+            new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f },
+            new ReferenceLineDriver(),
+            new CarState
+            {
+                Position = sample.Center + sample.Normal *
+                           (half - config.TrackWidthMeters * 0.5f + 0.4f),
+                Heading = sample.RefHeading,
+                Speed = 40f,
+                Energy = PowertrainState.Filled(0.8f)
+            }
+        );
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(car);
+        simulation.Step(1f / 120f);
+
+        // The track's normal is the clockwise turn of its tangent, so
+        // offset grows to the right of travel: displacing the car along it
+        // puts the right-hand wheels over the line.
+        float outerFront = car.State.FrontRight.SurfaceGrip;
+        float innerFront = car.State.FrontLeft.SurfaceGrip;
+        _output.WriteLine(
+            $"外前轮 {outerFront:0.000}  内前轮 {innerFront:0.000}  " +
+            $"外后轮 {car.State.RearRight.SurfaceGrip:0.000}  " +
+            $"内后轮 {car.State.RearLeft.SurfaceGrip:0.000}"
+        );
+        Assert.True(
+            outerFront < innerFront,
+            $"the outside wheels should be on worse road: {outerFront:0.000} " +
+            $"against {innerFront:0.000}"
+        );
+        Assert.True(innerFront > 0.95f, "the inside wheels are still on the road");
+    }
+
+    /// <summary>
+    /// And it costs lap time, which is the whole reason for doing it this
+    /// way. A car with two wheels over the line has less grip, so it holds
+    /// less corner, so it goes slower - priced by the physics, in seconds,
+    /// with nothing to argue about.
+    /// </summary>
+    [Fact]
+    public void PuttingTwoWheelsOverTheLineCostsCornering()
+    {
+        CarConfig car = new();
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f
+        };
+
+        float onRoad = SteadyLateral(car, tires, WheelSurfaceGrip.Clean);
+        // Two wheels on the grass: the outside pair at buffer grip, the
+        // inside pair still on tarmac.
+        float straddling = SteadyLateral(
+            car,
+            tires,
+            new WheelSurfaceGrip(
+                SurfaceGrip.RacingSurface,
+                SurfaceGrip.Buffer,
+                SurfaceGrip.RacingSurface,
+                SurfaceGrip.Buffer
+            )
+        );
+
+        _output.WriteLine(
+            $"在路面上 {onRoad:0.00} m/s^2，两轮压线 {straddling:0.00} m/s^2 " +
+            $"（{(1f - straddling / onRoad) * 100f:0.0}% 的过弯能力没了）"
+        );
+        Assert.True(
+            straddling < onRoad * 0.85f,
+            $"straddling the line should cost real cornering: {onRoad:0.00} " +
+            $"became {straddling:0.00}"
+        );
+    }
+
+    private static float SteadyLateral(
+        CarConfig car,
+        TireConfig tires,
+        WheelSurfaceGrip surface
+    )
+    {
+        CarState state = new()
+        {
+            Speed = 55f,
+            Energy = PowertrainState.Filled(0.8f)
+        };
+        state.InstallFreshTires(tires);
+        float best = 0f;
+        for (int i = 1; i <= 24; i++)
+        {
+            float curvature = 0.0005f * i;
+            CarState probe = state.Clone();
+            for (int step = 0; step < 240; step++)
+            {
+                CarPhysics.Step(
+                    probe,
+                    car,
+                    tires,
+                    new CarPhysicsStepInput(
+                        new DriverInput(curvature, 1.5f),
+                        CarStrategy.Default,
+                        25f,
+                        35f
+                    )
+                    {
+                        SurfaceGrip = surface
+                    },
+                    1f / 60f
+                );
+                if (!probe.Spinning)
+                    probe.Speed = 55f;
+            }
+            if (!probe.Spinning)
+            {
+                best = MathF.Max(
+                    best,
+                    MathF.Abs(probe.Telemetry.ActualLateralAccel)
+                );
+            }
+        }
+        return best;
+    }
+}

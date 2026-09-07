@@ -56,8 +56,14 @@ public sealed class BoundaryContactTimeTests
         (_, float gentle, _) = DriveIntoTheBarrier(0.05f);
         (_, float hard, _) = DriveIntoTheBarrier(0.15f);
 
+        // A narrower margin than this used to have, and the reason is that
+        // the road outside the line stopped being the same road. A car on
+        // its way into a barrier now has wheels on the run-off, where more
+        // steering buys less turning, so the hard case and the gentle one
+        // converge on their way there. The ordering is what this test is
+        // for and the ordering holds.
         Assert.True(
-            hard > gentle * 1.5f,
+            hard > gentle * 1.25f,
             $"leaning on the barrier ({hard:0.000} s) should cost more than " +
             $"glancing off it ({gentle:0.000} s)"
         );
