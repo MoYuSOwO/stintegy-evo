@@ -1,11 +1,14 @@
 """Training loop for the direct-drive racing policy.
 
-Stage one of the plan's curriculum: a single car learning to drive. The
-graduation question is whether the learned policy covers more ground than
-the analytic baseline, so every evaluation reports the ratio against the
-coach-passthrough reference measured on the same tracks — including the
-held-out one the policy never trains on, which is what makes the
-track-agnostic claim testable rather than asserted.
+Stage one of the plan's curriculum: a single car learning to drive.
+
+The question used to be whether the learned policy beat the analytic
+driver, and every lap was quoted as a gap to it. That comparison has been
+retired along with the driver: a rule-based reference is only a yardstick
+while it is the better driver, and once it is not, quoting against it says
+more about the yardstick than about the car. Laps are now quoted
+absolutely, against the reference band a real car of this class runs on
+the same length of road.
 
 Usage:
     python3 Training/python/train.py --solo --steps 300000
@@ -45,49 +48,71 @@ EGO_SPEED = 232
 TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
 
 
-# The harness may know the track; the policy may not. Lap lengths in metres
-# and the analytic driver's own flying lap over the same circuits, so the
-# log reports the gap in the unit a lap is actually measured in.
-TRACKS: dict[str, tuple[float, float, bool]] = {
-    # name: (lap metres, analytic clean flying lap seconds, in the training set)
-    #
-    # The analytic driver's own best clean lap, measured through the same
-    # host, the same lap timer and the same definition of clean that a
-    # policy is measured by, at the same fifteen decisions a second, on the
-    # same Normal/Normal instruction. It used to be a column of constants
-    # whose conditions nobody had written down, which made every gap quoted
-    # against them a comparison between two different measurements.
-    #
-    # They turn out to have been close - most within a second of what a
-    # condition-matched measurement gives - so the numbers move little and
-    # the history stands. What changes is that they are now reproducible:
-    #     python3 frequency_sweep.py --rates 15,60
-    # writes baseline_15_60.json, and the sixty-hertz column in that file is
-    # what the analytic driver does in the game, where it is not held to the
-    # learner's rate.
-    "silverstone":    (5891.0, 107.050, True),
-    "shanghai":       (5451.0, 106.202, True),
-    "zandvoort":      (4259.0,  84.081, True),
-    "simple-right":   (1804.0,  36.641, True),
-    "simple-left":    (1804.0,  36.657, True),
-    "banked-sweeper": (4946.0,  67.940, True),
-    "sepang":         (5543.0, 106.579, False),
-    "monaco":         (3337.0,  80.848, False),
-    "daytona":        (4016.0,  54.165, False),
-    "speedway":       (8512.0, 109.766, False),
+# The harness may know the track; the policy may not. Lap lengths in metres,
+# and whether the circuit is one the policy trains on.
+#
+# The middle column used to be the analytic driver's own flying lap, and
+# every gap in every report was measured against it. It is gone. The
+# rule-based driver was a yardstick for exactly as long as it was the
+# quicker driver, and the moment the learned one passed it the number
+# stopped meaning "how good is this policy" and started meaning "how good
+# is that script". Laps are absolute now.
+TRACKS: dict[str, tuple[float, bool]] = {
+    # name: (lap metres, in the training set)
+    "silverstone":    (5891.0, True),
+    "shanghai":       (5451.0, True),
+    "zandvoort":      (4259.0, True),
+    "simple-right":   (1804.0, True),
+    "simple-left":    (1804.0, True),
+    "banked-sweeper": (4946.0, True),
+    "sepang":         (5543.0, False),
+    "monaco":         (3337.0, False),
+    "daytona":        (4016.0, False),
+    "speedway":       (8512.0, False),
     # The second coverage round. Baku trains; the other three examine.
-    "baku":           (6003.0, 108.856, True),
-    "spa":            (7004.0, 118.785, False),
-    "monza":          (5793.0,  93.963, False),
-    "interlagos":     (4309.0,  80.573, False),
-    "singapore":      (4928.0, 103.606, True),
-    "portimao":       (4653.0,  89.187, True),
-    "flat-sweeper":   (4946.0,  68.076, True),
+    "baku":           (6003.0, True),
+    "spa":            (7004.0, False),
+    "monza":          (5793.0, False),
+    "interlagos":     (4309.0, False),
+    "singapore":      (4928.0, True),
+    "portimao":       (4653.0, True),
+    "flat-sweeper":   (4946.0, True),
 }
 
 # Four hundred seconds is two flying laps of the slowest circuit here at the
 # pace the policy currently drives it, and more of the quicker ones. Ninety
 # seconds did not reach the end of one lap of Silverstone.
+
+
+# What a real car of this class does over this length of road, in seconds:
+# a qualifying lap and a race lap. Silverstone's model circuit is 5891 m
+# against the real 5891 m, and the chassis is calibrated to Formula 2 -
+# 3.5 g cornering, 4.1 g braking, 301 km/h - so these are the numbers a
+# graduating driver has to land between rather than a gap to a script.
+#
+# Only circuits whose model geometry has been checked against the real one
+# belong here. A band nobody has verified is a target nobody can fail.
+REFERENCE_BANDS: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
+    # name: ((qualifying low, high), (race low, high))
+    "silverstone": ((98.0, 100.0), (102.0, 105.0)),
+}
+
+
+def band_note(track: str, seconds: float) -> str:
+    """Where a lap sits against the reference band, when there is one."""
+    band = REFERENCE_BANDS.get(track)
+    if band is None or not math.isfinite(seconds):
+        return ""
+    (qualifying_low, qualifying_high), (race_low, race_high) = band
+    if seconds <= qualifying_low:
+        return "  快过参考带"
+    if seconds <= qualifying_high:
+        return "  排位带"
+    if seconds < race_low:
+        return "  带间"
+    if seconds <= race_high:
+        return "  正赛带"
+    return "  慢于参考带"
 
 
 EVALUATION_MODES = (3, 3)
@@ -150,7 +175,7 @@ def evaluate(
     obeyed, and what was left of the tyres and the store. The clean
     definition is this environment's penalty accounting, not a scrutineer.
     """
-    lap_metres, analytic, _ = TRACKS[track]
+    lap_metres, _ = TRACKS[track]
     clean_laps: list[float] = []
     dirty_laps: list[float] = []
     charged_laps: list[float] = []
@@ -183,12 +208,18 @@ def evaluate(
         lane_clean = np.zeros(batch, dtype=np.int64)
         speed_squared = 0.0
         stalls = 0
+        # Spins are counted for the whole session rather than charged to a
+        # lap. They are not a lap's penalty accounting - a spin is the car
+        # being taken off the driver - and graduation asks for both things
+        # separately: a clean lap, and a session with none of these in it.
+        spin_events = 0
         previous: list[float | None] = [None] * batch
         crossed: list[float | None] = [None] * batch
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
-            obs, reward, done, reason, components, race, _ = env.step(action)
+            obs, reward, done, reason, components, race, _, spins = env.step(action)
             now = (step + 1) * STEP_SECONDS
+            spin_events += int(spins.sum())
             step_off = components[COMPONENT_NAMES.index("off_course")]
             step_wall = components[COMPONENT_NAMES.index("wall")]
             step_excess = components[COMPONENT_NAMES.index("mode_excess")]
@@ -258,7 +289,6 @@ def evaluate(
     return {
         "lap": best,
         "charged_lap": charged,
-        "charged_gap": charged - analytic,
         "off_per_lap": float(np.median(off_per_lap)) if off_per_lap else 0.0,
         "laps": float(completed),
         "clean_laps": float(len(clean_laps)),
@@ -266,12 +296,12 @@ def evaluate(
         "lanes_with_clean": float(lanes_with_clean),
         "lanes": float(batch),
         "best_dirty": min(dirty_laps) if dirty_laps else float("inf"),
-        "analytic": analytic,
-        "gap": best - analytic,
         "off_seconds": off_seconds,
         "wall": float(wall.mean()),
         "mode_excess": float(excess.mean()),
         "stalls": float(stalls),
+        "spins": float(spin_events),
+        "spins_per_lap": spin_events / completed if completed else 0.0,
         "tyre_wear": float(np.mean([obs[:, w] for w in WEAR_SLOTS])),
         "store": float(obs[:, PRIMARY_STORE].mean()),
         "modes": modes,
@@ -442,6 +472,10 @@ def main() -> int:
         window_reward = 0.0
         window_components = np.zeros(len(COMPONENT_NAMES))
         window_terminals: dict[str, int] = {}
+        # Spins per thousand steps is the curve this batch of physics was
+        # built to be read against: it should start high on a policy that
+        # learned to live in the old free corner, and go to zero.
+        window_spins = 0
         best_gap = -np.inf
         started = time.time()
 
@@ -454,7 +488,7 @@ def main() -> int:
             else:
                 action = agent.act(obs)
 
-            next_obs, reward, done, reason, components, _, final_obs = (
+            next_obs, reward, done, reason, components, _, final_obs, spins = (
                 env.step(action)
             )
             # An episode ending and the future being worth nothing are two
@@ -474,6 +508,7 @@ def main() -> int:
             obs = next_obs
 
             window_reward += float(reward.mean())
+            window_spins += int(spins.sum())
             window_components += components.mean(axis=1)
             for lane in np.flatnonzero(done):
                 name = TERMINAL_NAMES[reason[lane]]
@@ -512,11 +547,16 @@ def main() -> int:
                     f"closs {stats.get('critic_loss', float('nan')):.3f} "
                     f"{step * env.batch / max(elapsed, 1e-6):.0f} tps"
                 )
+                print(
+                    f"          spins {window_spins} "
+                    f"({window_spins / args.log_every:.3f}/step)"
+                )
                 print(f"          {pieces}")
                 print(f"          terminals {window_terminals or 'none'}")
                 window_reward = 0.0
                 window_components[:] = 0.0
                 window_terminals = {}
+                window_spins = 0
 
             if step % args.eval_every == 0:
                 trained, held = eval_split(args.track)
@@ -543,38 +583,40 @@ def main() -> int:
                             flags += f"  抗命 {r['mode_excess']:.2f}"
                         if r["stalls"] > 0:
                             flags += f"  退赛 {r['stalls']:.0f}"
+                        if r["spins"] > 0:
+                            flags += f"  旋转 {r['spins']:.0f}"
                         print(
                             f"    {group} {name:<15}"
                             f"  干净 {lap_string(r['lap']):>9}"
                             f"  计罚 {lap_string(r['charged_lap']):>9}"
-                            f"  解析 {lap_string(r['analytic']):>9}"
-                            f"  {gap_string(r['charged_gap']):>8}"
                             f"  {r['clean_laps']:.0f}/{r['laps']:.0f} 干净"
                             f"  出界 {r['off_per_lap']:.1f}s/圈"
                             f"  胎耗 {r['tyre_wear'] * 100:.0f}%"
-                            f"  余量 {r['store'] * 100:.0f}%{flags}"
+                            f"  余量 {r['store'] * 100:.0f}%"
+                            f"{band_note(name, r['lap'])}{flags}"
                         )
-                # The mean clean gap over the circuits that count is
-                # what a best checkpoint is chosen on: one number, in
-                # seconds a lap, and lower is better.
-                def mean_gap_of(names):
-                    # A circuit the policy cannot lap cleanly counts as two
-                    # minutes against it, not as silence. Excluding those
-                    # let a checkpoint set a best mean in the same
-                    # evaluation where a circuit stopped completing laps -
-                    # and, before laps had to be clean to count, let one
-                    # lap driven half beside the road stand in for pace.
+                # The mean charged lap over the circuits that count is what
+                # a best checkpoint is chosen on: one number, in seconds a
+                # lap, and lower is better. Absolute now rather than a gap
+                # to a script - the ranking is unchanged, since subtracting
+                # a per-circuit constant never reordered anything, but the
+                # number now means what it says.
+                def mean_lap_of(names):
+                    # A circuit the policy cannot lap counts as four minutes
+                    # against it, not as silence. Excluding those let a
+                    # checkpoint set a best mean in the same evaluation
+                    # where a circuit stopped completing laps at all.
                     return sum(
-                        min(laps[n]["charged_gap"], 120.0)
-                        if math.isfinite(laps[n]["charged_gap"]) else 120.0
+                        min(laps[n]["charged_lap"], 240.0)
+                        if math.isfinite(laps[n]["charged_lap"]) else 240.0
                         for n in names
                     ) / len(names)
-                mean_gap = mean_gap_of(trained)
-                held_gap = mean_gap_of(held)
+                mean_lap = mean_lap_of(trained)
+                held_lap = mean_lap_of(held)
                 left, right = ("专家", "哨兵") if args.track else ("训练", "保留")
                 print(
-                    f"    计罚平均差  {left} {gap_string(mean_gap)}"
-                    f"   {right} {gap_string(held_gap)}"
+                    f"    计罚平均圈  {left} {lap_string(mean_lap)}"
+                    f"   {right} {lap_string(held_lap)}"
                 )
                 agent.save(
                     str(checkpoint_dir / f"latest{args.tag}.pt"), step
@@ -584,14 +626,14 @@ def main() -> int:
                 laps_everywhere = all(laps[n]["laps"] > 0 for n in trained)
                 if (
                     laps_everywhere
-                    and math.isfinite(mean_gap)
-                    and -mean_gap > best_gap
+                    and math.isfinite(mean_lap)
+                    and -mean_lap > best_gap
                 ):
-                    best_gap = -mean_gap
+                    best_gap = -mean_lap
                     agent.save(
                         str(checkpoint_dir / f"best{args.tag}.pt"), step
                     )
-                    print(f"    saved best (计罚平均差 {gap_string(mean_gap)})")
+                    print(f"    saved best (计罚平均圈 {lap_string(mean_lap)})")
 
     print("training finished")
     return 0

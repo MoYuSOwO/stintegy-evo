@@ -14,6 +14,24 @@ namespace StintegyEVO.Core.Drivers;
 /// </summary>
 public sealed class StanleyPathPredictor
 {
+    /// <summary>
+    /// The old reduced-order clamps, kept here because this is the only
+    /// thing left that uses them.
+    ///
+    /// This predictor is the analytic driver's guess at where its own car
+    /// will be, and it has always been a cheaper model than the car: a
+    /// kinematic yaw response with a self-straightening term and three
+    /// clamps. The car has since been given real slip angles and no clamps
+    /// at all, so these numbers describe nothing physical any more - they
+    /// describe this predictor. Kept rather than deleted because the
+    /// analytic driver is now an instrument rather than a baseline, and an
+    /// instrument that still reads is worth more than one rewritten for
+    /// tidiness.
+    /// </summary>
+    private const float MaximumPredictedBodySideslipRadians = 0.174532925f;
+    private const float MaximumPredictedYawAccelerationRadiansPerSecondSquared = 2f;
+    private const float MaximumPredictedYawRateRadiansPerSecond = 2.5f;
+
     public VehiclePathPrediction Predict(
         VehiclePathPrediction destination,
         RaceCar car,
@@ -494,19 +512,19 @@ public sealed class StanleyPathPredictor
                                   sideslip / sideslipRecoveryTime;
         float yawAcceleration = Math.Clamp(
             (stabilizedYawRate - yawRate) / yawResponseTime,
-            -ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared,
-            ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared
+            -MaximumPredictedYawAccelerationRadiansPerSecondSquared,
+            MaximumPredictedYawAccelerationRadiansPerSecondSquared
         );
         float nextYawRate = Math.Clamp(
             yawRate + yawAcceleration * dt,
-            -ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond,
-            ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond
+            -MaximumPredictedYawRateRadiansPerSecond,
+            MaximumPredictedYawRateRadiansPerSecond
         );
         float averageYawRate = (yawRate + nextYawRate) * 0.5f;
         sideslip = Math.Clamp(
             sideslip + (trajectoryYawRate - averageYawRate) * dt,
-            -ReducedOrderDynamicsLimits.MaximumBodySideslipRadians,
-            ReducedOrderDynamicsLimits.MaximumBodySideslipRadians
+            -MaximumPredictedBodySideslipRadians,
+            MaximumPredictedBodySideslipRadians
         );
         yawRate = nextYawRate;
         rearSlideSeverity *= MathF.Exp(-dt / sideslipRecoveryTime);

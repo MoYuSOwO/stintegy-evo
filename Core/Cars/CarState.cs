@@ -17,6 +17,39 @@ public sealed class CarState
     public float Speed { get; set; }
 
     /// <summary>
+    /// Where the front wheels are actually pointed, relative to the body.
+    /// A state rather than a number worked out from the driver's request,
+    /// because the wheels take time to get there and the time is the point:
+    /// a slide is caught by lock that arrives soon enough, and not caught by
+    /// the same lock arriving late.
+    /// </summary>
+    public float SteerAngleRadians { get; set; }
+
+    /// <summary>
+    /// How long the car has been sideways past the angle the referee
+    /// watches. Reset the moment it comes back under, so a flick that is
+    /// caught costs nothing.
+    /// </summary>
+    public float SideslipHoldSeconds { get; set; }
+
+    /// <summary>
+    /// True while the car is spinning: the driver's hands are off it and
+    /// the physics is playing a scripted rotation until it hands back.
+    /// </summary>
+    public bool Spinning { get; set; }
+
+    /// <summary>
+    /// How long the current spin has been running. Zero when not spinning.
+    /// </summary>
+    public float SpinSeconds { get; set; }
+
+    /// <summary>
+    /// How many times this car has been declared lost. A scoreline: a
+    /// graduating driver has none of these in a session.
+    /// </summary>
+    public int SpinEvents { get; set; }
+
+    /// <summary>
     /// How much of each of its consumables the car has left. What the slots
     /// mean is declared by the powertrain fitted to it - charge on an
     /// electric car, fuel on a petrol one - so read them through that rather
@@ -127,6 +160,11 @@ public sealed class CarState
             SideslipAngleRadians = SideslipAngleRadians,
             YawRateRadiansPerSecond = YawRateRadiansPerSecond,
             Speed = Speed,
+            SteerAngleRadians = SteerAngleRadians,
+            SideslipHoldSeconds = SideslipHoldSeconds,
+            Spinning = Spinning,
+            SpinSeconds = SpinSeconds,
+            SpinEvents = SpinEvents,
             Energy = Energy,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
@@ -150,6 +188,11 @@ public sealed class CarState
         SideslipAngleRadians = other.SideslipAngleRadians;
         YawRateRadiansPerSecond = other.YawRateRadiansPerSecond;
         Speed = other.Speed;
+        SteerAngleRadians = other.SteerAngleRadians;
+        SideslipHoldSeconds = other.SideslipHoldSeconds;
+        Spinning = other.Spinning;
+        SpinSeconds = other.SpinSeconds;
+        SpinEvents = other.SpinEvents;
         Energy = other.Energy;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;

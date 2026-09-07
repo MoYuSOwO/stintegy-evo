@@ -135,7 +135,11 @@ public sealed class TrainingProtocolTests
                         // Race distance per lane, added with protocol two so
                         // a lap could be timed at the line rather than
                         // guessed from an average pace.
-                        batchSize * sizeof(float);
+                        batchSize * sizeof(float) +
+                        // Spins begun this step, added with protocol three so
+                        // a lap that was survived could be told from one that
+                        // was driven.
+                        batchSize * sizeof(byte);
         Assert.Equal(TrainingMessageKind.ResetResponse, reset.Kind);
         Assert.Equal(observationBytes, reset.Payload.Length);
         Assert.Equal(TrainingMessageKind.StepResponse, step.Kind);

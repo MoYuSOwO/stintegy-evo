@@ -63,13 +63,24 @@ public partial class FormulaCarView3D : Node3D
             Visible = false
         };
         AddChild(_number);
-        var pose = MakePose(Car.State.Position, Car.State.Heading, Car.LastInput.DesiredCurvature);
+        var pose = MakePose(Car.State.Position, Car.State.Heading, Car.State.SteerAngleRadians);
         _poses = new SnapshotTimeline<RenderPose>(pose); Transform = pose.Transform;
     }
     public void Select(bool selected, bool closeView) { _selection.Visible = selected && closeView; _number.Visible = selected && closeView; }
-    public void Capture(double time, System.Numerics.Vector2 position, float heading, float curvature)
-        => _poses.Add(time, MakePose(position, heading, curvature));
-    private RenderPose MakePose(System.Numerics.Vector2 position, float heading, float curvature)
+    /// <summary>
+    /// The wheels are drawn where they actually are.
+    ///
+    /// They used to be drawn from the curvature the driver asked for, times
+    /// a constant, which meant a car stepping its tail out was rendered
+    /// with the steering still wound into the corner - the one thing that
+    /// made the old physics look fake even when it was behaving. The car
+    /// now carries a real front wheel angle, so opposite lock is not an
+    /// effect added here: it is the state, and it appears because the
+    /// driver put it there.
+    /// </summary>
+    public void Capture(double time, System.Numerics.Vector2 position, float heading, float steerAngle)
+        => _poses.Add(time, MakePose(position, heading, steerAngle));
+    private RenderPose MakePose(System.Numerics.Vector2 position, float heading, float steerAngle)
     {
         var pose = _surface.Track.Project(position);
         float bank = pose.Sample.BankSlopeAt(pose.D);
@@ -78,8 +89,7 @@ public partial class FormulaCarView3D : Node3D
         Vector3 x = new(MathF.Cos(heading), gx * MathF.Cos(heading) + gz * MathF.Sin(heading), MathF.Sin(heading));
         x = x.Normalized(); Vector3 up = new Vector3(-gx, 1, -gz).Normalized(); Vector3 z = x.Cross(up).Normalized();
         var transform = new Transform3D(new Basis(x, z.Cross(x).Normalized(), z), new Vector3(position.X, _surface.Height(pose.S, pose.D) + 0.08f, position.Y));
-        float steer = Math.Clamp(curvature * 2.8f, -0.45f, 0.45f);
-        return new RenderPose(transform, steer);
+        return new RenderPose(transform, steerAngle);
     }
     public void Render(double time)
     {

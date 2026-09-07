@@ -20,6 +20,21 @@ public static class CarPhysics
     private const float SideslipEnergyLossScale = 1f;
 
     /// <summary>
+    /// Speed below which a slip angle stops meaning anything, because the
+    /// yaw-rate term divided by it stops meaning anything. The kinematic
+    /// blend owns everything under here.
+    /// </summary>
+    private const float MinimumSlipAngleSpeed = 3f;
+
+    private static readonly WheelId[] Wheels =
+    {
+        WheelId.FrontLeft,
+        WheelId.FrontRight,
+        WheelId.RearLeft,
+        WheelId.RearRight
+    };
+
+    /// <summary>
     /// How much car there is right now: the chassis plus whatever is left in
     /// the stores. A constant for a car that carries a battery, which weighs
     /// the same flat as full, and a falling number for a car that carries
@@ -226,6 +241,15 @@ public static class CarPhysics
 
         state.Normalize();
 
+        // A car that has been declared lost is not being driven, so nothing
+        // below this line runs: no request is read, no axle is resolved,
+        // and the rotation is played rather than integrated.
+        if (state.Spinning)
+        {
+            StepScriptedSpin(state, config, tires, input, dt);
+            return;
+        }
+
         RoadAttitude road = input.RoadAttitude;
         float roadNormalGravity = road.NormalGravity(
             Gravity,
@@ -266,21 +290,56 @@ public static class CarPhysics
         // the surface, and on a bank those are not the same size. Handing
         // over the whole of v^2 k asks for more grip than the corner needs --
         // fourteen percent more at Daytona's angle.
+        //
+        // This is still worth naming because it is what the driver asked
+        // for and what the telemetry reports against. Nothing downstream
+        // obeys it any more: the tyres deliver what their slip angles say,
+        // and the difference between the two is understeer.
         float requestedLateralAccel =
             curvatureDemandScale * state.Speed * state.Speed * desiredCurvature +
             roadLateralDemand;
         float referenceYawRate = state.Speed * desiredCurvature;
         float dynamicYawBlend = CalculateDynamicYawBlend(state.Speed);
-        LateralRequests lateralRequests = AllocateLateralRequests(
+        float corneringEfficiency = Math.Clamp(input.CorneringEfficiency, 0.05f, 1f);
+        float limitSettleUse = MathF.Max(input.LimitSettleUse, 0.5f);
+
+        float steerAngle = UpdateSteerAngle(
             state,
             config,
-            massKg,
+            desiredCurvature,
             requestedLateralAccel,
-            referenceYawRate,
-            dynamicYawBlend
+            frontGrip,
+            rearGrip,
+            corneringEfficiency,
+            limitSettleUse,
+            dt
         );
-        float frontLatRequest = lateralRequests.Front;
-        float rearLatRequest = lateralRequests.Rear;
+
+        // What each axle is giving laterally right now with its whole
+        // circle available. The brake allocator needs to know how much of
+        // each axle is already spoken for, and that is no longer a request
+        // to be granted: it is a measurement of what the rubber is doing at
+        // the angle it is at.
+        float frontLatRequest = frontGrip * corneringEfficiency *
+                                TireSlipCurve.Evaluate(
+                                    FrontSlipAngle(
+                                        config,
+                                        steerAngle,
+                                        state.SideslipAngleRadians,
+                                        state.YawRateRadiansPerSecond,
+                                        state.Speed
+                                    ),
+                                    config.FrontPeakSlipAngleRatio
+                                );
+        float rearLatRequest = rearGrip * corneringEfficiency *
+                               TireSlipCurve.Evaluate(
+                                   RearSlipAngle(
+                                       config,
+                                       state.SideslipAngleRadians,
+                                       state.YawRateRadiansPerSecond,
+                                       state.Speed
+                                   )
+                               );
 
         float frontLongRequest = 0f;
         float rearLongRequest = 0f;
@@ -340,14 +399,29 @@ public static class CarPhysics
             );
         }
 
-        float corneringEfficiency = Math.Clamp(input.CorneringEfficiency, 0.05f, 1f);
-        float limitSettleUse = MathF.Max(input.LimitSettleUse, 0.5f);
-        AxleResult front = ResolveAxle(
-            config, frontLatRequest, frontLongRequest, frontGrip,
-            corneringEfficiency, limitSettleUse);
-        AxleResult rear = ResolveAxle(
-            config, rearLatRequest, rearLongRequest, rearGrip,
-            corneringEfficiency, limitSettleUse);
+        // Sideslip and yaw rate get their own subdivided clock: both of
+        // their time constants shrink with speed, so the model is stiffest
+        // exactly where the car is slowest. Everything else - the wheel
+        // angle, the grip, what the brakes are doing - is held across the
+        // subdivision, because those are set once per physics step by
+        // things outside this loop.
+        LateralIntegration lateral = IntegrateLateral(
+            state,
+            config,
+            massKg,
+            frontGrip,
+            rearGrip,
+            frontLongRequest,
+            rearLongRequest,
+            steerAngle,
+            corneringEfficiency,
+            roadLateralDemand,
+            curvatureDemandScale,
+            dynamicYawBlend,
+            dt
+        );
+        AxleResult front = lateral.Front;
+        AxleResult rear = lateral.Rear;
 
         float actualLateralAccel = front.LateralAccel + rear.LateralAccel;
         float driveAccelActual = Math.Max(0f, front.LongitudinalAccel) + Math.Max(0f, rear.LongitudinalAccel);
@@ -372,17 +446,11 @@ public static class CarPhysics
             CalculateAxleLateralWorkScales(state, config, front, rear);
         float lateralUse = Math.Abs(actualLateralAccel) / totalGrip;
         float overLimit = Math.Max(front.OverLimit, rear.OverLimit);
-        float actualYawAcceleration = CalculateYawAcceleration(
-            config,
-            massKg,
-            front.LateralAccel,
-            rear.LateralAccel
-        );
+        float actualYawAcceleration = lateral.YawAcceleration;
         float rearSlideSeverity = CalculateRearSlideSeverity(
-            front,
-            rear,
-            frontLatRequest,
-            rearLatRequest
+            config,
+            lateral.FrontSlipAngle,
+            lateral.RearSlipAngle
         );
 
         float sideslipLossAccel = CalculateSideslipLossAccel(
@@ -405,57 +473,47 @@ public static class CarPhysics
         float averageSpeed = (oldSpeed + newSpeed) * 0.5f;
 
         // Gravity bends the path as surely as the tyres do. The bank was
-        // taken off what the tyres were asked for, so it has to be added
-        // back here or the car would corner only as hard as the tyres
-        // alone and run wide on exactly the surface built to hold it in.
-        // Undone in the same order it was applied, so the curvature that
-        // comes back out is the one the plan view will actually see.
-        float pathLateralAccel =
-            (actualLateralAccel - roadLateralDemand) /
-            MathF.Max(curvatureDemandScale, 1e-3f);
+        // taken off what the tyres delivered, so it has to be added back
+        // here or the car would corner only as hard as the tyres alone and
+        // run wide on exactly the surface built to hold it in. Undone in
+        // the same order it was applied, so the curvature that comes back
+        // out is the one the plan view will actually see.
         float actualCurvature = averageSpeed > 0.5f
-            ? pathLateralAccel / Math.Max(averageSpeed * averageSpeed, Epsilon)
+            ? lateral.PathLateralAccel /
+              Math.Max(averageSpeed * averageSpeed, Epsilon)
             : 0f;
         referenceYawRate = averageSpeed * desiredCurvature;
-        dynamicYawBlend = CalculateDynamicYawBlend(averageSpeed);
-        float trajectoryYawRate = actualCurvature * averageSpeed;
-        float headingDelta = trajectoryYawRate * dt;
+
         float velocityHeading = state.VelocityHeading;
-        float travelHeading = velocityHeading + headingDelta * 0.5f;
-        Vector2 travelDirection = new(MathF.Cos(travelHeading), MathF.Sin(travelHeading));
-        float nextVelocityHeading = MathHelper.NormalizeAngle(velocityHeading + headingDelta);
-        float dynamicYawRate = Math.Clamp(
-            state.YawRateRadiansPerSecond + actualYawAcceleration * dt,
-            -ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond,
-            ReducedOrderDynamicsLimits.MaximumYawRateRadiansPerSecond
+        float nextBodyHeading = MathHelper.NormalizeAngle(
+            state.Heading + lateral.HeadingDelta
         );
-        float nextYawRate = Lerp(trajectoryYawRate, dynamicYawRate, dynamicYawBlend);
-        float dynamicBodyHeading = MathHelper.NormalizeAngle(
-            state.Heading +
-            (state.YawRateRadiansPerSecond + nextYawRate) * 0.5f * dt
+        float nextSideslipAngle = lateral.Sideslip;
+        float nextVelocityHeading = MathHelper.NormalizeAngle(
+            nextBodyHeading + nextSideslipAngle
         );
-        float nextBodyHeading = LerpAngle(
-            nextVelocityHeading,
-            dynamicBodyHeading,
-            dynamicYawBlend
-        );
-        float nextSideslipAngle = Math.Clamp(
-            MathHelper.NormalizeAngle(nextVelocityHeading - nextBodyHeading),
-            -ReducedOrderDynamicsLimits.MaximumBodySideslipRadians,
-            ReducedOrderDynamicsLimits.MaximumBodySideslipRadians
-        );
-        nextBodyHeading = MathHelper.NormalizeAngle(
-            nextVelocityHeading - nextSideslipAngle
+        float travelHeading = velocityHeading + MathHelper.NormalizeAngle(
+            nextVelocityHeading - velocityHeading
+        ) * 0.5f;
+        Vector2 travelDirection = new(
+            MathF.Cos(travelHeading),
+            MathF.Sin(travelHeading)
         );
 
         state.Position += travelDirection * averageSpeed * dt;
         state.SideslipAngleRadians = nextSideslipAngle;
-        state.YawRateRadiansPerSecond = nextYawRate;
+        state.YawRateRadiansPerSecond = lateral.YawRate;
         state.Heading = nextBodyHeading;
+        state.SteerAngleRadians = steerAngle;
         state.Speed = newSpeed;
+        UpdateSpinVerdict(state, dt);
+        // The rear tyre's own scrub, which is what this was always trying
+        // to be. It used to be body sideslip against a clamp that no longer
+        // exists; it is now the angle the rear rubber is actually being
+        // dragged at, against the angle it stops paying at.
         float normalizedSideslip = Math.Clamp(
-            Math.Abs(state.SideslipAngleRadians) /
-            ReducedOrderDynamicsLimits.MaximumBodySideslipRadians,
+            MathF.Abs(lateral.RearSlipAngle) /
+            TireSlipCurve.PeakSlipAngleRadians,
             0f,
             1f
         );
@@ -627,6 +685,625 @@ public static class CarPhysics
         state.Normalize();
     }
 
+    /// <summary>
+    /// The referee. Past the angle where the single-track model stops
+    /// describing a car being driven, held there rather than flashed
+    /// through, the car is declared lost and handed to the choreography.
+    ///
+    /// Sustained rather than instantaneous on purpose: a flick through
+    /// thirty five degrees that comes straight back is a save, and a save
+    /// should be allowed to be spectacular. What is not allowed is sitting
+    /// there, which is the one thing the old ten degree clamp used to make
+    /// both free and invisible.
+    /// </summary>
+    private static void UpdateSpinVerdict(CarState state, float dt)
+    {
+        float sideslip = MathF.Abs(state.SideslipAngleRadians);
+        state.SideslipHoldSeconds =
+            sideslip >= SingleTrackDynamicsLimits.SpinVerdictSideslipRadians
+                ? state.SideslipHoldSeconds + dt
+                : 0f;
+
+        if (state.SideslipHoldSeconds <=
+            SingleTrackDynamicsLimits.SpinVerdictHoldSeconds)
+        {
+            return;
+        }
+
+        state.Spinning = true;
+        state.SpinSeconds = 0f;
+        state.SideslipHoldSeconds = 0f;
+        state.SpinEvents++;
+    }
+
+    /// <summary>
+    /// A spin, played rather than solved.
+    ///
+    /// The car keeps travelling the way it was travelling and scrubs speed
+    /// off at run-off rather than racing rate; the body turns at the
+    /// rotation it arrived with, bleeding away; the front wheels drift onto
+    /// the direction of travel, which is where a spinning car's wheels end
+    /// up; and once it is slow enough to be collected the body is steered
+    /// back onto its course and handed to the driver.
+    ///
+    /// Nothing here integrates a spin, and nothing here needs to. Past this
+    /// angle the single-track force directions are wrong and the state
+    /// cannot describe a car facing back down the road. What a spin costs
+    /// is seconds and places, and seconds and places are exactly what this
+    /// spends.
+    /// </summary>
+    private static void StepScriptedSpin(
+        CarState state,
+        CarConfig config,
+        TireConfig tires,
+        CarPhysicsStepInput input,
+        float dt
+    )
+    {
+        state.SpinSeconds += dt;
+
+        // Down to the speed it is handed back at and no further. A spin
+        // that parked the car would retire it, and a spin is meant to cost
+        // a driver the race, not end it.
+        float oldSpeed = state.Speed;
+        float floorSpeed = MathF.Min(
+            oldSpeed,
+            SingleTrackDynamicsLimits.SpinReleaseSpeedMetersPerSecond
+        );
+        float newSpeed = MathF.Max(
+            floorSpeed,
+            oldSpeed -
+            SingleTrackDynamicsLimits
+                .SpinScrubDecelerationMetersPerSecondSquared * dt
+        );
+        float averageSpeed = (oldSpeed + newSpeed) * 0.5f;
+
+        // Where the car is going does not change while it spins; only where
+        // it points does.
+        float velocityHeading = state.VelocityHeading;
+        Vector2 travelDirection = new(
+            MathF.Cos(velocityHeading),
+            MathF.Sin(velocityHeading)
+        );
+        state.Position += travelDirection * averageSpeed * dt;
+
+        bool gathering = newSpeed <= floorSpeed + Epsilon;
+        float previousYawRate = state.YawRateRadiansPerSecond;
+        float yawRate;
+        float heading;
+        if (gathering)
+        {
+            float weight = 1f - MathF.Exp(
+                -dt / MathF.Max(
+                    SingleTrackDynamicsLimits.SpinGatherTimeSeconds,
+                    Epsilon
+                )
+            );
+            heading = LerpAngle(state.Heading, velocityHeading, weight);
+            yawRate = MathHelper.NormalizeAngle(heading - state.Heading) / dt;
+        }
+        else
+        {
+            yawRate = previousYawRate * MathF.Exp(
+                -dt / MathF.Max(
+                    SingleTrackDynamicsLimits.SpinYawDecayTimeSeconds,
+                    Epsilon
+                )
+            );
+            heading = MathHelper.NormalizeAngle(
+                state.Heading + (previousYawRate + yawRate) * 0.5f * dt
+            );
+        }
+
+        state.Heading = heading;
+        state.YawRateRadiansPerSecond = yawRate;
+        state.Speed = newSpeed;
+        state.SideslipAngleRadians = MathHelper.NormalizeAngle(
+            velocityHeading - heading
+        );
+
+        // Nobody is steering. The wheels wander onto the direction of
+        // travel at the speed they can move, which on a car this far
+        // sideways means full opposite lock - and that is what a spinning
+        // car looks like from the outside.
+        float maximumSteer = MathF.Max(config.MaxSteerAngleRadians, 0f);
+        float steerTarget = Math.Clamp(
+            state.SideslipAngleRadians,
+            -maximumSteer,
+            maximumSteer
+        );
+        float steerStep = MathF.Max(config.SteerRateLimitRadiansPerSecond, 0f) * dt;
+        state.SteerAngleRadians += Math.Clamp(
+            steerTarget - state.SteerAngleRadians,
+            -steerStep,
+            steerStep
+        );
+
+        float massKg = TotalMassKg(config, state.Energy);
+        float roadNormalGravity = input.RoadAttitude.NormalGravity(
+            Gravity,
+            averageSpeed,
+            0f
+        );
+        ApplyWheelLoads(
+            state,
+            CalculateWheelLoads(state, config, massKg, roadNormalGravity)
+        );
+
+        // The tyres are along for the ride: they cool, they creep back
+        // towards the ambient, and they are charged nothing. The seconds
+        // are the bill, and adding a set of flat spots on top would be
+        // charging the same mistake twice.
+        float coolingAirSpeed = averageSpeed *
+                                (1f - Math.Clamp(state.AirVelocityDeficit, 0f, 1f));
+        float tireWakeDownforceLoss =
+            EffectiveTireWakeDownforceLoss(state, config);
+        foreach (WheelId wheel in Wheels)
+        {
+            UpdateTires(
+                state.GetTire(wheel),
+                config,
+                tires,
+                0f,
+                0f,
+                0f,
+                0f,
+                1f,
+                1f,
+                0f,
+                0f,
+                input.AirTempC,
+                input.TrackTempC,
+                averageSpeed,
+                coolingAirSpeed,
+                tireWakeDownforceLoss,
+                dt,
+                input.TireEnergyEfficiency
+            );
+        }
+
+        PowertrainSettlement settlement = config.Powertrain.Settle(
+            state.Energy,
+            0f,
+            0f,
+            averageSpeed,
+            massKg,
+            dt
+        );
+        state.Energy = settlement.Energy;
+
+        float actualLongitudinalAccel = (newSpeed - oldSpeed) / dt;
+        float response = 1f - MathF.Exp(-config.LoadTransferResponse * dt);
+        state.FilteredLongitudinalAccel = Lerp(
+            state.FilteredLongitudinalAccel,
+            actualLongitudinalAccel,
+            response
+        );
+        state.FilteredLateralAccel = Lerp(state.FilteredLateralAccel, 0f, response);
+
+        state.Telemetry = new CarTelemetry(
+            input.DriverInput,
+            input.Strategy,
+            0f,
+            0f,
+            0f,
+            actualLongitudinalAccel,
+            0f,
+            0f,
+            CalculateAxleGripAccel(massKg, tires, state.FrontLeft, state.FrontRight),
+            CalculateAxleGripAccel(massKg, tires, state.RearLeft, state.RearRight),
+            0f,
+            0f,
+            0f,
+            0f,
+            0f,
+            settlement.DrawnPowerWatts,
+            0f,
+            0f,
+            0f,
+            state.SideslipAngleRadians,
+            1f,
+            0f,
+            yawRate,
+            (yawRate - previousYawRate) / dt
+        );
+
+        if (gathering &&
+            MathF.Abs(state.SideslipAngleRadians) <=
+            SingleTrackDynamicsLimits.SpinReleaseSideslipRadians)
+        {
+            state.Spinning = false;
+            state.SpinSeconds = 0f;
+            state.SideslipHoldSeconds = 0f;
+        }
+
+        state.Normalize();
+    }
+
+    /// <summary>
+    /// Distance from the centre of mass to each axle. The front carries
+    /// less of the weight, so the centre of mass sits nearer the rear and
+    /// the front arm is the longer one.
+    /// </summary>
+    private static float RearMomentArm(CarConfig config)
+    {
+        return MathF.Max(config.WheelBaseMeters, Epsilon) *
+               Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
+    }
+
+    private static float FrontMomentArm(CarConfig config)
+    {
+        return MathF.Max(config.WheelBaseMeters, Epsilon) - RearMomentArm(config);
+    }
+
+    /// <summary>
+    /// The angle between where a front wheel points and where it is going.
+    ///
+    /// Everything the car does laterally comes from this and its twin at
+    /// the rear. Turn the wheels further than the tyre can use and the
+    /// front runs past its peak and the car goes wide; get the rear's angle
+    /// past its peak and the tail keeps going.
+    /// </summary>
+    private static float FrontSlipAngle(
+        CarConfig config,
+        float steerAngle,
+        float sideslip,
+        float yawRate,
+        float speed
+    )
+    {
+        return steerAngle - sideslip -
+               FrontMomentArm(config) * yawRate /
+               MathF.Max(speed, MinimumSlipAngleSpeed);
+    }
+
+    private static float RearSlipAngle(
+        CarConfig config,
+        float sideslip,
+        float yawRate,
+        float speed
+    )
+    {
+        return -sideslip +
+               RearMomentArm(config) * yawRate /
+               MathF.Max(speed, MinimumSlipAngleSpeed);
+    }
+
+    /// <summary>
+    /// Where the front wheels end up this step.
+    ///
+    /// The driver's language has not changed - they ask for a curvature -
+    /// but the car no longer grants it. Geometry says what angle would draw
+    /// that corner if the tyres followed exactly; the tyres do not, so a
+    /// small gain closes what is left, which is what a driver is doing when
+    /// they wind on more lock because the car is running wide.
+    ///
+    /// Then the wheels have to get there, and they can only move so fast.
+    /// That rate limit is the whole reason this is a state: a slide is
+    /// caught by lock that arrives in time and not caught by the same lock
+    /// arriving late, and a policy deciding fifteen times a second now has
+    /// to live with the difference.
+    /// </summary>
+    private static float UpdateSteerAngle(
+        CarState state,
+        CarConfig config,
+        float desiredCurvature,
+        float requestedLateralAccel,
+        float frontGrip,
+        float rearGrip,
+        float corneringEfficiency,
+        float limitSettleUse,
+        float dt
+    )
+    {
+        float wheelBase = MathF.Max(config.WheelBaseMeters, Epsilon);
+        float frontArm = FrontMomentArm(config);
+        float rearArm = RearMomentArm(config);
+
+        // Geometry is the start of the answer and not the whole of it. The
+        // wheels have to be turned further than the corner's own angle by
+        // exactly the difference between the two ends' slip angles, and a
+        // driver knows that difference the way they know the car: they wind
+        // it on rather than discovering it. Past the peak the inverse runs
+        // out, which is the point at which no amount of lock buys any more
+        // corner - understeer, arrived at honestly.
+        float frontShare = rearArm / wheelBase * requestedLateralAccel;
+        float rearShare = frontArm / wheelBase * requestedLateralAccel;
+        float frontCapacity = MathF.Max(frontGrip * corneringEfficiency, Epsilon);
+        float rearCapacity = MathF.Max(rearGrip * corneringEfficiency, Epsilon);
+        float slipCompensation =
+            TireSlipCurve.InverseEvaluate(
+                frontShare / frontCapacity,
+                config.FrontPeakSlipAngleRatio
+            ) -
+            TireSlipCurve.InverseEvaluate(rearShare / rearCapacity);
+
+        float feedforward =
+            MathF.Atan(wheelBase * desiredCurvature) + slipCompensation;
+        float feedback = config.SteerCurvatureFeedbackGain * wheelBase *
+                         (desiredCurvature - state.Telemetry.ActualCurvature);
+        float maximum = MathF.Max(config.MaxSteerAngleRadians, 0f);
+        float target = Math.Clamp(feedforward + feedback, -maximum, maximum);
+
+        // Feel for the limit, carried over from the model this replaces. A
+        // driver who can feel the front let go stops adding lock past the
+        // angle where it stops paying; one who cannot keeps winding it on
+        // and gets nothing back for it. Infinity, which is what a learned
+        // driver is handed, means no ceiling at all.
+        if (float.IsFinite(limitSettleUse))
+        {
+            float ceiling = TireSlipCurve.PeakSlipAngleRadians * limitSettleUse;
+            float carried = state.SideslipAngleRadians +
+                            FrontMomentArm(config) *
+                            state.YawRateRadiansPerSecond /
+                            MathF.Max(state.Speed, MinimumSlipAngleSpeed);
+            target = Math.Clamp(target, carried - ceiling, carried + ceiling);
+        }
+
+        float step = MathF.Max(config.SteerRateLimitRadiansPerSecond, 0f) * dt;
+        float change = Math.Clamp(target - state.SteerAngleRadians, -step, step);
+        return Math.Clamp(state.SteerAngleRadians + change, -maximum, maximum);
+    }
+
+    /// <summary>
+    /// One axle, at the angle it is at, with whatever the brakes or the
+    /// motor have left it.
+    ///
+    /// Longitudinal first, because that is commanded directly: a locked
+    /// wheel steers nothing, and the anti-lock upstream exists precisely to
+    /// stop the driver spending the whole circle on stopping. What remains
+    /// of the circle is what the slip angle gets to work with.
+    ///
+    /// The tyre is charged for what it was worked at and the car receives
+    /// what the driver managed to extract, which is the same split the
+    /// model has always used: wasting part of a corner still spends the
+    /// rubber on all of it.
+    /// </summary>
+    private static AxleResult ResolveAxleSlip(
+        CarConfig config,
+        float grip,
+        float slipAngle,
+        float peakScale,
+        float longitudinalRequest,
+        float corneringEfficiency
+    )
+    {
+        if (grip <= Epsilon)
+            return default;
+
+        float longitudinalDemand = MathF.Abs(longitudinalRequest) / grip;
+        float longitudinalUse = MathF.Min(longitudinalDemand, 1f);
+        float longitudinalEfficiency = OverLimitGripEfficiency(
+            config,
+            MathF.Max(0f, longitudinalDemand - 1f)
+        );
+        float longitudinalAccel =
+            Math.Clamp(longitudinalRequest, -grip, grip) * longitudinalEfficiency;
+        float circle = MathF.Sqrt(
+            MathF.Max(0f, 1f - longitudinalUse * longitudinalUse)
+        );
+
+        float shape = TireSlipCurve.Evaluate(slipAngle, peakScale);
+        float lateralUse = circle * MathF.Abs(shape);
+        float lateralAccel = grip * circle * shape * corneringEfficiency;
+
+        // Two ways to be past what the axle has, and they mean different
+        // things: brakes asked for more than the tyre can hold, and rubber
+        // dragged past the angle where it stops paying. Both are scrub, so
+        // both are charged here.
+        float overLimit = MathF.Max(0f, longitudinalDemand - 1f) +
+                          TireSlipCurve.PastPeak(slipAngle, peakScale);
+        float combinedRequest = MathF.Sqrt(
+            lateralUse * lateralUse +
+            longitudinalDemand * longitudinalDemand
+        );
+        return new AxleResult(
+            lateralAccel,
+            longitudinalAccel,
+            overLimit,
+            combinedRequest,
+            lateralUse,
+            longitudinalUse
+        );
+    }
+
+    /// <summary>
+    /// How many pieces the sideslip and yaw pair has to be advanced in to
+    /// stay stable, worked out from the stiffness actually present rather
+    /// than from a speed threshold - so a change to the tyre curve cannot
+    /// silently outrun the clock.
+    ///
+    /// Capped, because below the speed where the cap would not be enough
+    /// the kinematic blend has taken the lateral model over anyway.
+    /// </summary>
+    private static int LateralSubstepCount(
+        CarConfig config,
+        float massKg,
+        float frontGrip,
+        float rearGrip,
+        float speed,
+        float dt
+    )
+    {
+        float velocity = MathF.Max(speed, MinimumSlipAngleSpeed);
+        float stiffness = TireSlipCurve.NormalizedCorneringStiffness;
+        float front = massKg * frontGrip * stiffness;
+        float rear = massKg * rearGrip * stiffness;
+        float frontArm = FrontMomentArm(config);
+        float rearArm = RearMomentArm(config);
+        float yawDamping =
+            (frontArm * frontArm * front + rearArm * rearArm * rear) / velocity;
+        float sideslipDamping = (front + rear) / velocity;
+        float yawTime = MathF.Max(config.YawInertiaKgM2, Epsilon) /
+                        MathF.Max(yawDamping, Epsilon);
+        float sideslipTime = MathF.Max(massKg, Epsilon) /
+                             MathF.Max(sideslipDamping, Epsilon);
+        float allowed = SingleTrackDynamicsLimits.LateralSubstepSafetyFactor *
+                        MathF.Min(yawTime, sideslipTime);
+        if (allowed <= Epsilon)
+            return SingleTrackDynamicsLimits.MaximumLateralSubsteps;
+
+        return Math.Clamp(
+            (int)MathF.Ceiling(dt / allowed),
+            1,
+            SingleTrackDynamicsLimits.MaximumLateralSubsteps
+        );
+    }
+
+    /// <summary>
+    /// Advance the two states the tyres own - which way the car is pointing
+    /// relative to where it is going, and how fast that is changing - and
+    /// report what the axles did on the way.
+    ///
+    /// Below walking pace the slip angles are meaningless, so the same
+    /// kinematic blend the model has always used takes over: the body
+    /// simply follows the path. Above it the car is free to be out of
+    /// shape, and there is no clamp anywhere that says how far.
+    /// </summary>
+    private static LateralIntegration IntegrateLateral(
+        CarState state,
+        CarConfig config,
+        float massKg,
+        float frontGrip,
+        float rearGrip,
+        float frontLongRequest,
+        float rearLongRequest,
+        float steerAngle,
+        float corneringEfficiency,
+        float roadLateralDemand,
+        float curvatureDemandScale,
+        float dynamicYawBlend,
+        float dt
+    )
+    {
+        float speed = state.Speed;
+        float frontPeakScale = MathF.Max(config.FrontPeakSlipAngleRatio, 0.05f);
+        int substeps = LateralSubstepCount(
+            config, massKg, frontGrip, rearGrip, speed, dt
+        );
+        float h = dt / substeps;
+        float demandScale = MathF.Max(curvatureDemandScale, 1e-3f);
+        float sideslip = state.SideslipAngleRadians;
+        float yawRate = state.YawRateRadiansPerSecond;
+        float headingDelta = 0f;
+
+        float frontLateral = 0f, rearLateral = 0f;
+        float frontUse = 0f, rearUse = 0f;
+        float frontOver = 0f, rearOver = 0f;
+        float frontCombined = 0f, rearCombined = 0f;
+        float pathLateral = 0f, yawAcceleration = 0f;
+        float frontSlip = 0f, rearSlip = 0f;
+        AxleResult front = default;
+        AxleResult rear = default;
+
+        for (int i = 0; i < substeps; i++)
+        {
+            frontSlip = FrontSlipAngle(
+                config, steerAngle, sideslip, yawRate, speed
+            );
+            rearSlip = RearSlipAngle(config, sideslip, yawRate, speed);
+            front = ResolveAxleSlip(
+                config,
+                frontGrip,
+                frontSlip,
+                frontPeakScale,
+                frontLongRequest,
+                corneringEfficiency
+            );
+            rear = ResolveAxleSlip(
+                config, rearGrip, rearSlip, 1f, rearLongRequest, corneringEfficiency
+            );
+
+            float tyreLateral = front.LateralAccel + rear.LateralAccel;
+            float pathStep = (tyreLateral - roadLateralDemand) / demandScale;
+            float yawStep = CalculateYawAcceleration(
+                config, massKg, front.LateralAccel, rear.LateralAccel
+            );
+
+            // The velocity vector turns at the rate the path curves; the
+            // body turns at the yaw rate. Sideslip is the gap between the
+            // two, and it grows whenever the body is turning faster than
+            // the car is actually going round.
+            float velocityYawRate = speed > 0.5f ? pathStep / speed : 0f;
+            float dynamicYawRate = Math.Clamp(
+                yawRate + yawStep * h,
+                -SingleTrackDynamicsLimits.MaximumYawRateRadiansPerSecond,
+                SingleTrackDynamicsLimits.MaximumYawRateRadiansPerSecond
+            );
+            float dynamicSideslip = sideslip + (velocityYawRate - yawRate) * h;
+            float nextYawRate = Lerp(
+                velocityYawRate, dynamicYawRate, dynamicYawBlend
+            );
+            float nextSideslip = dynamicSideslip * dynamicYawBlend;
+
+            headingDelta += (yawRate + nextYawRate) * 0.5f * h;
+            yawRate = nextYawRate;
+            sideslip = MathHelper.NormalizeAngle(nextSideslip);
+
+            frontLateral += front.LateralAccel;
+            rearLateral += rear.LateralAccel;
+            frontUse += front.LateralUse;
+            rearUse += rear.LateralUse;
+            frontOver += front.OverLimit;
+            rearOver += rear.OverLimit;
+            frontCombined += front.CombinedRequest;
+            rearCombined += rear.CombinedRequest;
+            pathLateral += pathStep;
+            yawAcceleration += yawStep;
+        }
+
+        float share = 1f / substeps;
+        return new LateralIntegration(
+            new AxleResult(
+                frontLateral * share,
+                front.LongitudinalAccel,
+                frontOver * share,
+                frontCombined * share,
+                frontUse * share,
+                front.LongitudinalUse
+            ),
+            new AxleResult(
+                rearLateral * share,
+                rear.LongitudinalAccel,
+                rearOver * share,
+                rearCombined * share,
+                rearUse * share,
+                rear.LongitudinalUse
+            ),
+            pathLateral * share,
+            yawAcceleration * share,
+            sideslip,
+            yawRate,
+            headingDelta,
+            frontSlip,
+            rearSlip,
+            substeps
+        );
+    }
+
+    /// <summary>
+    /// How much more the rear is letting go than the front.
+    ///
+    /// With real slip angles this is one subtraction. The axle further past
+    /// its peak is the axle that is going; if that is the rear, the car is
+    /// oversteering, and the driver has a decision to make about it.
+    /// </summary>
+    private static float CalculateRearSlideSeverity(
+        CarConfig config,
+        float frontSlipAngle,
+        float rearSlipAngle
+    )
+    {
+        return MathF.Max(
+            0f,
+            TireSlipCurve.PastPeak(rearSlipAngle) -
+            TireSlipCurve.PastPeak(
+                frontSlipAngle,
+                config.FrontPeakSlipAngleRatio
+            )
+        );
+    }
+
     private static float RemainingLongitudinalGrip(float grip, float lateralAcceleration)
     {
         float remainingSquared = grip * grip - lateralAcceleration * lateralAcceleration;
@@ -791,111 +1468,6 @@ public static class CarPhysics
     /// claim and a wrong one, and on a straight it would say nothing at all
     /// because the car is limited by its battery there and not by its tyres.
     /// </summary>
-    private static AxleResult ResolveAxle(
-        CarConfig config,
-        float lateralRequest,
-        float longitudinalRequest,
-        float grip,
-        float corneringEfficiency = 1f,
-        float limitSettleUse = float.PositiveInfinity
-    )
-    {
-        if (grip <= Epsilon)
-            return default;
-
-        float lateralUse = lateralRequest / (grip * corneringEfficiency);
-        float longitudinalUse = longitudinalRequest / grip;
-        float combinedUse = MathF.Sqrt(lateralUse * lateralUse + longitudinalUse * longitudinalUse);
-
-        // Asked for more than the axle holds, the driver gets first go at
-        // putting it right, and only what they leave behind reaches the tyre.
-        // Here rather than anywhere in the driver because this is where the
-        // number they are reacting to exists: one axle's share of one axle's
-        // grip, which is the thing that actually lets go. Worked out from what
-        // the whole car is doing, the loose end averages away against the end
-        // that is fine, and the driver never feels the one that matters.
-        if (combinedUse > 1f && limitSettleUse < combinedUse)
-        {
-            float given = limitSettleUse / combinedUse;
-            lateralRequest *= given;
-            longitudinalRequest *= given;
-            lateralUse *= given;
-            longitudinalUse *= given;
-            combinedUse = limitSettleUse;
-        }
-
-        if (combinedUse <= 1f)
-            return new AxleResult(
-                lateralRequest,
-                longitudinalRequest,
-                Math.Max(0f, combinedUse - 1f),
-                combinedUse,
-                MathF.Abs(lateralUse),
-                MathF.Abs(longitudinalUse)
-            );
-
-        float overLimit = combinedUse - 1f;
-        float efficiency = CalculateOverLimitGripEfficiency(config, overLimit);
-        float scale = efficiency / combinedUse;
-        return new AxleResult(
-            lateralRequest * scale,
-            longitudinalRequest * scale,
-            overLimit,
-            combinedUse,
-            MathF.Abs(lateralUse),
-            MathF.Abs(longitudinalUse)
-        );
-    }
-
-    private static LateralRequests AllocateLateralRequests(
-        CarState state,
-        CarConfig config,
-        float massKg,
-        float totalLateralRequest,
-        float referenceYawRate,
-        float dynamicBlend
-    )
-    {
-        float frontStaticShare = Math.Clamp(config.FrontStaticLoadShare, 0f, 1f);
-        float staticFrontRequest = totalLateralRequest * frontStaticShare;
-        if (dynamicBlend <= 0f)
-            return new LateralRequests(
-                staticFrontRequest,
-                totalLateralRequest - staticFrontRequest
-            );
-
-        float wheelBase = Math.Max(config.WheelBaseMeters, Epsilon);
-        float rearMomentArm = wheelBase * frontStaticShare;
-        float yawResponseTime = Math.Max(config.YawResponseTimeSeconds, 0.05f);
-        float sideslipRecoveryTime = Math.Max(
-            config.SideslipRecoveryTimeSeconds,
-            0.05f
-        );
-        float stabilizedYawRate = referenceYawRate +
-                                  state.SideslipAngleRadians /
-                                  sideslipRecoveryTime;
-        float desiredYawAcceleration = Math.Clamp(
-            (stabilizedYawRate - state.YawRateRadiansPerSecond) / yawResponseTime,
-            -ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared,
-            ReducedOrderDynamicsLimits.MaximumYawAccelerationRadiansPerSecondSquared
-        );
-        float yawInertiaPerMass = Math.Max(config.YawInertiaKgM2, Epsilon) /
-                                  Math.Max(massKg, Epsilon);
-        float dynamicFrontRequest = (
-            rearMomentArm * totalLateralRequest +
-            yawInertiaPerMass * desiredYawAcceleration
-        ) / wheelBase;
-        float frontRequest = Lerp(
-            staticFrontRequest,
-            dynamicFrontRequest,
-            dynamicBlend
-        );
-        return new LateralRequests(
-            frontRequest,
-            totalLateralRequest - frontRequest
-        );
-    }
-
     private static float CalculateYawAcceleration(
         CarConfig config,
         float massKg,
@@ -925,42 +1497,6 @@ public static class CarPhysics
             1f
         );
         return t * t * (3f - 2f * t);
-    }
-
-    private static float CalculateRearSlideSeverity(
-        AxleResult front,
-        AxleResult rear,
-        float frontLateralRequest,
-        float rearLateralRequest
-    )
-    {
-        float overLimitImbalance = Math.Max(0f, rear.OverLimit - front.OverLimit);
-        float frontDelivery = RelativeLateralDelivery(frontLateralRequest, front.LateralAccel);
-        float rearDelivery = RelativeLateralDelivery(rearLateralRequest, rear.LateralAccel);
-        float deliveryImbalance = Math.Max(0f, frontDelivery - rearDelivery);
-        float rearNearLimit = Math.Max(
-            0f,
-            rear.CombinedRequest - RearSlipOnsetCombinedUse
-        );
-        float rearDominance = Math.Clamp(
-            (rear.CombinedRequest - front.CombinedRequest) / RearSlipDominanceRange,
-            0f,
-            1f
-        );
-        float utilizationSeverity = rearNearLimit * rearDominance;
-        return Math.Max(
-            overLimitImbalance,
-            Math.Max(deliveryImbalance, utilizationSeverity)
-        );
-    }
-
-    private static float RelativeLateralDelivery(float request, float actual)
-    {
-        float absoluteRequest = Math.Abs(request);
-        if (absoluteRequest <= Epsilon)
-            return 1f;
-
-        return Math.Clamp(Math.Abs(actual) / absoluteRequest, 0f, 1f);
     }
 
     /// <summary>
@@ -1007,11 +1543,18 @@ public static class CarPhysics
         ) * SideslipEnergyLossScale;
     }
 
-    private static float CalculateOverLimitGripEfficiency(CarConfig config, float overLimit)
+    /// <summary>
+    /// What is left of a longitudinal demand that is past what the axle
+    /// has. Falls from all of it to the car's floor over the cost cap, so a
+    /// driver who over-brakes by a little loses a little.
+    /// </summary>
+    private static float OverLimitGripEfficiency(CarConfig config, float overLimit)
     {
-        float minEfficiency = Math.Clamp(config.OverLimitMinGripEfficiency, 0f, 1f);
-        float t = Math.Clamp(overLimit / Math.Max(config.OverLimitCostCap, Epsilon), 0f, 1f);
-        return 1f + (minEfficiency - 1f) * t;
+        float floor = Math.Clamp(config.OverLimitMinGripEfficiency, 0f, 1f);
+        float t = Math.Clamp(
+            overLimit / MathF.Max(config.OverLimitCostCap, Epsilon), 0f, 1f
+        );
+        return 1f + (floor - 1f) * t;
     }
 
     private static float CostedOverLimit(CarConfig config, float overLimit)
@@ -1516,8 +2059,6 @@ public static class CarPhysics
         return MathHelper.NormalizeAngle(from + delta * Math.Clamp(weight, 0f, 1f));
     }
 
-    private readonly record struct LateralRequests(float Front, float Rear);
-
     private readonly record struct AxleScales(float Front, float Rear)
     {
         public static AxleScales Identity => new(1f, 1f);
@@ -1532,6 +2073,24 @@ public static class CarPhysics
     {
         public static AxleLateralWorkScales Identity => new(1f, 1f, 1f, 1f);
     }
+
+    /// <summary>
+    /// What the lateral pair did over one physics step: the axles averaged
+    /// across the subdivision, the states at the end of it, and the slip
+    /// angles the last piece was resolved at.
+    /// </summary>
+    private readonly record struct LateralIntegration(
+        AxleResult Front,
+        AxleResult Rear,
+        float PathLateralAccel,
+        float YawAcceleration,
+        float Sideslip,
+        float YawRate,
+        float HeadingDelta,
+        float FrontSlipAngle,
+        float RearSlipAngle,
+        int Substeps
+    );
 
     private readonly record struct AxleResult(
         float LateralAccel,

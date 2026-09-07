@@ -30,8 +30,75 @@ public sealed class CarConfig
     public float FrontLateralComplianceRatio { get; init; } = 1.4f;
     public float FrontDriveShare { get; init; } = 0f;
     public float YawInertiaKgM2 { get; init; } = 1450f;
+
+    /// <summary>
+    /// How the car used to fake a yaw response and how quickly it used to
+    /// straighten itself out. Both are dead numbers in the car: the yaw
+    /// response is now whatever the front and rear slip angles say it is,
+    /// and nothing straightens the car except the front tyres and the
+    /// driver's hands. They survive because the analytic driver's motion
+    /// predictor still carries the old kinematic approximation, and that
+    /// driver is an instrument now rather than a car the model owes
+    /// anything to.
+    /// </summary>
     public float YawResponseTimeSeconds { get; init; } = 0.15f;
     public float SideslipRecoveryTimeSeconds { get; init; } = 0.15f;
+
+    /// <summary>
+    /// How far the front wheels can be turned. Set from the tightest corner
+    /// the driver is allowed to ask for - a curvature request of
+    /// <see cref="MaxCurvatureRequest"/> needs about forty five degrees on
+    /// this wheelbase - with room above it for the angle a driver adds
+    /// catching a slide, which is the whole reason the wheel angle is a
+    /// state rather than an algebraic result.
+    /// </summary>
+    /// <summary>
+    /// Where the front tyres peak, as a share of where the rears do.
+    ///
+    /// This is the car's balance at the limit, and it is the difference
+    /// between a car that can be raced and one that cannot. Both axles have
+    /// the grip their share of the weight gives them, so both run out at
+    /// the same instant however this is set - what this decides is what
+    /// happens after that instant. A front that peaks earlier is a front
+    /// that is already sliding when the rear reaches its own peak, so the
+    /// car washes wide, the yaw rate drops, the rear's slip angle falls
+    /// with it, and the slide puts itself out.
+    ///
+    /// At one the car is neutral: both ends give up together, whichever one
+    /// is nudged past first keeps going, and the result is a spin every
+    /// time the driver asks for a few percent too much. Quicker on paper,
+    /// unraceable in fact, and not what anything in this class runs.
+    /// </summary>
+    public float FrontPeakSlipAngleRatio { get; init; } = 1.35f;
+
+    public float MaxSteerAngleRadians { get; init; } = 0.8f;
+
+    /// <summary>
+    /// How fast the front wheels can be moved, at the wheels themselves.
+    /// Six hundred degrees a second at the driver's hands through a ten to
+    /// one rack, which is a quick but human input: full opposite lock takes
+    /// something over a third of a second, and that delay is exactly what
+    /// makes a slide catchable or not.
+    ///
+    /// This is the first thing that makes the decision rate bite. A policy
+    /// deciding fifteen times a second used to have its curvature appear
+    /// instantly; now it appears at the speed a driver's arms can put it
+    /// there.
+    /// </summary>
+    public float SteerRateLimitRadiansPerSecond { get; init; } = 1.047f;
+
+    /// <summary>
+    /// How hard the steering chases a curvature it is not getting. The
+    /// driver asks for a corner, the wheels are set to the angle that
+    /// geometry says would draw it, and this closes the difference the
+    /// tyres' own slip angles leave behind - which is what a driver does
+    /// when the car understeers and they wind on more lock.
+    ///
+    /// Deliberately small. A high gain here would be a driver who saws at
+    /// the wheel, and it would hide the understeer this model exists to
+    /// show.
+    /// </summary>
+    public float SteerCurvatureFeedbackGain { get; init; } = 0.5f;
 
     public float MaxCurvatureRequest { get; init; } = 0.32f;
     public float MaxDriveAcceleration { get; init; } = 12f;
@@ -189,6 +256,14 @@ public sealed class CarConfig
     public float OvertakeAssistDownforceRecovery { get; init; } = 0.5f;
 
     public float CorneringScrubAccel { get; init; } = 1.15f;
+    /// <summary>
+    /// What is left of an axle's braking or drive once it is being asked
+    /// for more than it has. Lateral force no longer passes through here -
+    /// the slip curve is what takes cornering away from a tyre dragged past
+    /// its peak - but a wheel asked to stop the car harder than the road
+    /// will let it still gives back less than the road would have, and that
+    /// is the same longitudinal chain the car has always had.
+    /// </summary>
     public float OverLimitMinGripEfficiency { get; init; } = 0.8f;
     public float OverLimitCostCap { get; init; } = 0.2f;
 

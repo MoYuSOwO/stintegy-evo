@@ -55,7 +55,7 @@ def run(checkpoint: str, track: str, lap_metres: float, steps: int,
         previous = None
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
-            obs, _, done, _, _, race, _ = env.step(action)
+            obs, _, done, _, _, race, _, _ = env.step(action)
             now = (step + 1) * STEP_SECONDS
             if previous is not None:
                 for lane in range(batch):

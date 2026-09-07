@@ -28,7 +28,7 @@ public partial class RaceView3D : Node3D
     private double _hudElapsed, _coreMs, _renderTime, _warmup = 0.1;
     private long _completedTicks;
     private readonly FixedStepBudget _budget = new();
-    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float Curvature);
+    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float SteerAngle);
     private sealed record StepBatch(double CoreMs, CarPose[][] Frames);
     private Task<StepBatch>? _step;
     private readonly Queue<(int Car, int Tire, int Power)> _commands = [];
@@ -127,7 +127,7 @@ public partial class RaceView3D : Node3D
                 {
                     double time = ++_completedTicks * FixedStepBudget.StepSeconds;
                     for (int i = 0; i < frame.Length; i++)
-                        _cars[i].Capture(time, frame[i].Position, frame[i].Heading, frame[i].Curvature);
+                        _cars[i].Capture(time, frame[i].Position, frame[i].Heading, frame[i].SteerAngle);
                 }
             }
             catch (Exception error) { IsPaused = true; GD.PushError(error.ToString()); }
@@ -158,7 +158,7 @@ public partial class RaceView3D : Node3D
                         for (int i = 0; i < frame.Length; i++)
                         {
                             var car = simulation.Cars[i];
-                            frame[i] = new CarPose(car.State.Position, car.State.Heading, car.LastInput.DesiredCurvature);
+                            frame[i] = new CarPose(car.State.Position, car.State.Heading, car.State.SteerAngleRadians);
                         }
                         frames[tick] = frame;
                     }
