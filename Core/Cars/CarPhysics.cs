@@ -447,8 +447,23 @@ public static class CarPhysics
         // wastes part of the cornering still spent the tyre on all of it, and
         // charging the wear on the smaller number would hand the slower driver
         // longer-lasting tyres for being slow.
-        float frontLateralUse = front.LateralUse;
-        float rearLateralUse = rear.LateralUse;
+        //
+        // Past the peak that stops being a share of the force at all, and
+        // charging it as one gets the sign wrong: force falls away beyond
+        // the peak, so a car ploughing at three times its best slip angle
+        // would be billed less rubber than one sitting neatly on it. What a
+        // tyre actually spends is frictional work - force times how fast the
+        // rubber is being dragged across the road - and the dragging goes
+        // with the slip angle. Below the peak the two readings are the same
+        // number and every tyre figure ever calibrated still stands; above
+        // it, sliding gets expensive, which is what sliding is.
+        float frontLateralUse = front.LateralUse *
+                                ScrubWeight(
+                                    lateral.FrontSlipAngle,
+                                    config.FrontPeakSlipAngleRatio
+                                );
+        float rearLateralUse = rear.LateralUse *
+                               ScrubWeight(lateral.RearSlipAngle, 1f);
         float frontLongitudinalUse = front.LongitudinalUse;
         float rearLongitudinalUse = rear.LongitudinalUse;
         float frontBrakeUse = front.LongitudinalAccel < 0f
@@ -1320,6 +1335,41 @@ public static class CarPhysics
             substeps
         );
     }
+
+    /// <summary>
+    /// How much rubber an axle is spending per unit of force it delivers.
+    ///
+    /// One up to the peak, and from there it climbs with the slip angle:
+    /// the tyre is being dragged across the road faster and faster for a
+    /// force that has stopped growing, which is what a scrubbed set of
+    /// fronts at the end of an understeering stint is. Capped so that a
+    /// spin bills a set of tyres for a spin and not for the race.
+    /// </summary>
+    private static float ScrubWeight(float slipAngle, float peakScale)
+    {
+        float peak = TireSlipCurve.PeakSlipAngleRadians *
+                     MathF.Max(peakScale, 0.05f);
+        // The square root is not decoration. Wear and heat go as the square
+        // of this figure downstream, and what a tyre spends is force times
+        // sliding speed - one power of each. Handed the slip ratio whole it
+        // would come out squared as well, and a car fifteen percent over
+        // the limit would destroy a set of tyres in a minute rather than
+        // ruin them over a stint.
+        return Math.Clamp(
+            MathF.Sqrt(MathF.Abs(slipAngle) / MathF.Max(peak, Epsilon)),
+            1f,
+            MaximumScrubWeight
+        );
+    }
+
+    /// <summary>
+    /// How much more than its force share a sliding tyre may be charged,
+    /// as a multiplier before the squaring downstream. Two is a tyre being
+    /// dragged at four times the angle it pays best at - well past anything
+    /// held on purpose - and the ceiling is there so a spin bills a set of
+    /// tyres for a spin rather than for the race.
+    /// </summary>
+    private const float MaximumScrubWeight = 2f;
 
     /// <summary>
     /// How much more the rear is letting go than the front.
