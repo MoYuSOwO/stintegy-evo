@@ -34,14 +34,29 @@ def read_arm(log: Path) -> dict:
     resumed = re.search(r"format 2, step (\d+)", text)
     start = int(resumed.group(1)) if resumed else 0
     frozen = re.search(r"alpha frozen at ([0-9.]+) \((.*?)\)", text)
-    evals = re.findall(
-        r"eval at step (\d+).*?专家 \S+ +干净 +(\S+) +计罚 +(\S+) +"
-        r"(\d+)/(\d+) 干净 +出界 ([0-9.]+)s/圈.*?(?:旋转 (\d+))?\n",
-        text,
-        re.S,
-    )
+    # Two lines per evaluation. The per-circuit line carries the lap
+    # times, the clean count and the off-course seconds; the criterion
+    # line carries the spin and retirement totals in the form the verdict
+    # is written in. Reading the totals off the criterion line rather than
+    # off the per-circuit flags is what makes this survive the day the
+    # flags gained their per-lap parentheses -- which it did not, the
+    # first time, and quietly reported three spins as none.
+    blocks = re.split(r"eval at step (\d+)", text)[1:]
     rows = []
-    for step, clean, charged, cl, laps, off, spins in evals:
+    for step, body in zip(blocks[0::2], blocks[1::2]):
+        circuit = re.search(
+            r"专家 \S+ +干净 +(\S+) +计罚 +(\S+) +(\d+)/(\d+) 干净"
+            r" +出界 ([0-9.]+)s/圈",
+            body,
+        )
+        if circuit is None:
+            continue
+        criterion = re.search(
+            r"干净口径 +旋转 (\d+)(?: \([^)]*\))?"
+            r"(?: +退赛 (\d+)(?: \([^)]*\))?)?",
+            body,
+        )
+        clean, charged, cl, laps, off = circuit.groups()
         rows.append(
             {
                 "step": int(step),
@@ -50,7 +65,14 @@ def read_arm(log: Path) -> dict:
                 "clean_laps": int(cl),
                 "laps": int(laps),
                 "off": float(off),
-                "spins": int(spins) if spins else 0,
+                "spins": int(criterion.group(1)) if criterion else 0,
+                # Retirement only joined the criterion line partway
+                # through; an older log simply does not say.
+                "stalls": (
+                    int(criterion.group(2))
+                    if criterion and criterion.group(2) is not None
+                    else None
+                ),
             }
         )
     return {
@@ -90,14 +112,22 @@ def main() -> int:
         else:
             print("  α 固定（接力口径）或尚未冻结")
         if arm["evals"]:
-            print("\n  |    步 | 干净圈 | 计罚圈 | 干净率 | 出界 s/圈 | 旋转 |")
-            print("  |------:|--------|--------|--------|-----------|------|")
+            print(
+                "\n  |    步 |   干净圈 |   计罚圈 |      干净率 | 出界 s/圈 "
+                "| 旋转 | 退赛 |"
+            )
+            print(
+                "  |------:|----------|----------|-------------|-----------"
+                "|------|------|"
+            )
             for r in arm["evals"]:
                 share = r["clean_laps"] / r["laps"] * 100 if r["laps"] else 0.0
+                stalls = "  —" if r["stalls"] is None else f"{r['stalls']:>3}"
                 print(
-                    f"  | {r['step'] // 1000:>4}k | {r['clean']:>6} | "
-                    f"{r['charged']:>6} | {r['clean_laps']}/{r['laps']} "
-                    f"({share:.0f}%) | {r['off']:>9.1f} | {r['spins']:>4} |"
+                    f"  | {r['step'] // 1000:>4}k | {r['clean']:>8} | "
+                    f"{r['charged']:>8} | {r['clean_laps']:>2}/{r['laps']:<2} "
+                    f"({share:>3.0f}%) | {r['off']:>9.1f} | {r['spins']:>4} "
+                    f"| {stalls} |"
                 )
         print()
     print(
