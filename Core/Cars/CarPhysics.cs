@@ -455,6 +455,23 @@ public static class CarPhysics
                                 );
         float rearLateralUse = rear.LateralUse *
                                ScrubWeight(lateral.RearSlipAngle, 1f);
+        // The heat half of the same argument. Wear is force times sliding
+        // and so is heat, but they are not the same function of it: wear
+        // goes with the square root of the slip angle (above), while the
+        // rubber's power dissipation goes with the sliding speed itself.
+        // So heat gets its own reading -- force share times how fast the
+        // contact patch is being dragged sideways -- computed here, where
+        // the slip angles are, rather than reconstructed downstream from a
+        // utilisation that has already lost them.
+        float frontLateralSlipWork =
+            Math.Clamp(front.LateralUse, 0f, 1f) *
+            SlipSpeedShare(
+                lateral.FrontSlipAngle,
+                config.FrontPeakSlipAngleRatio
+            );
+        float rearLateralSlipWork =
+            Math.Clamp(rear.LateralUse, 0f, 1f) *
+            SlipSpeedShare(lateral.RearSlipAngle, 1f);
         float frontLongitudinalUse = front.LongitudinalUse;
         float rearLongitudinalUse = rear.LongitudinalUse;
         float frontBrakeUse = front.LongitudinalAccel < 0f
@@ -464,7 +481,14 @@ public static class CarPhysics
             ? rearLongitudinalUse
             : 0f;
         AxleLateralWorkScales lateralWorkScales =
-            CalculateAxleLateralWorkScales(state, config, front, rear);
+            CalculateAxleLateralWorkScales(
+                state,
+                config,
+                front,
+                rear,
+                frontLateralSlipWork,
+                rearLateralSlipWork
+            );
         float lateralUse = Math.Abs(actualLateralAccel) / totalGrip;
         float overLimit = Math.Max(front.OverLimit, rear.OverLimit);
         float actualYawAcceleration = lateral.YawAcceleration;
@@ -596,6 +620,7 @@ public static class CarPhysics
             config,
             tires,
             frontLateralUse,
+            frontLateralSlipWork,
             frontLongitudinalUse,
             frontBrakeUse,
             directionalHeatDemandUse,
@@ -616,6 +641,7 @@ public static class CarPhysics
             config,
             tires,
             frontLateralUse,
+            frontLateralSlipWork,
             frontLongitudinalUse,
             frontBrakeUse,
             directionalHeatDemandUse,
@@ -636,6 +662,7 @@ public static class CarPhysics
             config,
             tires,
             rearLateralUse,
+            rearLateralSlipWork,
             rearLongitudinalUse,
             rearBrakeUse,
             directionalHeatDemandUse,
@@ -656,6 +683,7 @@ public static class CarPhysics
             config,
             tires,
             rearLateralUse,
+            rearLateralSlipWork,
             rearLongitudinalUse,
             rearBrakeUse,
             directionalHeatDemandUse,
@@ -884,18 +912,30 @@ public static class CarPhysics
                     .SpinScrubDecelerationMetersPerSecondSquared /
                 MathF.Max(axleGrip, Epsilon)
             );
+            // A spin is billed by the same rules as everything else. It
+            // used to have its own flat rate -- the scrub weight pinned at
+            // its cap and a sideslip channel switched fully on -- which
+            // made a spin cost a fixed amount no matter how sideways or
+            // how fast it was. The choreographed trajectory has a real
+            // sideslip angle and a real speed, so the ordinary formula
+            // applies to it: force times the square root of the slip for
+            // wear, force times the sliding speed for heat. What the flat
+            // rate used to charge is now something the physics arrives at,
+            // and the two landing in the same place is the check.
+            float spinSlip = state.SideslipAngleRadians;
             UpdateTires(
                 state.GetTire(wheel),
                 config,
                 tires,
-                scrubForce * MaximumScrubWeight,
+                scrubForce * ScrubWeight(spinSlip, 1f),
+                scrubForce * SlipSpeedShare(spinSlip, 1f),
                 0f,
                 0f,
                 1f,
                 1f,
                 1f,
                 0f,
-                1f,
+                0f,
                 input.AirTempC,
                 input.TrackTempC,
                 averageSpeed,
@@ -1423,6 +1463,81 @@ public static class CarPhysics
     /// fronts at the end of an understeering stint is. Capped so that a
     /// spin bills a set of tyres for a spin and not for the race.
     /// </summary>
+    /// <summary>
+    /// The force share the calibration is matched at: hard cornering, but
+    /// not at the limit. This is where a racing car actually spends its
+    /// cornering seconds, and matching there is what "the same below the
+    /// peak" has to mean.
+    /// </summary>
+    private const float SlipHeatReferenceUse = 0.85f;
+
+    /// <summary>
+    /// The factor that makes force-times-sliding agree with the
+    /// force-squared reading it replaces, at everyday sub-limit use.
+    ///
+    /// Solved, not fitted: set <c>use^2 = k x use x sin(alpha(use)) /
+    /// sin(peak)</c> at the reference share and the constant falls out as
+    /// <c>ref x sin(peak) / sin(alpha(ref))</c>, with the slip angle read
+    /// off the tyre curve itself.
+    ///
+    /// Two corrections got it here, both found by measuring against the
+    /// old model rather than by reading the algebra twice.
+    ///
+    /// The first version solved at the tangent at zero slip, on the
+    /// reasoning that the curve is linear down there. It is, but the car
+    /// is not: over a five-minute mixed-driving cycle that ran 1.4 C hot
+    /// at 60% use and 4.8 C hot at 95%, because the curve has already left
+    /// its tangent by 14% at 60%. Matching a model at an operating point
+    /// nothing operates at is not matching it.
+    ///
+    /// The second is <see cref="TireConfig.MinimumDirectionalHeatScale"/>.
+    /// The old lateral term did not stand alone — it went through the
+    /// ramp that says most of the contact patch still adheres at modest
+    /// use, and below <see cref="TireConfig.DirectionalHeatRampStartUse"/>
+    /// that ramp is not a ramp at all but a flat multiplier of a fifth.
+    /// The reference share sits below the ramp start, so the thing being
+    /// matched is a fifth of what the term appeared to say, and leaving it
+    /// out made this five times too hot. The lateral term does not go
+    /// through that ramp any more — expressing "little of the work becomes
+    /// heat at modest use" is exactly what slip power does natively — so
+    /// the factor belongs here, in the constant, where it can be seen.
+    ///
+    /// Above the reference the two still part company, and that is the
+    /// point of the change: force falls away past the peak while the
+    /// dragging keeps growing, so heat goes on rising where a use-squared
+    /// reading would have it fall. That is the near-limit heating that
+    /// used to need its own hand-placed branch, and it arrives here for
+    /// free and continuous.
+    /// </summary>
+    private static readonly float SlipHeatCalibration =
+        SlipHeatReferenceUse *
+        TireConfig.MinimumDirectionalHeatScale *
+        MathF.Sin(TireSlipCurve.PeakSlipAngleRadians) /
+        MathF.Max(
+            MathF.Sin(TireSlipCurve.InverseEvaluate(SlipHeatReferenceUse)),
+            Epsilon
+        );
+
+    /// <summary>
+    /// How fast the contact patch is being dragged across the road, as a
+    /// share of what it does at the peak.
+    ///
+    /// The lateral sliding speed is <c>v sin(alpha)</c>, so this is
+    /// <c>sin(alpha)</c> normalised by its value at the tyre's own peak
+    /// slip angle -- the speed factor the heat term is multiplied by
+    /// carries the <c>v</c>. Sine rather than the angle because a car at
+    /// sixty degrees of slip is not dragging four times as fast as one at
+    /// fifteen; below the peak the two agree to the first order and the
+    /// calibration is unaffected either way.
+    /// </summary>
+    private static float SlipSpeedShare(float slipAngle, float peakScale)
+    {
+        float peak = TireSlipCurve.PeakSlipAngleRadians *
+                     MathF.Max(peakScale, Epsilon);
+        return MathF.Abs(MathF.Sin(slipAngle)) /
+               MathF.Max(MathF.Sin(peak), Epsilon);
+    }
+
     private static float ScrubWeight(float slipAngle, float peakScale)
     {
         float peak = TireSlipCurve.PeakSlipAngleRadians *
@@ -1739,6 +1854,7 @@ public static class CarPhysics
         CarConfig config,
         TireConfig tires,
         float lateralUse,
+        float lateralSlipWork,
         float longitudinalUse,
         float brakeUse,
         float directionalHeatDemandUse,
@@ -1782,22 +1898,6 @@ public static class CarPhysics
             0f,
             1f
         );
-        float nearLimitHeatStart = Math.Clamp(
-            TireConfig.NearLimitHeatStartUse,
-            0f,
-            1f - Epsilon
-        );
-        float nearLimitProgress = Math.Clamp(
-            (combinedUse - nearLimitHeatStart) /
-            Math.Max(1f - nearLimitHeatStart, Epsilon),
-            0f,
-            1f
-        );
-        float nearLimitSmoothStep =
-            nearLimitProgress * nearLimitProgress *
-            (3f - 2f * nearLimitProgress);
-        float partialSlipHeat = Math.Max(0f, tires.NearLimitHeatRate) *
-                                nearLimitSmoothStep * nearLimitSmoothStep;
         float rollingHeatSpeedFactor = Math.Max(0f, speed) /
                                        (
                                            Math.Max(0f, speed) +
@@ -1807,9 +1907,24 @@ public static class CarPhysics
                                    loadScale * rollingHeatSpeedFactor;
 
         float driverSensitiveEnergyFactor = Math.Clamp(tireEnergyEfficiency, 0.9f, 1.1f);
+        // Lateral tread heat is the rubber's own dissipation: the force it
+        // is carrying times how fast it is being dragged sideways. The
+        // constant is solved, not chosen. Below the peak the tyre curve is
+        // linear, so force share is the cornering stiffness times the slip
+        // angle, and force x slip and force-squared are the same function
+        // of each other up to exactly this factor. Matching there is what
+        // keeps every tyre temperature ever calibrated on this car -- the
+        // same discipline the wear half was done under.
+        //
+        // Above the peak the two part company, which is the point. Force
+        // falls away while the dragging keeps growing, so heat goes on
+        // rising where a use-squared reading would have it fall. That is
+        // the near-limit heating that used to need its own hand-placed
+        // branch, and it arrives here for free and continuous.
+        float lateralSlipHeat =
+            tires.LateralHeatRate * SlipHeatCalibration *
+            Math.Max(0f, lateralSlipWork) * lateralHeatScale;
         float directionalHeat =
-            tires.LateralHeatRate * normalizedLateralUse * normalizedLateralUse *
-            lateralHeatScale +
             tires.LongitudinalHeatRate * longitudinalHeatUse;
         // Force demand is not the same thing as rubber dissipation. At modest
         // utilization most of the contact patch still adheres and relatively
@@ -1819,7 +1934,7 @@ public static class CarPhysics
         float directionalHeatProgress = Math.Clamp(
             (directionalHeatDemandUse - TireConfig.DirectionalHeatRampStartUse) /
             Math.Max(
-                TireConfig.NearLimitHeatStartUse -
+                TireConfig.DirectionalHeatRampEndUse -
                 TireConfig.DirectionalHeatRampStartUse,
                 Epsilon
             ),
@@ -1845,7 +1960,7 @@ public static class CarPhysics
                                    tireWorkSpeedMultiplier;
         float surfaceHeat =
             tireWorkSpeedMultiplier *
-            (directionalHeat + partialSlipHeat) *
+            (directionalHeat + lateralSlipHeat) *
             driverSensitiveEnergyFactor +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio +
@@ -1917,7 +2032,9 @@ public static class CarPhysics
         CarState state,
         CarConfig config,
         AxleResult front,
-        AxleResult rear
+        AxleResult rear,
+        float frontSlipWork,
+        float rearSlipWork
     )
     {
         float frontLoadWeight =
@@ -1948,9 +2065,15 @@ public static class CarPhysics
         float targetFrontShare = physicalFrontWeight / physicalTotalWeight;
         float normalizedFrontUse = Math.Clamp(front.LateralUse, 0f, 1f);
         float normalizedRearUse = Math.Clamp(rear.LateralUse, 0f, 1f);
+        // The redistribution has to be computed on the same quantity it
+        // is about to scale, or it does not conserve anything. Heat is
+        // force times sliding now, so its shares come from that; wear is
+        // still force times the square root of the slip and keeps its own.
+        // Scaling one by a factor derived from the other was a real defect
+        // for exactly as long as the two happened to be the same function.
         AxleScales heat = RedistributeAxleWork(
-            normalizedFrontUse * normalizedFrontUse * frontLoadWeight,
-            normalizedRearUse * normalizedRearUse * rearLoadWeight,
+            Math.Max(0f, frontSlipWork) * frontLoadWeight,
+            Math.Max(0f, rearSlipWork) * rearLoadWeight,
             targetFrontShare
         );
         AxleScales wear = RedistributeAxleWork(

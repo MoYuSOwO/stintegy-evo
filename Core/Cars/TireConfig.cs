@@ -15,26 +15,23 @@ public sealed class TireConfig
     public const float DirectionalHeatRampStartUse = 0.90f;
     public const float MinimumDirectionalHeatScale = 0.20f;
     /// <summary>
-    /// Where the partial-slip heat branch starts, as a share of the
-    /// friction circle.
+    /// Where the longitudinal heat proxy reaches its full value.
     ///
-    /// DORMANT since the lateral model was rebuilt on slip angles, and
-    /// deliberately left where it is. "Use" was an unbounded request under
-    /// the old model - a car could ask for twice its circle, and the
-    /// measured ceiling was 2.002 - so this branch fired through every fast
-    /// corner. It is a bounded delivery now, the measured ceiling is 0.966,
-    /// and nothing ever reaches this line again.
+    /// This constant used to be called <c>NearLimitHeatStartUse</c> and did
+    /// two jobs: it ended this ramp, and it started a hand-placed branch
+    /// that piled extra heat into a tyre near the limit. The second job is
+    /// gone. Lateral tread heat is force times sliding now, and sliding
+    /// keeps growing past the peak while force falls, so the near-limit
+    /// acceleration that branch existed to supply comes out of the physics
+    /// continuously and needs no threshold to switch it on.
     ///
-    /// Not lowered here on purpose: moving it re-opens the whole tyre
-    /// temperature calibration, and that is not a thing to do in the middle
-    /// of a physics batch's gates. It is filed in the tyre batch's list in
-    /// the design notes, to be re-read in the same pass that re-reads heat
-    /// against slip-angle semantics - the wear side has already moved to
-    /// force times sliding, and the heat side owes the same visit.
-    ///
-    /// Dead code may live. It may not go unmarked.
+    /// Being honest about what happened to the number: the branch was
+    /// retired, the ramp's end point was not, and it is the same 0.99. This
+    /// is a rename of a job that survived, not a constant that was quietly
+    /// kept alive under a new name -- the dead half is dead, and it left
+    /// this headstone.
     /// </summary>
-    public const float NearLimitHeatStartUse = 0.99f;
+    public const float DirectionalHeatRampEndUse = 0.99f;
     public const float NearLimitWearExponent = 8f;
     public const float OverLimitHeatRate = 6f;
     public const float SideslipHeatRate = 4f;

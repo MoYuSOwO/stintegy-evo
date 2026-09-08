@@ -361,6 +361,66 @@ public sealed class SingleTrackDynamicsTests
     /// spin hands back a moving car. Flicking through the same angle is
     /// not: a save should be allowed to be spectacular.
     /// </summary>
+    /// <summary>
+    /// What one spin costs the tyres, now that it is billed by the same
+    /// formula as everything else.
+    ///
+    /// A spin used to have its own flat rate: the scrub weight pinned at
+    /// its cap and a dedicated sideslip heat channel switched fully on,
+    /// which charged a fixed amount however sideways or however fast the
+    /// spin was. The choreographed trajectory has a real sideslip angle
+    /// and a real speed, so the ordinary reading applies to it — force
+    /// times the root of the slip for wear, force times the sliding speed
+    /// for heat.
+    ///
+    /// The result is cheaper than the flat rate was, and that is the
+    /// finding rather than a target that was aimed at: wear went from
+    /// +1.57% to +0.77% and the surface peak from 129.6 C to 99.7 C. The
+    /// reason is that the flat rate charged heat the motion does not
+    /// justify — the choreography sheds speed at nine metres a second
+    /// squared, and that is all the energy there is to put into the
+    /// rubber. Billing it consistently is worth more than matching the old
+    /// number, but the size of the gap is recorded here so that a decision
+    /// to make spins hurt more is taken deliberately, and taken on the
+    /// general calibration rather than on a special case.
+    /// </summary>
+    [Fact]
+    public void ASpinIsBilledByTheSameFormulaAsEverythingElse()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
+        CarState gone = HeldSideways(
+            car, tires, past, SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f
+        );
+
+        float startWear = gone.FrontLeft.Wear;
+        float startTemp = gone.FrontLeft.SurfaceTempC;
+        float peak = startTemp;
+        for (int i = 0; i < 60 * 12; i++)
+        {
+            CarPhysics.Step(
+                gone, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
+            );
+            peak = MathF.Max(peak, gone.FrontLeft.SurfaceTempC);
+            if (!gone.Spinning && i > 10)
+                break;
+        }
+
+        float wearCost = (gone.FrontLeft.Wear - startWear) * 100f;
+        float heatRise = peak - startTemp;
+
+        Assert.InRange(wearCost, 0.5f, 1.1f);
+        Assert.InRange(heatRise, 5f, 12f);
+        // And the thing that must not come back: a spin has to cost
+        // something well above ordinary cornering, or the referee is
+        // declaring an event the car does not feel.
+        Assert.True(
+            wearCost > 0.4f,
+            $"a spin has to be expensive in rubber, got {wearCost:F2}%"
+        );
+    }
+
     [Fact]
     public void OnlyASustainedSlideIsASpin()
     {
