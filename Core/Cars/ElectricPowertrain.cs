@@ -70,8 +70,41 @@ public sealed class ElectricPowertrain : IPowertrain
     /// braking zone, which is what energy management actually is - and there is
     /// none of that here.
     /// </summary>
-    public float BatteryCapacityJoules { get; init; } = 1470000000f;
+    public float BatteryCapacityJoules { get; init; } = 1100000000f;
 
+    /// <summary>
+    /// Why this number and not the 1470 MJ it was.
+    ///
+    /// Measured rather than chosen: driven flat out on both ladders round
+    /// Silverstone, this car spends <b>27.4 MJ a lap</b> (12 lanes, 600
+    /// simulated seconds, 68 laps; the scan is
+    /// <c>Training/python/scarcity_scan.py</c>). At the old capacity that
+    /// bought 53.6 laps against a race distance of 52 — the car could go
+    /// flat out for the whole race and finish with charge to spare, which
+    /// is why the five power settings differed by under three per cent in
+    /// consumption and Attack was always right. A choice with one right
+    /// answer is not a choice.
+    ///
+    /// The band is anchored outside the project rather than to taste.
+    /// Formula 2 manages no energy at all; Formula 1's 2026 rules make
+    /// deployment something to budget; Formula E uses about twice its
+    /// store at full effort, so half the race has to be driven for rather
+    /// than raced. Under 1.0 there is no decision. Near 2.0 saving beats
+    /// pace and it stops being racing. This project wants the middle:
+    /// finishing flat out should cost 1.2 to 1.4 times what is on board.
+    ///
+    /// 52 laps x 27.4 MJ / 1100 MJ = <b>1.30</b>.
+    ///
+    /// Nothing else moves with it. <see cref="ConsumableMassKg"/> is zero
+    /// for a battery — a pack does not get lighter as it empties — so the
+    /// dial changes what there is to allocate and changes no physics.
+    ///
+    /// What it does <i>not</i> do on its own is reach training. A 240
+    /// second episode is about two and a half laps and spends six per cent
+    /// of this pack; a policy trained only on that never meets a car that
+    /// is running out. Scarcity becomes visible to the learner through
+    /// randomised starting store, not through this constant.
+    /// </summary>
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
 
     /// <summary>
@@ -96,6 +129,14 @@ public sealed class ElectricPowertrain : IPowertrain
     public float LowSocPowerLimitStart { get; init; } = 0.20f;
 
     public float LowSocPowerFalloffExponent { get; init; } = 2f;
+
+    /// <summary>
+    /// The limp. See <see cref="OutputAvailability"/> for why it exists and
+    /// how the number was picked; in short, eight per cent of nominal is
+    /// about 31 kW, which this car's drag turns into roughly 118 km/h
+    /// sustained and a lap about twice as slow as a racing one.
+    /// </summary>
+    public float LowSocPowerFloor { get; init; } = 0.08f;
     public float RegenEfficiency { get; init; } = 0.56f;
     public float RegenPowerCapWatts { get; init; } = 260000f;
 
@@ -169,13 +210,37 @@ public sealed class ElectricPowertrain : IPowertrain
         };
     }
 
+    /// <summary>
+    /// What a nearly empty pack can still deliver, as a fraction of
+    /// nominal — and the floor it never falls through.
+    ///
+    /// The fade itself is unchanged: below <see cref="LowSocPowerLimitStart"/>
+    /// the available power falls away as the square of what is left, so
+    /// missing the target by a little costs a little and missing it by a
+    /// lot costs the race. What changed is the bottom. It used to reach
+    /// zero, and a car at zero is not a car being punished — it is a car
+    /// that has stopped, taking a retirement and becoming an obstacle for
+    /// everyone still racing. Running out of energy should be ruinous and
+    /// survivable, the way it is on a real grid, where a car that has
+    /// nothing left still crawls home under its own power.
+    ///
+    /// So the floor. It is not a taste: at
+    /// <see cref="LowSocPowerFloor"/> of nominal this car can hold about
+    /// 118 km/h against its own drag, which puts a drained lap at roughly
+    /// twice a racing lap. That is the price — a lap lost per lap — and it
+    /// is far enough above the harness's one metre a second stall line
+    /// that a drained car keeps moving even up the steepest gradient in
+    /// the set. Recovery is untouched: braking still charges the pack at
+    /// full efficiency, so a driver who overspent can nurse it back rather
+    /// than being written off.
+    /// </summary>
     public float OutputAvailability(in PowertrainState energy)
     {
         float charge = energy.Primary;
         if (charge >= LowSocPowerLimitStart)
             return 1f;
 
-        return MathF.Pow(
+        float faded = MathF.Pow(
             Math.Clamp(
                 charge / Math.Max(LowSocPowerLimitStart, Epsilon),
                 0f,
@@ -183,8 +248,22 @@ public sealed class ElectricPowertrain : IPowertrain
             ),
             MathF.Max(LowSocPowerFalloffExponent, 1f)
         );
+        // Blended rather than clamped, so the curve stays continuous and
+        // monotone through the whole fade instead of running into a shelf.
+        return LowSocPowerFloor + (1f - LowSocPowerFloor) * faded;
     }
 
+    /// <summary>
+    /// How hard the car may be driven right now, given what is left.
+    ///
+    /// An empty pack used to answer zero here, which is not a punishment
+    /// but a full stop: the car parks itself, the harness calls it a
+    /// retirement, and everyone still racing inherits an obstacle. The
+    /// early return is gone. A pack at nothing goes through the same fade
+    /// as a pack at anything else and lands on the floor
+    /// <see cref="OutputAvailability"/> holds it at, so overspending is
+    /// ruinous and survivable rather than terminal.
+    /// </summary>
     public float DriveAccelerationLimit(
         in PowertrainState energy,
         in CarStrategy strategy,
@@ -193,9 +272,6 @@ public sealed class ElectricPowertrain : IPowertrain
         float chassisForceCeiling
     )
     {
-        if (energy.Primary <= 0f)
-            return 0f;
-
         float powerLimitedAccel =
             GetDrivePowerLimitWatts(strategy) /
             (massKg * Math.Max(speed, MinPowerSpeed));

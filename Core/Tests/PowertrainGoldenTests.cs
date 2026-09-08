@@ -34,6 +34,17 @@ namespace StintegyEVO.Core.Tests;
 /// follows. Nothing in the powertrain changed, and that is exactly what
 /// these pins are for: if the next re-record cannot point at a change of
 /// this size somewhere else, it is a bug.
+///
+/// Re-recorded again on 2026-09-09, and this time the powertrain is what
+/// moved. Two changes, both deliberate. The pack is 1100 MJ instead of
+/// 1470, because measurement said the old one let the car go flat out for
+/// a whole race and finish with charge to spare — every charge figure in
+/// these trajectories therefore falls faster, in exact proportion. And a
+/// nearly empty pack no longer fades to nothing: it lands on a limp
+/// floor, so the empty-pack run, which used to be a car sitting still, is
+/// now a car crawling. Those two account for every digit that moved here;
+/// the drive-power figures at full charge are unchanged, which is the
+/// check that nothing else was disturbed.
 /// </summary>
 public sealed class PowertrainGoldenTests
 {
@@ -99,7 +110,7 @@ public sealed class PowertrainGoldenTests
             "heading 0.65742946\n" +
             "sideslip -0.00018094783\n" +
             "yawrate 0.20909905\n" +
-            "charge 0.799341\n" +
+            "charge 0.79911804\n" +
             "drivepower 130745.53\n" +
             "regenpower 0\n" +
             "longaccel 10.545293\n" +
@@ -108,18 +119,18 @@ public sealed class PowertrainGoldenTests
             "coretemp 90.38499 90.669106 90.69098 91.147644";
 
         public const string SaggingPack =
-            "speed 8.887952\n" +
-            "position 245.62796 206.03896\n" +
-            "heading -0.4336762\n" +
-            "sideslip 0.0025646011\n" +
-            "yawrate 0.14495416\n" +
-            "charge 0.14957644\n" +
-            "drivepower 52850.645\n" +
+            "speed 9.31804\n" +
+            "position 251.01974 198.16179\n" +
+            "heading -0.661389\n" +
+            "sideslip 0.0055259233\n" +
+            "yawrate 0.10551673\n" +
+            "charge 0.14940746\n" +
+            "drivepower 58780.914\n" +
             "regenpower 0\n" +
-            "longaccel 6.4357653\n" +
-            "lataccel 2.5220501\n" +
-            "wear 0.019761954 0.026503813 0.020550514 0.03135827\n" +
-            "coretemp 91.20464 91.54521 91.380394 91.86892";
+            "longaccel 6.832253\n" +
+            "lataccel 2.5289817\n" +
+            "wear 0.020538472 0.027574878 0.021284401 0.032688405\n" +
+            "coretemp 91.24614 91.5836 91.39253 91.87926";
 
         public const string AttackLadder =
             "speed 13.880993\n" +
@@ -127,7 +138,7 @@ public sealed class PowertrainGoldenTests
             "heading 0.5272883\n" +
             "sideslip -0.0006604545\n" +
             "yawrate 0.21404772\n" +
-            "charge 0.79932857\n" +
+            "charge 0.7991027\n" +
             "drivepower 134086.42\n" +
             "regenpower 0\n" +
             "longaccel 10.529843\n" +
@@ -136,18 +147,18 @@ public sealed class PowertrainGoldenTests
             "coretemp 90.389534 90.674324 90.703835 91.16355";
 
         public const string EmptyPack =
-            "speed 1.46651655E-05\n" +
-            "position 109.38728 78.00939\n" +
-            "heading 1.6432307\n" +
+            "speed 1.5597687\n" +
+            "position 105.777306 85.16254\n" +
+            "heading -2.640342\n" +
             "sideslip 0\n" +
-            "yawrate 0\n" +
-            "charge 0.00015505249\n" +
-            "drivepower 9.3887586E-08\n" +
+            "yawrate 1.0515409\n" +
+            "charge 0.00023203857\n" +
+            "drivepower 1329.17\n" +
             "regenpower 0\n" +
-            "longaccel 7.212382E-06\n" +
-            "lataccel 5.368971\n" +
-            "wear 0.0012230597 0.00180895 0.0013719165 0.0021184897\n" +
-            "coretemp 89.18904 89.32987 89.279655 89.43372";
+            "longaccel 0.7671234\n" +
+            "lataccel 1.6251454\n" +
+            "wear 0.0016517526 0.0023394222 0.0021250374 0.003034483\n" +
+            "coretemp 89.25825 89.407196 89.856155 90.03744";
     }
 
     /// <summary>

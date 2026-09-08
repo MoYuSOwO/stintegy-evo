@@ -168,9 +168,16 @@ public sealed class PowertrainInterfaceTests
 
         dashboard.Refresh(config, state, CarStrategy.Default);
 
-        // A tenth of a pack is half of where the limiter starts, and the
-        // fall-off is squared, so a quarter of the output is left.
-        Assert.Equal(0.25f, dashboard.OutputAvailability, 4);
+        // A tenth of a pack is half of where the limiter starts and the
+        // fall-off is squared, so a quarter of the fade is left — and the
+        // fade now sits on top of the limp floor rather than running to
+        // zero, so a quarter of the way up from the floor is what the
+        // gauge shows. Written from the constants rather than as 0.31, so
+        // that moving the floor moves this with it instead of breaking it.
+        ElectricPowertrain pack = ElectricPowertrain.Default;
+        float expected =
+            pack.LowSocPowerFloor + (1f - pack.LowSocPowerFloor) * 0.25f;
+        Assert.Equal(expected, dashboard.OutputAvailability, 4);
     }
 
     [Fact]
