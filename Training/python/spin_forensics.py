@@ -51,6 +51,14 @@ BUFFER_SCALE = 20.0
 # genuinely marginal case, not enough to move a histogram.
 HALF_TRACK_METRES = 0.8
 
+# The tyre-and-battery block: four wheels of (surface temp, core temp,
+# wear, load), then the primary store. Reading wear and the store at the
+# moment of the loss is what turns "it happens late in the session" from a
+# correlation into a mechanism -- or refutes it. The block sits at the
+# front of the observation, right after the geometry.
+TYRE_BLOCK = 198
+TEMPERATURE_SCALE = 150.0
+
 # Ego block layout: speed, longitudinal accel, lateral accel, yaw rate,
 # sideslip. The scales are the observation writer's own
 # (Core/Drivers/Learned/DirectDriveObservation.cs).
@@ -95,6 +103,16 @@ def _yaw_rate(obs: np.ndarray) -> np.ndarray:
 
 def _sideslip(obs: np.ndarray) -> np.ndarray:
     return obs[:, EGO_SIDESLIP] * SIDESLIP_SCALE
+
+
+def _consumables(obs: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Worst tyre wear, hottest core, and what is left in the store."""
+    wear = np.max(obs[:, [TYRE_BLOCK + 2 + 4 * i for i in range(4)]], axis=1)
+    core = np.max(
+        obs[:, [TYRE_BLOCK + 1 + 4 * i for i in range(4)]], axis=1
+    ) * TEMPERATURE_SCALE
+    store = obs[:, TYRE_BLOCK + 16]
+    return wear, core, store
 
 
 def _road(obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -246,6 +264,7 @@ def probe(
             speed = _speed(obs)
             slip = _sideslip(obs)
             half_width, offset = _road(obs)
+            wear, core, store = _consumables(obs)
             for lane in range(lanes):
                 history[lane].append(
                     {
@@ -258,6 +277,9 @@ def probe(
                         "surfaces": wheel_surfaces(
                             float(offset[lane]), float(half_width[lane])
                         ),
+                        "wear": float(wear[lane]),
+                        "core_c": float(core[lane]),
+                        "store": float(store[lane]),
                     }
                 )
             obs, _, done, reason, _, race, final_obs, spins = env.step(action)
@@ -309,6 +331,9 @@ def probe(
                             else float("nan")
                         ),
                         "surfaces": lead[-1]["surfaces"] if lead else "?",
+                        "wear": lead[-1]["wear"] if lead else float("nan"),
+                        "core_c": lead[-1]["core_c"] if lead else float("nan"),
+                        "store": lead[-1]["store"] if lead else float("nan"),
                         "offset_m": (
                             float(lead[-1]["offset_m"]) if lead else float("nan")
                         ),
@@ -381,6 +406,26 @@ def summarise(result: dict) -> None:
     print("  逐车道：" + "  ".join(
         f"{lane}:{n}" for lane, n in sorted(lanes.items())
     ))
+
+    worn = [e["wear"] for e in events if e.get("wear") == e.get("wear")]
+    if worn:
+        cores = [e["core_c"] for e in events]
+        stores = [e["store"] for e in events]
+        print("\n触发瞬间的耗材状态（最坏那条胎 / 主储能）")
+        print(
+            f"  胎耗  最小 {min(worn) * 100:.0f}%  中位 "
+            f"{sorted(worn)[len(worn) // 2] * 100:.0f}%  最大 "
+            f"{max(worn) * 100:.0f}%"
+        )
+        print(
+            f"  核心温 最小 {min(cores):.0f}°C  中位 "
+            f"{sorted(cores)[len(cores) // 2]:.0f}°C  最大 {max(cores):.0f}°C"
+        )
+        print(
+            f"  余量  最小 {min(stores) * 100:.0f}%  中位 "
+            f"{sorted(stores)[len(stores) // 2] * 100:.0f}%  最大 "
+            f"{max(stores) * 100:.0f}%"
+        )
 
     print("\n触发瞬间四轮所在表面")
     tally: dict[str, list[int]] = {}
