@@ -42,7 +42,9 @@ public sealed class BatchedTrainingHost
         CarStrategy? egoStrategy = null,
         bool egoAnalytic = false,
         float egoAnalyticHz = 0f,
-        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz
+        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz,
+        bool randomiseEpisodeStart = false,
+        EpisodeStartDistribution? episodeStarts = null
     )
     {
         if (batchSize <= 0)
@@ -112,7 +114,9 @@ public sealed class BatchedTrainingHost
                 // without being told a rate is measured on the learner's
                 // terms rather than on a remembered constant.
                 egoAnalyticHz > 0f ? egoAnalyticHz : decisionHz,
-                decisionHz
+                decisionHz,
+                randomiseEpisodeStart,
+                episodeStarts
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

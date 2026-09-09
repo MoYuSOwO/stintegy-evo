@@ -29,6 +29,13 @@ from train import (
 )
 
 LANES = 12
+# Six hundred seconds is part of the criterion, not a convenience.
+#
+# Both certified arms fell apart late in a session: every one of
+# fifty-seven spins across two drivers who shared no ancestry happened
+# above twenty-five per cent tyre wear, and a shorter session stops before
+# the tyres get there. A verdict taken on a window that ends before the
+# failure is a verdict about the window.
 SECONDS = 600.0
 SEED_BASE = 900_001
 
@@ -113,7 +120,8 @@ def main() -> int:
         )
         print(
             "  毕业口径：" + (
-                "✅ 四项齐（零旋转 + 零退赛 + 干净率过半 + 落带）"
+                f"✅ 四项齐（零旋转 + 零退赛 + 干净率过半 + 落带）"
+                f" · {SECONDS:.0f} 秒会话"
                 if graduated
                 else "❌ " + " / ".join(
                     x for x in (

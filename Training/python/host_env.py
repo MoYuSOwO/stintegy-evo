@@ -69,6 +69,7 @@ class HostEnv:
         solo: bool = False,
         track: str | None = None,
         episode_seconds: float | None = None,
+        randomise_episode_start: bool = False,
         host_project: str = DEFAULT_HOST_PROJECT,
         quiet: bool = True,
         ego_modes: tuple[int, int] | None = None,
@@ -103,6 +104,8 @@ class HostEnv:
             command += ["--track", track]
         if episode_seconds is not None:
             command += ["--episode-seconds", str(episode_seconds)]
+        if randomise_episode_start:
+            command += ["--randomise-episode-start"]
         if ego_modes is not None:
             command += ["--ego-modes", f"{ego_modes[0]},{ego_modes[1]}"]
         if ego_analytic:

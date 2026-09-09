@@ -455,9 +455,30 @@ def main() -> int:
     parser.add_argument("--eval-every", type=int, default=25_000)
     # Four hundred seconds of watching, whatever the decision rate turns
     # that into in steps.
-    parser.add_argument("--eval-seconds", type=float, default=400.0)
+    # Six hundred, not the four hundred this was.
+    #
+    # Four hundred could not see the cliff it was supposed to be watching
+    # for. Both certified arms fell apart late in a session -- every one of
+    # fifty-seven spins above twenty-five per cent tyre wear -- and a
+    # four-hundred-second evaluation stopped before the tyres got there, so
+    # it reported zero spins for a driver that certification found spinning
+    # every other lap. A best checkpoint chosen on a window that cannot see
+    # the failure is chosen on a road it was never asked to drive.
+    #
+    # This makes every evaluation recorded before it incomparable, which is
+    # the price and is worth paying once. Figures are quoted with their
+    # session length from here on.
+    parser.add_argument("--eval-seconds", type=float, default=600.0)
     parser.add_argument("--eval-batch", type=int, default=2)
     parser.add_argument("--episode-seconds", type=float, default=240.0)
+    # On by default, because the alternative is what produced a policy that
+    # had never met a worn tyre. The flag exists to turn it off for a
+    # controlled comparison, not because off is a reasonable way to bake.
+    parser.add_argument(
+        "--fixed-episode-start",
+        action="store_true",
+        help="start every episode on fresh warm tyres and 80%% charge",
+    )
     parser.add_argument("--log-every", type=int, default=1_000)
     parser.add_argument(
         "--checkpoint-dir",
@@ -545,6 +566,7 @@ def main() -> int:
         # Four minutes is also most of a lap of the longest circuit here,
         # so a lap is something training actually contains.
         episode_seconds=args.episode_seconds,
+        randomise_episode_start=not args.fixed_episode_start,
         quiet=True,
     ) as env:
         print(
