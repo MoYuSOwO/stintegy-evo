@@ -7,6 +7,7 @@ using Godot;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Drivers.Learned;
+using StintegyEVO.GodotApp.Race;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 
@@ -46,24 +47,6 @@ public partial class RaceView3D : Node3D
     /// the catalogue for.
     /// </summary>
     private const string LearnedTrackName = "silverstone";
-    private const string CatalogPath = "res://Assets/Drivers/manifest.json";
-    private const string DriverDirectory = "res://Assets/Drivers/";
-
-    /// <summary>
-    /// Godot owns the virtual file system, so the core is handed a way to
-    /// read rather than a path to open. This replaces a hard-coded path to
-    /// a single file, which worked only while there was one circuit.
-    /// </summary>
-    private static IRaceDriver LoadCatalogDriver(string track)
-    {
-        string manifest = Godot.FileAccess.GetFileAsString(CatalogPath);
-        if (string.IsNullOrWhiteSpace(manifest))
-            throw new InvalidOperationException($"No driver catalogue at {CatalogPath}.");
-        return DriverCatalog.Parse(manifest).Load(
-            DriverCatalog.DefaultCar,
-            track,
-            file => Godot.FileAccess.GetFileAsBytes(DriverDirectory + file));
-    }
     public override async void _Ready()
     {
         var watch = Stopwatch.StartNew();
@@ -94,7 +77,8 @@ public partial class RaceView3D : Node3D
             string id;
             if (UseLearnedDriver)
             {
-                driver = LoadCatalogDriver(LearnedTrackName);
+                driver = InstalledPacks.Scan().Load(
+                    DriverCatalog.DefaultCar, LearnedTrackName);
                 // The car the evaluation graded: warm tyres, 80% charge, Normal/Normal.
                 id = $"learned-{number:D2}";
                 tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };

@@ -1,115 +1,156 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 
 namespace StintegyEVO.Core.Drivers.Learned;
 
 /// <summary>
-/// One driver in the catalogue: which car and circuit it was baked for,
-/// where its weights are, which observation contract it speaks, and what
-/// it did to earn its place.
-///
-/// The graduation figures are not bookkeeping. A policy gets into this
-/// file by passing certification, and the number it passed with is the
-/// thing a driver profile screen will eventually show — so it is recorded
-/// when it is known, at the moment of certification, rather than
-/// reconstructed later from a log nobody kept.
+/// Where a pack came from, which is how conflicts between them are
+/// settled. Ordered so that a larger value wins.
 /// </summary>
-public sealed record DriverCatalogEntry(
+public enum ContentPackTier
+{
+    /// <summary>Ships with the game. Pack zero is one of these.</summary>
+    Builtin = 0,
+
+    /// <summary>Installed by the player.</summary>
+    User = 1,
+}
+
+/// <summary>
+/// One driver, as declared by whichever pack supplies it.
+///
+/// A driver can come from a car pack, a circuit pack, or a pack that is
+/// nothing but drivers — a circuit mod is allowed to ship a driver for the
+/// official car, and a car mod is allowed to ship drivers for the official
+/// circuits. The key is the pair, and who supplies it is not part of the
+/// key.
+///
+/// <see cref="ReadWeights"/> is a thunk rather than the bytes, because
+/// scanning a hundred packs at startup should not read a hundred networks
+/// into memory to find the one that gets driven.
+/// </summary>
+public sealed record DriverPackEntry(
+    string PackId,
+    ContentPackTier Tier,
     string Car,
     string Track,
-    string Weights,
     int FormatVersion,
-    string? CertifiedOn = null,
-    float CleanLapSeconds = 0f
+    string? CertifiedOn,
+    float CleanLapSeconds,
+    Func<byte[]> ReadWeights
 );
 
 /// <summary>
-/// Which driver drives which circuit, and nothing else knows.
+/// Which driver drives which circuit, aggregated from whatever is
+/// installed.
 ///
-/// The enumerated-circuit policy means there is no general driver: there
-/// is one baked policy per car and circuit, and the game has to be able to
-/// ask for the right one by name. Every caller used to hold its own
-/// hard-coded path to a single file, which worked for exactly as long as
-/// there was one circuit.
+/// This is a scan result, not a file. There is no central list anybody
+/// edits: a pack declares the drivers it carries by putting them in its
+/// own <c>drivers/</c> directory beside their metadata, the game walks the
+/// installed packs at startup, and what comes out is this. Shipping a new
+/// driver is dropping a file into a pack, and shipping a circuit with its
+/// driver is one package rather than a package plus an edit to a global
+/// file that a mod has no business editing.
 ///
-/// There is deliberately no fallback. A circuit with no entry raises,
-/// saying so in those words, because the thing a fallback would have
-/// quietly substituted no longer exists: the analytic driver was retired
-/// as a baseline, and a silent substitution would mean a player driving
-/// against something nobody certified while the game says nothing.
+/// The built-in car is pack zero and declares itself exactly the way a mod
+/// would, through the same scan. Official content goes through the mod
+/// door so that the door stays in repair: a format only the modders use is
+/// a format that breaks and nobody notices until a modder complains.
 ///
-/// Which makes the key set do double duty: the circuits in this file are
-/// exactly the circuits that can be played, so the product's content
-/// list is supplied by the catalogue instead of being maintained
-/// alongside it and drifting from it.
+/// There is deliberately no fallback for a circuit nobody supplies. The
+/// thing a fallback would have substituted no longer exists — the analytic
+/// driver was retired as a baseline — and a silent substitution would put a
+/// player against something nobody certified while the game said nothing.
+/// So the key set does double duty: the circuits here are exactly the
+/// circuits that can be played.
 /// </summary>
 public sealed class DriverCatalog
 {
     /// <summary>
-    /// The car every v1 entry belongs to. There is one car, and naming it
-    /// rather than leaving the field out keeps the key a pair from the
-    /// start — a second car should add rows, not a schema.
+    /// The car every entry belongs to while there is one. Named rather
+    /// than omitted so the key is a pair from the start — a second car
+    /// should add rows, not a schema.
     /// </summary>
     public const string DefaultCar = "default";
 
-    private readonly Dictionary<(string Car, string Track), DriverCatalogEntry>
+    private readonly Dictionary<(string Car, string Track), DriverPackEntry>
         _entries;
 
     private DriverCatalog(
-        Dictionary<(string, string), DriverCatalogEntry> entries
+        Dictionary<(string, string), DriverPackEntry> entries
     )
     {
         _entries = entries;
     }
 
-    public static DriverCatalog Parse(string json)
+    /// <summary>
+    /// Fold everything the scan found into one catalogue.
+    ///
+    /// Two packs may claim the same car and circuit, and the order they
+    /// were walked in must not decide it. A player's pack beats a built-in
+    /// one, because installing something is asking for it. Within a tier
+    /// the newer certificate wins, because that is the one measured
+    /// against the more recent world.
+    ///
+    /// A tie the rules cannot break is raised rather than guessed. Two
+    /// uncertified drivers claiming the same slot is a packaging mistake,
+    /// and quietly picking one is exactly the silent substitution the
+    /// missing-driver rule exists to prevent.
+    /// </summary>
+    public static DriverCatalog Aggregate(IEnumerable<DriverPackEntry> found)
     {
-        if (string.IsNullOrWhiteSpace(json))
-            throw new ArgumentException("The catalogue is empty.", nameof(json));
+        ArgumentNullException.ThrowIfNull(found);
+        Dictionary<(string, string), DriverPackEntry> entries = new();
 
-        DriverCatalogEntry[]? rows;
-        try
+        foreach (DriverPackEntry entry in found)
         {
-            rows = JsonSerializer.Deserialize<DriverCatalogEntry[]>(
-                json,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    ReadCommentHandling = JsonCommentHandling.Skip,
-                    AllowTrailingCommas = true
-                }
-            );
-        }
-        catch (JsonException error)
-        {
-            throw new InvalidOperationException(
-                $"The driver catalogue is not valid JSON: {error.Message}",
-                error
-            );
-        }
+            (string, string) key = (entry.Car, entry.Track);
+            if (!entries.TryGetValue(key, out DriverPackEntry? held))
+            {
+                entries[key] = entry;
+                continue;
+            }
 
-        if (rows is null)
-            throw new InvalidOperationException("The driver catalogue is null.");
-
-        Dictionary<(string, string), DriverCatalogEntry> entries = new();
-        foreach (DriverCatalogEntry row in rows)
-        {
-            (string, string) key = (row.Car, row.Track);
-            if (!entries.TryAdd(key, row))
+            int verdict = Compare(entry, held);
+            if (verdict > 0)
+                entries[key] = entry;
+            else if (verdict == 0)
             {
                 throw new InvalidOperationException(
-                    $"The driver catalogue lists '{row.Car}' on '{row.Track}' " +
-                    "twice; a car and circuit name one driver."
+                    $"Packs '{held.PackId}' and '{entry.PackId}' both supply a " +
+                    $"driver for '{entry.Car}' on '{entry.Track}', and neither " +
+                    "is installed over the other or certified more recently. " +
+                    "One of them has to go."
                 );
             }
         }
+
         return new DriverCatalog(entries);
     }
 
-    /// <summary>Every circuit this car has a certified driver for — which
-    /// is to say, every circuit that can be played in it.</summary>
+    private static int Compare(DriverPackEntry a, DriverPackEntry b)
+    {
+        if (a.Tier != b.Tier)
+            return a.Tier > b.Tier ? 1 : -1;
+
+        bool aCertified = !string.IsNullOrWhiteSpace(a.CertifiedOn);
+        bool bCertified = !string.IsNullOrWhiteSpace(b.CertifiedOn);
+        if (aCertified != bCertified)
+            return aCertified ? 1 : -1;
+        if (!aCertified)
+            return 0;
+
+        return string.CompareOrdinal(a.CertifiedOn, b.CertifiedOn) switch
+        {
+            > 0 => 1,
+            < 0 => -1,
+            _ => 0
+        };
+    }
+
+    /// <summary>Every circuit this car has a driver for — which is to say,
+    /// every circuit that can be played in it.</summary>
     public IReadOnlyList<string> PlayableTracks(string car) =>
         _entries.Keys
             .Where(key => key.Car == car)
@@ -117,42 +158,30 @@ public sealed class DriverCatalog
             .OrderBy(track => track, StringComparer.Ordinal)
             .ToList();
 
-    public bool TryFind(
-        string car,
-        string track,
-        out DriverCatalogEntry entry
-    ) => _entries.TryGetValue((car, track), out entry!);
+    public bool TryFind(string car, string track, out DriverPackEntry entry) =>
+        _entries.TryGetValue((car, track), out entry!);
 
-    /// <summary>
-    /// The driver for this car and circuit, built from its weights.
-    ///
-    /// <paramref name="readWeights"/> is passed in rather than the file
-    /// being opened here, because the engine reads through Godot's own
-    /// virtual file system and the core has no business knowing that.
-    /// </summary>
-    public IRaceDriver Load(
-        string car,
-        string track,
-        Func<string, byte[]> readWeights
-    )
+    public IRaceDriver Load(string car, string track)
     {
-        ArgumentNullException.ThrowIfNull(readWeights);
-        if (!TryFind(car, track, out DriverCatalogEntry entry))
+        if (!TryFind(car, track, out DriverPackEntry entry))
         {
+            IReadOnlyList<string> playable = PlayableTracks(car);
             throw new InvalidOperationException(
-                $"No driver for '{track}' yet. The catalogue has " +
-                $"{string.Join(", ", PlayableTracks(car))}. A circuit becomes " +
-                "playable when a policy is baked for it and passes " +
-                "certification; there is nothing to fall back to."
+                $"No driver for '{track}' yet. Installed packs supply " +
+                (playable.Count == 0
+                    ? "none at all"
+                    : string.Join(", ", playable)) +
+                ". A circuit becomes playable when a policy is baked for it " +
+                "and passes certification; there is nothing to fall back to."
             );
         }
 
-        byte[] weights = readWeights(entry.Weights);
+        byte[] weights = entry.ReadWeights();
         if (weights is null || weights.Length == 0)
         {
             throw new InvalidOperationException(
-                $"The driver for '{track}' is listed at '{entry.Weights}' and " +
-                "that file is missing or empty."
+                $"Pack '{entry.PackId}' declares a driver for '{track}' and " +
+                "its weights are missing or empty."
             );
         }
 

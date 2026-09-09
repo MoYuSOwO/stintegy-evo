@@ -101,7 +101,7 @@ public class MlpDrivingPolicyTests
     public void SilverstoneExpertMatchesTheTrainedNetworkElementByElement()
     {
         MlpNetwork network = MlpNetwork.LoadFile(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         Fixture fixture = ReadFixture(
             Asset("Core", "Tests", "Fixtures", "silverstone-expert-alignment.bin")
@@ -154,7 +154,7 @@ public class MlpDrivingPolicyTests
         // one: the shipped policy satisfies the interface the race driver
         // takes, so a maiden voyage cannot fail on a type.
         IDrivingPolicy policy = MlpDrivingPolicy.FromFile(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         DirectDriveRaceDriver driver = new(policy);
         Assert.Equal(DecisionClock.Internal, driver.Clock);
@@ -183,7 +183,7 @@ public class MlpDrivingPolicyTests
         // a rectifier — and requires the fixture to notice. If this ever
         // starts passing, the test above has stopped reading the network.
         byte[] bytes = File.ReadAllBytes(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         int last = bytes.Length - 4;
         float bias = BitConverter.ToSingle(bytes, last);
@@ -219,7 +219,7 @@ public class MlpDrivingPolicyTests
         );
 
         byte[] good = File.ReadAllBytes(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         byte[] truncated = good[..(good.Length - 4)];
         Assert.Throws<InvalidDataException>(() => MlpNetwork.Load(truncated));

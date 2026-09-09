@@ -672,12 +672,30 @@ public sealed class RaceSimulationTests
         );
         second.State.Position += start.Tangent * 3f;
 
-        CarContactResolver.TryGetContact(first, second, out _);
-        TrackBoundaryResolver.IsInsideTrackWalls(
-            track,
-            first.State,
-            collision
-        );
+        // Warmed with the whole measured loop rather than a single call.
+        //
+        // One call is enough to JIT these methods, and it was what this
+        // used to do — but not enough to finish with them. The runtime
+        // re-compiles a hot loop at a higher tier while it is running, and
+        // that promotion allocates on the thread doing the work. Under a
+        // full parallel suite the promotion lands inside the measured loop
+        // often enough to matter: this failed roughly one run in five at
+        // 2304 bytes against a budget of 256, always alone, always passing
+        // when run by itself. A flake in an allocation bound is worse than
+        // no bound, because the next real regression here gets waved
+        // through as "that one is flaky".
+        //
+        // Running the loop once first settles the tiering, and the budget
+        // stays as tight as it was.
+        for (int warmup = 0; warmup < 1_000; warmup++)
+        {
+            CarContactResolver.TryGetContact(first, second, out _);
+            TrackBoundaryResolver.IsInsideTrackWalls(
+                track,
+                first.State,
+                collision
+            );
+        }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1_000; i++)

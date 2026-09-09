@@ -49,37 +49,6 @@ public partial class RaceView : Node2D
     /// </summary>
     private const string LearnedTrackName = "silverstone";
 
-    /// <summary>
-    /// The catalogue, and the reader it needs.
-    ///
-    /// Godot owns the virtual file system, so the core is handed a way to
-    /// read rather than a path to open. The circuit name is what keys the
-    /// catalogue: enumerated circuits mean one baked driver each, and the
-    /// hard-coded single path this replaces worked only while there was
-    /// one circuit.
-    /// </summary>
-    private const string CatalogPath = "res://Assets/Drivers/manifest.json";
-    private const string DriverDirectory = "res://Assets/Drivers/";
-
-    private static IRaceDriver LoadCatalogDriver(string track)
-    {
-        string manifest =
-            Godot.FileAccess.GetFileAsString(CatalogPath);
-        if (string.IsNullOrWhiteSpace(manifest))
-        {
-            throw new InvalidOperationException(
-                $"No driver catalogue at {CatalogPath}."
-            );
-        }
-
-        DriverCatalog catalog = DriverCatalog.Parse(manifest);
-        return catalog.Load(
-            DriverCatalog.DefaultCar,
-            track,
-            file => Godot.FileAccess.GetFileAsBytes(DriverDirectory + file)
-        );
-    }
-
     private readonly List<CarView> _carViews = [];
     private readonly CarDashboard _dashboard = new();
     private readonly Label _telemetryLabel = new()
@@ -288,7 +257,9 @@ public partial class RaceView : Node2D
     /// </summary>
     private void CreateLearnedCar(TrackData track)
     {
-        IRaceDriver driver = LoadCatalogDriver(LearnedTrackName);
+        IRaceDriver driver =
+            InstalledPacks.Scan().Load(
+                DriverCatalog.DefaultCar, LearnedTrackName);
         RaceCar car = AddRaceCar(
             "learned-01",
             track,
