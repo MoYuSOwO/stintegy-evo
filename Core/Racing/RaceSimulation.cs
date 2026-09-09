@@ -657,11 +657,14 @@ public sealed class RaceSimulation
         Vector2 rear = -forward * config.RearAxleOffsetMeters;
         Vector2 side = left * halfTrack;
 
+        // The day's grip goes in through the dynamic layer, which is
+        // exactly the slot it was reserved for.
+        float today = Environment.SurfaceGripScalar;
         return new WheelSurfaceGrip(
-            SurfaceGrip.At(sample, OffsetOf(front + side)),
-            SurfaceGrip.At(sample, OffsetOf(front - side)),
-            SurfaceGrip.At(sample, OffsetOf(rear + side)),
-            SurfaceGrip.At(sample, OffsetOf(rear - side))
+            SurfaceGrip.At(sample, OffsetOf(front + side), today),
+            SurfaceGrip.At(sample, OffsetOf(front - side), today),
+            SurfaceGrip.At(sample, OffsetOf(rear + side), today),
+            SurfaceGrip.At(sample, OffsetOf(rear - side), today)
         );
     }
 
@@ -719,4 +722,29 @@ public sealed class RaceEnvironment
 {
     public float AirTempC { get; set; } = 25f;
     public float TrackTempC { get; set; } = 35f;
+
+    /// <summary>
+    /// What the whole road is worth today, as a multiplier on the static
+    /// surface layer.
+    ///
+    /// A circuit is not the same circuit on every day of a weekend. Green
+    /// tarmac on a Friday morning and a dusty one after a support race give
+    /// away five to ten per cent; by Sunday the racing line is rubbered in
+    /// and gives a couple back. Nothing about the geometry changes, and
+    /// nothing about where the kerbs are — only what the surface is worth.
+    ///
+    /// It is deliberately the <i>dynamic</i> layer of the grip model rather
+    /// than a new concept. That layer was reserved when the layered grip
+    /// landed, defined as "what gets laid down on the road and washed off
+    /// it", with a note that it defaults to one until there is a grid
+    /// behind it. This is its first tenant: a grid of one cell. When the
+    /// rubber-and-water grid arrives it takes the same slot and everything
+    /// written against the signature keeps working.
+    ///
+    /// Rain is not in this range. Water does not exist in this world yet,
+    /// and pretending a dry circuit at 0.9 is a wet one would teach a
+    /// policy that wet means "the same road, slightly worse", which is the
+    /// opposite of what wet means.
+    /// </summary>
+    public float SurfaceGripScalar { get; set; } = 1f;
 }

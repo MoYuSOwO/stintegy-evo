@@ -106,6 +106,51 @@ public sealed class EpisodeStartDistributionTests
     }
 
     /// <summary>
+    /// The road is worth something different every episode, and the range
+    /// is a weekend's worth rather than a weather system's.
+    ///
+    /// This is the distribution premise for driving by feel: a policy that
+    /// has only ever driven one grip level has memorised a circuit rather
+    /// than learned to sense one, and the friction-circle and slip channels
+    /// it is handed are decoration until this varies.
+    /// </summary>
+    [Fact]
+    public void TheRoadIsWorthSomethingDifferentEveryEpisode()
+    {
+        EpisodeStart green = Default.Draw(0.99f, 0.5f, 0.5f, 0.5f, grip: 0f);
+        EpisodeStart rubbered = Default.Draw(0.99f, 0.5f, 0.5f, 0.5f, grip: 1f);
+
+        Assert.Equal(EpisodeStartLimits.MinSurfaceGrip, green.SurfaceGripScalar, 3);
+        Assert.Equal(EpisodeStartLimits.MaxSurfaceGrip, rubbered.SurfaceGripScalar, 3);
+
+        // The everyday band is narrow and the tail is where the bad days
+        // live, so a typical episode is close to nominal.
+        EpisodeStart typical = Default.Draw(0.1f, 0.5f, 0.5f, 0.5f, grip: 0.5f);
+        Assert.InRange(typical.SurfaceGripScalar, 0.97f, 1.03f);
+    }
+
+    /// <summary>
+    /// Weather is drawn too, inside a band a race weekend actually has.
+    /// The tyre cooling model already reads both of these; it was simply
+    /// never being told anything different.
+    /// </summary>
+    [Fact]
+    public void TheWeatherIsDrawnWithinARaceWeekendsRange()
+    {
+        EpisodeStart cold = Default.Draw(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0f, 0f);
+        EpisodeStart hot = Default.Draw(0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 1f, 1f);
+
+        Assert.Equal(15f, cold.AirTempC, 3);
+        Assert.Equal(40f, hot.AirTempC, 3);
+        Assert.Equal(15f, cold.TrackTempC, 3);
+        Assert.Equal(50f, hot.TrackTempC, 3);
+        // Track is warmer than air on a normal day, which is what a sunlit
+        // surface does; the ranges overlap because an overcast morning does
+        // not.
+        Assert.True(hot.TrackTempC > hot.AirTempC);
+    }
+
+    /// <summary>
     /// The ranges are configurable, because a range that can only be
     /// changed by editing the engine is a range nobody will run an
     /// experiment against.

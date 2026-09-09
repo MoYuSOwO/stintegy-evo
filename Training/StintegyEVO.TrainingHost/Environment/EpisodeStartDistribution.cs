@@ -62,6 +62,29 @@ public static class EpisodeStartLimits
     /// not a hard case but a broken one.
     /// </summary>
     public const float AmbientTempC = 25f;
+
+    /// <summary>
+    /// What a circuit's surface is worth on a bad day and a good one.
+    ///
+    /// Green tarmac on a Friday morning, or one dusted over by a support
+    /// race, gives away five to ten per cent; by the end of a weekend the
+    /// racing line is rubbered in and gives a couple back. Nothing about
+    /// the geometry moves — only what the road is worth.
+    ///
+    /// This is the distribution premise for driving by feel. A policy that
+    /// has only ever driven one grip level cannot be said to be sensing
+    /// grip; it has memorised a circuit, and the friction-circle and slip
+    /// channels it is given are decoration. Varying it is what makes those
+    /// channels load-bearing — and it is a free rehearsal for the dynamic
+    /// grip era, since it enters through exactly the layer that era will
+    /// use.
+    ///
+    /// Rain is not in here. Water does not exist in this world yet, and a
+    /// dry circuit at 0.9 is not a wet one — teaching that it is would be
+    /// worse than teaching nothing.
+    /// </summary>
+    public const float MinSurfaceGrip = 0.90f;
+    public const float MaxSurfaceGrip = 1.05f;
 }
 
 /// <summary>
@@ -99,10 +122,26 @@ public sealed record EpisodeStartDistribution(
     float ExtremeWearMax = EpisodeStartLimits.MaxCalibratedWear,
     float ExtremeTempMinC = EpisodeStartLimits.AmbientTempC,
     float ExtremeTempMaxC = EpisodeStartLimits.MaxCalibratedTempC,
-    float ExtremeChargeMin = 0.02f
+    float ExtremeChargeMin = 0.02f,
+    float NormalGripMin = 0.97f,
+    float NormalGripMax = 1.03f,
+    float ExtremeGripMin = EpisodeStartLimits.MinSurfaceGrip,
+    float ExtremeGripMax = EpisodeStartLimits.MaxSurfaceGrip,
+    float AirTempMinC = 15f,
+    float AirTempMaxC = 40f,
+    float TrackTempMinC = 15f,
+    float TrackTempMaxC = 50f
 )
 {
-    public EpisodeStart Draw(float uniformBand, float wear, float temp, float charge)
+    public EpisodeStart Draw(
+        float uniformBand,
+        float wear,
+        float temp,
+        float charge,
+        float grip = 0.5f,
+        float airTemp = 0.4f,
+        float trackTemp = 0.57f
+    )
     {
         bool normal = uniformBand < RaceNormalShare;
         float wearMax = normal ? NormalWearMax : ExtremeWearMax;
@@ -110,11 +149,17 @@ public sealed record EpisodeStartDistribution(
         float tempMax = normal ? NormalTempMaxC : ExtremeTempMaxC;
         float chargeMin = normal ? NormalChargeMin : ExtremeChargeMin;
 
+        float gripMin = normal ? NormalGripMin : ExtremeGripMin;
+        float gripMax = normal ? NormalGripMax : ExtremeGripMax;
+
         return new EpisodeStart(
             Wear: Math.Clamp(wear, 0f, 1f) * wearMax,
             SurfaceTempC: Lerp(tempMin, tempMax, temp),
             CoreTempC: Lerp(tempMin, tempMax, temp),
-            Charge: Lerp(chargeMin, 1f, charge)
+            Charge: Lerp(chargeMin, 1f, charge),
+            SurfaceGripScalar: Lerp(gripMin, gripMax, grip),
+            AirTempC: Lerp(AirTempMinC, AirTempMaxC, airTemp),
+            TrackTempC: Lerp(TrackTempMinC, TrackTempMaxC, trackTemp)
         );
     }
 
@@ -127,5 +172,8 @@ public readonly record struct EpisodeStart(
     float Wear,
     float SurfaceTempC,
     float CoreTempC,
-    float Charge
+    float Charge,
+    float SurfaceGripScalar = 1f,
+    float AirTempC = 25f,
+    float TrackTempC = 35f
 );
