@@ -1,0 +1,10 @@
+[
+  {
+    "car": "default",
+    "track": "silverstone",
+    "weights": "silverstone-expert.nn",
+    "formatVersion": 1,
+    "certifiedOn": null,
+    "cleanLapSeconds": 0.0
+  }
+]

@@ -43,12 +43,42 @@ public partial class RaceView : Node2D
     private const float FollowCameraZoom = 3f;
 
     /// <summary>
-    /// The trained actor, exported by Training/python/export_policy.py from
-    /// checkpoints/bestalpha002.pt — 325k steps, a 1:40.929 clean lap
-    /// against the analytic driver's 1:47.050.
+    /// Which circuit this scene builds, and therefore which driver it asks
+    /// the catalogue for. The two have to agree, and naming it once is how
+    /// they stay agreeing.
     /// </summary>
-    private const string LearnedPolicyPath =
-        "res://Assets/Drivers/silverstone-expert.nn";
+    private const string LearnedTrackName = "silverstone";
+
+    /// <summary>
+    /// The catalogue, and the reader it needs.
+    ///
+    /// Godot owns the virtual file system, so the core is handed a way to
+    /// read rather than a path to open. The circuit name is what keys the
+    /// catalogue: enumerated circuits mean one baked driver each, and the
+    /// hard-coded single path this replaces worked only while there was
+    /// one circuit.
+    /// </summary>
+    private const string CatalogPath = "res://Assets/Drivers/manifest.json";
+    private const string DriverDirectory = "res://Assets/Drivers/";
+
+    private static IRaceDriver LoadCatalogDriver(string track)
+    {
+        string manifest =
+            Godot.FileAccess.GetFileAsString(CatalogPath);
+        if (string.IsNullOrWhiteSpace(manifest))
+        {
+            throw new InvalidOperationException(
+                $"No driver catalogue at {CatalogPath}."
+            );
+        }
+
+        DriverCatalog catalog = DriverCatalog.Parse(manifest);
+        return catalog.Load(
+            DriverCatalog.DefaultCar,
+            track,
+            file => Godot.FileAccess.GetFileAsBytes(DriverDirectory + file)
+        );
+    }
 
     private readonly List<CarView> _carViews = [];
     private readonly CarDashboard _dashboard = new();
@@ -258,17 +288,7 @@ public partial class RaceView : Node2D
     /// </summary>
     private void CreateLearnedCar(TrackData track)
     {
-        byte[] weights = Godot.FileAccess.GetFileAsBytes(LearnedPolicyPath);
-        if (weights.Length == 0)
-        {
-            throw new InvalidOperationException(
-                $"No policy at {LearnedPolicyPath}. Export one with " +
-                "Training/python/export_policy.py, or clear UseLearnedDriver."
-            );
-        }
-
-        MlpDrivingPolicy policy = MlpDrivingPolicy.FromBytes(weights);
-        DirectDriveRaceDriver driver = new(policy);
+        IRaceDriver driver = LoadCatalogDriver(LearnedTrackName);
         RaceCar car = AddRaceCar(
             "learned-01",
             track,
@@ -289,9 +309,7 @@ public partial class RaceView : Node2D
         StartLearnedTraceIfRequested(track);
 
         GD.Print(
-            $"Learned driver: {LearnedPolicyPath}, " +
-            $"{policy.Network.InputSize} in / {policy.Network.OutputSize} out, " +
-            $"{policy.Network.LayerCount} layers, " +
+            $"Learned driver: catalogue entry for {LearnedTrackName}, " +
             $"{DirectDriveRaceDriver.DefaultDecisionHz:0} Hz internal clock, " +
             "strategy=Normal/Normal"
         );

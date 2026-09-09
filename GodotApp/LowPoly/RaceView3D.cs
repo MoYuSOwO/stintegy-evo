@@ -41,7 +41,29 @@ public partial class RaceView3D : Node3D
     /// one unchecked box away for comparison.
     /// </summary>
     [Export] public bool UseLearnedDriver { get; set; } = true;
-    private const string LearnedPolicyPath = "res://Assets/Drivers/silverstone-expert.nn";
+    /// <summary>
+    /// Which circuit this scene builds, and therefore which driver it asks
+    /// the catalogue for.
+    /// </summary>
+    private const string LearnedTrackName = "silverstone";
+    private const string CatalogPath = "res://Assets/Drivers/manifest.json";
+    private const string DriverDirectory = "res://Assets/Drivers/";
+
+    /// <summary>
+    /// Godot owns the virtual file system, so the core is handed a way to
+    /// read rather than a path to open. This replaces a hard-coded path to
+    /// a single file, which worked only while there was one circuit.
+    /// </summary>
+    private static IRaceDriver LoadCatalogDriver(string track)
+    {
+        string manifest = Godot.FileAccess.GetFileAsString(CatalogPath);
+        if (string.IsNullOrWhiteSpace(manifest))
+            throw new InvalidOperationException($"No driver catalogue at {CatalogPath}.");
+        return DriverCatalog.Parse(manifest).Load(
+            DriverCatalog.DefaultCar,
+            track,
+            file => Godot.FileAccess.GetFileAsBytes(DriverDirectory + file));
+    }
     public override async void _Ready()
     {
         var watch = Stopwatch.StartNew();
@@ -72,12 +94,7 @@ public partial class RaceView3D : Node3D
             string id;
             if (UseLearnedDriver)
             {
-                byte[] weights = Godot.FileAccess.GetFileAsBytes(LearnedPolicyPath);
-                if (weights.Length == 0)
-                    throw new InvalidOperationException(
-                        $"No policy at {LearnedPolicyPath}. Export one with " +
-                        "Training/python/export_policy.py, or clear UseLearnedDriver.");
-                driver = new DirectDriveRaceDriver(MlpDrivingPolicy.FromBytes(weights));
+                driver = LoadCatalogDriver(LearnedTrackName);
                 // The car the evaluation graded: warm tyres, 80% charge, Normal/Normal.
                 id = $"learned-{number:D2}";
                 tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
