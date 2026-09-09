@@ -34,6 +34,37 @@ namespace StintegyEVO.Core.Tests;
 /// follows. Nothing in the powertrain changed, and that is exactly what
 /// these pins are for: if the next re-record cannot point at a change of
 /// this size somewhere else, it is a bug.
+///
+/// Re-recorded again on 2026-09-09, and this time the powertrain is what
+/// moved. Two changes, both deliberate. The pack is 1100 MJ instead of
+/// 1470, because measurement said the old one let the car go flat out for
+/// a whole race and finish with charge to spare — every charge figure in
+/// these trajectories therefore falls faster, in exact proportion. And a
+/// nearly empty pack no longer fades to nothing: it lands on a limp
+/// floor, so the empty-pack run, which used to be a car sitting still, is
+/// now a car crawling. Those two account for every digit that moved here;
+/// the drive-power figures at full charge are unchanged, which is the
+/// check that nothing else was disturbed.
+///
+/// And once more in the same batch, for the tyres. Lateral tread heat
+/// became force times sliding instead of force squared, so temperatures
+/// move, grip follows temperature, and the line the car draws follows
+/// grip. Sub-limit temperatures were held to within 0.15 C of what they
+/// were, which SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo
+/// checks directly, so what moves here is a tenth of a degree compounding
+/// over twenty seconds of driving — plus the empty-pack run, which now
+/// crawls on the limp floor where it used to sit still.
+///
+/// And a fourth time, in the same batch, for the thermal time constant.
+/// The car could not warm a cold tyre inside an episode — two laps from
+/// 25 C reached 59 C against a working floor of 85 — so every thermal
+/// mass was divided by the same factor. No equilibrium moved and only the
+/// journey to it got shorter, which is checked directly: the same duty
+/// cycle at the old constant reads 95.33 at five minutes, 87.22 at twenty
+/// and 85.65 at an hour, still descending towards the 84.91 the new one
+/// reaches in three. What moves here is twenty seconds of driving during
+/// which the tyres now change temperature five times as fast, and grip
+/// follows temperature.
 /// </summary>
 public sealed class PowertrainGoldenTests
 {
@@ -94,60 +125,60 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 13.530974\n" +
-            "position 158.78868 219.77843\n" +
-            "heading 0.65742946\n" +
-            "sideslip -0.00018094783\n" +
-            "yawrate 0.20909905\n" +
-            "charge 0.799341\n" +
-            "drivepower 130745.53\n" +
+            "speed 13.40875\n" +
+            "position 172.9271 207.5298\n" +
+            "heading -0.15525547\n" +
+            "sideslip -0.00018292625\n" +
+            "yawrate 0.20515737\n" +
+            "charge 0.799117\n" +
+            "drivepower 129564.68\n" +
             "regenpower 0\n" +
-            "longaccel 10.545293\n" +
-            "lataccel 2.6851478\n" +
-            "wear 0.009863093 0.012245412 0.0118346 0.01550368\n" +
-            "coretemp 90.38499 90.669106 90.69098 91.147644";
+            "longaccel 10.55054\n" +
+            "lataccel 2.554152\n" +
+            "wear 0.0075465534 0.009750845 0.009860357 0.022910213\n" +
+            "coretemp 86.27512 87.162285 89.81326 91.706314";
 
         public const string SaggingPack =
-            "speed 8.887952\n" +
-            "position 245.62796 206.03896\n" +
-            "heading -0.4336762\n" +
-            "sideslip 0.0025646011\n" +
-            "yawrate 0.14495416\n" +
-            "charge 0.14957644\n" +
-            "drivepower 52850.645\n" +
+            "speed 9.058744\n" +
+            "position 256.44012 192.68784\n" +
+            "heading -0.8529291\n" +
+            "sideslip 0.0025448594\n" +
+            "yawrate 0.08742024\n" +
+            "charge 0.14941761\n" +
+            "drivepower 57140.273\n" +
             "regenpower 0\n" +
-            "longaccel 6.4357653\n" +
-            "lataccel 2.5220501\n" +
-            "wear 0.019761954 0.026503813 0.020550514 0.03135827\n" +
-            "coretemp 91.20464 91.54521 91.380394 91.86892";
+            "longaccel 6.8621855\n" +
+            "lataccel 1.0504482\n" +
+            "wear 0.011916569 0.015075512 0.01883422 0.058874045\n" +
+            "coretemp 87.686325 88.82643 91.616196 93.5386";
 
         public const string AttackLadder =
-            "speed 13.880993\n" +
-            "position 157.68254 223.63878\n" +
-            "heading 0.5272883\n" +
-            "sideslip -0.0006604545\n" +
-            "yawrate 0.21404772\n" +
-            "charge 0.79932857\n" +
-            "drivepower 134086.42\n" +
+            "speed 13.650756\n" +
+            "position 165.57838 217.45422\n" +
+            "heading 0.11490971\n" +
+            "sideslip -0.0004500112\n" +
+            "yawrate 0.20920505\n" +
+            "charge 0.79911155\n" +
+            "drivepower 131903.16\n" +
             "regenpower 0\n" +
-            "longaccel 10.529843\n" +
-            "lataccel 2.730351\n" +
-            "wear 0.009899226 0.012295458 0.011910472 0.015613546\n" +
-            "coretemp 90.389534 90.674324 90.703835 91.16355";
+            "longaccel 10.540171\n" +
+            "lataccel 2.6822414\n" +
+            "wear 0.007575325 0.009807646 0.009863827 0.023253517\n" +
+            "coretemp 86.28994 87.194145 89.94575 91.90892";
 
         public const string EmptyPack =
-            "speed 1.46651655E-05\n" +
-            "position 109.38728 78.00939\n" +
-            "heading 1.6432307\n" +
+            "speed 1.5538739\n" +
+            "position 106.76541 85.17931\n" +
+            "heading -2.4786868\n" +
             "sideslip 0\n" +
-            "yawrate 0\n" +
-            "charge 0.00015505249\n" +
-            "drivepower 9.3887586E-08\n" +
+            "yawrate 1.2285085\n" +
+            "charge 0.00023203176\n" +
+            "drivepower 1324.1598\n" +
             "regenpower 0\n" +
-            "longaccel 7.212382E-06\n" +
-            "lataccel 5.368971\n" +
-            "wear 0.0012230597 0.00180895 0.0013719165 0.0021184897\n" +
-            "coretemp 89.18904 89.32987 89.279655 89.43372";
+            "longaccel 0.7623942\n" +
+            "lataccel 1.892148\n" +
+            "wear 0.0016786164 0.0023556852 0.0021549093 0.0030735934\n" +
+            "coretemp 84.74505 85.53445 91.22737 92.25324";
     }
 
     /// <summary>

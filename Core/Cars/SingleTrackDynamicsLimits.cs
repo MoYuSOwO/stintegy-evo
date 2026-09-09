@@ -59,6 +59,20 @@ internal static class SingleTrackDynamicsLimits
     /// end one.
     /// </summary>
     public const float SpinReleaseSpeedMetersPerSecond = 12f;
+    /// <summary>
+    /// How fast a spinning car's path bends towards the side of it that
+    /// still has grip, at full asymmetry -- one pair of tyres on tarmac
+    /// and the other on grass.
+    ///
+    /// Half a radian a second, which over the few seconds a spin lasts is
+    /// enough to bring a car back towards the edge of the road rather than
+    /// leaving it square in the middle of a run-off, and not enough to
+    /// look like steering. A spun driver is not driving; the road is
+    /// dragging one side of the car harder than the other, and this is the
+    /// size of that.
+    /// </summary>
+    public const float SpinRecoveryBendRateRadiansPerSecond = 0.5f;
+
     public const float SpinGatherTimeSeconds = 0.45f;
     public const float SpinReleaseSideslipRadians = 0.034906585f;
 

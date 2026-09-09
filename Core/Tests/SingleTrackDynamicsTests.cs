@@ -1,5 +1,8 @@
 using System;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Util;
+using StintegyEVO.Core.Track;
+using System.Numerics;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -361,6 +364,165 @@ public sealed class SingleTrackDynamicsTests
     /// spin hands back a moving car. Flicking through the same angle is
     /// not: a save should be allowed to be spectacular.
     /// </summary>
+    /// <summary>
+    /// A spun car slides back towards the road rather than square into the
+    /// middle of the run-off.
+    ///
+    /// It used to travel in a dead straight line while it rotated, which
+    /// is how a spin ends with the car stopped in the middle of a field
+    /// with nothing to do but retire — and the certification forensics
+    /// found exactly that, three retirements all of them on grass. Real
+    /// spins do not look like that. The pair of tyres still on tarmac
+    /// drags harder than the pair on grass, so the car pivots and slides
+    /// towards the harder pair, and drivers come back out near the edge of
+    /// the road far more often than in the middle of the field.
+    ///
+    /// Nothing here knows where the track is. The car reads the four grips
+    /// it is already handed, which is what a tyre knows, and the direction
+    /// of travel bends towards whichever side of it can still bite.
+    /// </summary>
+    [Fact]
+    public void ASpunCarSlidesBackTowardsTheGrip()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
+        float hold = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f;
+
+        CarState even = HeldSideways(car, tires, past, hold);
+        CarState leftHasRoad = HeldSideways(car, tires, past, hold);
+        Vector2 start = even.Position;
+
+        // Two wheels still on the road, two beyond the line.
+        WheelSurfaceGrip lopsided = new(
+            SurfaceGrip.RacingSurface,
+            SurfaceGrip.Buffer,
+            SurfaceGrip.RacingSurface,
+            SurfaceGrip.Buffer
+        );
+        float travelAtStart = even.VelocityHeading;
+
+        // Only while the spin lasts. Once the car is handed back, ordinary
+        // physics moves it again and the comparison stops being about the
+        // choreography.
+        float evenTravel = travelAtStart;
+        float bentTravel = travelAtStart;
+        Vector2 evenEnd = even.Position;
+        Vector2 bentEnd = leftHasRoad.Position;
+        for (int i = 0; i < 60 * 12; i++)
+        {
+            if (even.Spinning)
+            {
+                CarPhysics.Step(
+                    even, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
+                );
+                evenTravel = even.VelocityHeading;
+                evenEnd = even.Position;
+            }
+            if (leftHasRoad.Spinning)
+            {
+                CarPhysics.Step(
+                    leftHasRoad,
+                    car,
+                    tires,
+                    PhysicsInput(new DriverInput(0f, 0f)) with
+                    {
+                        SurfaceGrip = lopsided
+                    },
+                    Dt
+                );
+                bentTravel = leftHasRoad.VelocityHeading;
+                bentEnd = leftHasRoad.Position;
+            }
+            if (!even.Spinning && !leftHasRoad.Spinning)
+                break;
+        }
+
+        // The evenly gripped car keeps going exactly where it was pointed.
+        Assert.Equal(travelAtStart, evenTravel, precision: 4);
+
+        // The lopsided one has turned towards its left, which is the side
+        // with the road on it.
+        float bend = MathHelper.NormalizeAngle(bentTravel - travelAtStart);
+        Assert.True(
+            bend > 0.05f,
+            $"a spin with the road on one side should curve towards it, " +
+            $"got {bend:0.0000} rad"
+        );
+
+        // And it lands somewhere else because of it, which is the point:
+        // the difference has to be metres, not millimetres.
+        float apart = Vector2.Distance(evenEnd, bentEnd);
+        Assert.True(
+            apart > 2f,
+            $"the two spins should end up meaningfully apart, got {apart:0.00} m"
+        );
+    }
+
+    /// <summary>
+    /// What one spin costs the tyres, now that it is billed by the same
+    /// formula as everything else.
+    ///
+    /// A spin used to have its own flat rate: the scrub weight pinned at
+    /// its cap and a dedicated sideslip heat channel switched fully on,
+    /// which charged a fixed amount however sideways or however fast the
+    /// spin was. The choreographed trajectory has a real sideslip angle
+    /// and a real speed, so the ordinary reading applies to it — force
+    /// times the root of the slip for wear, force times the sliding speed
+    /// for heat.
+    ///
+    /// The result is cheaper than the flat rate was, and that is the
+    /// finding rather than a target that was aimed at: wear went from
+    /// +1.57% to +0.80%, and the surface rise from +36.7 C to +21.5 C.
+    /// (Both of those were measured before the thermal time constant was
+    /// shortened in the same batch, which lifted the heat figure from the
+    /// +8 C it first read; the wear, which has no time constant, did not
+    /// move.) The
+    /// reason is that the flat rate charged heat the motion does not
+    /// justify — the choreography sheds speed at nine metres a second
+    /// squared, and that is all the energy there is to put into the
+    /// rubber. Billing it consistently is worth more than matching the old
+    /// number, but the size of the gap is recorded here so that a decision
+    /// to make spins hurt more is taken deliberately, and taken on the
+    /// general calibration rather than on a special case.
+    /// </summary>
+    [Fact]
+    public void ASpinIsBilledByTheSameFormulaAsEverythingElse()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
+        CarState gone = HeldSideways(
+            car, tires, past, SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f
+        );
+
+        float startWear = gone.FrontLeft.Wear;
+        float startTemp = gone.FrontLeft.SurfaceTempC;
+        float peak = startTemp;
+        for (int i = 0; i < 60 * 12; i++)
+        {
+            CarPhysics.Step(
+                gone, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
+            );
+            peak = MathF.Max(peak, gone.FrontLeft.SurfaceTempC);
+            if (!gone.Spinning && i > 10)
+                break;
+        }
+
+        float wearCost = (gone.FrontLeft.Wear - startWear) * 100f;
+        float heatRise = peak - startTemp;
+
+        Assert.InRange(wearCost, 0.5f, 1.1f);
+        Assert.InRange(heatRise, 16f, 27f);
+        // And the thing that must not come back: a spin has to cost
+        // something well above ordinary cornering, or the referee is
+        // declaring an event the car does not feel.
+        Assert.True(
+            wearCost > 0.4f,
+            $"a spin has to be expensive in rubber, got {wearCost:F2}%"
+        );
+    }
+
     [Fact]
     public void OnlyASustainedSlideIsASpin()
     {

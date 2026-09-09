@@ -15,26 +15,23 @@ public sealed class TireConfig
     public const float DirectionalHeatRampStartUse = 0.90f;
     public const float MinimumDirectionalHeatScale = 0.20f;
     /// <summary>
-    /// Where the partial-slip heat branch starts, as a share of the
-    /// friction circle.
+    /// Where the longitudinal heat proxy reaches its full value.
     ///
-    /// DORMANT since the lateral model was rebuilt on slip angles, and
-    /// deliberately left where it is. "Use" was an unbounded request under
-    /// the old model - a car could ask for twice its circle, and the
-    /// measured ceiling was 2.002 - so this branch fired through every fast
-    /// corner. It is a bounded delivery now, the measured ceiling is 0.966,
-    /// and nothing ever reaches this line again.
+    /// This constant used to be called <c>NearLimitHeatStartUse</c> and did
+    /// two jobs: it ended this ramp, and it started a hand-placed branch
+    /// that piled extra heat into a tyre near the limit. The second job is
+    /// gone. Lateral tread heat is force times sliding now, and sliding
+    /// keeps growing past the peak while force falls, so the near-limit
+    /// acceleration that branch existed to supply comes out of the physics
+    /// continuously and needs no threshold to switch it on.
     ///
-    /// Not lowered here on purpose: moving it re-opens the whole tyre
-    /// temperature calibration, and that is not a thing to do in the middle
-    /// of a physics batch's gates. It is filed in the tyre batch's list in
-    /// the design notes, to be re-read in the same pass that re-reads heat
-    /// against slip-angle semantics - the wear side has already moved to
-    /// force times sliding, and the heat side owes the same visit.
-    ///
-    /// Dead code may live. It may not go unmarked.
+    /// Being honest about what happened to the number: the branch was
+    /// retired, the ramp's end point was not, and it is the same 0.99. This
+    /// is a rename of a job that survived, not a constant that was quietly
+    /// kept alive under a new name -- the dead half is dead, and it left
+    /// this headstone.
     /// </summary>
-    public const float NearLimitHeatStartUse = 0.99f;
+    public const float DirectionalHeatRampEndUse = 0.99f;
     public const float NearLimitWearExponent = 8f;
     public const float OverLimitHeatRate = 6f;
     public const float SideslipHeatRate = 4f;
@@ -56,6 +53,31 @@ public sealed class TireConfig
     // heat soak that Push and Attack create near the tire limit.
     public const float SurfaceCoreTransferRate = 0.04375f;
     public const float CoreHeatCapacityRatio = 12f;
+
+    /// <summary>
+    /// How long the rubber takes to get anywhere, as a multiple of what it
+    /// used to take.
+    ///
+    /// Every thermal mass is divided by this, and only the masses are — so
+    /// every equilibrium the car has is exactly where it was and only the
+    /// journey to it is quicker. That is the whole reason it is one number
+    /// applied uniformly rather than a rate tuned here and a rate tuned
+    /// there: the steady-state skidpad temperature is a fixed point of
+    /// heat against cooling, and neither is touched. The ratio between the
+    /// tread and the carcass is untouched too, so a short spike still goes
+    /// into the surface and not the core.
+    ///
+    /// It exists because the tyres could not be warmed up. From 25 C, two
+    /// laps of hard cornering reached 59 C against a working floor of 85,
+    /// and the range arrived at about 1500 seconds — fifteen laps. That
+    /// was measured on the model before the heat rework as well, to within
+    /// a degree, so it is a calibration the car always had and nothing had
+    /// asked about, because nothing until now wanted to start a car cold.
+    ///
+    /// The anchor comes from outside: slicks with no blankets are in their
+    /// window after one to three laps, which is what an out lap is for.
+    /// </summary>
+    public const float ThermalTimeScale = 0.20f;
     public const float CoreAirCoolingRate = 0.0057f;
     public const float SpeedCoolingReferenceMps = 60f;
     public const float MaximumSpeedCoolingMultiplier = 2.4f;
