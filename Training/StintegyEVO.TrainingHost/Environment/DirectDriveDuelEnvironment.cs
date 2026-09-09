@@ -258,6 +258,8 @@ public sealed class DirectDriveDuelEnvironment
 
     private readonly DriverProfile _opponentProfile;
     private readonly bool _solo;
+    private readonly bool _randomiseEpisodeStart;
+    private readonly EpisodeStartDistribution _episodeStarts;
     private RaceSimulation? _simulation;
     private RaceCar? _ego;
     private DirectDriveRaceDriver? _egoDriver;
@@ -314,9 +316,13 @@ public sealed class DirectDriveDuelEnvironment
         CarStrategy? egoStrategy = null,
         bool egoAnalytic = false,
         float egoAnalyticHz = OpponentDecisionHz,
-        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz
+        float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz,
+        bool randomiseEpisodeStart = false,
+        EpisodeStartDistribution? episodeStarts = null
     )
     {
+        _randomiseEpisodeStart = randomiseEpisodeStart;
+        _episodeStarts = episodeStarts ?? new EpisodeStartDistribution();
         if (!float.IsFinite(decisionHz) || decisionHz <= 0f)
             throw new ArgumentOutOfRangeException(nameof(decisionHz));
         if (!float.IsFinite(minimumForwardGapMeters) ||
@@ -597,6 +603,21 @@ public sealed class DirectDriveDuelEnvironment
             MathF.Sqrt(lateral * lateral + longitudinal * longitudinal)
         );
 
+    /// <summary>
+    /// What every episode used to start as, and what the sparring partner
+    /// still starts as: fresh rubber at working temperature, most of a
+    /// pack.
+    /// </summary>
+    private static readonly EpisodeStart FixedStart = new(
+        Wear: 0f,
+        SurfaceTempC: 90f,
+        CoreTempC: 90f,
+        Charge: 0.8f,
+        SurfaceGripScalar: 1f,
+        AirTempC: 25f,
+        TrackTempC: 35f
+    );
+
     private void ResetCore(
         TrackChoice choice,
         ref StableRandom random,
@@ -633,10 +654,39 @@ public sealed class DirectDriveDuelEnvironment
         );
         EgoStrategy = _fixedEgoStrategy ?? drawn;
 
+        // Drawn whether or not it will be used, so that a nominal episode
+        // and a drawn one leave the random stream in the same place and
+        // everything after them lands identically -- the same discipline
+        // the pit-wall instruction above is drawn under.
+        EpisodeStart drawnStart = _episodeStarts.Draw(
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f)
+        );
+        EpisodeStart egoStart = _randomiseEpisodeStart
+            ? drawnStart
+            : FixedStart;
+
+        // The weather and the road come from the same switch as the car,
+        // because they answer the same question: is this a training
+        // episode or an exam?
+        //
+        // The air and track temperatures were drawn here before this
+        // change, and drawn on every episode -- including every evaluation
+        // and every certification, because they all run through this host.
+        // So the exam was never taken twice under the same conditions, and
+        // a lap time being held against a fixed reference band was being
+        // held there from a different day each time. Nominal now means
+        // nominal.
         RaceEnvironment raceEnvironment = new()
         {
-            AirTempC = random.NextSingle(18f, 32f),
-            TrackTempC = random.NextSingle(22f, 45f)
+            AirTempC = egoStart.AirTempC,
+            TrackTempC = egoStart.TrackTempC,
+            SurfaceGripScalar = egoStart.SurfaceGripScalar
         };
         _simulation = new RaceSimulation(track, raceEnvironment);
         // Clocked from here: the agent step and the decision period are
@@ -659,7 +709,8 @@ public sealed class DirectDriveDuelEnvironment
                     _egoAnalyticHz
                 )
                 : _egoDriver,
-            EgoStrategy
+            EgoStrategy,
+            egoStart
         );
         _simulation.AddCar(_ego);
         if (_egoAnalytic)
@@ -692,7 +743,12 @@ public sealed class DirectDriveDuelEnvironment
                     new ReferenceLineDriver(profile: _opponentProfile),
                     OpponentDecisionHz
                 ),
-                _opponentStrategy
+                _opponentStrategy,
+                // The sparring partner starts fresh whatever the ego drew.
+                // It is scenery for this batch — varying it would change
+                // what the ego is racing against without teaching the ego
+                // anything about its own car.
+                FixedStart
             );
             _simulation.AddCar(_opponent);
         }
@@ -794,17 +850,18 @@ public sealed class DirectDriveDuelEnvironment
         float s,
         float speed,
         IRaceDriver driver,
-        CarStrategy strategy
+        CarStrategy strategy,
+        in EpisodeStart start
     )
     {
         TrackSample sample = track.Sample(s);
-        return new RaceCar(
+        RaceCar car = new(
             id,
             new CarConfig(),
             new TireConfig
             {
-                StartingSurfaceTempC = 90f,
-                StartingCoreTempC = 90f
+                StartingSurfaceTempC = start.SurfaceTempC,
+                StartingCoreTempC = start.CoreTempC
             },
             driver,
             new CarState
@@ -812,13 +869,26 @@ public sealed class DirectDriveDuelEnvironment
                 Position = sample.RefPosition,
                 Heading = sample.RefHeading,
                 Speed = speed,
-                Energy = PowertrainState.Filled(0.8f)
+                Energy = PowertrainState.Filled(start.Charge)
             }
         )
         {
             Strategy = strategy
         };
+
+        // Wear is state rather than configuration, so it is set on the
+        // tyres the car was just given rather than asked for at
+        // construction.
+        foreach (WheelId wheel in AllWheels)
+            car.State.GetTire(wheel).Wear = start.Wear;
+        return car;
     }
+
+    private static readonly WheelId[] AllWheels =
+    {
+        WheelId.FrontLeft, WheelId.FrontRight,
+        WheelId.RearLeft, WheelId.RearRight
+    };
 
     private static void EnsureObservationSize(Span<float> observation)
     {

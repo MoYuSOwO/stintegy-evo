@@ -36,7 +36,9 @@ internal static class Program
                 float egoAnalyticHz,
                 float decisionHz,
                 float opponentPace,
-                bool solo
+                bool solo,
+                bool randomiseEpisodeStart,
+                EpisodeStartDistribution episodeStarts
             ) =
                 ParseOptions(args);
             BatchedTrainingHost host = new(
@@ -52,7 +54,9 @@ internal static class Program
                 egoStrategy,
                 egoAnalytic,
                 egoAnalyticHz,
-                decisionHz
+                decisionHz,
+                randomiseEpisodeStart,
+                episodeStarts
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -77,7 +81,9 @@ internal static class Program
         float EgoAnalyticHz,
         float DecisionHz,
         float OpponentPace,
-        bool Solo
+        bool Solo,
+        bool RandomiseEpisodeStart,
+        EpisodeStartDistribution EpisodeStarts
     ) ParseOptions(string[] args)
     {
         int batchSize = 1;
@@ -99,6 +105,8 @@ internal static class Program
         // on the learner's terms.
         float egoAnalyticHz = 0f;
         float decisionHz = DirectDriveRaceDriver.DefaultDecisionHz;
+        bool randomiseEpisodeStart = false;
+        EpisodeStartDistribution episodeStarts = new();
         for (int i = 0; i < args.Length; i++)
         {
             string option = args[i];
@@ -110,6 +118,11 @@ internal static class Program
             if (option == "--solo")
             {
                 solo = true;
+                continue;
+            }
+            if (option == "--randomise-episode-start")
+            {
+                randomiseEpisodeStart = true;
                 continue;
             }
             if (i + 1 >= args.Length)
@@ -186,6 +199,36 @@ internal static class Program
                 case "--ego-modes":
                     egoStrategy = ParseModes(option, value);
                     break;
+                case "--episode-start-normal-share":
+                    episodeStarts = episodeStarts with
+                    {
+                        RaceNormalShare = ParseUnitFloat(option, value)
+                    };
+                    break;
+                case "--episode-start-wear-max":
+                    episodeStarts = episodeStarts with
+                    {
+                        ExtremeWearMax = ParseUnitFloat(option, value)
+                    };
+                    break;
+                case "--episode-start-temp-min":
+                    episodeStarts = episodeStarts with
+                    {
+                        ExtremeTempMinC = ParseFiniteFloat(option, value)
+                    };
+                    break;
+                case "--episode-start-temp-max":
+                    episodeStarts = episodeStarts with
+                    {
+                        ExtremeTempMaxC = ParseFiniteFloat(option, value)
+                    };
+                    break;
+                case "--episode-start-charge-min":
+                    episodeStarts = episodeStarts with
+                    {
+                        ExtremeChargeMin = ParseUnitFloat(option, value)
+                    };
+                    break;
                 case "--opponent-pace":
                     opponentPace = ParseFiniteFloat(option, value);
                     if (opponentPace < 0f || opponentPace > 100f)
@@ -219,7 +262,9 @@ internal static class Program
             egoAnalyticHz,
             decisionHz,
             opponentPace,
-            solo
+            solo,
+            randomiseEpisodeStart,
+            episodeStarts
         );
     }
 
@@ -242,6 +287,20 @@ internal static class Program
             );
         }
         return new CarStrategy((TireUsageMode)tire, power);
+    }
+
+    /// <summary>A share or a fraction: finite and inside the unit
+    /// interval, because every one of these is one of those.</summary>
+    private static float ParseUnitFloat(string option, string value)
+    {
+        float parsed = ParseFiniteFloat(option, value);
+        if (parsed < 0f || parsed > 1f)
+        {
+            throw new ArgumentException(
+                $"{option} must be between zero and one."
+            );
+        }
+        return parsed;
     }
 
     private static float ParseFiniteFloat(string option, string value)
