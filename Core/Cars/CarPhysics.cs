@@ -807,9 +807,41 @@ public static class CarPhysics
         );
         float averageSpeed = (oldSpeed + newSpeed) * 0.5f;
 
-        // Where the car is going does not change while it spins; only where
-        // it points does.
-        float velocityHeading = state.VelocityHeading;
+        // Where the car is going bends towards whichever side of it can
+        // still find grip, which on a circuit means back towards the road.
+        //
+        // It used to travel in a dead straight line while it rotated, and
+        // that is how a spun car ends up stopped square in the middle of a
+        // run-off with nothing to do but retire. A real spin does not do
+        // that: the pair of tyres still on tarmac drags harder than the
+        // pair on grass, the car pivots and slides towards the harder
+        // pair, and drivers come back out of a spin near the edge of the
+        // road far more often than in the middle of the field.
+        //
+        // The car does not have to know where the track is to do this --
+        // it can feel it. Nothing here reads a circuit; it reads the four
+        // grips it is already given, which is what a tyre knows.
+        float leftGrip = input.SurfaceGrip[WheelId.FrontLeft] +
+                         input.SurfaceGrip[WheelId.RearLeft];
+        float rightGrip = input.SurfaceGrip[WheelId.FrontRight] +
+                          input.SurfaceGrip[WheelId.RearRight];
+        float gripSum = leftGrip + rightGrip;
+        float bodyAsymmetry = gripSum > Epsilon
+            ? (leftGrip - rightGrip) / gripSum
+            : 0f;
+        // The asymmetry is measured across the car, and the car is not
+        // pointing where it is going. Only the part of it that lies across
+        // the direction of travel can bend the path.
+        float travelAsymmetry = bodyAsymmetry *
+                                MathF.Cos(state.SideslipAngleRadians);
+        // Bent here and carried through: the sideslip written back at the
+        // end of the step is measured against this, so the new direction
+        // of travel is what the car leaves the step with.
+        float velocityHeading = MathHelper.NormalizeAngle(
+            state.VelocityHeading +
+            SingleTrackDynamicsLimits.SpinRecoveryBendRateRadiansPerSecond *
+            travelAsymmetry * dt
+        );
         Vector2 travelDirection = new(
             MathF.Cos(velocityHeading),
             MathF.Sin(velocityHeading)

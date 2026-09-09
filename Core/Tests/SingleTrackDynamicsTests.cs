@@ -1,5 +1,8 @@
 using System;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Util;
+using StintegyEVO.Core.Track;
+using System.Numerics;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -361,6 +364,101 @@ public sealed class SingleTrackDynamicsTests
     /// spin hands back a moving car. Flicking through the same angle is
     /// not: a save should be allowed to be spectacular.
     /// </summary>
+    /// <summary>
+    /// A spun car slides back towards the road rather than square into the
+    /// middle of the run-off.
+    ///
+    /// It used to travel in a dead straight line while it rotated, which
+    /// is how a spin ends with the car stopped in the middle of a field
+    /// with nothing to do but retire — and the certification forensics
+    /// found exactly that, three retirements all of them on grass. Real
+    /// spins do not look like that. The pair of tyres still on tarmac
+    /// drags harder than the pair on grass, so the car pivots and slides
+    /// towards the harder pair, and drivers come back out near the edge of
+    /// the road far more often than in the middle of the field.
+    ///
+    /// Nothing here knows where the track is. The car reads the four grips
+    /// it is already handed, which is what a tyre knows, and the direction
+    /// of travel bends towards whichever side of it can still bite.
+    /// </summary>
+    [Fact]
+    public void ASpunCarSlidesBackTowardsTheGrip()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
+        float hold = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f;
+
+        CarState even = HeldSideways(car, tires, past, hold);
+        CarState leftHasRoad = HeldSideways(car, tires, past, hold);
+        Vector2 start = even.Position;
+
+        // Two wheels still on the road, two beyond the line.
+        WheelSurfaceGrip lopsided = new(
+            SurfaceGrip.RacingSurface,
+            SurfaceGrip.Buffer,
+            SurfaceGrip.RacingSurface,
+            SurfaceGrip.Buffer
+        );
+        float travelAtStart = even.VelocityHeading;
+
+        // Only while the spin lasts. Once the car is handed back, ordinary
+        // physics moves it again and the comparison stops being about the
+        // choreography.
+        float evenTravel = travelAtStart;
+        float bentTravel = travelAtStart;
+        Vector2 evenEnd = even.Position;
+        Vector2 bentEnd = leftHasRoad.Position;
+        for (int i = 0; i < 60 * 12; i++)
+        {
+            if (even.Spinning)
+            {
+                CarPhysics.Step(
+                    even, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
+                );
+                evenTravel = even.VelocityHeading;
+                evenEnd = even.Position;
+            }
+            if (leftHasRoad.Spinning)
+            {
+                CarPhysics.Step(
+                    leftHasRoad,
+                    car,
+                    tires,
+                    PhysicsInput(new DriverInput(0f, 0f)) with
+                    {
+                        SurfaceGrip = lopsided
+                    },
+                    Dt
+                );
+                bentTravel = leftHasRoad.VelocityHeading;
+                bentEnd = leftHasRoad.Position;
+            }
+            if (!even.Spinning && !leftHasRoad.Spinning)
+                break;
+        }
+
+        // The evenly gripped car keeps going exactly where it was pointed.
+        Assert.Equal(travelAtStart, evenTravel, precision: 4);
+
+        // The lopsided one has turned towards its left, which is the side
+        // with the road on it.
+        float bend = MathHelper.NormalizeAngle(bentTravel - travelAtStart);
+        Assert.True(
+            bend > 0.05f,
+            $"a spin with the road on one side should curve towards it, " +
+            $"got {bend:0.0000} rad"
+        );
+
+        // And it lands somewhere else because of it, which is the point:
+        // the difference has to be metres, not millimetres.
+        float apart = Vector2.Distance(evenEnd, bentEnd);
+        Assert.True(
+            apart > 2f,
+            $"the two spins should end up meaningfully apart, got {apart:0.00} m"
+        );
+    }
+
     /// <summary>
     /// What one spin costs the tyres, now that it is billed by the same
     /// formula as everything else.
