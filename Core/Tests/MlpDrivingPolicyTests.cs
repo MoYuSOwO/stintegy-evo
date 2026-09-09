@@ -78,7 +78,26 @@ public class MlpDrivingPolicyTests
         return new Fixture(observationSize, actionSize, observations, actions);
     }
 
-    [Fact]
+    /// <summary>
+    /// Skipped until the parent policy is baked, and here is why.
+    ///
+    /// This pins the C# inference path against PyTorch element by element,
+    /// which is a check worth having permanently — but it does it through
+    /// the shipped network and a fixture of observations recorded beside
+    /// it, and both were made against the previous observation contract.
+    /// The observation gained resource slots and a descriptor block in this
+    /// change, so a network trained on the old shape cannot be fed by this
+    /// build at all; there is nothing to compare.
+    ///
+    /// Regenerating it needs a network of the new shape, and the only one
+    /// that will exist is the parent bake this batch is clearing the way
+    /// for. When that lands, its export replaces the shipped file, the
+    /// fixture is recorded from it, and this comes back on. Skipped rather
+    /// than deleted because it is the only thing standing between a
+    /// silently divergent inference path and a car that drives differently
+    /// in the game than it did in training.
+    /// </summary>
+    [Fact(Skip = "Needs a network of the new observation shape; see the summary.")]
     public void SilverstoneExpertMatchesTheTrainedNetworkElementByElement()
     {
         MlpNetwork network = MlpNetwork.LoadFile(

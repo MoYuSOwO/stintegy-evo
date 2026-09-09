@@ -69,7 +69,20 @@ public sealed class MlpDrivingPolicy : IDrivingPolicy
 public sealed class MlpNetwork
 {
     private const uint Magic = 0x4E4E5453;   // "STNN", little-endian
-    private const int SupportedVersion = 1;
+    /// <summary>
+    /// The format version this build writes, and every version it can
+    /// still read.
+    ///
+    /// Version two exists because the observation the network is fed
+    /// changed shape — resource slots and the vehicle descriptor block
+    /// were laid in — and a file does not otherwise say which observation
+    /// contract it was trained against. A version-one network is still
+    /// structurally readable, so it is still read; what it cannot do is
+    /// drive this car, and the input-size check below is what says so, in
+    /// those words rather than as an arithmetic complaint.
+    /// </summary>
+    private const int CurrentVersion = 2;
+    private const int OldestReadableVersion = 1;
     private const int ActivationNone = 0;
     private const int ActivationRelu = 1;
     private const int SquashNone = 0;
@@ -127,10 +140,11 @@ public sealed class MlpNetwork
 
         int at = 4;
         int version = ReadInt(bytes, ref at);
-        if (version != SupportedVersion)
+        if (version < OldestReadableVersion || version > CurrentVersion)
         {
             throw new InvalidDataException(
-                $"Network format {version}; this reads {SupportedVersion}."
+                $"Network format {version}; this reads " +
+                $"{OldestReadableVersion} through {CurrentVersion}."
             );
         }
         int inputSize = ReadInt(bytes, ref at);

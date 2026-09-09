@@ -13,10 +13,32 @@ namespace StintegyEVO.Core.Cars;
 /// empty as full; a hundred kilograms or so for a fuel tank, which is the
 /// whole reason a petrol car gets quicker as the race goes on.
 /// </param>
+/// <summary>
+/// What kind of thing a resource is, as a number a network can be shown.
+///
+/// The id and the label are for people. A policy that is going to drive
+/// more than one car needs to know that the slot it is looking at holds
+/// charge rather than fuel, because the two behave differently — charge
+/// comes back under braking and fuel does not, and a car whose store gets
+/// lighter as it empties handles differently at the end of a stint than
+/// one whose does not. Naming the kind is how a policy can carry that
+/// across cars instead of relearning it per car.
+///
+/// Numbered from zero for "no resource in this slot", so that an unused
+/// slot reads as absent in both its presence flag and its class.
+/// </summary>
+public enum PowertrainResourceClass
+{
+    None = 0,
+    Battery = 1,
+    Fuel = 2,
+}
+
 public readonly record struct PowertrainResourceInfo(
     string Id,
     string Label,
-    float FullMassKg
+    float FullMassKg,
+    PowertrainResourceClass Class = PowertrainResourceClass.Battery
 );
 
 /// <summary>
