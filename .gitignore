@@ -14,3 +14,9 @@ gdunit4_testadapter_v5/
 # Training run logs. Finished rounds get archived deliberately with
 # `git add -f`; live ones should not ride along on `git add -A`.
 Training/python/*.log
+
+# Python virtual environments. One of these was once committed as a
+# symlink to an absolute path on one machine — useless everywhere else,
+# and it took a history rewrite to remove.
+.venv/
+Training/.venv
