@@ -2016,7 +2016,7 @@ public static class CarPhysics
 
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
-        ) * dt;
+        ) / TireConfig.ThermalTimeScale * dt;
         // The carcass makes its own heat by flexing, so without somewhere to put
         // it the only way out is backwards through the tread, and it has to
         // stand hotter than the tread for that to happen - permanently, by an
@@ -2034,7 +2034,7 @@ public static class CarPhysics
                           (tire.CoreTempC - airTempC);
         tire.CoreTempC += (
             rollingCoreHeat + brakeCoreHeat + surfaceToCore - coreToAir
-        ) / TireConfig.CoreHeatCapacityRatio * dt;
+        ) / (TireConfig.CoreHeatCapacityRatio * TireConfig.ThermalTimeScale) * dt;
 
         float tempWearFactor = CalculateTemperatureWearFactor(
             tires,

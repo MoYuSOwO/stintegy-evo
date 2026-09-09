@@ -1726,36 +1726,38 @@ public sealed class CarPhysicsTests
     }
 
     /// <summary>
-    /// Rewriting the lateral heat source did not move the tyre
-    /// temperatures the car was calibrated to.
+    /// Where a five-minute mixed-driving cycle settles, at each force
+    /// share — and why these numbers are not the ones this test was first
+    /// written with.
     ///
-    /// Lateral tread heat is force times sliding now rather than force
-    /// squared, which is a different function of the same driving — so the
-    /// only way to keep every tyre temperature figure this car was tuned
-    /// against is to check, not to argue. These are the readings the model
-    /// gave immediately before the change, taken from a five-minute
-    /// mixed-driving duty cycle at each force share: two seconds
-    /// cornering, one braking, two accelerating, then coasting.
+    /// It was written to show that rewriting the lateral heat source did
+    /// not move the temperatures this car was calibrated to, and it did
+    /// show that: against the model immediately before the rewrite, the
+    /// whole sub-limit range agreed to within 0.07 C. Then the thermal
+    /// time constant was deliberately shortened, because the car could not
+    /// warm a cold tyre inside an episode, and a five-minute reading of a
+    /// system that now settles in three is a different number even though
+    /// nothing about where it settles has changed.
     ///
-    /// The tolerance is 0.15 C against a measured worst case of 0.07,
-    /// stated as a band rather than a decimal place: rounding to one place
-    /// puts 89.92 and 89.99 on opposite sides of a boundary they are seven
-    /// hundredths apart on, which fails for a reason that has nothing to
-    /// do with the tyre. A looser band than this would let the next
-    /// rewrite drift without saying so.
+    /// So these are the settled values rather than a snapshot of a journey,
+    /// which is the better thing to pin anyway. That the destination did
+    /// not move was measured rather than argued: at the old time constant
+    /// the same cycle reads 95.33 at five minutes, 87.22 at twenty and
+    /// 85.65 at an hour, still descending towards the 84.91 this one
+    /// reaches in three. Same place, shorter walk.
     ///
-    /// The direction of the residual is worth reading: very slightly
-    /// cooler below 90% use and very slightly hotter at 95%, which is heat
-    /// moving out of the hand-placed near-limit branch that was retired
-    /// and into the continuous slip term that replaced it.
+    /// The tolerance is 0.15 C, stated as a band rather than a decimal
+    /// place: rounding to one place puts values seven hundredths apart on
+    /// opposite sides of a boundary, which fails for a reason that has
+    /// nothing to do with the tyre.
     /// </summary>
     [Theory]
-    [InlineData(0.600f, 95.71f, 89.17f)]
-    [InlineData(0.700f, 96.37f, 89.56f)]
-    [InlineData(0.800f, 97.12f, 89.99f)]
-    [InlineData(0.850f, 97.55f, 90.22f)]
-    [InlineData(0.900f, 98.02f, 90.46f)]
-    [InlineData(0.955f, 99.07f, 91.28f)]
+    [InlineData(0.600f, 86.61f, 81.65f)]
+    [InlineData(0.700f, 87.91f, 82.31f)]
+    [InlineData(0.800f, 89.41f, 83.02f)]
+    [InlineData(0.850f, 90.28f, 83.40f)]
+    [InlineData(0.900f, 91.26f, 83.80f)]
+    [InlineData(0.955f, 93.46f, 84.83f)]
     public void SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(
         float use, float expectedCore, float expectedSurface
     )
@@ -1812,6 +1814,41 @@ public sealed class CarPhysicsTests
             hardCore - easyCore > 2f,
             $"the two duty cycles need a readable separation, got {easyCore:F2} versus {hardCore:F2} C"
         );
+    }
+
+    private static CarState WarmFrom(float use, float startTempC, int seconds, out int reachedSeconds)
+    {
+        TireConfig tires = new() { StartingSurfaceTempC = startTempC, StartingCoreTempC = startTempC };
+        CarConfig car = new();
+        CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
+        CarStrategy strategy = CarStrategy.Default;
+        const int cycleSteps = 20 * 60;
+        reachedSeconds = -1;
+        for (int step = 0; step < seconds * 60; step++)
+        {
+            state.Speed = 55f;
+            float phase = (step % cycleSteps) / 60f;
+            CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+                state, car, tires, strategy, state.Speed, curvature: 0f);
+            float curvature = phase < 2f
+                ? limits.LateralAccelerationLimit * use / (state.Speed * state.Speed)
+                : 0f;
+            float accel = phase switch
+            {
+                >= 2f and < 3f => -limits.MaximumBrakeDeceleration * use,
+                >= 3f and < 5f => limits.MaximumDriveAcceleration * use,
+                _ => 0f
+            };
+            CarPhysics.Step(state, car, tires,
+                new CarPhysicsStepInput(new DriverInput(curvature, accel),
+                    strategy, AirTempC: 25f, TrackTempC: 30f), 1f / 60f);
+            if (reachedSeconds < 0 &&
+                AverageFrontSurfaceTemp(state) >= tires.IdealSurfaceTempLowC)
+            {
+                reachedSeconds = step / 60;
+            }
+        }
+        return state;
     }
 
     /// <summary>
@@ -1882,30 +1919,57 @@ public sealed class CarPhysicsTests
     }
 
     /// <summary>
-    /// A cold tyre warms, but not nearly fast enough to be warm inside an
-    /// episode — and this is recorded rather than fixed.
+    /// Gate four: from cold, hard driving puts the tyres in their working
+    /// range inside one to three laps.
     ///
-    /// The gate this was written for asked whether two laps of hard
-    /// driving from 25 C reaches the working range, because the next batch
-    /// wants to start episodes on randomly aged and randomly cold tyres
-    /// and that is only a fair thing to ask if the car can warm them.
-    /// It cannot. Two hundred seconds of hard cornering from cold reaches
-    /// about 59 C against a working floor of 85, and a mixed cycle with
-    /// braking and traction does no better; the range is reached
-    /// eventually, at roughly 1500 seconds, which is fifteen laps.
+    /// The anchor is outside the project — slicks with no blankets are in
+    /// their window after an out lap or two, which is what an out lap is
+    /// for. What the car did before this batch was reach 59 C after two
+    /// laps against a working floor of 85, and arrive at about 1500
+    /// seconds, which is fifteen laps. That was measured on the model
+    /// before the heat rework too, to within a degree: a calibration the
+    /// car always had, that nothing had asked about, because nothing until
+    /// now wanted to start a car cold.
     ///
-    /// The measurement was taken on the model before this batch as well,
-    /// and it gives the same answer to within a degree. So this is not
-    /// something the heat rework broke — it is a calibration the car has
-    /// always had and nobody had asked about, because nothing until now
-    /// wanted to start a car cold.
+    /// The fix was one number — every thermal mass divided by the same
+    /// factor — so that no equilibrium moved and only the journey to it
+    /// got shorter. See <see cref="TireConfig.ThermalTimeScale"/>.
     ///
-    /// Pinned two-sided on purpose. A one-sided assertion here passed
-    /// while the car was spinning itself to 225 C, which is how the
-    /// original version of this test managed to be green and wrong.
+    /// Pinned on both sides, and the lower bound is the important one. A
+    /// one-sided version of this test passed while the car, unable to grip
+    /// on cold rubber, spun on entry and cooked itself to 225 C. Tyres
+    /// that came up instantly would be just as wrong as tyres that never
+    /// came up, and only a band says so.
     /// </summary>
-    [Fact]
-    public void ColdTyresWarmFarTooSlowlyToBeWarmWithinAnEpisode()
+    [Theory]
+    [InlineData(0.80f)]
+    [InlineData(0.90f)]
+    public void ColdTyresReachTheirWorkingRangeInOneToThreeLaps(float use)
+    {
+        // A lap of Silverstone at this pace, near enough for a bound
+        // expressed in laps.
+        const float lapSeconds = 101f;
+        CarState state = RunColdOutLap(use, seconds: 400, out int reached);
+
+        Assert.True(
+            reached >= 0,
+            "the tyres never reached their working range at all; the last " +
+            $"reading was {AverageFrontSurfaceTemp(state):F1} C"
+        );
+
+        float laps = reached / lapSeconds;
+        Assert.InRange(laps, 1f, 3f);
+    }
+
+    /// <summary>
+    /// A cold out lap: hard cornering, braking and traction in the mixture
+    /// a driver actually uses to put heat in, from twenty-five degrees.
+    /// </summary>
+    private static CarState RunColdOutLap(
+        float use,
+        int seconds,
+        out int reachedSeconds
+    )
     {
         TireConfig tires = new()
         {
@@ -1914,44 +1978,46 @@ public sealed class CarPhysicsTests
         };
         CarConfig car = new();
         CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
-        float curvature = CurvatureForGripShare(
-            state,
-            car,
-            tires,
-            share: 0.80f
-        );
-        SetSteadyCorner(state, car, tires, curvature);
+        CarStrategy strategy = CarStrategy.Default;
+        const int cycleSteps = 20 * 60;
+        reachedSeconds = -1;
 
-        CarPhysicsStepInput input = new(
-            new DriverInput(curvature, 0f),
-            CarStrategy.Default,
-            AirTempC: 25f,
-            TrackTempC: 30f
-        );
-
-        const int steps = 200 * 60;
-        for (int step = 0; step < steps; step++)
+        for (int step = 0; step < seconds * 60; step++)
         {
             state.Speed = 55f;
-            CarPhysics.Step(state, car, tires, input, 1f / 60f);
+            float phase = (step % cycleSteps) / 60f;
+            CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+                state, car, tires, strategy, state.Speed, curvature: 0f
+            );
+            float curvature = phase < 2f
+                ? limits.LateralAccelerationLimit * use /
+                  (state.Speed * state.Speed)
+                : 0f;
+            float accel = phase switch
+            {
+                >= 2f and < 3f => -limits.MaximumBrakeDeceleration * use,
+                >= 3f and < 5f => limits.MaximumDriveAcceleration * use,
+                _ => 0f
+            };
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                new CarPhysicsStepInput(
+                    new DriverInput(curvature, accel),
+                    strategy,
+                    AirTempC: 25f,
+                    TrackTempC: 30f
+                ),
+                1f / 60f
+            );
+            if (reachedSeconds < 0 &&
+                AverageFrontSurfaceTemp(state) >= tires.IdealSurfaceTempLowC)
+            {
+                reachedSeconds = step / 60;
+            }
         }
-
-        float surface = AverageFrontSurfaceTemp(state);
-        // It warms.
-        Assert.True(
-            surface > 50f,
-            $"two laps of hard cornering should put real heat into a cold " +
-            $"tyre, got {surface:F1} C"
-        );
-        // And it is nowhere near ready. When this stops being true the
-        // cold end of the episode randomisation gets its physical basis,
-        // and this test should be the thing that says so.
-        Assert.True(
-            surface < tires.IdealSurfaceTempLowC,
-            $"cold tyres reaching the working range in two laps would be a " +
-            $"change worth noticing: got {surface:F1} C against a floor of " +
-            $"{tires.IdealSurfaceTempLowC:F0} C"
-        );
+        return state;
     }
 
     /// <summary>
@@ -2011,8 +2077,19 @@ public sealed class CarPhysicsTests
         SetTireTemps(parked, surfaceTempC: 112f, coreTempC: 104f);
         SetTireTemps(fast, surfaceTempC: 112f, coreTempC: 104f);
 
-        StepMany(parked, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 120);
-        StepMany(fast, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 120);
+        // Twenty-four steps, not the hundred and twenty this used to run.
+        //
+        // The window has to sit inside the transient, and the transient got
+        // five times shorter when the thermal time constant did. At two
+        // seconds both cars are now most of the way to their own
+        // equilibria, and at equilibrium the fast one is very slightly the
+        // hotter of the two -- its rolling heat outweighs the extra air
+        // moving over it -- so the reading flips sign for a reason that has
+        // nothing to do with the claim being made. The claim is about the
+        // cooling term, which is a rate, and a rate is visible while the
+        // temperature is still moving.
+        StepMany(parked, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 24);
+        StepMany(fast, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 24);
 
         Assert.True(
             AverageSurfaceTemp(fast) < AverageSurfaceTemp(parked),

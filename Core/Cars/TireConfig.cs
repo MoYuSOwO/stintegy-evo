@@ -53,6 +53,31 @@ public sealed class TireConfig
     // heat soak that Push and Attack create near the tire limit.
     public const float SurfaceCoreTransferRate = 0.04375f;
     public const float CoreHeatCapacityRatio = 12f;
+
+    /// <summary>
+    /// How long the rubber takes to get anywhere, as a multiple of what it
+    /// used to take.
+    ///
+    /// Every thermal mass is divided by this, and only the masses are — so
+    /// every equilibrium the car has is exactly where it was and only the
+    /// journey to it is quicker. That is the whole reason it is one number
+    /// applied uniformly rather than a rate tuned here and a rate tuned
+    /// there: the steady-state skidpad temperature is a fixed point of
+    /// heat against cooling, and neither is touched. The ratio between the
+    /// tread and the carcass is untouched too, so a short spike still goes
+    /// into the surface and not the core.
+    ///
+    /// It exists because the tyres could not be warmed up. From 25 C, two
+    /// laps of hard cornering reached 59 C against a working floor of 85,
+    /// and the range arrived at about 1500 seconds — fifteen laps. That
+    /// was measured on the model before the heat rework as well, to within
+    /// a degree, so it is a calibration the car always had and nothing had
+    /// asked about, because nothing until now wanted to start a car cold.
+    ///
+    /// The anchor comes from outside: slicks with no blankets are in their
+    /// window after one to three laps, which is what an out lap is for.
+    /// </summary>
+    public const float ThermalTimeScale = 0.20f;
     public const float CoreAirCoolingRate = 0.0057f;
     public const float SpeedCoolingReferenceMps = 60f;
     public const float MaximumSpeedCoolingMultiplier = 2.4f;

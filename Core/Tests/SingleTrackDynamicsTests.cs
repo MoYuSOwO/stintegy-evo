@@ -473,7 +473,11 @@ public sealed class SingleTrackDynamicsTests
     ///
     /// The result is cheaper than the flat rate was, and that is the
     /// finding rather than a target that was aimed at: wear went from
-    /// +1.57% to +0.77% and the surface peak from 129.6 C to 99.7 C. The
+    /// +1.57% to +0.80%, and the surface rise from +36.7 C to +21.5 C.
+    /// (Both of those were measured before the thermal time constant was
+    /// shortened in the same batch, which lifted the heat figure from the
+    /// +8 C it first read; the wear, which has no time constant, did not
+    /// move.) The
     /// reason is that the flat rate charged heat the motion does not
     /// justify — the choreography sheds speed at nine metres a second
     /// squared, and that is all the energy there is to put into the
@@ -509,7 +513,7 @@ public sealed class SingleTrackDynamicsTests
         float heatRise = peak - startTemp;
 
         Assert.InRange(wearCost, 0.5f, 1.1f);
-        Assert.InRange(heatRise, 5f, 12f);
+        Assert.InRange(heatRise, 16f, 27f);
         // And the thing that must not come back: a spin has to cost
         // something well above ordinary cornering, or the referee is
         // declaring an event the car does not feel.
