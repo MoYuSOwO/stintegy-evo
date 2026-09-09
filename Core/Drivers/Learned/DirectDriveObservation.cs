@@ -67,6 +67,15 @@ public static class DirectDriveObservation
     /// work out: grip is load times a coefficient, and it was being shown
     /// neither.
     /// </summary>
+    /// <remarks>
+    /// <b>Legacy.</b> This block describes the car's parts rather than its
+    /// condition — four wheels of device readings — and its battery
+    /// channel now says the same thing the resource slots say in the
+    /// contract's own terms. It stays because redundant information is
+    /// harmless and every change of dimension voids a generation of
+    /// checkpoints, so clearing it is worth doing only alongside a change
+    /// that had to happen anyway. The next such change should take it.
+    /// </remarks>
     public const int TireAndBatterySize = 17;
 
     /// <summary>
@@ -78,6 +87,12 @@ public static class DirectDriveObservation
     /// stands for, and that number is now given directly in
     /// <see cref="RoadAndLimitsSize"/>.
     /// </summary>
+    /// <remarks>
+    /// <b>Legacy.</b> One channel of overtake assist, tied to a mode
+    /// ladder whose number of rungs is a property of the machinery. It
+    /// goes with <see cref="TireAndBatterySize"/> at the next dimension
+    /// change.
+    /// </remarks>
     public const int ModeSize = 1;
 
     public const int AeroSize = 3;
