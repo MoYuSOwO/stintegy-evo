@@ -22,7 +22,7 @@ public sealed class ElectricPowertrain : IPowertrain
     {
         // A pack weighs what it weighs whether it is full or flat, so none of
         // this car's mass burns off over a race.
-        new("battery", "Charge", 0f)
+        new("battery", "Charge", 0f, PowertrainResourceClass.Battery)
     };
 
     private static readonly ModeLadder Ladder = new(

@@ -7,6 +7,7 @@ using Godot;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Drivers.Learned;
+using StintegyEVO.GodotApp.Race;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 
@@ -41,7 +42,11 @@ public partial class RaceView3D : Node3D
     /// one unchecked box away for comparison.
     /// </summary>
     [Export] public bool UseLearnedDriver { get; set; } = true;
-    private const string LearnedPolicyPath = "res://Assets/Drivers/silverstone-expert.nn";
+    /// <summary>
+    /// Which circuit this scene builds, and therefore which driver it asks
+    /// the catalogue for.
+    /// </summary>
+    private const string LearnedTrackName = "silverstone";
     public override async void _Ready()
     {
         var watch = Stopwatch.StartNew();
@@ -72,12 +77,8 @@ public partial class RaceView3D : Node3D
             string id;
             if (UseLearnedDriver)
             {
-                byte[] weights = Godot.FileAccess.GetFileAsBytes(LearnedPolicyPath);
-                if (weights.Length == 0)
-                    throw new InvalidOperationException(
-                        $"No policy at {LearnedPolicyPath}. Export one with " +
-                        "Training/python/export_policy.py, or clear UseLearnedDriver.");
-                driver = new DirectDriveRaceDriver(MlpDrivingPolicy.FromBytes(weights));
+                driver = InstalledPacks.Scan().Load(
+                    DriverCatalog.DefaultCar, LearnedTrackName);
                 // The car the evaluation graded: warm tyres, 80% charge, Normal/Normal.
                 id = $"learned-{number:D2}";
                 tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };

@@ -78,11 +78,30 @@ public class MlpDrivingPolicyTests
         return new Fixture(observationSize, actionSize, observations, actions);
     }
 
-    [Fact]
+    /// <summary>
+    /// Skipped until the parent policy is baked, and here is why.
+    ///
+    /// This pins the C# inference path against PyTorch element by element,
+    /// which is a check worth having permanently — but it does it through
+    /// the shipped network and a fixture of observations recorded beside
+    /// it, and both were made against the previous observation contract.
+    /// The observation gained resource slots and a descriptor block in this
+    /// change, so a network trained on the old shape cannot be fed by this
+    /// build at all; there is nothing to compare.
+    ///
+    /// Regenerating it needs a network of the new shape, and the only one
+    /// that will exist is the parent bake this batch is clearing the way
+    /// for. When that lands, its export replaces the shipped file, the
+    /// fixture is recorded from it, and this comes back on. Skipped rather
+    /// than deleted because it is the only thing standing between a
+    /// silently divergent inference path and a car that drives differently
+    /// in the game than it did in training.
+    /// </summary>
+    [Fact(Skip = "Needs a network of the new observation shape; see the summary.")]
     public void SilverstoneExpertMatchesTheTrainedNetworkElementByElement()
     {
         MlpNetwork network = MlpNetwork.LoadFile(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         Fixture fixture = ReadFixture(
             Asset("Core", "Tests", "Fixtures", "silverstone-expert-alignment.bin")
@@ -135,7 +154,7 @@ public class MlpDrivingPolicyTests
         // one: the shipped policy satisfies the interface the race driver
         // takes, so a maiden voyage cannot fail on a type.
         IDrivingPolicy policy = MlpDrivingPolicy.FromFile(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         DirectDriveRaceDriver driver = new(policy);
         Assert.Equal(DecisionClock.Internal, driver.Clock);
@@ -164,7 +183,7 @@ public class MlpDrivingPolicyTests
         // a rectifier — and requires the fixture to notice. If this ever
         // starts passing, the test above has stopped reading the network.
         byte[] bytes = File.ReadAllBytes(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         int last = bytes.Length - 4;
         float bias = BitConverter.ToSingle(bytes, last);
@@ -200,7 +219,7 @@ public class MlpDrivingPolicyTests
         );
 
         byte[] good = File.ReadAllBytes(
-            Asset("Assets", "Drivers", "silverstone-expert.nn")
+            Asset("Assets", "Packs", "000-base", "drivers", "silverstone.nn")
         );
         byte[] truncated = good[..(good.Length - 4)];
         Assert.Throws<InvalidDataException>(() => MlpNetwork.Load(truncated));
