@@ -1443,15 +1443,25 @@ public sealed class CarPhysicsTests
         Assert.True(shiftedRearTemp < equalRearTemp);
         Assert.True(shiftedFrontWear > equalFrontWear);
         Assert.True(shiftedRearWear < equalRearWear);
-        // Four places rather than five: the heat redistribution now
-        // multiplies a slip-work quantity instead of a use-squared one, so
-        // there is one more float multiply between the invariant and the
-        // assertion. The residual is 1.6e-5 on a total of 200, which is
-        // the arithmetic and not the physics.
-        Assert.Equal(
-            equalFrontTemp + equalRearTemp,
-            shiftedFrontTemp + shiftedRearTemp,
-            precision: 4
+        // An absolute band, not a count of decimal places. The two totals
+        // sit near 200 C, where adjacent floats are 1.5e-5 apart, and a
+        // decimal-place comparison fails whenever a one-bit difference
+        // happens to straddle a rounding boundary -- which is what it did
+        // the day an unrelated rear heat term was removed and the totals
+        // moved. Three floats' worth of slack is the arithmetic; a real
+        // leak would be the size of the shift itself, and the second
+        // assertion keeps the band small against that.
+        const float sumTolerance = 5e-5f;
+        Assert.InRange(
+            (shiftedFrontTemp + shiftedRearTemp) -
+            (equalFrontTemp + equalRearTemp),
+            -sumTolerance,
+            sumTolerance
+        );
+        Assert.True(
+            shiftedFrontTemp - equalFrontTemp > 10f * sumTolerance,
+            "the redistribution must be large against the tolerance or the " +
+            "conservation check is not checking anything"
         );
         Assert.Equal(
             equalFrontWear + equalRearWear,
@@ -1756,18 +1766,25 @@ public sealed class CarPhysicsTests
             1f
         );
 
-        StepMany(
-            state,
-            car,
-            tires,
+        // Air and road at the tyres' own temperature. The question is which
+        // layer follows the other, and with the usual 25 C air a 70 C tyre
+        // is shedding heat the whole time, so the net rise is the working
+        // minus the cooling -- a number that went below this test's floor
+        // when an unrelated rear heat term was removed, without the order
+        // of the two layers changing at all. Holding the surroundings level
+        // leaves only the heat going in.
+        CarPhysicsStepInput input = new(
             new DriverInput(curvature, 0f),
             CarStrategy.Default,
-            steps: 120
+            AirTempC: 70f,
+            TrackTempC: 70f
         );
+        for (int i = 0; i < 120; i++)
+            CarPhysics.Step(state, car, tires, input, 1f / 60f);
 
         float surfaceRise = AverageSurfaceTemp(state) - 70f;
         float coreRise = AverageCoreTemp(state) - 70f;
-        Assert.True(surfaceRise > 1f);
+        Assert.True(surfaceRise > 1f, $"the tread rose only {surfaceRise:F2} C");
         Assert.True(
             surfaceRise > coreRise * 4f,
             "the high-capacity core should not follow a short tread heat spike"
@@ -1795,18 +1812,29 @@ public sealed class CarPhysicsTests
     /// 85.65 at an hour, still descending towards the 84.91 this one
     /// reaches in three. Same place, shorter walk.
     ///
+    /// The core column moved once more on 2026-09-11, down by 0.54 C at
+    /// 60% use and 2.47 C at 95.5%, and not to hit anything. The rear tyres
+    /// had a slip-angle heater of their own on top of the force-times-
+    /// sliding heat all four get, billing the same sliding twice, and it
+    /// was taken out. The front tread column did not move by a hundredth,
+    /// which is the check that nothing else did: the term was rear-only.
+    /// The drop is in the rear cores alone, it grows with use because the
+    /// rear slip angle does, and the rear treads still settle at 88 to 93 C
+    /// on this cycle, inside the working window. No heat was added back to
+    /// buy the old column.
+    ///
     /// The tolerance is 0.15 C, stated as a band rather than a decimal
     /// place: rounding to one place puts values seven hundredths apart on
     /// opposite sides of a boundary, which fails for a reason that has
     /// nothing to do with the tyre.
     /// </summary>
     [Theory]
-    [InlineData(0.600f, 86.61f, 81.65f)]
-    [InlineData(0.700f, 87.91f, 82.31f)]
-    [InlineData(0.800f, 89.41f, 83.02f)]
-    [InlineData(0.850f, 90.28f, 83.40f)]
-    [InlineData(0.900f, 91.26f, 83.80f)]
-    [InlineData(0.955f, 93.46f, 84.83f)]
+    [InlineData(0.600f, 86.07f, 81.65f)]
+    [InlineData(0.700f, 87.09f, 82.31f)]
+    [InlineData(0.800f, 88.18f, 83.02f)]
+    [InlineData(0.850f, 88.77f, 83.40f)]
+    [InlineData(0.900f, 89.38f, 83.80f)]
+    [InlineData(0.955f, 90.99f, 84.84f)]
     public void SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(
         float use, float expectedCore, float expectedSurface
     )
