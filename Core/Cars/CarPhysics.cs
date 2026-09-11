@@ -1990,12 +1990,19 @@ public static class CarPhysics
                                    normalizedLateralUse *
                                    lateralHeatScale *
                                    tireWorkSpeedMultiplier;
+        // There used to be one more term here: the rear axle's slip angle,
+        // squared, as a rear-only heater. It dates from before lateral heat
+        // was force times sliding, when nothing else charged a rear tyre for
+        // being dragged sideways. Once lateralSlipHeat did that for all four
+        // tyres the two were billing the same sliding twice, and the shorter
+        // thermal time constant turned the duplicate into rear-tyre peaks
+        // the car spun on. The rear's sliding is in lateralSlipWork; it does
+        // not get a second heater of its own.
         float surfaceHeat =
             tireWorkSpeedMultiplier *
             (directionalHeat + lateralSlipHeat) *
             driverSensitiveEnergyFactor +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
-            TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio +
             wakeCorneringHeat;
         surfaceHeat *= loadScale;
         surfaceHeat += rollingSurfaceHeat;

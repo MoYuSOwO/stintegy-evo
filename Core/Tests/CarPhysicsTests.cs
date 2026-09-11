@@ -9,6 +9,55 @@ public sealed class CarPhysicsTests
     private const float TestAirTempC = 25f;
     private const float TestTrackTempC = 35f;
 
+    /// <summary>
+    /// With the lateral heat coefficient at zero, cornering must not heat
+    /// the rear tyres at all.
+    ///
+    /// The rear once had a slip-angle heater of its own alongside the
+    /// general force-times-sliding term, and switching the general term
+    /// off left it running. Before it was removed this read about 0.009 C
+    /// of rear-only heat in one step; the bound is two orders tighter.
+    /// </summary>
+    [Fact]
+    public void ZeroLateralHeatCoefficientDoesNotLeaveASecondRearSlipHeater()
+    {
+        CarConfig car = new()
+        {
+            FrontStaticLoadShare = 0.5f,
+            CenterOfGravityHeightMeters = 0f,
+            DownforceAccelPerSpeedSquared = 0f,
+            AeroDragAccelPerSpeedSquared = 0f,
+            RollingDragAccel = 0f,
+            CorneringScrubAccel = 0f,
+            OverLimitCostCap = 0f
+        };
+        TireConfig tires = new()
+        {
+            StartingSurfaceTempC = 90f,
+            StartingCoreTempC = 90f,
+            LateralHeatRate = 0f,
+            LongitudinalHeatRate = 0f
+        };
+        CarState straight = CreateState(30f, 0.8f, tires);
+        CarState corner = CreateState(30f, 0.8f, tires);
+        float curvature = CurvatureForGripShare(corner, car, tires, 0.6f);
+        SetSteadyCorner(corner, car, tires, curvature);
+        CarPhysics.Step(straight, car, tires,
+            new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default,
+                AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
+        CarPhysics.Step(corner, car, tires,
+            new CarPhysicsStepInput(new DriverInput(curvature, 0f), CarStrategy.Default,
+                AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
+
+        Assert.True(corner.Telemetry.RearLateralUse > 0.1f);
+        Assert.Equal(0, corner.SpinEvents);
+        // Equal static wheel loads remove load-transfer heating. With no
+        // lateral or longitudinal dissipation, both cases retain only the
+        // same rolling heat; allow float rounding and tiny speed changes.
+        Assert.InRange(Math.Abs(AverageRearSurfaceTemp(corner) -
+            AverageRearSurfaceTemp(straight)), 0f, 0.0001f);
+    }
+
     [Fact]
     public void DriveRequestIncreasesSpeedAndConsumesBattery()
     {
