@@ -1,0 +1,82 @@
+diff --git a/Core/Cars/CarPhysics.cs b/Core/Cars/CarPhysics.cs
+index 64f8739..2b072b9 100644
+--- a/Core/Cars/CarPhysics.cs
++++ b/Core/Cars/CarPhysics.cs
+@@ -1990,12 +1990,13 @@ public static class CarPhysics
+                                    normalizedLateralUse *
+                                    lateralHeatScale *
+                                    tireWorkSpeedMultiplier;
++        // Lateral friction is already represented by force times slip speed.
++        // Do not add a second rear-only slip-angle heat proxy.
+         float surfaceHeat =
+             tireWorkSpeedMultiplier *
+             (directionalHeat + lateralSlipHeat) *
+             driverSensitiveEnergyFactor +
+             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
+-            TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio +
+             wakeCorneringHeat;
+         surfaceHeat *= loadScale;
+         surfaceHeat += rollingSurfaceHeat;
+diff --git a/Core/Cars/TireConfig.cs b/Core/Cars/TireConfig.cs
+index dcec525..6250609 100644
+--- a/Core/Cars/TireConfig.cs
++++ b/Core/Cars/TireConfig.cs
+@@ -34,7 +34,6 @@ public sealed class TireConfig
+     public const float DirectionalHeatRampEndUse = 0.99f;
+     public const float NearLimitWearExponent = 8f;
+     public const float OverLimitHeatRate = 6f;
+-    public const float SideslipHeatRate = 4f;
+     // The reduced-order tyre has no local slip velocity. This small tread-only
+     // term stands in for the micro-slip caused by working a tyre in aerodynamically
+     // unsteady air, and vanishes unless the tyre is doing lateral work.
+diff --git a/Core/Tests/CarPhysicsTests.cs b/Core/Tests/CarPhysicsTests.cs
+index 3c1d83a..b404146 100644
+--- a/Core/Tests/CarPhysicsTests.cs
++++ b/Core/Tests/CarPhysicsTests.cs
+@@ -9,6 +9,46 @@ public sealed class CarPhysicsTests
+     private const float TestAirTempC = 25f;
+     private const float TestTrackTempC = 35f;
+ 
++    [Fact]
++    public void ZeroLateralHeatCoefficientDoesNotLeaveASecondRearSlipHeater()
++    {
++        CarConfig car = new()
++        {
++            FrontStaticLoadShare = 0.5f,
++            CenterOfGravityHeightMeters = 0f,
++            DownforceAccelPerSpeedSquared = 0f,
++            AeroDragAccelPerSpeedSquared = 0f,
++            RollingDragAccel = 0f,
++            CorneringScrubAccel = 0f,
++            OverLimitCostCap = 0f
++        };
++        TireConfig tires = new()
++        {
++            StartingSurfaceTempC = 90f,
++            StartingCoreTempC = 90f,
++            LateralHeatRate = 0f,
++            LongitudinalHeatRate = 0f
++        };
++        CarState straight = CreateState(30f, 0.8f, tires);
++        CarState corner = CreateState(30f, 0.8f, tires);
++        float curvature = CurvatureForGripShare(corner, car, tires, 0.6f);
++        SetSteadyCorner(corner, car, tires, curvature);
++        CarPhysics.Step(straight, car, tires,
++            new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default,
++                AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
++        CarPhysics.Step(corner, car, tires,
++            new CarPhysicsStepInput(new DriverInput(curvature, 0f), CarStrategy.Default,
++                AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
++
++        Assert.True(corner.Telemetry.RearLateralUse > 0.1f);
++        Assert.Equal(0, corner.SpinEvents);
++        // Equal static wheel loads remove load-transfer heating. With no
++        // lateral or longitudinal dissipation, both cases retain only the
++        // same rolling heat; allow float rounding and tiny speed changes.
++        Assert.InRange(Math.Abs(AverageRearSurfaceTemp(corner) -
++            AverageRearSurfaceTemp(straight)), 0f, 0.0001f);
++    }
++
+     [Fact]
+     public void DriveRequestIncreasesSpeedAndConsumesBattery()
+     {

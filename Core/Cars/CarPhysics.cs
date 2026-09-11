@@ -552,17 +552,6 @@ public static class CarPhysics
         state.SteerAngleRadians = steerAngle;
         state.Speed = newSpeed;
         UpdateSpinVerdict(state, dt);
-        // The rear tyre's own scrub, which is what this was always trying
-        // to be. It used to be body sideslip against a clamp that no longer
-        // exists; it is now the angle the rear rubber is actually being
-        // dragged at, against the angle it stops paying at.
-        float normalizedSideslip = Math.Clamp(
-            MathF.Abs(lateral.RearSlipAngle) /
-            TireSlipCurve.PeakSlipAngleRadians,
-            0f,
-            1f
-        );
-
         PowertrainSettlement settlement = config.Powertrain.Settle(
             state.Energy,
             driveAccelActual,
@@ -627,7 +616,6 @@ public static class CarPhysics
             lateralWorkScales.FrontHeat,
             lateralWorkScales.FrontWear,
             costedFrontOverLimit,
-            0f,
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
@@ -648,7 +636,6 @@ public static class CarPhysics
             lateralWorkScales.FrontHeat,
             lateralWorkScales.FrontWear,
             costedFrontOverLimit,
-            0f,
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
@@ -669,7 +656,6 @@ public static class CarPhysics
             lateralWorkScales.RearHeat,
             lateralWorkScales.RearWear,
             costedRearOverLimit,
-            normalizedSideslip,
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
@@ -690,7 +676,6 @@ public static class CarPhysics
             lateralWorkScales.RearHeat,
             lateralWorkScales.RearWear,
             costedRearOverLimit,
-            normalizedSideslip,
             input.AirTempC,
             input.TrackTempC,
             averageSpeed,
@@ -966,7 +951,6 @@ public static class CarPhysics
                 1f,
                 1f,
                 1f,
-                0f,
                 0f,
                 input.AirTempC,
                 input.TrackTempC,
@@ -1893,7 +1877,6 @@ public static class CarPhysics
         float lateralHeatScale,
         float lateralWearScale,
         float overLimit,
-        float sideslipRatio,
         float airTempC,
         float trackTempC,
         float speed,
@@ -1990,12 +1973,19 @@ public static class CarPhysics
                                    normalizedLateralUse *
                                    lateralHeatScale *
                                    tireWorkSpeedMultiplier;
+        // There used to be one more term here: the rear axle's slip angle,
+        // squared, as a rear-only heater. It dates from before lateral heat
+        // was force times sliding, when nothing else charged a rear tyre for
+        // being dragged sideways. Once lateralSlipHeat did that for all four
+        // tyres the two were billing the same sliding twice, and the shorter
+        // thermal time constant turned the duplicate into rear-tyre peaks
+        // the car spun on. The rear's sliding is in lateralSlipWork; it does
+        // not get a second heater of its own.
         float surfaceHeat =
             tireWorkSpeedMultiplier *
             (directionalHeat + lateralSlipHeat) *
             driverSensitiveEnergyFactor +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
-            TireConfig.SideslipHeatRate * sideslipRatio * sideslipRatio +
             wakeCorneringHeat;
         surfaceHeat *= loadScale;
         surfaceHeat += rollingSurfaceHeat;
@@ -2049,11 +2039,17 @@ public static class CarPhysics
                                     combinedUse,
                                     TireConfig.NearLimitWearExponent
                                 );
+        // The rear used to carry one more term here, its slip angle squared
+        // as rear-only wear -- the twin of the rear heater removed from the
+        // heat sum above, and from the same era. The rear's scrub is already
+        // in lateralUse through ScrubWeight, and driving harder is still
+        // charged steeply by the near-limit power and the over-limit and
+        // hot-tread terms; the proxy saturated at the peak and so never
+        // priced anything past it.
         float tireWorkWear =
             (directionalWear + partialSlipWear) *
             driverSensitiveEnergyFactor +
-            tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit +
-            tires.SideslipWearRate * sideslipRatio * sideslipRatio;
+            tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit;
         float wearDelta = tireWorkWear * tireWorkSpeedMultiplier *
                           tempWearFactor * loadScale * dt;
 

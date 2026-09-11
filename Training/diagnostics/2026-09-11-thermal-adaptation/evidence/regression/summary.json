@@ -1,0 +1,126 @@
+{
+  "base": {
+    "calibration": [
+      {
+        "use": 0.6,
+        "core": 86.6131675,
+        "front_surface": 81.65328500000001
+      },
+      {
+        "use": 0.7,
+        "core": 87.9100625,
+        "front_surface": 82.30973449999999
+      },
+      {
+        "use": 0.8,
+        "core": 89.40889599999998,
+        "front_surface": 83.0166
+      },
+      {
+        "use": 0.85,
+        "core": 90.275308,
+        "front_surface": 83.395628
+      },
+      {
+        "use": 0.9,
+        "core": 91.26217600000001,
+        "front_surface": 83.79738499999999
+      },
+      {
+        "use": 0.955,
+        "core": 93.46359974999999,
+        "front_surface": 84.8319725
+      }
+    ],
+    "response": [
+      {
+        "ambient": 25,
+        "surface_rise": 3.110820000000004,
+        "core_rise": -0.029229999999998313
+      },
+      {
+        "ambient": 70,
+        "surface_rise": 9.671831499999996,
+        "core_rise": 0.41441625000000215
+      }
+    ],
+    "driver": {
+      "kind": "driver_result",
+      "mode": "normal",
+      "walls": 3,
+      "first": 31.633333,
+      "dist": 5313.561,
+      "length": 1804
+    },
+    "no-temp-grip": {
+      "kind": "driver_result",
+      "mode": "no_temp_grip",
+      "walls": 132,
+      "first": 31.916666,
+      "dist": 4842.632,
+      "length": 1804
+    }
+  },
+  "changed": {
+    "calibration": [
+      {
+        "use": 0.6,
+        "core": 86.06727624999999,
+        "front_surface": 81.65328500000001
+      },
+      {
+        "use": 0.7,
+        "core": 87.0896925,
+        "front_surface": 82.30973449999999
+      },
+      {
+        "use": 0.8,
+        "core": 88.18393599999999,
+        "front_surface": 83.0166
+      },
+      {
+        "use": 0.85,
+        "core": 88.7672625,
+        "front_surface": 83.39563
+      },
+      {
+        "use": 0.9,
+        "core": 89.3823065,
+        "front_surface": 83.797425
+      },
+      {
+        "use": 0.955,
+        "core": 90.99242025000001,
+        "front_surface": 84.83569
+      }
+    ],
+    "response": [
+      {
+        "ambient": 25,
+        "surface_rise": -0.06368150000000128,
+        "core_rise": -0.10067125000000487
+      },
+      {
+        "ambient": 70,
+        "surface_rise": 6.740483749999996,
+        "core_rise": 0.34960150000000567
+      }
+    ],
+    "driver": {
+      "kind": "driver_result",
+      "mode": "normal",
+      "walls": 5223,
+      "first": 15.2,
+      "dist": 2135.119,
+      "length": 1804
+    },
+    "no-temp-grip": {
+      "kind": "driver_result",
+      "mode": "no_temp_grip",
+      "walls": 162,
+      "first": 17.05,
+      "dist": 5137.017,
+      "length": 1804
+    }
+  }
+}

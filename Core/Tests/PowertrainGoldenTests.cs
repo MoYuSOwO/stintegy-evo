@@ -65,6 +65,36 @@ namespace StintegyEVO.Core.Tests;
 /// reaches in three. What moves here is twenty seconds of driving during
 /// which the tyres now change temperature five times as fast, and grip
 /// follows temperature.
+///
+/// Re-recorded on 2026-09-11, for the rear tyres. They had a slip-angle
+/// heater of their own on top of the force-times-sliding heat all four
+/// tyres get, billing the same sliding twice. With it, the mixed-driving
+/// and sagging-pack runs took a rear tread to 142 C and 154 C inside
+/// twenty seconds and held the right rear above 115 C for 3.6 and 5.6
+/// seconds; without it they peak at 103 C and 115 C. That is the whole of
+/// what moved: rear core temperatures fall by four to seven degrees, and
+/// the right-rear wear falls by nearly half and nearly three quarters in
+/// those two runs, because the hot-wear multiplier it was running under --
+/// five times at 150 C -- is gone. The front tread peaks are within a
+/// degree of what they were, and the charge and drive-power figures move
+/// only as far as the line the car draws.
+///
+/// And again the same day, for the rear tyres' wear, which had the same
+/// fossil: a rear-only slip-angle wear term beside the force-times-scrub
+/// wear all four tyres get. Rear wear in these runs falls by 15 to 32%;
+/// front wear moves by under one per cent and the core temperatures by
+/// under a twentieth of a degree, and what the line does after that is
+/// grip following wear.
+///
+/// What these pins are for, stated once so the next re-record does not
+/// have to argue it from the beginning: they guard refactoring. A change
+/// that is meant to leave the car alone -- moving code, splitting a class,
+/// reordering a sum -- must leave every digit here where it was. A change
+/// that is meant to alter the car will move them, and the answer to that
+/// is to re-record with the reason written above, not to hold the physics
+/// still. What must survive a deliberate change is checked by tests that
+/// state a behaviour -- conservation, the warm-up band, not going through
+/// a wall -- rather than by these.
 /// </summary>
 public sealed class PowertrainGoldenTests
 {
@@ -119,66 +149,68 @@ public sealed class PowertrainGoldenTests
     }
 
     /// <summary>
-    /// Recorded from the model as it stood before the powertrain became an
-    /// interface. Regenerate only with a reason that is written down.
+    /// First recorded from the model as it stood before the powertrain
+    /// became an interface; every re-record since is argued in the class
+    /// summary. Regenerate by running these tests with STINTEGY_GOLDEN_DUMP
+    /// set to a file path, and only with a reason that is written down.
     /// </summary>
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 13.40875\n" +
-            "position 172.9271 207.5298\n" +
-            "heading -0.15525547\n" +
-            "sideslip -0.00018292625\n" +
-            "yawrate 0.20515737\n" +
-            "charge 0.799117\n" +
-            "drivepower 129564.68\n" +
+            "speed 12.770047\n" +
+            "position 164.9534 215.7569\n" +
+            "heading 0.45483127\n" +
+            "sideslip -0.0023264813\n" +
+            "yawrate 0.20541722\n" +
+            "charge 0.7991168\n" +
+            "drivepower 117229.98\n" +
             "regenpower 0\n" +
-            "longaccel 10.55054\n" +
-            "lataccel 2.554152\n" +
-            "wear 0.0075465534 0.009750845 0.009860357 0.022910213\n" +
-            "coretemp 86.27512 87.162285 89.81326 91.706314";
+            "longaccel 10.008606\n" +
+            "lataccel 2.6836822\n" +
+            "wear 0.0071698944 0.009420216 0.0075157597 0.009362529\n" +
+            "coretemp 86.21752 87.1396 86.12407 86.89135";
 
         public const string SaggingPack =
-            "speed 9.058744\n" +
-            "position 256.44012 192.68784\n" +
-            "heading -0.8529291\n" +
-            "sideslip 0.0025448594\n" +
-            "yawrate 0.08742024\n" +
-            "charge 0.14941761\n" +
-            "drivepower 57140.273\n" +
+            "speed 9.623333\n" +
+            "position 250.50801 202.31549\n" +
+            "heading 0.2100835\n" +
+            "sideslip 0.0062445314\n" +
+            "yawrate 0.082632676\n" +
+            "charge 0.14940321\n" +
+            "drivepower 60714.656\n" +
             "regenpower 0\n" +
-            "longaccel 6.8621855\n" +
-            "lataccel 1.0504482\n" +
-            "wear 0.011916569 0.015075512 0.01883422 0.058874045\n" +
-            "coretemp 87.686325 88.82643 91.616196 93.5386";
+            "longaccel 6.8514233\n" +
+            "lataccel 0.78848255\n" +
+            "wear 0.011440784 0.014601583 0.011193848 0.0131969275\n" +
+            "coretemp 87.499565 88.69267 87.13035 88.08151";
 
         public const string AttackLadder =
-            "speed 13.650756\n" +
-            "position 165.57838 217.45422\n" +
-            "heading 0.11490971\n" +
-            "sideslip -0.0004500112\n" +
-            "yawrate 0.20920505\n" +
-            "charge 0.79911155\n" +
-            "drivepower 131903.16\n" +
+            "speed 13.189831\n" +
+            "position 161.35965 218.01085\n" +
+            "heading 0.75849944\n" +
+            "sideslip -0.002748872\n" +
+            "yawrate 0.21108474\n" +
+            "charge 0.79911256\n" +
+            "drivepower 121238.85\n" +
             "regenpower 0\n" +
-            "longaccel 10.540171\n" +
-            "lataccel 2.6822414\n" +
-            "wear 0.007575325 0.009807646 0.009863827 0.023253517\n" +
-            "coretemp 86.28994 87.194145 89.94575 91.90892";
+            "longaccel 10.0086155\n" +
+            "lataccel 2.725202\n" +
+            "wear 0.007149424 0.009425152 0.0074893725 0.009354259\n" +
+            "coretemp 86.19682 87.13726 86.09876 86.88094";
 
         public const string EmptyPack =
-            "speed 1.5538739\n" +
-            "position 106.76541 85.17931\n" +
-            "heading -2.4786868\n" +
+            "speed 1.5598918\n" +
+            "position 105.61316 85.152275\n" +
+            "heading -2.7538729\n" +
             "sideslip 0\n" +
-            "yawrate 1.2285085\n" +
-            "charge 0.00023203176\n" +
-            "drivepower 1324.1598\n" +
+            "yawrate 0.9808296\n" +
+            "charge 0.0002320636\n" +
+            "drivepower 1329.2759\n" +
             "regenpower 0\n" +
-            "longaccel 0.7623942\n" +
-            "lataccel 1.892148\n" +
-            "wear 0.0016786164 0.0023556852 0.0021549093 0.0030735934\n" +
-            "coretemp 84.74505 85.53445 91.22737 92.25324";
+            "longaccel 0.76705223\n" +
+            "lataccel 1.5158868\n" +
+            "wear 0.0017003166 0.0023767313 0.0014867502 0.0021064847\n" +
+            "coretemp 84.73908 85.5291 84.36729 85.01569";
     }
 
     /// <summary>

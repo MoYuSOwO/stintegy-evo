@@ -1,0 +1,218 @@
+device: cpu hidden=(512, 512, 256) quantiles=32 layer_norm=True updates/step=2 alpha=0.0018570494139567018 gamma=0.9931 n_step=10 seed=1
+env: obs=480 action=2 lanes=64 solo=True
+continued from /Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/parent-550k.pt (format 2, step 550000, optimizers yes, rng yes, replay no)
+step  550500 transitions  35232000 reward +0.0601 alpha 0.002 q +8.38 closs 1.312 2281 tps
+          spins 13 (0.026/step, ≈1/1 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0638 wall=-0.0009 off_course=-0.0019 tyre_slip=-0.0008 mode_excess=-0.0001
+          terminals none
+step  551000 transitions  35264000 reward +0.0592 alpha 0.002 q +8.56 closs 1.496 1925 tps
+          spins 9 (0.018/step, ≈1/2 圈)  退赛 4 (≈1/4 圈)  圈 18
+          own_progress=+0.0651 wall=-0.0000 off_course=-0.0016 tyre_slip=-0.0004 mode_excess=-0.0001 retirement=-0.0037
+          terminals {'stalled': 4}
+step  551500 transitions  35296000 reward +0.0596 alpha 0.002 q +8.41 closs 1.471 1826 tps
+          spins 11 (0.022/step, ≈1/2 圈)  退赛 1 (≈1/17 圈)  圈 17
+          own_progress=+0.0632 wall=-0.0005 off_course=-0.0015 tyre_slip=-0.0004 mode_excess=-0.0002 retirement=-0.0009
+          terminals {'stalled': 1}
+step  552000 transitions  35328000 reward +0.0633 alpha 0.002 q +8.24 closs 4.245 1776 tps
+          spins 11 (0.022/step, ≈1/2 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0656 wall=-0.0004 off_course=-0.0012 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals none
+step  552500 transitions  35360000 reward +0.0664 alpha 0.002 q +8.43 closs 1.808 1744 tps
+          spins 5 (0.010/step, ≈1/4 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0685 wall=-0.0004 off_course=-0.0010 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  553000 transitions  35392000 reward +0.0651 alpha 0.002 q +8.60 closs 1.460 1723 tps
+          spins 7 (0.014/step, ≈1/3 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0666 wall=-0.0001 off_course=-0.0009 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  553500 transitions  35424000 reward +0.0675 alpha 0.002 q +8.90 closs 1.115 1708 tps
+          spins 8 (0.016/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0683 wall=-0.0001 off_course=-0.0004 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  554000 transitions  35456000 reward +0.0713 alpha 0.002 q +8.74 closs 1.215 1687 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/20 圈)  圈 20
+          own_progress=+0.0718 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0002 mode_excess=-0.0001
+          terminals none
+step  554500 transitions  35488000 reward +0.0670 alpha 0.002 q +9.00 closs 1.302 1669 tps
+          spins 8 (0.016/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0687 wall=-0.0000 off_course=-0.0010 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals none
+step  555000 transitions  35520000 reward +0.0651 alpha 0.002 q +8.99 closs 0.881 1658 tps
+          spins 9 (0.018/step, ≈1/2 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0665 wall=-0.0000 off_course=-0.0008 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  555500 transitions  35552000 reward +0.0693 alpha 0.002 q +9.12 closs 1.377 1645 tps
+          spins 11 (0.022/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0705 wall=-0.0001 off_course=-0.0004 tyre_slip=-0.0004 mode_excess=-0.0001
+          terminals none
+step  556000 transitions  35584000 reward +0.0677 alpha 0.002 q +9.16 closs 1.282 1634 tps
+          spins 11 (0.022/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0692 wall=-0.0001 off_course=-0.0008 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals none
+step  556500 transitions  35616000 reward +0.0654 alpha 0.002 q +9.05 closs 0.775 1626 tps
+          spins 13 (0.026/step, ≈1/1 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0665 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals none
+step  557000 transitions  35648000 reward +0.0655 alpha 0.002 q +9.13 closs 1.622 1618 tps
+          spins 17 (0.034/step, ≈1/1 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0671 wall=-0.0000 off_course=-0.0008 tyre_slip=-0.0006 mode_excess=-0.0002
+          terminals none
+step  557500 transitions  35680000 reward +0.0672 alpha 0.002 q +9.23 closs 1.130 1612 tps
+          spins 3 (0.006/step, ≈1/6 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0698 wall=-0.0006 off_course=-0.0014 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  558000 transitions  35712000 reward +0.0667 alpha 0.002 q +9.19 closs 1.032 1602 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0681 wall=-0.0001 off_course=-0.0010 tyre_slip=-0.0002 mode_excess=-0.0001
+          terminals none
+step  558500 transitions  35744000 reward +0.0674 alpha 0.002 q +9.03 closs 1.314 1596 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0682 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0002 mode_excess=-0.0001
+          terminals none
+step  559000 transitions  35776000 reward +0.0695 alpha 0.002 q +9.19 closs 0.628 1589 tps
+          spins 8 (0.016/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0704 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0003 mode_excess=-0.0001
+          terminals {'timeout': 59}
+step  559500 transitions  35808000 reward +0.0629 alpha 0.002 q +9.15 closs 0.997 1584 tps
+          spins 18 (0.036/step, ≈1/1 圈)  退赛 0 (≈0/18 圈)  圈 18
+          own_progress=+0.0659 wall=-0.0004 off_course=-0.0017 tyre_slip=-0.0007 mode_excess=-0.0002
+          terminals none
+step  560000 transitions  35840000 reward +0.0663 alpha 0.002 q +9.15 closs 1.840 1576 tps
+          spins 6 (0.012/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0676 wall=-0.0000 off_course=-0.0008 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals {'timeout': 4}
+step  560500 transitions  35872000 reward +0.0689 alpha 0.002 q +9.27 closs 1.901 1553 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0699 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals {'timeout': 1}
+step  561000 transitions  35904000 reward +0.0690 alpha 0.002 q +9.16 closs 1.554 1537 tps
+          spins 8 (0.016/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0704 wall=-0.0000 off_course=-0.0009 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  561500 transitions  35936000 reward +0.0666 alpha 0.002 q +9.26 closs 1.764 1536 tps
+          spins 12 (0.024/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0679 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  562000 transitions  35968000 reward +0.0690 alpha 0.002 q +9.51 closs 0.884 1534 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0700 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals none
+step  562500 transitions  36000000 reward +0.0708 alpha 0.002 q +9.41 closs 1.343 1533 tps
+          spins 7 (0.014/step, ≈1/3 圈)  退赛 0 (≈0/20 圈)  圈 20
+          own_progress=+0.0721 wall=-0.0000 off_course=-0.0007 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+  eval at step 562500    干净飞驰圈  (档位 轮胎3/动力3, 12 lane)
+    专家 silverstone      干净  1:45.402  计罚  1:44.820  20/54 干净  出界 0.1s/圈  胎耗 38%  余量 67%  正赛带  抗命 -1.08  旋转 12 (≈1/4 圈)
+    哨兵 simple-right     干净      --    计罚      --    0/0 干净  出界 0.0s/圈  胎耗 56%  余量 70%  未完成一圈  撞墙 -5559  抗命 -13.32  退赛 36 (圈数不足)  旋转 28 (圈数不足)
+    哨兵 sepang           干净      --    计罚  2:12.770  0/27 干净  出界 21.9s/圈  胎耗 20%  余量 75%  撞墙 -32  抗命 -3.79  退赛 6 (≈1/4 圈)  旋转 141 (≈5.2/圈)
+    计罚平均圈  专家 1:44.820   哨兵 3:06.385
+    干净口径    旋转 12 (≈1/4 圈)  退赛 0 (≈0/54 圈)  干净 20/54  档位 有  均速 1:46.267
+    saved best (旋转 12, 干净档 有, 均速 1:46.267)
+step  563000 transitions  36032000 reward +0.0691 alpha 0.002 q +9.37 closs 1.195 1471 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0703 wall=-0.0001 off_course=-0.0006 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals none
+step  563500 transitions  36064000 reward +0.0660 alpha 0.002 q +9.45 closs 1.257 1472 tps
+          spins 7 (0.014/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0681 wall=-0.0005 off_course=-0.0011 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  564000 transitions  36096000 reward +0.0687 alpha 0.002 q +9.20 closs 1.331 1470 tps
+          spins 8 (0.016/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0699 wall=-0.0002 off_course=-0.0006 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  564500 transitions  36128000 reward +0.0700 alpha 0.002 q +9.33 closs 1.151 1469 tps
+          spins 7 (0.014/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0708 wall=-0.0000 off_course=-0.0003 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  565000 transitions  36160000 reward +0.0690 alpha 0.002 q +9.46 closs 1.150 1469 tps
+          spins 2 (0.004/step, ≈1/10 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0700 wall=-0.0001 off_course=-0.0006 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals none
+step  565500 transitions  36192000 reward +0.0704 alpha 0.002 q +9.32 closs 1.090 1468 tps
+          spins 6 (0.012/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0712 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals none
+step  566000 transitions  36224000 reward +0.0690 alpha 0.002 q +9.46 closs 1.804 1467 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0706 wall=-0.0004 off_course=-0.0007 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  566500 transitions  36256000 reward +0.0672 alpha 0.002 q +9.46 closs 0.924 1467 tps
+          spins 6 (0.012/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0683 wall=-0.0000 off_course=-0.0007 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals none
+step  567000 transitions  36288000 reward +0.0688 alpha 0.002 q +9.60 closs 0.780 1467 tps
+          spins 3 (0.006/step, ≈1/6 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0697 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals none
+step  567500 transitions  36320000 reward +0.0700 alpha 0.002 q +9.62 closs 2.262 1467 tps
+          spins 7 (0.014/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0711 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  568000 transitions  36352000 reward +0.0685 alpha 0.002 q +9.59 closs 0.819 1467 tps
+          spins 4 (0.008/step, ≈1/5 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0696 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0002 mode_excess=-0.0002
+          terminals {'timeout': 59}
+step  568500 transitions  36384000 reward +0.0672 alpha 0.002 q +9.50 closs 1.000 1468 tps
+          spins 9 (0.018/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0688 wall=-0.0000 off_course=-0.0009 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals none
+step  569000 transitions  36416000 reward +0.0667 alpha 0.002 q +9.50 closs 0.959 1469 tps
+          spins 10 (0.020/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0683 wall=-0.0000 off_course=-0.0010 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals {'timeout': 4}
+step  569500 transitions  36448000 reward +0.0683 alpha 0.002 q +9.52 closs 0.739 1471 tps
+          spins 12 (0.024/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0702 wall=-0.0000 off_course=-0.0013 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals {'timeout': 1}
+step  570000 transitions  36480000 reward +0.0677 alpha 0.002 q +9.69 closs 0.748 1473 tps
+          spins 14 (0.028/step, ≈1/1 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0694 wall=-0.0000 off_course=-0.0009 tyre_slip=-0.0006 mode_excess=-0.0002
+          terminals none
+step  570500 transitions  36512000 reward +0.0704 alpha 0.002 q +9.63 closs 2.159 1474 tps
+          spins 5 (0.010/step, ≈1/4 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0712 wall=-0.0000 off_course=-0.0004 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  571000 transitions  36544000 reward +0.0691 alpha 0.002 q +9.64 closs 0.665 1476 tps
+          spins 10 (0.020/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0702 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  571500 transitions  36576000 reward +0.0685 alpha 0.002 q +9.54 closs 1.029 1477 tps
+          spins 12 (0.024/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0704 wall=-0.0000 off_course=-0.0011 tyre_slip=-0.0006 mode_excess=-0.0002
+          terminals none
+step  572000 transitions  36608000 reward +0.0687 alpha 0.002 q +9.68 closs 1.368 1478 tps
+          spins 6 (0.012/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0697 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  572500 transitions  36640000 reward +0.0684 alpha 0.002 q +9.63 closs 1.671 1479 tps
+          spins 12 (0.024/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0694 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  573000 transitions  36672000 reward +0.0673 alpha 0.002 q +9.48 closs 0.834 1480 tps
+          spins 17 (0.034/step, ≈1/1 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0689 wall=-0.0000 off_course=-0.0009 tyre_slip=-0.0005 mode_excess=-0.0002
+          terminals none
+step  573500 transitions  36704000 reward +0.0693 alpha 0.002 q +9.61 closs 1.171 1482 tps
+          spins 6 (0.012/step, ≈1/3 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0700 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0003 mode_excess=-0.0002
+          terminals none
+step  574000 transitions  36736000 reward +0.0669 alpha 0.002 q +9.73 closs 0.700 1483 tps
+          spins 10 (0.020/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0681 wall=-0.0000 off_course=-0.0006 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  574500 transitions  36768000 reward +0.0691 alpha 0.002 q +9.63 closs 0.564 1483 tps
+          spins 9 (0.018/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0701 wall=-0.0000 off_course=-0.0005 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+step  575000 transitions  36800000 reward +0.0687 alpha 0.002 q +9.66 closs 1.758 1483 tps
+          spins 10 (0.020/step, ≈1/2 圈)  退赛 0 (≈0/19 圈)  圈 19
+          own_progress=+0.0695 wall=-0.0000 off_course=-0.0002 tyre_slip=-0.0004 mode_excess=-0.0002
+          terminals none
+  eval at step 575000    干净飞驰圈  (档位 轮胎3/动力3, 12 lane)
+    专家 silverstone      干净  1:43.972  计罚  1:43.972  39/55 干净  出界 0.0s/圈  胎耗 37%  余量 66%  正赛带  抗命 -0.77
+    哨兵 simple-right     干净      --    计罚      --    0/0 干净  出界 0.0s/圈  胎耗 37%  余量 77%  未完成一圈  撞墙 -1767  抗命 -13.30  退赛 40 (圈数不足)  旋转 23 (圈数不足)
+    哨兵 sepang           干净      --    计罚  2:00.643  0/43 干净  出界 6.1s/圈  胎耗 31%  余量 70%  抗命 -1.73  退赛 1 (≈1/43 圈)  旋转 85 (≈2.0/圈)
+    计罚平均圈  专家 1:43.972   哨兵 3:00.321
+    干净口径    旋转 0 (≈0/55 圈)  退赛 0 (≈0/55 圈)  干净 39/55  档位 过半  均速 1:45.837
+    saved best (旋转 0, 干净档 过半, 均速 1:45.837)
+training finished

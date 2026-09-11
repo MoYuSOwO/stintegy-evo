@@ -34,7 +34,6 @@ public sealed class TireConfig
     public const float DirectionalHeatRampEndUse = 0.99f;
     public const float NearLimitWearExponent = 8f;
     public const float OverLimitHeatRate = 6f;
-    public const float SideslipHeatRate = 4f;
     // The reduced-order tyre has no local slip velocity. This small tread-only
     // term stands in for the micro-slip caused by working a tyre in aerodynamically
     // unsteady air, and vanishes unless the tyre is doing lateral work.
@@ -233,7 +232,6 @@ public sealed class TireConfig
     /// </summary>
     public float NearLimitWearRate { get; init; } = 0.00012f;
     public float OverLimitWearRate { get; init; } = 0.00110f;
-    public float SideslipWearRate { get; init; } = 0.00070f;
     public float ColdWearPerCSquared { get; init; } = 0.0015f;
     public float HotWearPerCSquared { get; init; } = 0.0035f;
 }

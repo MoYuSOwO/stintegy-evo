@@ -1,0 +1,30 @@
+{
+  "head": "c056c3de09ca18bcab7c3d38576cda0390165d32",
+  "production_clean": true,
+  "original_checkpoints_unchanged": true,
+  "instrumented_baseline_bit_exact": true,
+  "cold_bench_baseline_exact": true,
+  "evaluation": {
+    "batch": 12,
+    "seconds": 600,
+    "seed": 900001,
+    "solo": true,
+    "modes": [
+      3,
+      3
+    ],
+    "decision_hz": 15,
+    "observed_physics_hz": 120,
+    "fixed_weather": [
+      25,
+      35
+    ]
+  },
+  "core_hash": "a786fc8b2c189832ee118d4c1b31993e2d6111f2bd05f8eb6a5d74e5b5a3855e",
+  "files": {},
+  "instrumented_source": {
+    "src/Core/Cars/CarPhysics.cs": "3dab7d645fad389441b9d68db07cb1d942fa7a57b9dcac20e00cfc2de7355855",
+    "src/Core/Cars/ThermalAudit.cs": "992cfbc624133b83ece49a41ccedf47d086dc0d13616c479c65af284098da6ca",
+    "cold-src/Training/StintegyEVO.TrainingHost/Environment/DirectDriveDuelEnvironment.cs": "21dcfc3f0a64f79abdc2f9ecc04dae28c05454fad8081afb286aa17dc24f468f"
+  }
+}
