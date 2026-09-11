@@ -1,0 +1,11 @@
+--- a/Core/Cars/TireConfig.cs
++++ b/Core/Cars/TireConfig.cs
+@@ -77,7 +77,7 @@
+     /// The anchor comes from outside: slicks with no blankets are in their
+     /// window after one to three laps, which is what an out lap is for.
+     /// </summary>
+-    public const float ThermalTimeScale = 0.20f;
++    public const float ThermalTimeScale = 1.0f;
+     public const float CoreAirCoolingRate = 0.0057f;
+     public const float SpeedCoolingReferenceMps = 60f;
+     public const float MaximumSpeedCoolingMultiplier = 2.4f;

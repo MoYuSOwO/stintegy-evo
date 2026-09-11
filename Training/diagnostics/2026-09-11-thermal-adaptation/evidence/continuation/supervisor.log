@@ -1,0 +1,6 @@
+{"phase": "baseline", "checkpoint": "/Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/parent-550k.pt", "updated_unix": 1789118686.9779751, "supervisor_pid": 85851}
+Loaded /Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/parent-550k.pt {'format': 2, 'step': 550000, 'optimizers': True, 'rng': True}
+{"phase": "training", "child_pid": 85859, "start_step": 550000, "target_step": 575000, "checkpoint": "/Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/parent-550k.pt", "updated_unix": 1789118695.184803, "supervisor_pid": 85851}
+{"phase": "final-evaluation", "updated_unix": 1789119799.131246, "supervisor_pid": 85851}
+Loaded /Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/checkpoints/eval-575000.pt {'format': 2, 'step': 575000, 'optimizers': True, 'rng': True}
+{"phase": "complete", "result": "/Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/comparison.json", "updated_unix": 1789119806.2124329, "supervisor_pid": 85851}

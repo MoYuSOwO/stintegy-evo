@@ -1,0 +1,41 @@
+--- a/Training/python/train.py
++++ b/Training/python/train.py
+@@ -42,9 +42,9 @@
+ OFF_COURSE_RATE = 1e-3
+ WALL_RATE = 5e-3
+ SPEED_SCALE = 100.0
+-# Speed is the first slot of the ego block: geometry 198, tyres 17, mode 1,
+-# aero 3, road and limits 13.
+-EGO_SPEED = 232
++# Speed follows geometry, tyres/store, mode, aero, road/limits,
++# resource slots (20) and vehicle descriptors (8).
++EGO_SPEED = 260
+ TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
+ 
+ 
+@@ -702,7 +702,7 @@
+                     # represent its target shows up here as a loss that
+                     # stops falling while performance stops improving.
+                     f"closs {stats.get('critic_loss', float('nan')):.3f} "
+-                    f"{step * env.batch / max(elapsed, 1e-6):.0f} tps"
++                    f"{(step - resumed_step) * env.batch / max(elapsed, 1e-6):.0f} tps"
+                 )
+                 window_laps = window_metres / window_lap_metres
+                 stalls = window_terminals.get("stalled", 0)
+--- a/Training/python/spin_forensics.py
++++ b/Training/python/spin_forensics.py
+@@ -35,12 +35,12 @@
+ from host_env import TERMINAL_NAMES, HostEnv
+ from train import EGO_SPEED, EVALUATION_MODES, STEP_SECONDS, TRACKS
+ 
+-# The road-and-limits block sits immediately before the ego block. Its
++# The road-and-limits block precedes the resource and descriptor blocks. Its
+ # first four slots are the distance from the car's centre to each wall and
+ # the width of each buffer, all divided by the same scale -- which is
+ # enough to recover the half-width of the road and where the car is
+ # across it, without adding a channel to the protocol.
+-ROAD_BLOCK = EGO_SPEED - 13
++ROAD_BLOCK = 219
+ BUFFER_SCALE = 20.0
+ 
+ # Where the wheels are, relative to the car's centre. Only the track width

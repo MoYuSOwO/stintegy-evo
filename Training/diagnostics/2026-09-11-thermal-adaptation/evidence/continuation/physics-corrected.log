@@ -1,0 +1,178 @@
+  StintegyEVO.Core -> /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/bin/Release/net8.0/StintegyEVO.Core.dll
+  StintegyEVO.Core.Tests -> /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/bin/Release/net8.0/StintegyEVO.Core.Tests.dll
+/Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/bin/Release/net8.0/StintegyEVO.Core.Tests.dll (.NETCoreApp,Version=v8.0)的测试运行
+总共 1 个测试文件与指定模式相匹配。
+[xUnit.net 00:00:00.48]     StintegyEVO.Core.Tests.TrafficAvoidanceTests.DefaultGridPairDoesNotTouchThroughFirstCorner [SKIP]
+  已跳过 StintegyEVO.Core.Tests.TrafficAvoidanceTests.DefaultGridPairDoesNotTouchThroughFirstCorner [1 ms]
+[xUnit.net 00:00:03.80]     StintegyEVO.Core.Tests.CarPhysicsTests.CombinedNearLimitUseAddsPartialSlipHeat [SKIP]
+  已跳过 StintegyEVO.Core.Tests.CarPhysicsTests.CombinedNearLimitUseAddsPartialSlipHeat [1 ms]
+[xUnit.net 00:00:06.26]     StintegyEVO.Core.Tests.TrafficAvoidanceTests.ReferenceDriverMatchesSlowerCarWithoutContact [SKIP]
+  已跳过 StintegyEVO.Core.Tests.TrafficAvoidanceTests.ReferenceDriverMatchesSlowerCarWithoutContact [1 ms]
+[xUnit.net 00:00:07.33]     StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.899999976, expectedCore: 91.2600021, expectedSurface: 83.8000031) [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.899999976, expectedCore: 91.2600021, expectedSurface: 83.8000031) [3 s]
+  错误消息:
+   Assert.InRange() Failure: Value not in range
+Range:  (91.1100006 - 91.4100037)
+Actual: 89.382309
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Single use, Single expectedCore, Single expectedSurface) in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1807
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+[xUnit.net 00:00:08.28]     StintegyEVO.Core.Tests.PowertrainGoldenTests.AnEmptyPackIsUnchanged [FAIL]
+[xUnit.net 00:00:08.28]     StintegyEVO.Core.Tests.PowertrainGoldenTests.AHardLapOfMixedDrivingIsUnchanged [FAIL]
+[xUnit.net 00:00:08.28]     StintegyEVO.Core.Tests.PowertrainGoldenTests.TheTopOfTheOutputLadderIsUnchanged [FAIL]
+[xUnit.net 00:00:08.28]     StintegyEVO.Core.Tests.PowertrainGoldenTests.ASaggingPackAtSpeedIsUnchanged [FAIL]
+[xUnit.net 00:00:08.28]     StintegyEVO.Core.Tests.DaytonaTests.TheBankingCarriesHalfTheCorner [SKIP]
+  失败 StintegyEVO.Core.Tests.PowertrainGoldenTests.AnEmptyPackIsUnchanged [5 ms]
+  错误消息:
+   Assert.Equal() Failure: Strings differ
+                     ↓ (pos 10)
+Expected: "speed 1.5538739\nposition 106.76541 85.179"···
+Actual:   "speed 1.5598991\nposition 105.61574 85.301"···
+                     ↑ (pos 10)
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.PowertrainGoldenTests.AnEmptyPackIsUnchanged() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/PowertrainGoldenTests.cs:line 115
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  失败 StintegyEVO.Core.Tests.PowertrainGoldenTests.AHardLapOfMixedDrivingIsUnchanged [2 ms]
+  错误消息:
+   Assert.Equal() Failure: Strings differ
+                  ↓ (pos 7)
+Expected: "speed 13.40875\nposition 172.9271 207.5298"···
+Actual:   "speed 12.98092\nposition 160.74089 218.997"···
+                  ↑ (pos 7)
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.PowertrainGoldenTests.AHardLapOfMixedDrivingIsUnchanged() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/PowertrainGoldenTests.cs:line 76
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  失败 StintegyEVO.Core.Tests.PowertrainGoldenTests.TheTopOfTheOutputLadderIsUnchanged [< 1 ms]
+  错误消息:
+   Assert.Equal() Failure: Strings differ
+                    ↓ (pos 9)
+Expected: "speed 13.650756\nposition 165.57838 217.45"···
+Actual:   "speed 13.417689\nposition 168.90776 204.42"···
+                    ↑ (pos 9)
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.PowertrainGoldenTests.TheTopOfTheOutputLadderIsUnchanged() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/PowertrainGoldenTests.cs:line 97
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  失败 StintegyEVO.Core.Tests.PowertrainGoldenTests.ASaggingPackAtSpeedIsUnchanged [< 1 ms]
+  错误消息:
+   Assert.Equal() Failure: Strings differ
+                 ↓ (pos 6)
+Expected: "speed 9.058744\nposition 256.44012 192.687"···
+Actual:   "speed 8.882606\nposition 251.24937 201.903"···
+                 ↑ (pos 6)
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.PowertrainGoldenTests.ASaggingPackAtSpeedIsUnchanged() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/PowertrainGoldenTests.cs:line 86
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  已跳过 StintegyEVO.Core.Tests.DaytonaTests.TheBankingCarriesHalfTheCorner [1 ms]
+[xUnit.net 00:00:10.13]     StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.800000012, expectedCore: 89.4100037, expectedSurface: 83.0199966) [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.800000012, expectedCore: 89.4100037, expectedSurface: 83.0199966) [2 s]
+  错误消息:
+   Assert.InRange() Failure: Value not in range
+Range:  (89.2600021 - 89.5600052)
+Actual: 88.1839371
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Single use, Single expectedCore, Single expectedSurface) in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1807
+   at InvokeStub_CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:12.08]     StintegyEVO.Core.Tests.OvertakeModeTests.TheGrantLatchesForTheLapAndExpiresAtTheNextCrossing [SKIP]
+  已跳过 StintegyEVO.Core.Tests.OvertakeModeTests.TheGrantLatchesForTheLapAndExpiresAtTheNextCrossing [1 ms]
+[xUnit.net 00:00:13.02]     StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.850000024, expectedCore: 90.2799988, expectedSurface: 83.4000015) [FAIL]
+[xUnit.net 00:00:13.20]     StintegyEVO.Core.Tests.ReferenceLineDriverTests.DriverCompletesALapOnSimpleTestTrack [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.850000024, expectedCore: 90.2799988, expectedSurface: 83.4000015) [2 s]
+  错误消息:
+   Assert.InRange() Failure: Value not in range
+Range:  (90.1299973 - 90.4300003)
+Actual: 88.7672653
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Single use, Single expectedCore, Single expectedSurface) in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1807
+   at InvokeStub_CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  失败 StintegyEVO.Core.Tests.ReferenceLineDriverTests.DriverCompletesALapOnSimpleTestTrack [12 s]
+  错误消息:
+   expected a lap the fallback driver could still drive, got 5223 wall-contact frames; s=621.1, d=16.2, speed=4.8, error=19.64, target=4.8; firstWall t=15.20, s=773.8, d=11.6, speed=10.2, error=4.73, correction=0.319, target=6.5
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.ReferenceLineDriverTests.DriverCompletesALapOnSimpleTestTrack() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/ReferenceLineDriverTests.cs:line 67
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:16.02]     StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.600000024, expectedCore: 86.6100006, expectedSurface: 81.6500015) [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.600000024, expectedCore: 86.6100006, expectedSurface: 81.6500015) [2 s]
+  错误消息:
+   Assert.InRange() Failure: Value not in range
+Range:  (86.4599991 - 86.7600021)
+Actual: 86.0672836
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Single use, Single expectedCore, Single expectedSurface) in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1807
+   at InvokeStub_CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:18.57]     StintegyEVO.Core.Tests.ReferenceLineHandoverTests.HandoverKeepsTransitionFromLoweringTheCurrentSpeedPlan [SKIP]
+  已跳过 StintegyEVO.Core.Tests.ReferenceLineHandoverTests.HandoverKeepsTransitionFromLoweringTheCurrentSpeedPlan [1 ms]
+[xUnit.net 00:00:18.66]     StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.699999988, expectedCore: 87.9100037, expectedSurface: 82.3099976) [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.699999988, expectedCore: 87.9100037, expectedSurface: 82.3099976) [2 s]
+  错误消息:
+   Assert.InRange() Failure: Value not in range
+Range:  (87.7600021 - 88.0600052)
+Actual: 87.0896912
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Single use, Single expectedCore, Single expectedSurface) in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1807
+   at InvokeStub_CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:21.43]     StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.954999983, expectedCore: 93.4599991, expectedSurface: 84.8300018) [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(use: 0.954999983, expectedCore: 93.4599991, expectedSurface: 84.8300018) [2 s]
+  错误消息:
+   Assert.InRange() Failure: Value not in range
+Range:  (93.3099976 - 93.6100006)
+Actual: 90.9924164
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Single use, Single expectedCore, Single expectedSurface) in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1807
+   at InvokeStub_CarPhysicsTests.SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+[xUnit.net 00:00:21.44]     StintegyEVO.Core.Tests.CarPhysicsTests.AxleLateralComplianceRedistributesHeatAndWearWithoutChangingTotalWork [FAIL]
+[xUnit.net 00:00:21.44]     StintegyEVO.Core.Tests.CarPhysicsTests.CoreTemperatureRespondsMoreSlowlyThanTreadSurface [FAIL]
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.AxleLateralComplianceRedistributesHeatAndWearWithoutChangingTotalWork [< 1 ms]
+  错误消息:
+   Assert.Equal() Failure: Values are not within 4 decimal places
+Expected: 200.091 (rounded from 200.090958)
+Actual:   200.0909 (rounded from 200.090942)
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.AxleLateralComplianceRedistributesHeatAndWearWithoutChangingTotalWork() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1442
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  失败 StintegyEVO.Core.Tests.CarPhysicsTests.CoreTemperatureRespondsMoreSlowlyThanTreadSurface [< 1 ms]
+  错误消息:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  堆栈跟踪:
+     at StintegyEVO.Core.Tests.CarPhysicsTests.CoreTemperatureRespondsMoreSlowlyThanTreadSurface() in /Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation/Core/Tests/CarPhysicsTests.cs:line 1761
+   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:21.44]     StintegyEVO.Core.Tests.CarPhysicsTests.NearLimitPartialSlipHeatDoesNotMultiplyDirectionalHeat [SKIP]
+  已跳过 StintegyEVO.Core.Tests.CarPhysicsTests.NearLimitPartialSlipHeatDoesNotMultiplyDirectionalHeat [1 ms]
+[xUnit.net 00:00:21.45]     StintegyEVO.Core.Tests.CarPhysicsTests.DirectionalHeatPerUnitWorkRisesTowardTheLimit [SKIP]
+  已跳过 StintegyEVO.Core.Tests.CarPhysicsTests.DirectionalHeatPerUnitWorkRisesTowardTheLimit [1 ms]
+[xUnit.net 00:00:26.63]     StintegyEVO.Core.Tests.MlpDrivingPolicyTests.SilverstoneExpertMatchesTheTrainedNetworkElementByElement [SKIP]
+  已跳过 StintegyEVO.Core.Tests.MlpDrivingPolicyTests.SilverstoneExpertMatchesTheTrainedNetworkElementByElement [1 ms]
+[xUnit.net 00:00:28.35]     StintegyEVO.Core.Tests.ContinuousFollowingTests.FollowerKeepsBodyClearanceWhenLeaderBrakesWithoutAPlan [SKIP]
+  已跳过 StintegyEVO.Core.Tests.ContinuousFollowingTests.FollowerKeepsBodyClearanceWhenLeaderBrakesWithoutAPlan [1 ms]
+[xUnit.net 00:00:32.85]     StintegyEVO.Core.Tests.FamousCircuitTests.AllFourCloseAndKeepTheGeometryTheyWereAddedFor [SKIP]
+  已跳过 StintegyEVO.Core.Tests.FamousCircuitTests.AllFourCloseAndKeepTheGeometryTheyWereAddedFor [1 ms]
+[xUnit.net 00:00:35.52]     StintegyEVO.Core.Tests.BankedSweeperTests.ItIsAClosedCircuitAnAnalyticDriverCanLap [SKIP]
+  已跳过 StintegyEVO.Core.Tests.BankedSweeperTests.ItIsAClosedCircuitAnAnalyticDriverCanLap [1 ms]
+[xUnit.net 00:01:17.79]     StintegyEVO.Core.Tests.RoadAttitudeTests.AClimbCostsAndTheMatchingDescentPaysItBack [SKIP]
+  已跳过 StintegyEVO.Core.Tests.RoadAttitudeTests.AClimbCostsAndTheMatchingDescentPaysItBack [1 ms]
+
+失败!  - 失败:    13，通过:   368，已跳过:    13，总计:   394，持续时间: 1 m 52 s - StintegyEVO.Core.Tests.dll (net8.0)

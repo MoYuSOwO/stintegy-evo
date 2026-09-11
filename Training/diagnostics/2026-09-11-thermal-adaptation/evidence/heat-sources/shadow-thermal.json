@@ -1,0 +1,45 @@
+{
+  "baseline_reconstruction_max_error_C": 0.0003814697265625,
+  "scenarios": {
+    "base": {
+      "rear_surface_before_first_spin_p50_p95_max": [
+        112.63431930541992,
+        141.11439514160156,
+        162.82302856445312
+      ],
+      "rear_fraction_above130": 0.11648974127424172
+    },
+    "side0": {
+      "rear_surface_before_first_spin_p50_p95_max": [
+        93.21781921386719,
+        103.38831329345703,
+        110.07487487792969
+      ],
+      "rear_fraction_above130": 0.0
+    },
+    "lateral0": {
+      "rear_surface_before_first_spin_p50_p95_max": [
+        109.83296585083008,
+        135.55549240112305,
+        155.9380645751953
+      ],
+      "rear_fraction_above130": 0.08110676779094807
+    },
+    "over0": {
+      "rear_surface_before_first_spin_p50_p95_max": [
+        112.53543472290039,
+        140.71896362304688,
+        161.42315673828125
+      ],
+      "rear_fraction_above130": 0.11375534407305198
+    },
+    "time1": {
+      "rear_surface_before_first_spin_p50_p95_max": [
+        106.949951171875,
+        115.52463150024414,
+        123.50677490234375
+      ],
+      "rear_fraction_above130": 0.0
+    }
+  }
+}

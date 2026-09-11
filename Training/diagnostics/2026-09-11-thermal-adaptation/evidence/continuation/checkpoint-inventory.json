@@ -1,0 +1,17 @@
+[
+  {
+    "path_from_repository": "Training/python/checkpoints/bestparent.pt",
+    "size_bytes": 28622530,
+    "sha256": "1fd2f6ea4103f49133c7416225e5d6e4141ea19bd580c6db13bcd4916258cd85"
+  },
+  {
+    "path_from_repository": ".tmp/thermal-adaptation-20260911/checkpoints/best.pt",
+    "size_bytes": 28612856,
+    "sha256": "8e5a2473de1da603444eee90f9df17c4bad65c99c51041585ef53dd1dce468d3"
+  },
+  {
+    "path_from_repository": ".tmp/thermal-adaptation-20260911/checkpoints/eval-575000.pt",
+    "size_bytes": 28622777,
+    "sha256": "f9e80fef024f52f2edffc8c3c8bda18a5c1f788bfbf6a198375047e649999109"
+  }
+]
