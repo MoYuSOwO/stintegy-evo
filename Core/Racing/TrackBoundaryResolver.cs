@@ -103,6 +103,23 @@ public static class TrackBoundaryResolver
 
         Vector2 safePosition = Vector2.Lerp(startState.Position, targetPosition, low);
         float safeHeading = LerpAngle(startState.Heading, targetHeading, low);
+        // The search above moves position and heading as one fraction, so
+        // when it is the rotation that reaches the wall -- a corner swinging
+        // into the barrier while the car itself is moving clear -- the
+        // translation is stopped at the same instant. With a corner already
+        // against the wall that instant is zero, the car is put back where it
+        // started, and the next step asks for the same rotation: a car stuck
+        // at one spot with its wheels turning. Whatever the wall refused, the
+        // rest of the translation is searched again at the heading it did
+        // allow. A car driving into the wall gets nothing more from this
+        // than it had; a car sliding along or away from it keeps moving.
+        safePosition = SweepTranslation(
+            track,
+            safePosition,
+            targetPosition,
+            safeHeading,
+            collision
+        );
         targetState.Position = safePosition;
         targetState.Heading = safeHeading;
 
@@ -119,6 +136,49 @@ public static class TrackBoundaryResolver
 
         ApplyWallVelocityResponse(targetState, collision, contactViolation.Normal);
         return CreateContact(contactViolation, low, targetState.Position);
+    }
+
+    /// <summary>
+    /// How far along <paramref name="from"/> to <paramref name="to"/> a body
+    /// held at <paramref name="heading"/> can go without crossing a wall.
+    /// <paramref name="from"/> must itself be clear; every position returned
+    /// is one that was checked.
+    /// </summary>
+    private static Vector2 SweepTranslation(
+        TrackData track,
+        Vector2 from,
+        Vector2 to,
+        float heading,
+        CarCollisionConfig collision
+    )
+    {
+        if (!TryFindDeepestViolation(
+                track,
+                InterpolateBody(from, heading, to, heading, collision, 1f),
+                out _))
+        {
+            return to;
+        }
+
+        float low = 0f;
+        float high = 1f;
+        for (int i = 0; i < SweepIterations; i++)
+        {
+            float mid = (low + high) * 0.5f;
+            if (TryFindDeepestViolation(
+                    track,
+                    InterpolateBody(from, heading, to, heading, collision, mid),
+                    out _))
+            {
+                high = mid;
+            }
+            else
+            {
+                low = mid;
+            }
+        }
+
+        return Vector2.Lerp(from, to, low);
     }
 
     private static CarBodyGeometry InterpolateBody(
