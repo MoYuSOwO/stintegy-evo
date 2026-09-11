@@ -10,13 +10,15 @@ namespace StintegyEVO.Core.Tests;
 
 public sealed class ReferenceLineDriverTests
 {
-    // Skipped on fix/thermal-slip-heat only. With the rear double heating
-    // gone the driver takes a different line, completes its lap, and then
-    // wedges against the wall at one spot for 5223 frames. The wedge is not
-    // the driver and not the tyres: TrackBoundaryResolver.ResolveSweep cuts
-    // rotation and translation by one shared fraction, so a corner rotating
-    // into the wall zeroes the translation that would have slid the car free.
-    // That is fixed, with a regression test on the frozen state, on
+    // Skipped on fix/thermal-slip-heat only. With the rear tyres no longer
+    // heated and worn twice the driver takes a different line, and the old
+    // wall resolver holds it against the barrier: 5223 contact frames once
+    // the heat was fixed, a permanent wedge at one spot, and 167 once the
+    // wear was fixed as well, against a budget of 30. Neither is the driver
+    // or the tyres. TrackBoundaryResolver.ResolveSweep cuts rotation and
+    // translation by one shared fraction, so a corner rotating into the wall
+    // cancels the translation that would have slid the car free. That is
+    // fixed, with a regression test on the frozen state, on
     // fix/contact-sweep-recovery, which also rules on this test.
     [Fact(Skip = "Exposes the wall-contact deadlock fixed on fix/contact-sweep-recovery; see the comment.")]
     public void DriverCompletesALapOnSimpleTestTrack()

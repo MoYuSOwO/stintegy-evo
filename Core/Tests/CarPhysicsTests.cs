@@ -889,8 +889,7 @@ public sealed class CarPhysicsTests
             StartingCoreTempC = 90f,
             LateralWearRate = 1f,
             LongitudinalWearRate = 0f,
-            OverLimitWearRate = 0f,
-            SideslipWearRate = 0f
+            OverLimitWearRate = 0f
         };
         CarState edge = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState hotFive = CreateState(speed: 30f, batterySoc: 0.8f, tires);
@@ -929,8 +928,7 @@ public sealed class CarPhysicsTests
             StartingCoreTempC = 90f,
             LateralWearRate = 0.00055f,
             LongitudinalWearRate = 0f,
-            OverLimitWearRate = 0f,
-            SideslipWearRate = 0f
+            OverLimitWearRate = 0f
         };
         CarState moderate = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState nearLimit = CreateState(speed: 30f, batterySoc: 0.8f, tires);
@@ -993,8 +991,7 @@ public sealed class CarPhysicsTests
             StartingCoreTempC = 90f,
             LateralWearRate = 0.01f,
             LongitudinalWearRate = 0f,
-            OverLimitWearRate = 0f,
-            SideslipWearRate = 0f
+            OverLimitWearRate = 0f
         };
         CarState slow = CreateState(speed: 15f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 45f, batterySoc: 0.8f, tires);
@@ -1403,8 +1400,7 @@ public sealed class CarPhysicsTests
             LateralWearRate = 0.001f,
             LongitudinalWearRate = 0f,
             NearLimitWearRate = 0f,
-            OverLimitWearRate = 0f,
-            SideslipWearRate = 0f
+            OverLimitWearRate = 0f
         };
         CarState equal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState frontWorkingHarder = CreateState(
@@ -1508,8 +1504,7 @@ public sealed class CarPhysicsTests
             LateralWearRate = 0.001f,
             LongitudinalWearRate = 0f,
             NearLimitWearRate = 0f,
-            OverLimitWearRate = 0f,
-            SideslipWearRate = 0f
+            OverLimitWearRate = 0f
         };
         CarState ordinary = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState extreme = CreateState(speed: 30f, batterySoc: 0.8f, tires);

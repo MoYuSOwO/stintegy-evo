@@ -232,7 +232,6 @@ public sealed class TireConfig
     /// </summary>
     public float NearLimitWearRate { get; init; } = 0.00012f;
     public float OverLimitWearRate { get; init; } = 0.00110f;
-    public float SideslipWearRate { get; init; } = 0.00070f;
     public float ColdWearPerCSquared { get; init; } = 0.0015f;
     public float HotWearPerCSquared { get; init; } = 0.0035f;
 }
