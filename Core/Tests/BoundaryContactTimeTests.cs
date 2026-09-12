@@ -54,8 +54,15 @@ public sealed class BoundaryContactTimeTests
         // used to be indistinguishable, which left a car that had already
         // touched with no reason to come off before the step was out.
         (_, float gentle, _) = DriveIntoTheBarrier(0.05f);
-        (_, float hard, _) = DriveIntoTheBarrier(0.15f);
+        (_, float hard, _) = DriveIntoTheBarrier(0.25f);
 
+        // A quarter of a curvature for the lean, where an eighth used to
+        // do. The driver's reflex trims the pedals against the share of the
+        // tyre the mode allots, so a car leaning on a barrier is carrying
+        // less speed into it than it used to and the two cases converge.
+        // The separation is restored by asking for a harder lean rather
+        // than by lowering what counts as one.
+        //
         // A narrower margin than this used to have, and the reason is that
         // the road outside the line stopped being the same road. A car on
         // its way into a barrier now has wheels on the run-off, where more

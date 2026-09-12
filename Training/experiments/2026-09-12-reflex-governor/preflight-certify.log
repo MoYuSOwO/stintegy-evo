@@ -1,0 +1,17 @@
+大样本认证 · silverstone · 12 车道 × 600 模拟秒 · 档位 3/3 · 种子基 900001、424242
+
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2g-1200000.pt  种子基 900001
+  圈数 55  干净 30  干净率 54.5%  旋转 2 (≈1/28 圈)  退赛 0 (≈0/55 圈)
+  最快干净圈 1:42.237  正赛带   干净圈均速 1:43.099   计罚圈 1:42.237
+  出界秒数/圈：0 秒 55%  中位 0.000  p90 1.640  最大 4.733  总计 22.1s
+  形态：圈圈小蹭（出界分散在多圈）
+  毕业口径：❌ 旋转 2
+
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2g-1200000.pt  种子基 424242
+  圈数 57  干净 22  干净率 38.6%  旋转 1 (≈1/57 圈)  退赛 0 (≈0/57 圈)
+  最快干净圈 1:42.334  正赛带   干净圈均速 1:42.973   计罚圈 1:42.334
+  出界秒数/圈：0 秒 39%  中位 0.133  p90 0.640  最大 1.200  总计 11.8s
+  形态：圈圈小蹭（出界分散在多圈）
+  毕业口径：❌ 旋转 1 / 干净率 39%
+
+wrote ../experiments/2026-09-12-reflex-governor/preflight-certify.json
