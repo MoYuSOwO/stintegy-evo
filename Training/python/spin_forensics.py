@@ -33,14 +33,24 @@ from collections import deque
 import numpy as np
 
 from host_env import TERMINAL_NAMES, HostEnv
-from train import EGO_SPEED, EVALUATION_MODES, STEP_SECONDS, TRACKS
+from train import (
+    EGO_SPEED,
+    EVALUATION_MODES,
+    ROAD_AND_LIMITS,
+    STEP_SECONDS,
+    TRACKS,
+)
 
-# The road-and-limits block sits immediately before the ego block. Its
-# first four slots are the distance from the car's centre to each wall and
-# the width of each buffer, all divided by the same scale -- which is
-# enough to recover the half-width of the road and where the car is
-# across it, without adding a channel to the protocol.
-ROAD_BLOCK = EGO_SPEED - 13
+# The road-and-limits block. Its first four slots are the distance from the
+# car's centre to each wall and the width of each buffer, all divided by
+# the same scale -- which is enough to recover the half-width of the road
+# and where the car is across it, without adding a channel to the protocol.
+#
+# It used to be written as the thirteen slots before ego, which stopped
+# being true when the resource slots and the vehicle descriptors were
+# inserted between the two. Both are named constants now, and neither is
+# derived from the other.
+ROAD_BLOCK = ROAD_AND_LIMITS
 BUFFER_SCALE = 20.0
 
 # Where the wheels are, relative to the car's centre. Only the track width
@@ -160,13 +170,22 @@ def build_corner_map(
     actually taken, not of the centreline. That is the right quantity
     here even though it is not the road: an event is being attributed to
     a place, and the place a driver is in is the one its own line is in.
+
+    Signed, and averaged before the sign is dropped. Averaging the
+    magnitude instead counts a car's own weaving as curvature: half a
+    radian a second of correction at seventy metres a second reads as a
+    250 m radius, which is over the threshold, and a lap of that put 99%
+    of Silverstone inside a corner and left the map naming nothing. A
+    straight driven with corrections averages to zero; a corner does not.
     """
     bins = curvature_sum.size
-    mean = np.divide(
-        curvature_sum,
-        np.maximum(curvature_count, 1.0),
-        out=np.zeros(bins),
-        where=curvature_count > 0,
+    mean = np.abs(
+        np.divide(
+            curvature_sum,
+            np.maximum(curvature_count, 1.0),
+            out=np.zeros(bins),
+            where=curvature_count > 0,
+        )
     )
     cornering = mean >= CORNER_CURVATURE
     if not cornering.any():
@@ -288,13 +307,11 @@ def probe(
             end_speed = _speed(final_obs)
             end_yaw = _yaw_rate(final_obs)
             moving = end_speed > 5.0
-            path_curvature = np.abs(
-                np.divide(
-                    end_yaw,
-                    np.maximum(end_speed, 1.0),
-                    out=np.zeros_like(end_yaw),
-                    where=moving,
-                )
+            path_curvature = np.divide(
+                end_yaw,
+                np.maximum(end_speed, 1.0),
+                out=np.zeros_like(end_yaw),
+                where=moving,
             )
             idx = np.clip((station / CORNER_BIN_METRES).astype(int), 0, bins - 1)
             for lane in range(lanes):

@@ -42,9 +42,20 @@ OWN_PROGRESS_RATE = 0.02
 OFF_COURSE_RATE = 1e-3
 WALL_RATE = 5e-3
 SPEED_SCALE = 100.0
-# Speed is the first slot of the ego block: geometry 198, tyres 17, mode 1,
-# aero 3, road and limits 13.
-EGO_SPEED = 232
+# Where the blocks are, from Core/Drivers/Learned/DirectDriveObservation.cs.
+# Geometry 198, tyres and battery 17, mode 1, aero 3, road and limits 13,
+# resource slots 4x5, vehicle descriptors 8, then ego.
+#
+# The resource slots and the descriptors were inserted in front of ego when
+# the observation went from 452 to 480, and this constant was not moved with
+# them. It spent that era pointing at a resource slot's presence flag, which
+# is 1.0 whenever the slot is filled -- so every reader of it saw a car
+# travelling at a steady 100 m/s. Nothing threw, because a plausible number
+# is exactly what a wrong offset returns.
+ROAD_AND_LIMITS = 219
+EGO_SPEED = 260
+EGO_HEADING_SIN = EGO_SPEED + 5
+EGO_HEADING_COS = EGO_SPEED + 6
 TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
 
 
@@ -151,6 +162,26 @@ WEAR_SLOTS = (TIRE_BLOCK + 2, TIRE_BLOCK + 6, TIRE_BLOCK + 10, TIRE_BLOCK + 14)
 PRIMARY_STORE = TIRE_BLOCK + 16
 
 
+def assert_observation_layout(obs: np.ndarray) -> None:
+    """Check the ego block is where this file thinks it is.
+
+    A stale offset does not raise; it returns a plausible number from the
+    wrong channel, and every figure computed downstream stays plausible.
+    So this asks the observation for something only the right offset can
+    produce: two of the ego block's slots are the sine and cosine of the
+    same angle, and nothing else in the protocol has that property.
+    """
+    sin = obs[:, EGO_HEADING_SIN]
+    cos = obs[:, EGO_HEADING_COS]
+    error = np.max(np.abs(sin * sin + cos * cos - 1.0))
+    if not error < 1e-3:
+        raise AssertionError(
+            f"the ego block is not at {EGO_SPEED}: sin^2 + cos^2 is off by "
+            f"{error:.3f} at the slots that should hold a heading error. "
+            "Re-read the offsets in DirectDriveObservation.cs."
+        )
+
+
 def evaluate(
     agent: SacAgent,
     batch: int,
@@ -221,6 +252,7 @@ def evaluate(
         # changed how long an evaluation watched for.
         steps = int(round(seconds / STEP_SECONDS))
         obs = env.reset()
+        assert_observation_layout(obs)
         off_course = np.zeros(batch, dtype=np.float64)
         wall = np.zeros(batch, dtype=np.float64)
         excess = np.zeros(batch, dtype=np.float64)
@@ -702,7 +734,13 @@ def main() -> int:
                     # represent its target shows up here as a loss that
                     # stops falling while performance stops improving.
                     f"closs {stats.get('critic_loss', float('nan')):.3f} "
-                    f"{step * env.batch / max(elapsed, 1e-6):.0f} tps"
+                    # This run's transitions over this run's clock. The
+                    # step counter carries the whole lineage after a
+                    # resume, and dividing that by the time since this
+                    # process started reported a continuation at a
+                    # million transitions a second.
+                    f"{(step - resumed_step) * env.batch / max(elapsed, 1e-6):.0f}"
+                    f" tps"
                 )
                 window_laps = window_metres / window_lap_metres
                 stalls = window_terminals.get("stalled", 0)
