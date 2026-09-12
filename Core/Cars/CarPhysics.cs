@@ -424,6 +424,7 @@ public static class CarPhysics
             roadLateralDemand,
             curvatureDemandScale,
             dynamicYawBlend,
+            tires.GetAccelerationUsage(input.Strategy),
             dt
         );
         AxleResult front = lateral.Front;
@@ -1254,12 +1255,19 @@ public static class CarPhysics
         float slipAngle,
         float peakScale,
         float longitudinalRequest,
-        float corneringEfficiency
+        float corneringEfficiency,
+        float gripAllowance
     )
     {
         if (grip <= Epsilon)
             return default;
 
+        longitudinalRequest = ReflexGovernedLongitudinal(
+            longitudinalRequest,
+            grip,
+            TireSlipCurve.Evaluate(slipAngle, peakScale),
+            gripAllowance
+        );
         float longitudinalDemand = MathF.Abs(longitudinalRequest) / grip;
         float longitudinalUse = MathF.Min(longitudinalDemand, 1f);
         float longitudinalEfficiency = OverLimitGripEfficiency(
@@ -1362,6 +1370,7 @@ public static class CarPhysics
         float roadLateralDemand,
         float curvatureDemandScale,
         float dynamicYawBlend,
+        float gripAllowance,
         float dt
     )
     {
@@ -1397,10 +1406,17 @@ public static class CarPhysics
                 frontSlip,
                 frontPeakScale,
                 frontLongRequest,
-                corneringEfficiency
+                corneringEfficiency,
+                gripAllowance
             );
             rear = ResolveAxleSlip(
-                config, rearGrip, rearSlip, 1f, rearLongRequest, corneringEfficiency
+                config,
+                rearGrip,
+                rearSlip,
+                1f,
+                rearLongRequest,
+                corneringEfficiency,
+                gripAllowance
             );
 
             float tyreLateral = front.LateralAccel + rear.LateralAccel;
@@ -1618,6 +1634,64 @@ public static class CarPhysics
     /// traction control below and written the same way so the pair can be read
     /// together.
     /// </summary>
+    /// <summary>
+    /// The driver's own last millisecond: whatever the pedals were asking
+    /// for, trimmed so that the axle ends the step inside the share of the
+    /// tyre the pit wall allotted.
+    ///
+    /// Not a device on the car. A professional's foot arrives at the limit
+    /// and stays under it, and that reflex is what this models -- at the
+    /// interface between what was asked for and what the tyres are given,
+    /// where a real driver's is. It applies to everyone who drives the car,
+    /// because it is a property of driving rather than of a policy.
+    ///
+    /// Why longitudinal only: steering is where a car is saved. Blindly
+    /// trimming a correction would forbid the catch, and the audit says the
+    /// pedals are where this goes wrong anyway -- 23 of 35 losses had the
+    /// circle pinned under a braking command.
+    ///
+    /// The arithmetic is one square root of quantities the step already
+    /// has. The axle spends s of its circle on the slip angle it is at and
+    /// u of it on the pedals, and because the lateral capacity left is the
+    /// remainder of the circle, what it ends up using is
+    ///
+    ///     use^2 = s^2 + u^2 (1 - s^2)
+    ///
+    /// so use stays inside an allowance A exactly when
+    ///
+    ///     u^2 &lt;= (A^2 - s^2) / (1 - s^2)
+    ///
+    /// and past a slip angle whose own share is already A, no pedal
+    /// position satisfies it: the tyre is over the allowance on steering
+    /// alone. The reflex cuts the pedals to nothing there, which is all it
+    /// can do, and the excess that remains is the steering's. That is the
+    /// one door this leaves open, and it is deliberate.
+    /// </summary>
+    private static float ReflexGovernedLongitudinal(
+        float longitudinalRequest,
+        float grip,
+        float slipShape,
+        float gripAllowance
+    )
+    {
+        float allowance = Math.Clamp(gripAllowance, 0f, 1f);
+        if (allowance >= 1f || grip <= Epsilon)
+            return longitudinalRequest;
+
+        float lateralShare = MathF.Min(1f, MathF.Abs(slipShape));
+        float headroom = 1f - lateralShare * lateralShare;
+        if (headroom <= Epsilon)
+            return 0f;
+
+        float share = (allowance * allowance - lateralShare * lateralShare) /
+                      headroom;
+        if (share <= 0f)
+            return 0f;
+
+        float ceiling = MathF.Sqrt(share) * grip;
+        return Math.Clamp(longitudinalRequest, -ceiling, ceiling);
+    }
+
     private static float ApplyAntiLock(
         CarConfig config,
         float lateralRequest,
