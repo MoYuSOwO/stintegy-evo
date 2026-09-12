@@ -57,6 +57,8 @@ from spin_forensics import (
     wheel_surfaces,
 )
 from train import (
+    COMPONENT_NAMES,
+    DECISION_HZ as DECISION_RATE,
     EVALUATION_MODES,
     STEP_SECONDS,
     TRACKS,
@@ -218,6 +220,24 @@ def probe(
     excess_sum = 0.0
     use_sum = 0.0
     sideslip_samples: list[float] = []
+    # What a step of disobedience buys, measured where the confound lives.
+    # Excess happens where the car is working hardest, and the reward for a
+    # step is the ground it covered, so comparing over-the-allowance steps
+    # with the session's average would credit disobedience with the
+    # difference between a corner and a straight. These are binned by
+    # station instead, and only bins that hold both kinds are compared, so
+    # the comparison is between two passes through the same ten metres.
+    progress_over = np.zeros(bins)
+    progress_over_count = np.zeros(bins)
+    excess_over_sum = np.zeros(bins)
+    progress_clean = np.zeros(bins)
+    progress_clean_count = np.zeros(bins)
+    # The same question asked of whole laps. A step of excess buys speed
+    # the car keeps for the seconds after it, and a per-step comparison
+    # cannot see that: it credits the purchase only where it was made. A
+    # lap that spent more of itself over the allowance and covered more
+    # ground per step has been paid for the carrying as well.
+    lap_ledger: dict[tuple[int, int], dict[str, float]] = {}
     corner_steps = np.zeros(bins)
     distance = 0.0
 
@@ -286,7 +306,42 @@ def probe(
                         if peak > MATERIAL_EXCESS:
                             windows_over_material += 1
 
-            obs, _, done, reason, _, race, final_obs, spins = env.step(action)
+            station_before = (
+                np.mod(previous_race, lap_metres)
+                if previous_race is not None
+                else None
+            )
+            obs, _, done, reason, components, race, final_obs, spins = (
+                env.step(action)
+            )
+            progress = components[COMPONENT_NAMES.index("own_progress")]
+            if station_before is not None:
+                where = np.clip(
+                    (station_before / CORNER_BIN_METRES).astype(int),
+                    0,
+                    bins - 1,
+                )
+                for lane in range(lanes):
+                    # A step whose progress was masked -- off course or
+                    # spinning -- is not a step of driving, and averaging
+                    # its zero into either column would price the mask
+                    # rather than the excess.
+                    if progress[lane] <= 0.0 or done[lane]:
+                        continue
+                    lap = lap_ledger.setdefault(
+                        (lane, int(previous_race[lane] // lap_metres)),
+                        {"progress": 0.0, "excess": 0.0, "steps": 0.0},
+                    )
+                    lap["progress"] += float(progress[lane])
+                    lap["excess"] += max(0.0, float(excess[lane]))
+                    lap["steps"] += 1.0
+                    if excess[lane] > 0.0:
+                        progress_over[where[lane]] += float(progress[lane])
+                        progress_over_count[where[lane]] += 1.0
+                        excess_over_sum[where[lane]] += float(excess[lane])
+                    else:
+                        progress_clean[where[lane]] += float(progress[lane])
+                        progress_clean_count[where[lane]] += 1.0
 
             station = np.mod(race, lap_metres)
             race = np.asarray(race, dtype=float)
@@ -348,6 +403,32 @@ def probe(
                 if done[lane]:
                     history[lane].clear()
 
+    # Laps long enough to be laps: a lane's first and last are partial, and
+    # a short one is a fragment of a session rather than a lap of driving.
+    full = [
+        entry
+        for entry in lap_ledger.values()
+        if entry["steps"] >= 0.7 * lap_metres / 60.0 * DECISION_RATE
+    ]
+    if len(full) >= 8:
+        lap_excess = np.array([e["excess"] / e["steps"] for e in full])
+        lap_progress = np.array([e["progress"] / e["steps"] for e in full])
+        lap_slope, lap_intercept = np.polyfit(lap_excess, lap_progress, 1)
+        lap_correlation = float(np.corrcoef(lap_excess, lap_progress)[0, 1])
+    else:
+        lap_slope = lap_intercept = lap_correlation = float("nan")
+
+    both = (progress_over_count > 0) & (progress_clean_count > 0)
+    weight = progress_over_count[both]
+    delta = (
+        progress_over[both] / progress_over_count[both]
+        - progress_clean[both] / progress_clean_count[both]
+    )
+    mean_excess_over = excess_over_sum[both] / progress_over_count[both]
+    extra_progress = float(np.sum(weight * delta))
+    total_excess = float(np.sum(weight * mean_excess_over))
+    margin = extra_progress / total_excess if total_excess > 0 else float("nan")
+
     corners = build_corner_map(curvature_sum, curvature_count, lap_metres)
     for event in events:
         event["corner"] = locate(event["station_m"], corners)
@@ -378,6 +459,22 @@ def probe(
             # so a reader can see it is not cutting into cornering.
             "sideslip_p99": float(np.percentile(sideslip, 99)),
             "sideslip_p999": float(np.percentile(sideslip, 99.9)),
+        },
+        "margin": {
+            "profit_per_unit_excess_per_step": margin,
+            "lap_slope": float(lap_slope),
+            "lap_correlation": lap_correlation,
+            "laps_compared": len(full),
+            "lap_excess_mean": float(np.mean(lap_excess)) if len(full) >= 8 else float("nan"),
+            "lap_excess_p90": float(np.percentile(lap_excess, 90)) if len(full) >= 8 else float("nan"),
+            "bins_compared": int(both.sum()),
+            "steps_over": float(weight.sum()),
+            "mean_excess_where_over": (
+                total_excess / float(weight.sum()) if weight.sum() else float("nan")
+            ),
+            "mean_progress_clean": float(
+                np.sum(progress_clean[both]) / np.sum(progress_clean_count[both])
+            ) if both.any() else float("nan"),
         },
         "corners": corners,
         "corner_steps": corner_steps.tolist(),
@@ -484,6 +581,21 @@ def summarise(result: dict) -> None:
         print(
             f"  另有 {call['spins_without_run_up']} 跤没有可判的起点前窗口，未计入"
         )
+
+    margin = result["margin"]
+    print(
+        f"  圈级口径：每圈平均超约每高 1 单位，每步推进 "
+        f"{margin['lap_slope']:+.4f}（{margin['laps_compared']} 圈，"
+        f"相关 {margin['lap_correlation']:+.2f}，"
+        f"圈均超约 {margin['lap_excess_mean']:.4f}，p90 {margin['lap_excess_p90']:.4f}）"
+    )
+    print(
+        f"  步级口径：每单位 e 每步 {margin['profit_per_unit_excess_per_step']:+.4f} "
+        f"（同桩号对照，{margin['bins_compared']} 格，"
+        f"{margin['steps_over']:.0f} 个超约步，"
+        f"平均 e {margin['mean_excess_where_over']:.4f}，"
+        f"守约步平均推进 {margin['mean_progress_clean']:+.4f}/步）"
+    )
 
     axles: dict[str, int] = {}
     for event in spins:
