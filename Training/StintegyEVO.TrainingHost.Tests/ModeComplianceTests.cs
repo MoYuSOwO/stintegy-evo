@@ -54,6 +54,60 @@ public sealed class ModeComplianceTests
         }
     }
 
+    /// <summary>
+    /// The price curve, pinned at the three points it was calibrated on.
+    ///
+    /// The audit that set it measured what a unit of excess buys in the
+    /// step it is spent — same station, over-the-allowance steps against
+    /// compliant ones — and got at most +0.032 of progress against the
+    /// 0.074 a compliant step earns. The hinge charges three times that
+    /// for the first unit, so the first epsilon past the line is a loss on
+    /// the ledger that can actually be measured, and a square term takes
+    /// over towards the edge of the circle, where every spin in the audit
+    /// was sitting in the second before it began.
+    ///
+    /// Quoted per step at fifteen decisions a second, which is the rate
+    /// the calibration was done at. The constants themselves are per
+    /// second, so the same curve holds at any rate.
+    /// </summary>
+    [Fact]
+    public void TheExcessPriceIsAHingeCalibratedAtThreePoints()
+    {
+        const float step = DirectDriveDuelEnvironment.DefaultAgentStepSeconds;
+        // Normal allots 97.7% of the circle and usage saturates at one, so
+        // this is the whole excess the car can reach in this mode.
+        const float wholeCircle = 1f - 0.977f;
+
+        // Obedience is free, and not nearly free.
+        Assert.Equal(0f, DirectDriveDuelEnvironment.ModeExcessPrice(-0.05f));
+        Assert.Equal(0f, DirectDriveDuelEnvironment.ModeExcessPrice(0f));
+
+        // The first unit past the line, read as a slope rather than
+        // asserted as a constant, so the test still means this if the
+        // curve is ever written differently.
+        float epsilon = 1e-5f;
+        float slope =
+            DirectDriveDuelEnvironment.ModeExcessPrice(epsilon) / epsilon * step;
+        Assert.InRange(slope, 0.096f, 0.12f);
+
+        // And the edge of the circle: felt every step, not drowning the
+        // progress the car is paid for.
+        float atTheEdge =
+            DirectDriveDuelEnvironment.ModeExcessPrice(wholeCircle) * step;
+        Assert.InRange(atTheEdge, 0.004f, 0.006f);
+
+        // Convex, so that the edge costs more per unit than the first
+        // step past the line does.
+        float half = DirectDriveDuelEnvironment.ModeExcessPrice(
+            wholeCircle * 0.5f
+        );
+        Assert.True(
+            DirectDriveDuelEnvironment.ModeExcessPrice(wholeCircle) >
+            2f * half,
+            "the price has to bend upwards, or it is the linear one again"
+        );
+    }
+
     [Fact]
     public void AttackIsNeverPenalizedWhileProtectIsWhenDrivenHard()
     {

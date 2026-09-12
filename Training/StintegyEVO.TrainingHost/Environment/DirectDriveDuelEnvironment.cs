@@ -99,18 +99,52 @@ public sealed class DirectDriveDuelEnvironment
     private const float TimePenaltyPerSecond = 0f;
 
     /// <summary>
-    /// Price per unit of friction-circle usage taken beyond what the pit
-    /// wall allotted, per agent step. A tire mode is exactly an instruction
-    /// about how much of the tire's grip the driver may spend, and the
-    /// physics never enforces it — only battery modes are hardware-capped —
-    /// so a learned driver would otherwise drive Attack while the wall
-    /// called Protect. Disobeying Protect outright buys on the order of one
-    /// percent more distance a lap; this rate prices that at roughly ten
-    /// times what it earns, which is what makes obedience the strategy
-    /// game's premise rather than a suggestion. Subject to revision once
-    /// training shows how the policy actually trades it.
+    /// Price of the first unit of friction-circle usage taken beyond what
+    /// the pit wall allotted, per second. A tire mode is exactly an
+    /// instruction about how much of the tire's grip the driver may spend,
+    /// and the physics never enforces it — only battery modes are
+    /// hardware-capped — so a learned driver would otherwise drive Attack
+    /// while the wall called Protect.
+    ///
+    /// It was 1.0 per second, which is 0.067 of reward per unit of excess
+    /// per step, and that turned out to be the wrong shape rather than
+    /// simply the wrong size. Measured on the settled bake — same station,
+    /// over-the-allowance steps against compliant ones, so a corner is not
+    /// compared with a straight — a unit of excess buys between -0.015 and
+    /// +0.032 of progress in the step it is spent, against the 0.074 a
+    /// compliant step earns. The old price covered that. What it did not
+    /// cover is what the speed goes on earning afterwards: laps that spent
+    /// more of themselves over the allowance covered more ground per step
+    /// at 1.2 to 2.0 per unit, twenty times the old price, though that
+    /// reading cannot separate excess making a lap quick from a quick lap
+    /// requiring excess.
+    ///
+    /// So: three times the highest same-station profit measured, which is
+    /// what makes the first epsilon a loss on the ledger that can be
+    /// measured, and a square term that does the rest — because the
+    /// damage is not linear in the excess either. Every spin in that
+    /// audit had the circle over the allowance in the second before the
+    /// slide began, against 38% of ordinary seconds, and the excess in
+    /// those seconds sat at the circle's edge.
     /// </summary>
-    private const float ModeExcessPenaltyPerSecond = 1f;
+    private const float ModeExcessPenaltyPerSecond = 1.5f;
+
+    /// <summary>
+    /// The square term, per second. Only the edge of the circle can be
+    /// reached: usage saturates at one, so at Normal the excess cannot
+    /// exceed 0.023 and this term is quoted there. At that edge the two
+    /// together charge 0.0050 of reward a step — 6.8% of what a compliant
+    /// step earns, which is meant to be felt every step it happens without
+    /// drowning out the progress the car is being paid for. Retirement
+    /// already charges 0.107 in one go, so the critic has seen larger.
+    ///
+    /// The shape matters more than either number. Linear pricing makes
+    /// every unit of disobedience cost the same, which is the one thing
+    /// the audit says is false: a tenth of the way over the line is a
+    /// driving style, and the edge of the circle is where the car is
+    /// lost.
+    /// </summary>
+    private const float ModeExcessSquaredPenaltyPerSecond = 77f;
 
     internal static readonly DriverProfile TrainingOpponentProfile = new(
         "training-opponent",
@@ -584,9 +618,22 @@ public sealed class DirectDriveDuelEnvironment
         // decision rate moved from ten to fifteen, with nothing in the
         // change saying so - the same shape of mistake as reading a paper's
         // entropy coefficient without reading its reward scale.
-        return excess <= 0f
-            ? 0f
-            : -ModeExcessPenaltyPerSecond * excess * AgentStepSeconds;
+        return excess <= 0f ? 0f : -ModeExcessPrice(excess) * AgentStepSeconds;
+    }
+
+    /// <summary>
+    /// What a given excess costs per second: a hinge at the allowance,
+    /// linear out of it and square after that. Zero below the line by
+    /// construction — obedience is free, and the whole point of a mode is
+    /// that driving inside it costs nothing.
+    /// </summary>
+    public static float ModeExcessPrice(float excess)
+    {
+        if (excess <= 0f)
+            return 0f;
+
+        return ModeExcessPenaltyPerSecond * excess +
+               ModeExcessSquaredPenaltyPerSecond * excess * excess;
     }
 
     /// <summary>
