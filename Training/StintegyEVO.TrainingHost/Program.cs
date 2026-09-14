@@ -16,6 +16,8 @@ internal static class Program
             return RunReachabilityScan();
         if (args.Length == 1 && args[0] == "--trace")
             return RunTrace();
+        if (args.Length == 1 && args[0] == "--terminal-speed")
+            return PrintTerminalSpeeds();
 
         TextWriter diagnostics = Console.Error;
         try
@@ -273,6 +275,38 @@ internal static class Program
     /// from one. Evaluation uses it so that a measurement says which
     /// instruction it was taken under instead of leaving it to a seed.
     /// </summary>
+    /// <summary>
+    /// Prints, as one JSON object, the flat-road terminal speed of the car
+    /// the environment builds, at the nominal episode start (fresh tyres at
+    /// 90 C, 80% of the pack), for every power rung under the certification
+    /// tyre rung and for 5/5. Read by the straight-line certification script;
+    /// the car is the environment's own, so the two cannot drift apart.
+    /// </summary>
+    private static int PrintTerminalSpeeds()
+    {
+        CarConfig config = new();
+        TireConfig tires = new() { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+        PowertrainState energy = PowertrainState.Filled(0.8f);
+        List<string> entries = [];
+        for (int power = 1; power <= 5; power++)
+        {
+            float speed = CarPhysics.TerminalSpeedOnTheFlat(
+                config, tires, new CarStrategy((TireUsageMode)3, power), energy
+            );
+            entries.Add(
+                $"\"3,{power}\": {speed.ToString("R", CultureInfo.InvariantCulture)}"
+            );
+        }
+        float attack = CarPhysics.TerminalSpeedOnTheFlat(
+            config, tires, new CarStrategy((TireUsageMode)5, 5), energy
+        );
+        entries.Add(
+            $"\"5,5\": {attack.ToString("R", CultureInfo.InvariantCulture)}"
+        );
+        Console.WriteLine("{" + string.Join(", ", entries) + "}");
+        return 0;
+    }
+
     private static CarStrategy ParseModes(string option, string value)
     {
         string[] parts = value.Split(',');

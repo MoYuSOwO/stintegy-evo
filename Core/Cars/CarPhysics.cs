@@ -74,6 +74,57 @@ public static class CarPhysics
         );
     }
 
+    /// <summary>
+    /// The speed this car settles at on a flat, straight road with the pedal
+    /// flat: where the most drive the powertrain and the tyres will give
+    /// meets what the air and the rolling resistance take.
+    ///
+    /// For certification's straight-line reading. A car that arrives at the
+    /// end of a long straight well under this has been lifting, or never
+    /// got there; one at it has been deploying. It is computed from the same
+    /// performance estimate the drivers plan with, at the strategy given, so
+    /// it moves with the power rung the way the real top speed does.
+    /// Returns the upper search bound if the car is still accelerating
+    /// there.
+    /// </summary>
+    public static float TerminalSpeedOnTheFlat(
+        CarConfig config,
+        TireConfig tires,
+        CarStrategy strategy,
+        PowertrainState energy
+    )
+    {
+        const float lower = 1f;
+        const float upper = 150f;
+        CarState state = new() { Energy = energy };
+        state.InstallFreshTires(tires);
+
+        float Surplus(float speed)
+        {
+            CarPerformanceLimits limits = EstimatePerformanceLimits(
+                state, config, tires, strategy, speed, curvature: 0f
+            );
+            return limits.MaximumDriveAcceleration - limits.LossAcceleration;
+        }
+
+        if (Surplus(upper) > 0f)
+            return upper;
+        if (Surplus(lower) <= 0f)
+            return lower;
+
+        float low = lower;
+        float high = upper;
+        for (int i = 0; i < 48; i++)
+        {
+            float mid = 0.5f * (low + high);
+            if (Surplus(mid) > 0f)
+                low = mid;
+            else
+                high = mid;
+        }
+        return 0.5f * (low + high);
+    }
+
     internal static CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
         CarConfig config,

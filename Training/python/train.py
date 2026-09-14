@@ -269,6 +269,17 @@ def evaluate(
         # never sees it.
         lap_four_wheels = np.zeros(batch, dtype=np.float64)
         four_wheel_laps: list[float] = []
+        # What the session spent, step by step, so that a lane re-seeding
+        # onto a fresh pack and new tyres does not read as a refill. Only
+        # decreases in charge and increases in wear count.
+        charge_used = 0.0
+        wear_used = 0.0
+        metres_driven = 0.0
+        last_charge = obs[:, PRIMARY_STORE].astype(np.float64)
+        last_wear = np.mean(
+            [obs[:, w] for w in WEAR_SLOTS], axis=0
+        ).astype(np.float64)
+        last_race: np.ndarray | None = None
         lane_clean = np.zeros(batch, dtype=np.int64)
         speed_squared = 0.0
         stalls = 0
@@ -281,8 +292,26 @@ def evaluate(
         crossed: list[float | None] = [None] * batch
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
-            obs, reward, done, reason, components, race, _, spins = env.step(action)
+            obs, reward, done, reason, components, race, final_obs, spins = env.step(action)
             lap_four_wheels += env.four_wheels_off
+            end_charge = final_obs[:, PRIMARY_STORE].astype(np.float64)
+            end_wear = np.mean(
+                [final_obs[:, w] for w in WEAR_SLOTS], axis=0
+            ).astype(np.float64)
+            # final_obs is the state each lane's step ended on, before any
+            # re-seed, so a lane that finished still paid for this step;
+            # the next step is measured from the fresh observation instead.
+            charge_used += float(np.sum(np.maximum(last_charge - end_charge, 0.0)))
+            wear_used += float(np.sum(np.maximum(end_wear - last_wear, 0.0)))
+            race_now = np.asarray(race, dtype=np.float64)
+            if last_race is not None:
+                moved = race_now - last_race
+                metres_driven += float(np.sum(moved[moved > 0.0]))
+            last_race = race_now
+            last_charge = obs[:, PRIMARY_STORE].astype(np.float64)
+            last_wear = np.mean(
+                [obs[:, w] for w in WEAR_SLOTS], axis=0
+            ).astype(np.float64)
             now = (step + 1) * STEP_SECONDS
             spin_events += int(spins.sum())
             step_off = components[COMPONENT_NAMES.index("off_course")]
@@ -366,6 +395,17 @@ def evaluate(
         # Track limits by the race's ruler: a lap is clean on it when no
         # moment of it had all four wheels over the line.
         "four_wheels_off_each_lap": list(four_wheel_laps),
+        # Consumption per lap, as a share of the pack and of a tyre's life
+        # (the mean of four wheels). Accumulated per step, so re-seeded
+        # lanes are not read as refills.
+        "charge_per_lap": (
+            charge_used / (metres_driven / lap_metres)
+            if metres_driven > 0.0 else 0.0
+        ),
+        "wear_per_lap": (
+            wear_used / (metres_driven / lap_metres)
+            if metres_driven > 0.0 else 0.0
+        ),
         "four_wheel_clean_laps": float(
             sum(1 for seconds in four_wheel_laps if seconds < 1e-6)
         ),
