@@ -1,0 +1,5 @@
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1250000.pt: 3 spins, 0 retirements
+exposure: 12.9% of steps over; rear over in 8864 of them, rear past its peak slip angle in 1343
+  t=  27.1s station=  2267m billed=True front_over=True rear_over=False front_s=1.000 rear_s=0.911 rear_alpha/peak=0.53 (max 1.90) accel_cmd=+1.00 speed=34.3
+  t= 106.3s station=   917m billed=True front_over=True rear_over=False front_s=1.000 rear_s=0.783 rear_alpha/peak=0.40 (max 1.84) accel_cmd=-0.64 speed=31.4
+  t= 438.5s station=  2273m billed=True front_over=True rear_over=False front_s=1.000 rear_s=0.872 rear_alpha/peak=0.47 (max 1.79) accel_cmd=+1.00 speed=34.6
