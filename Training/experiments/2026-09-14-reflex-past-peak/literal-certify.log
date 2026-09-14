@@ -1,0 +1,31 @@
+大样本认证 · silverstone · 12 车道 × 600 模拟秒 · 档位 3/3 · 种子基 900001、424242
+
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1250000.pt  种子基 900001
+  圈数 55  干净 11  干净率 20.0%  旋转 2 (≈1/28 圈)  退赛 0 (≈0/55 圈)
+  最快干净圈 1:40.906  超正赛带   干净圈均速 1:41.535   计罚圈 1:40.862
+  出界秒数/圈：0 秒 20%  中位 0.267  p90 1.933  最大 3.867  总计 38.6s
+  形态：圈圈小蹭（出界分散在多圈）
+  毕业口径：❌ 旋转 2 / 干净率 20%
+
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1250000.pt  种子基 424242
+  圈数 57  干净 10  干净率 17.5%  旋转 0 (≈0/57 圈)  退赛 0 (≈0/57 圈)
+  最快干净圈 1:40.650  超正赛带   干净圈均速 1:41.859   计罚圈 1:40.650
+  出界秒数/圈：0 秒 18%  中位 0.333  p90 2.427  最大 3.200  总计 44.1s
+  形态：圈圈小蹭（出界分散在多圈）
+  毕业口径：❌ 干净率 18%
+
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1225000.pt  种子基 900001
+  圈数 57  干净 30  干净率 52.6%  旋转 1 (≈1/57 圈)  退赛 0 (≈0/57 圈)
+  最快干净圈 1:41.447  正赛带   干净圈均速 1:42.248   计罚圈 1:41.438
+  出界秒数/圈：0 秒 53%  中位 0.000  p90 0.400  最大 4.267  总计 11.5s
+  形态：圈圈小蹭（出界分散在多圈）
+  毕业口径：❌ 旋转 1
+
+/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1225000.pt  种子基 424242
+  圈数 57  干净 30  干净率 52.6%  旋转 1 (≈1/57 圈)  退赛 0 (≈0/57 圈)
+  最快干净圈 1:41.530  正赛带   干净圈均速 1:42.258   计罚圈 1:41.530
+  出界秒数/圈：0 秒 53%  中位 0.000  p90 0.360  最大 2.467  总计 8.3s
+  形态：圈圈小蹭（出界分散在多圈）
+  毕业口径：❌ 旋转 1
+
+wrote /Users/jayhuang/Code/stintegy-evo/.worktrees/past-peak/Training/experiments/2026-09-14-reflex-past-peak/literal-certify.json
