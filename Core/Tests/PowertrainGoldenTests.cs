@@ -79,6 +79,13 @@ namespace StintegyEVO.Core.Tests;
 /// degree of what they were, and the charge and drive-power figures move
 /// only as far as the line the car draws.
 ///
+/// Re-recorded on 2026-09-14, when the reflex stopped handing the throttle
+/// back to a tyre past its peak slip angle. These runs sweep throttle and
+/// steering hard enough to put a tyre past its peak while asking for drive,
+/// and above 10 m/s the throttle now stays shut there. The empty-pack run
+/// has almost no drive to shut off and is unchanged to the last digit,
+/// which is the check that nothing but the drive side moved.
+///
 /// Re-recorded on 2026-09-12 for the driver's reflex: the pedals are now
 /// trimmed to the share of the tyre the pit wall allots, and these runs
 /// sweep throttle and brake across their whole range under a mode that
@@ -167,46 +174,46 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 6.675524\n" +
-            "position 119.51982 217.39804\n" +
-            "heading 1.0010049\n" +
-            "sideslip -0.00023420347\n" +
-            "yawrate -0.0007249452\n" +
-            "charge 0.79929245\n" +
-            "drivepower 53890.246\n" +
+            "speed 7.8939095\n" +
+            "position 119.00282 217.8908\n" +
+            "heading 0.75582165\n" +
+            "sideslip -8.035916E-05\n" +
+            "yawrate 0.10938782\n" +
+            "charge 0.7992905\n" +
+            "drivepower 66308.086\n" +
             "regenpower 0\n" +
-            "longaccel 8.9404125\n" +
-            "lataccel 0.40589708\n" +
-            "wear 0.0062936083 0.008368016 0.0065273875 0.008280306\n" +
-            "coretemp 85.8954 86.86655 85.7752 86.601074";
+            "longaccel 9.281458\n" +
+            "lataccel 0.6924745\n" +
+            "wear 0.006348001 0.008385949 0.006597189 0.008328203\n" +
+            "coretemp 85.88851 86.84164 85.774475 86.58884";
 
         public const string SaggingPack =
-            "speed 4.515425\n" +
-            "position 228.53156 222.24359\n" +
-            "heading 0.7418249\n" +
-            "sideslip -0\n" +
-            "yawrate -0.848187\n" +
-            "charge 0.14948115\n" +
-            "drivepower 12868.681\n" +
+            "speed 5.077276\n" +
+            "position 224.60347 186.7194\n" +
+            "heading -0.8079665\n" +
+            "sideslip 4.9465636E-09\n" +
+            "yawrate -0.22736861\n" +
+            "charge 0.1496238\n" +
+            "drivepower 12186.448\n" +
             "regenpower 0\n" +
-            "longaccel 3.015591\n" +
-            "lataccel -0.6528294\n" +
-            "wear 0.011361726 0.014382173 0.0111212805 0.013062157\n" +
-            "coretemp 87.407295 88.59324 87.0251 87.97709";
+            "longaccel 2.493549\n" +
+            "lataccel -1.315877\n" +
+            "wear 0.010783655 0.013883178 0.010397286 0.012321093\n" +
+            "coretemp 87.02695 88.245514 86.6012 87.53508";
 
         public const string AttackLadder =
-            "speed 5.7899113\n" +
-            "position 113.00772 220.93668\n" +
-            "heading 1.1348377\n" +
-            "sideslip -1.000687E-05\n" +
-            "yawrate 0.032037795\n" +
-            "charge 0.7992953\n" +
-            "drivepower 42137.805\n" +
+            "speed 7.9372253\n" +
+            "position 117.86203 221.42719\n" +
+            "heading 0.8485517\n" +
+            "sideslip -0.000104304425\n" +
+            "yawrate 0.10090522\n" +
+            "charge 0.79928535\n" +
+            "drivepower 66853.91\n" +
             "regenpower 0\n" +
-            "longaccel 8.048885\n" +
-            "lataccel 0.8672846\n" +
-            "wear 0.00625618 0.008330417 0.006495113 0.008250059\n" +
-            "coretemp 85.90422 86.87715 85.78806 86.6159";
+            "longaccel 9.307146\n" +
+            "lataccel 0.58969176\n" +
+            "wear 0.0062877983 0.008320428 0.0065473234 0.008276227\n" +
+            "coretemp 85.915054 86.86195 85.802734 86.608925";
 
         public const string EmptyPack =
             "speed 1.5601083\n" +

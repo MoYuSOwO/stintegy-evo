@@ -25,6 +25,13 @@ public static class CarPhysics
     /// blend owns everything under here.
     /// </summary>
     private const float MinimumSlipAngleSpeed = 3f;
+    /// <summary>
+    /// Below this the kinematic slip angle is not a trustworthy reading of a
+    /// slide: about 3.3 times the 3 m/s floor under its estimate. Spins have
+    /// only ever been measured above 31 m/s; launches and wall recoveries
+    /// happen below 7.
+    /// </summary>
+    private const float PastPeakLockoutMinimumSpeed = 10f;
 
     /// <summary>
     /// How loaded the car has to be, as a share of what its tyres can give
@@ -1256,7 +1263,8 @@ public static class CarPhysics
         float peakScale,
         float longitudinalRequest,
         float corneringEfficiency,
-        float gripAllowance
+        float gripAllowance,
+        float speed
     )
     {
         if (grip <= Epsilon)
@@ -1265,8 +1273,10 @@ public static class CarPhysics
         longitudinalRequest = ReflexGovernedLongitudinal(
             longitudinalRequest,
             grip,
-            TireSlipCurve.Evaluate(slipAngle, peakScale),
-            gripAllowance
+            slipAngle,
+            peakScale,
+            gripAllowance,
+            speed
         );
         float longitudinalDemand = MathF.Abs(longitudinalRequest) / grip;
         float longitudinalUse = MathF.Min(longitudinalDemand, 1f);
@@ -1407,7 +1417,8 @@ public static class CarPhysics
                 frontPeakScale,
                 frontLongRequest,
                 corneringEfficiency,
-                gripAllowance
+                gripAllowance,
+                speed
             );
             rear = ResolveAxleSlip(
                 config,
@@ -1416,7 +1427,8 @@ public static class CarPhysics
                 1f,
                 rearLongRequest,
                 corneringEfficiency,
-                gripAllowance
+                gripAllowance,
+                speed
             );
 
             float tyreLateral = front.LateralAccel + rear.LateralAccel;
@@ -1666,19 +1678,63 @@ public static class CarPhysics
     /// alone. The reflex cuts the pedals to nothing there, which is all it
     /// can do, and the excess that remains is the steering's. That is the
     /// one door this leaves open, and it is deliberate.
+    ///
+    /// The share is only a faithful reading up to the peak. Beyond it the
+    /// curve comes back down, so the reflex treats any slip angle past the
+    /// peak as the whole curve and keeps the pedals shut until the tyre is
+    /// back inside it.
     /// </summary>
-    private static float ReflexGovernedLongitudinal(
+    internal static float ReflexGovernedLongitudinal(
         float longitudinalRequest,
         float grip,
-        float slipShape,
-        float gripAllowance
+        float slipAngle,
+        float peakScale,
+        float gripAllowance,
+        float speed = float.PositiveInfinity
     )
     {
         float allowance = Math.Clamp(gripAllowance, 0f, 1f);
+        // Attack allots the whole circle, and on that rung the reflex has
+        // nothing to do: trading the protection away for the limit is what
+        // Attack is for, and the certification matrix reads the gamble.
         if (allowance >= 1f || grip <= Epsilon)
             return longitudinalRequest;
 
-        float lateralShare = MathF.Min(1f, MathF.Abs(slipShape));
+        // Past the peak the curve's share falls as the slide deepens, and a
+        // ceiling read off the share would rise with it: at 1.8 times the
+        // peak angle it handed back 74% of the throttle, more than it allowed
+        // a tyre gripping at half the angle. parent2h's last spins were slow
+        // corner exits with the rear at 1.8 to 1.9 times its peak and the
+        // throttle open. A tyre on the far side of its peak is letting go,
+        // so it gets no drive until it is back inside.
+        //
+        // Drive only. Braking is the recovery a sliding car always keeps --
+        // anti-lock exists precisely so that a tyre can slide and still
+        // stop -- and a reflex that took the brakes off in a slide would be
+        // a physical regression, bad for the training data and bad for
+        // every driver that shares this model.
+        //
+        // And only above 10 m/s. The slip angle is estimated kinematically
+        // with a 3 m/s floor under the speed, so below about three times
+        // that floor the reading is not a slide, it is arithmetic: a car
+        // pulling off the grid or away from a wall reads past its peak while
+        // gripping. Every spin measured has been above 31 m/s, three times
+        // this line; launches and wall recoveries sit under 7 m/s.
+        //
+        // No step at the peak: on every rung the reflex trims, the share
+        // reaches the allowance before the peak and the ceiling is already
+        // zero there.
+        float peak = TireSlipCurve.PeakSlipAngleRadians *
+                     MathF.Max(peakScale, 0.05f);
+        if (longitudinalRequest > 0f &&
+            speed > PastPeakLockoutMinimumSpeed &&
+            MathF.Abs(slipAngle) >= peak)
+            return 0f;
+
+        float lateralShare = MathF.Min(
+            1f,
+            MathF.Abs(TireSlipCurve.Evaluate(slipAngle, peakScale))
+        );
         float headroom = 1f - lateralShare * lateralShare;
         if (headroom <= Epsilon)
             return 0f;
