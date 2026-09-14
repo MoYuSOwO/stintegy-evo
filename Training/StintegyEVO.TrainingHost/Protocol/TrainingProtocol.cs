@@ -34,8 +34,15 @@ public static class TrainingProtocol
     /// survived rather than driven has to be tellable from one that was not,
     /// and the policy is no more entitled to be told it spun than it is to be
     /// told where on Earth it is.
+    ///
+    /// Version 4 appends how many seconds of the step each lane spent with
+    /// all four wheels over the white line -- the race steward's track-limits
+    /// ruler, read for certification. It is a scoreboard field on the same
+    /// terms as the two before it, and it is never a reward: training keeps
+    /// the stricter centreline ruler, which is where the car's margin comes
+    /// from.
     /// </summary>
-    public const int Version = 3;
+    public const int Version = 4;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

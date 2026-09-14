@@ -264,6 +264,11 @@ def evaluate(
         lap_off = np.zeros(batch, dtype=np.float64)
         lap_wall = np.zeros(batch, dtype=np.float64)
         lap_excess = np.zeros(batch, dtype=np.float64)
+        # The race's ruler beside the trainer's: seconds this lap with all
+        # four wheels over the white line. Graduation reads it; the reward
+        # never sees it.
+        lap_four_wheels = np.zeros(batch, dtype=np.float64)
+        four_wheel_laps: list[float] = []
         lane_clean = np.zeros(batch, dtype=np.int64)
         speed_squared = 0.0
         stalls = 0
@@ -277,6 +282,7 @@ def evaluate(
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
             obs, reward, done, reason, components, race, _, spins = env.step(action)
+            lap_four_wheels += env.four_wheels_off
             now = (step + 1) * STEP_SECONDS
             spin_events += int(spins.sum())
             step_off = components[COMPONENT_NAMES.index("off_course")]
@@ -306,6 +312,7 @@ def evaluate(
                     lap_off[lane] = 0.0
                     lap_wall[lane] = 0.0
                     lap_excess[lane] = 0.0
+                    lap_four_wheels[lane] = 0.0
                     continue
                 before_distance = previous[lane]
                 previous[lane] = float(race[lane])
@@ -324,6 +331,7 @@ def evaluate(
                             lap + lap_off[lane] + lap_wall[lane]
                         )
                         off_per_lap.append(lap_off[lane])
+                        four_wheel_laps.append(lap_four_wheels[lane])
                         if lap_off[lane] < 1e-6 and lap_wall[lane] < 1e-6:
                             clean_laps.append(lap)
                             if lane_clean[lane] == 0:
@@ -335,6 +343,7 @@ def evaluate(
                     lap_off[lane] = 0.0
                     lap_wall[lane] = 0.0
                     lap_excess[lane] = 0.0
+                    lap_four_wheels[lane] = 0.0
 
     mean_speed_squared = speed_squared / steps
     off_seconds = (
@@ -354,6 +363,18 @@ def evaluate(
         # is - a clean one with an occasional big mistake looks nothing like
         # one that clips every corner, and they need different fixing.
         "off_each_lap": list(off_per_lap),
+        # Track limits by the race's ruler: a lap is clean on it when no
+        # moment of it had all four wheels over the line.
+        "four_wheels_off_each_lap": list(four_wheel_laps),
+        "four_wheel_clean_laps": float(
+            sum(1 for seconds in four_wheel_laps if seconds < 1e-6)
+        ),
+        "four_wheel_clean_share": (
+            sum(1 for seconds in four_wheel_laps if seconds < 1e-6)
+            / len(four_wheel_laps)
+            if four_wheel_laps
+            else 0.0
+        ),
         "clean_lap_times": list(clean_laps),
         "laps": float(completed),
         "clean_laps": float(len(clean_laps)),

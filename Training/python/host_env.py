@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 3
+VERSION = 4
 
 # The decision rate the host defaults to, mirrored from
 # DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
@@ -116,6 +116,7 @@ class HostEnv:
             command += ["--decision-hz", str(decision_hz)]
         self.step_seconds = 1.0 / (decision_hz or DEFAULT_DECISION_HZ)
         self.ego_modes = ego_modes
+        self.four_wheels_off = np.zeros(batch, dtype=np.float64)
         self.ego_analytic = ego_analytic
 
         self._process = subprocess.Popen(
@@ -240,6 +241,15 @@ class HostEnv:
         spins = np.frombuffer(
             payload, dtype=np.uint8, count=self.batch, offset=cursor
         ).astype(np.int64)
+        cursor += self.batch
+        # Seconds of the step each lane spent with all four wheels over the
+        # white line: the race's track-limits ruler, for certification only.
+        # Kept as an attribute rather than a ninth return value because a
+        # dozen callers unpack this method's tuple and none of them want it;
+        # the ones that do read it straight after the step it belongs to.
+        self.four_wheels_off = np.frombuffer(
+            payload, dtype="<f4", count=self.batch, offset=cursor
+        ).astype(np.float64)
 
         # The observation the episode actually ended on. The array returned
         # below is what the policy acts on next, so finished lanes carry the

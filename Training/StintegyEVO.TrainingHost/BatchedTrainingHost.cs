@@ -73,7 +73,9 @@ public sealed class BatchedTrainingHost
             // The along-track race distance appended for the lap timer.
             batchSize * sizeof(float) +
             // And the spin events begun this step, for the scoreboard.
-            batchSize * sizeof(byte)
+            batchSize * sizeof(byte) +
+            // And the seconds all four wheels spent over the white line.
+            batchSize * sizeof(float)
         );
         if (stepResponseBytes > TrainingProtocol.MaxPayloadLength)
         {
@@ -304,6 +306,19 @@ public sealed class BatchedTrainingHost
                 _environments[i].SpinEventsThisStep,
                 0,
                 255
+            );
+        }
+
+        // How long all four of each lane's wheels were over the white line
+        // this step: the race's track-limits ruler, for certification. The
+        // reward keeps charging the stricter centreline ruler; this is read
+        // by the scoreboard only.
+        for (int i = 0; i < _batchSize; i++)
+        {
+            offset = WriteFloat(
+                _responseBuffer,
+                offset,
+                _environments[i].FourWheelsOffSecondsThisStep
             );
         }
 
