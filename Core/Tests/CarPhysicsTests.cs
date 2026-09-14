@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
@@ -6,6 +7,13 @@ namespace StintegyEVO.Core.Tests;
 
 public sealed class CarPhysicsTests
 {
+    /// <summary>
+    /// The tyre mode that allots the whole friction circle, so the driver's
+    /// reflex has nothing to trim and the physics is the only limit left.
+    /// </summary>
+    private static readonly CarStrategy Unclamped =
+        new(TireUsageMode.Attack, PowerOutputMode.Normal);
+
     private const float TestAirTempC = 25f;
     private const float TestTrackTempC = 35f;
 
@@ -92,6 +100,252 @@ public sealed class CarPhysicsTests
         Assert.True(state.Telemetry.ActualLongitudinalAccel < 0f, "net longitudinal accel should be negative");
     }
 
+    /// <summary>
+    /// The pit wall's share of the tyre is no longer a price. It is a
+    /// ceiling the pedals cannot be pushed through.
+    ///
+    /// Driving hard enough that the corner alone is spending most of the
+    /// circle, and then asking for everything the motor and the brakes
+    /// have: whatever the tyres end up spending has to land inside what
+    /// the mode allots. The reflex solves the ellipse once — the slip
+    /// angle's own share leaves room for a pedal share and no more — so
+    /// this holds for the realised usage rather than for the request.
+    /// </summary>
+    [Theory]
+    [InlineData(TireUsageMode.Protect, 12f)]
+    [InlineData(TireUsageMode.Protect, -12f)]
+    [InlineData(TireUsageMode.Normal, 12f)]
+    [InlineData(TireUsageMode.Normal, -12f)]
+    [InlineData(TireUsageMode.Push, 12f)]
+    [InlineData(TireUsageMode.Push, -12f)]
+    public void ATyreModeCannotBeDrivenPastByThePedals(
+        TireUsageMode mode, float accel
+    )
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarStrategy strategy = new(mode, PowerOutputMode.Normal);
+        CarState state = CreateState(speed: 45f, batterySoc: 0.8f, tires);
+        float curvature = CurvatureForGripShare(
+            state, car, tires, strategy, 0.8f
+        );
+        SetSteadyCorner(state, car, tires, curvature);
+        float allowance = tires.GetAccelerationUsage(mode);
+
+        for (int i = 0; i < 30; i++)
+        {
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                PhysicsInput(new DriverInput(curvature, accel), strategy),
+                1f / 60f
+            );
+            CarTelemetry telemetry = state.Telemetry;
+            Assert.InRange(
+                CombinedUse(
+                    telemetry.FrontLateralUse, telemetry.FrontLongitudinalUse
+                ),
+                0f,
+                allowance + 1e-3f
+            );
+            Assert.InRange(
+                CombinedUse(
+                    telemetry.RearLateralUse, telemetry.RearLongitudinalUse
+                ),
+                0f,
+                allowance + 1e-3f
+            );
+        }
+    }
+
+    /// <summary>
+    /// A pedal request the mode can afford arrives untouched. The reflex is
+    /// a ceiling, not a tax: a driver inside its allowance should not be
+    /// able to tell that it exists.
+    /// </summary>
+    [Fact]
+    public void APedalRequestInsideTheAllowanceArrivesUntouched()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState governed = CreateState(speed: 45f, batterySoc: 0.8f, tires);
+        CarState free = CreateState(speed: 45f, batterySoc: 0.8f, tires);
+        DriverInput gentle = new(0f, 2f);
+
+        for (int i = 0; i < 30; i++)
+        {
+            CarPhysics.Step(
+                governed, car, tires,
+                PhysicsInput(gentle, CarStrategy.Default), 1f / 60f
+            );
+            CarPhysics.Step(
+                free, car, tires, PhysicsInput(gentle, Unclamped), 1f / 60f
+            );
+        }
+
+        Assert.Equal(free.Speed, governed.Speed, 4);
+        Assert.Equal(
+            free.Telemetry.ActualLongitudinalAccel,
+            governed.Telemetry.ActualLongitudinalAccel,
+            4
+        );
+    }
+
+    /// <summary>
+    /// The ceiling is the ladder's, and it is the ladder exactly.
+    ///
+    /// Same corner, same impossible request for brake, one rung at a time:
+    /// what the tyre ends up spending lands on that rung's allowance and
+    /// not a thousandth past it — 0.955, 0.966, 0.977, 0.989, and the whole
+    /// circle at Attack, where the reflex has nothing to say.
+    ///
+    /// Read as what the tyre spends rather than as how hard the car slowed:
+    /// at 45 m/s the drag is worth more than the whole difference between
+    /// the rungs, and a net acceleration would be measuring the air. The
+    /// corner is kept at six tenths of the grip so that the slip angle's
+    /// own share stays under the lowest rung; deeper than that and the
+    /// steering alone is over the allowance, which no pedal ceiling can
+    /// fix and TheAllowanceIsStillReachableThroughTheSlipAngleAlone
+    /// covers.
+    /// </summary>
+    [Fact]
+    public void TheCeilingIsTheTyreModeLadder()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        TireUsageMode[] ladder =
+        [
+            TireUsageMode.Protect,
+            TireUsageMode.Light,
+            TireUsageMode.Normal,
+            TireUsageMode.Push,
+            TireUsageMode.Attack
+        ];
+
+        List<float> spent = [];
+        foreach (TireUsageMode mode in ladder)
+        {
+            CarStrategy strategy = new(mode, PowerOutputMode.Normal);
+            CarState state = CreateState(speed: 45f, batterySoc: 0.8f, tires);
+            float curvature = CurvatureForGripShare(
+                state, car, tires, strategy, 0.6f
+            );
+            SetSteadyCorner(state, car, tires, curvature);
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                PhysicsInput(
+                    new DriverInput(curvature, -car.MaxBrakeAccel), strategy
+                ),
+                1f / 60f
+            );
+
+            CarTelemetry telemetry = state.Telemetry;
+            spent.Add(
+                MathF.Max(
+                    CombinedUse(
+                        telemetry.FrontLateralUse,
+                        telemetry.FrontLongitudinalUse
+                    ),
+                    CombinedUse(
+                        telemetry.RearLateralUse,
+                        telemetry.RearLongitudinalUse
+                    )
+                )
+            );
+        }
+
+        for (int rung = 0; rung < ladder.Length; rung++)
+        {
+            Assert.Equal(
+                tires.GetAccelerationUsage(ladder[rung]),
+                spent[rung],
+                3
+            );
+        }
+    }
+
+    /// <summary>
+    /// Whether a tyre can still be over its allowance once the pedals
+    /// cannot put it there — which decides whether the steward penalty for
+    /// it still has a job.
+    ///
+    /// It can, and by one path: the slip angle. What an axle spends is the
+    /// slip angle's own share of the curve plus what is left of the circle
+    /// after it, so a tyre worked near its peak angle is spending almost
+    /// the whole circle on steering alone, and no pedal position subtracts
+    /// from that. The reflex cuts the pedals to nothing there, which is all
+    /// it can do — steering is deliberately not trimmed, because that is
+    /// where a car is caught rather than lost.
+    ///
+    /// So mode_excess stays, and this is the only way to reach it.
+    /// </summary>
+    [Fact]
+    public void TheAllowanceIsStillReachableThroughTheSlipAngleAlone()
+    {
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarStrategy strategy = CarStrategy.Default;
+        CarState state = CreateState(speed: 45f, batterySoc: 0.8f, tires);
+        // A corner past what the car will hold, and not one pedal touched.
+        float curvature = CurvatureForGripShare(
+            state, car, tires, strategy, 1.3f
+        );
+        SetSteadyCorner(state, car, tires, curvature);
+        float allowance = tires.GetAccelerationUsage(strategy.TireMode);
+
+        float worst = 0f;
+        for (int i = 0; i < 30; i++)
+        {
+            CarPhysics.Step(
+                state,
+                car,
+                tires,
+                PhysicsInput(new DriverInput(curvature, 0f), strategy),
+                1f / 60f
+            );
+            CarTelemetry telemetry = state.Telemetry;
+            worst = MathF.Max(
+                worst,
+                MathF.Max(
+                    CombinedUse(
+                        telemetry.FrontLateralUse,
+                        telemetry.FrontLongitudinalUse
+                    ),
+                    CombinedUse(
+                        telemetry.RearLateralUse,
+                        telemetry.RearLongitudinalUse
+                    )
+                )
+            );
+        }
+
+        Assert.True(
+            worst > allowance,
+            $"the steering path should still reach past the allowance, got " +
+            $"{worst:F4} against {allowance:F4}"
+        );
+    }
+
+    private static float CombinedUse(float lateral, float longitudinal) =>
+        MathF.Min(
+            1f,
+            MathF.Sqrt(lateral * lateral + longitudinal * longitudinal)
+        );
+
+    /// <summary>
+    /// Asked for more braking than the road will take, the axles clip it and
+    /// say so.
+    ///
+    /// Driven at Attack, where the tyre mode allots the whole circle and the
+    /// driver's reflex has nothing to trim. Below Attack it does: a request
+    /// this far past the allowance is now cut before the tyres ever see it,
+    /// which is what ATyreModeCannotBeDrivenPastByThePedals covers. The
+    /// physics of being over the limit is what this test is about, and the
+    /// only place it can still be reached from the pedals is here.
+    /// </summary>
     [Fact]
     public void LowGripHeavyBrakingIsClippedByAxles()
     {
@@ -104,7 +358,13 @@ public sealed class CarPhysicsTests
         };
         CarState state = CreateState(speed: 32f, batterySoc: 0.5f, tires);
 
-        CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(0f, -12f)), 1f / 60f);
+        CarPhysics.Step(
+            state,
+            car,
+            tires,
+            PhysicsInput(new DriverInput(0f, -12f), Unclamped),
+            1f / 60f
+        );
 
         Assert.True(state.Telemetry.OverLimit > 0f, "brake demand above low-grip capacity should be reported as over limit");
         Assert.True(
@@ -127,7 +387,11 @@ public sealed class CarPhysicsTests
         };
         CarState noEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
         CarState defaultEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
-        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0f, -12f));
+        // Attack, for the same reason as the test above: below it the
+        // driver's reflex trims a request this far past the allowance and
+        // there is no over-limit braking left to measure.
+        CarPhysicsStepInput input =
+            PhysicsInput(new DriverInput(0f, -12f), Unclamped);
 
         CarPhysics.Step(noEfficiencyLossState, noEfficiencyLoss, tires, input, 1f / 60f);
         CarPhysics.Step(defaultEfficiencyLossState, defaultEfficiencyLoss, tires, input, 1f / 60f);
@@ -216,7 +480,12 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
+        // Attack on the tyre axis as well as the power one. At Normal the
+        // driver's reflex cuts the drive the moment the corner alone is
+        // spending the allowance, and a rear axle that is never given the
+        // drive never lets go -- which is the reflex working, and would
+        // leave this test with nothing to look at.
+        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
         // Most of the grip spent on the corner, so asking for drive on top of
         // it has to come out of the same circle.
         float curvature = CurvatureForGripShare(cornering, car, tires, attack, 0.9f);
@@ -378,7 +647,12 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeRearTiresHotAndWorn(state);
-        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
+        // Attack on the tyre axis as well as the power one. At Normal the
+        // driver's reflex cuts the drive the moment the corner alone is
+        // spending the allowance, and a rear axle that is never given the
+        // drive never lets go -- which is the reflex working, and would
+        // leave this test with nothing to look at.
+        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
         // Cornering near what the worn rear will bear and then asking for all
         // the drive there is. Drive alone cannot do it: the request is clipped
         // at the car's own maximum, so the way to make an axle let go is to
@@ -525,7 +799,12 @@ public sealed class CarPhysicsTests
         TireConfig tires = WarmTires();
         CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
+        // Attack on the tyre axis as well as the power one. At Normal the
+        // driver's reflex cuts the drive the moment the corner alone is
+        // spending the allowance, and a rear axle that is never given the
+        // drive never lets go -- which is the reflex working, and would
+        // leave this test with nothing to look at.
+        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
         // Cornering hard and asking for drive on top, which is where traction
         // control is meant to step in.
         float curvature = CurvatureForGripShare(controlled, car: controlledCar,
@@ -563,7 +842,12 @@ public sealed class CarPhysicsTests
         CarState sliding = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         sliding.Heading = -0.1f;
         sliding.SideslipAngleRadians = 0.1f;
-        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
+        // Attack on the tyre axis as well as the power one. At Normal the
+        // driver's reflex cuts the drive the moment the corner alone is
+        // spending the allowance, and a rear axle that is never given the
+        // drive never lets go -- which is the reflex working, and would
+        // leave this test with nothing to look at.
+        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
         float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
         float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
         CarPhysicsStepInput input =
