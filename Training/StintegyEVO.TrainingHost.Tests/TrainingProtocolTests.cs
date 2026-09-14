@@ -139,7 +139,11 @@ public sealed class TrainingProtocolTests
                         // Spins begun this step, added with protocol three so
                         // a lap that was survived could be told from one that
                         // was driven.
-                        batchSize * sizeof(byte);
+                        batchSize * sizeof(byte) +
+                        // Seconds with all four wheels over the white line,
+                        // added with protocol four for the race's
+                        // track-limits ruler; scoreboard only.
+                        batchSize * sizeof(float);
         Assert.Equal(TrainingMessageKind.ResetResponse, reset.Kind);
         Assert.Equal(observationBytes, reset.Payload.Length);
         Assert.Equal(TrainingMessageKind.StepResponse, step.Kind);

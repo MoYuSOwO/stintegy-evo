@@ -14,14 +14,14 @@ the analytic baseline and it would look exactly like a slow policy.
 
 from __future__ import annotations
 
+import argparse
 import math
-import sys
 
 import numpy as np
 
 from host_env import HostEnv
 from sac import SacAgent, SacConfig
-from train import STEP_SECONDS
+from train import STEP_SECONDS, TRACKS
 ROAD_OFFSET = 219
 CEILING = ROAD_OFFSET + 7
 ALLOWANCE = ROAD_OFFSET + 8
@@ -37,9 +37,11 @@ def nearest_mode(value: float) -> str:
 
 
 def run(checkpoint: str, track: str, lap_metres: float, steps: int,
-        batch: int, seed_base: int, bin_metres: float) -> dict:
+        batch: int, seed_base: int, bin_metres: float,
+        modes: tuple[int, int] | None = None) -> dict:
     with HostEnv(batch=batch, seed_base=seed_base, solo=True, track=track,
-                 episode_seconds=steps * STEP_SECONDS + 60.0) as env:
+                 episode_seconds=steps * STEP_SECONDS + 60.0,
+                 ego_modes=modes) as env:
         agent = SacAgent(env.obs_size, env.action_size, SacConfig())
         agent.load(checkpoint)
         obs = env.reset()
@@ -93,17 +95,34 @@ def run(checkpoint: str, track: str, lap_metres: float, steps: int,
 
 
 def main() -> int:
-    track = "silverstone"
-    lap_metres = 5891.0
-    bin_metres = 100.0
-    # Ten minutes of watching, in whatever number of steps the rate makes
-    # that: several laps in each lane on any circuit here.
-    steps = int(round(600.0 / STEP_SECONDS))
-    seed_base = 900001                 # the evaluation's own seeds
-    a_path, b_path = sys.argv[1], sys.argv[2]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkpoints", nargs=2, help="the quicker one first")
+    parser.add_argument("--track", default="silverstone")
+    parser.add_argument("--lanes", type=int, default=2)
+    parser.add_argument("--seconds", type=float, default=600.0)
+    parser.add_argument("--seed-base", type=int, default=900001)
+    parser.add_argument("--bin-metres", type=float, default=100.0)
+    # Evaluation lanes used to draw their instruction from the seed, which
+    # left a comparison between two checkpoints quietly comparing two sets
+    # of tyre and power rungs as well. Certification compares at 3/3.
+    parser.add_argument(
+        "--modes", default=None,
+        help="tyre,power rungs counted from one, e.g. 3,3; unset keeps the "
+             "seed-drawn rungs this probe always used",
+    )
+    args = parser.parse_args()
+    track = args.track
+    lap_metres = TRACKS[track][0]
+    bin_metres = args.bin_metres
+    steps = int(round(args.seconds / STEP_SECONDS))
+    seed_base = args.seed_base
+    modes = (
+        tuple(int(x) for x in args.modes.split(",")) if args.modes else None
+    )
+    a_path, b_path = args.checkpoints
 
-    a = run(a_path, track, lap_metres, steps, 2, seed_base, bin_metres)
-    b = run(b_path, track, lap_metres, steps, 2, seed_base, bin_metres)
+    a = run(a_path, track, lap_metres, steps, args.lanes, seed_base, bin_metres, modes)
+    b = run(b_path, track, lap_metres, steps, args.lanes, seed_base, bin_metres, modes)
 
     for name, r in ((a_path, a), (b_path, b)):
         modes = ", ".join(nearest_mode(float(v)) for v in r["allowances"])

@@ -340,6 +340,13 @@ public sealed class DirectDriveDuelEnvironment
     /// </summary>
     public int SpinEventsThisStep { get; private set; }
 
+    /// <summary>
+    /// Seconds of the last step the ego spent with all four wheels beyond
+    /// the white line. The race's track-limits ruler, for certification;
+    /// never an observation and never a reward.
+    /// </summary>
+    public float FourWheelsOffSecondsThisStep => _ego?.FourWheelsOffSeconds ?? 0f;
+
     public DirectDriveDuelEnvironment(
         float minimumForwardGapMeters = DefaultMinimumForwardGapMeters,
         float maximumForwardGapMeters = DefaultMaximumForwardGapMeters,
