@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
@@ -128,19 +127,18 @@ public sealed class SurfaceGripTests
         CarConfig config = new();
         float half = sample.HalfWidth;
 
-        RaceCar car = new(
+        RaceCar car = TestControlFixtures.ExternalCar(
             "straddle",
-            config,
-            new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f },
-            new ReferenceLineDriver(),
             new CarState
             {
                 Position = sample.Center + sample.Normal *
                            (half - config.TrackWidthMeters * 0.5f + 0.4f),
-                Heading = sample.RefHeading,
+                Heading = sample.Heading,
                 Speed = 40f,
                 Energy = PowertrainState.Filled(0.8f)
-            }
+            },
+            new DriverInput(sample.Curvature, 0f),
+            config
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);

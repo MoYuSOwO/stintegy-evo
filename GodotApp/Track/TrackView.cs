@@ -13,7 +13,6 @@ public partial class TrackView : Node2D
     [Export] public Color RoadColor { get; set; } = Color.FromHtml("#dfe4ea");
     [Export] public Color BufferColor { get; set; } = Color.FromHtml("#e8d3b9");
     [Export] public Color WallColor { get; set; } = Color.FromHtml("#576574");
-    [Export] public Color ReferenceLineColor { get; set; } = Color.FromHtml("#65c4ff80");
     [Export] public Color StartingGridColor { get; set; } = Color.FromHtml("#fbfcf8cb");
 
     [ExportGroup("Dimensions")]
@@ -41,7 +40,6 @@ public partial class TrackView : Node2D
         DrawBuffers(_track);
         DrawRoad(_track);
         DrawWalls(_track);
-        DrawReferenceLine(_track);
         DrawFinishLine(_track);
         DrawStartingGrids(_track);
     }
@@ -108,24 +106,6 @@ public partial class TrackView : Node2D
         }
         AddChild(CreateStrip(left, WallColor, 3));
         AddChild(CreateStrip(right, WallColor, 3));
-    }
-
-    private void DrawReferenceLine(TrackData track)
-    {
-        int segments = SegmentCount(track);
-        Vector2[] points = new Vector2[segments];
-        for (int i = 0; i < segments; i++)
-            points[i] = SampleAt(track, i, segments).RefPosition.ToGodot();
-
-        AddChild(new Line2D
-        {
-            Points = points,
-            Width = 0.35f,
-            DefaultColor = ReferenceLineColor,
-            Antialiased = true,
-            Closed = true,
-            ZIndex = 2
-        });
     }
 
     private void DrawFinishLine(TrackData track)

@@ -1,6 +1,5 @@
 using System.Numerics;
 using StintegyEVO.Core.Track;
-using StintegyEVO.Core.Track.RefLines;
 using Xunit;
 
 namespace StintegyEVO.Core.Tests;
@@ -8,14 +7,9 @@ namespace StintegyEVO.Core.Tests;
 public sealed class TrackFactoryTests
 {
     [Fact]
-    public void TrackBuilderUsesInjectedReferenceLineSolver()
+    public void TrackBuilderPublishesThePhysicalCentrelineGeometry()
     {
-        RecordingRefLineSolver solver = new();
-        TrackData track = new TrackBuilder(
-                Vector2.Zero,
-                startWidth: 10f,
-                refLineSolver: solver
-            )
+        TrackData track = new TrackBuilder(Vector2.Zero, startWidth: 10f)
             .AddStraight(80f)
             .AddTurn(180f, 24f)
             .AddStraight(80f)
@@ -23,8 +17,12 @@ public sealed class TrackFactoryTests
             .CloseLoop()
             .Build(default);
 
-        Assert.True(solver.WasCalled);
-        Assert.True(track.LengthMeters > 0f);
+        TrackSample straight = track.Sample(20f);
+        TrackSample corner = track.Sample(80f + MathF.PI * 24f * 0.5f);
+        Assert.InRange(MathF.Abs(track.Project(straight.Center).D), 0f, 1e-4f);
+        Assert.Equal(MathF.Atan2(straight.Tangent.Y, straight.Tangent.X), straight.Heading, 5);
+        Assert.InRange(MathF.Abs(straight.Curvature), 0f, 0.002f);
+        Assert.InRange(MathF.Abs(corner.Curvature), 0.035f, 0.05f);
     }
 
     [Fact]
@@ -34,8 +32,7 @@ public sealed class TrackFactoryTests
                 Vector2.Zero,
                 startWidth: 18f,
                 startLeftBuffer: 5f,
-                startRightBuffer: 5f,
-                refLineSolver: CenterLineRefLineSolver.Instance
+                startRightBuffer: 5f
             )
             .AddStraight(550f)
             .AddTurn(-180f, 20f, 25f)
@@ -194,43 +191,22 @@ public sealed class TrackFactoryTests
         const float wallAuditStepMeters = 4f;
         List<Vector2> leftWall = [];
         List<Vector2> rightWall = [];
-        float maximumCenterCurvatureJump = 0f;
-        float maximumRefCurvature = 0f;
-        float maximumRefCurvatureJump = 0f;
-        float maximumRefSafetyExcess = 0f;
-        float maximumRefLongitudinalResidual = 0f;
-        float previousCenterCurvature = CenterCurvatureAt(track, -1f);
-        float previousRefCurvature = track.Sample(-1f).RefCurvature;
+        float maximumCurvature = 0f;
+        float maximumCurvatureJump = 0f;
+        float previousCurvature = track.Sample(-1f).Curvature;
 
         for (float s = 0f; s < track.LengthMeters; s += TrackData.StepLength)
         {
             TrackSample sample = track.Sample(s);
-            float centerCurvature = CenterCurvatureAt(track, s);
-            maximumCenterCurvatureJump = MathF.Max(
-                maximumCenterCurvatureJump,
-                MathF.Abs(centerCurvature - previousCenterCurvature)
+            maximumCurvature = MathF.Max(
+                maximumCurvature,
+                MathF.Abs(sample.Curvature)
             );
-            maximumRefCurvature = MathF.Max(
-                maximumRefCurvature,
-                MathF.Abs(sample.RefCurvature)
+            maximumCurvatureJump = MathF.Max(
+                maximumCurvatureJump,
+                MathF.Abs(sample.Curvature - previousCurvature)
             );
-            maximumRefCurvatureJump = MathF.Max(
-                maximumRefCurvatureJump,
-                MathF.Abs(sample.RefCurvature - previousRefCurvature)
-            );
-            Vector2 refDelta = sample.RefPosition - sample.Center;
-            maximumRefSafetyExcess = MathF.Max(
-                maximumRefSafetyExcess,
-                MathF.Abs(sample.RefOffset) - (
-                    sample.HalfWidth - TrackPlanningBounds.VehicleHalfWidthMeters
-                )
-            );
-            maximumRefLongitudinalResidual = MathF.Max(
-                maximumRefLongitudinalResidual,
-                MathF.Abs(Vector2.Dot(refDelta, sample.Tangent))
-            );
-            previousCenterCurvature = centerCurvature;
-            previousRefCurvature = sample.RefCurvature;
+            previousCurvature = sample.Curvature;
 
             if ((int)s % (int)wallAuditStepMeters == 0)
             {
@@ -239,11 +215,8 @@ public sealed class TrackFactoryTests
             }
         }
 
-        Assert.InRange(maximumCenterCurvatureJump, 0f, 0.025f);
-        Assert.InRange(maximumRefCurvature, 0f, 0.25f);
-        Assert.InRange(maximumRefCurvatureJump, 0f, 0.05f);
-        Assert.InRange(maximumRefSafetyExcess, 0f, 0.05f);
-        Assert.InRange(maximumRefLongitudinalResidual, 0f, 0.25f);
+        Assert.InRange(maximumCurvature, 0f, 0.25f);
+        Assert.InRange(maximumCurvatureJump, 0f, 0.05f);
         Assert.Equal(0, CountBoundaryIntersections(leftWall, leftWall, true));
         Assert.Equal(0, CountBoundaryIntersections(rightWall, rightWall, true));
         Assert.Equal(0, CountBoundaryIntersections(leftWall, rightWall, false));
@@ -303,14 +276,4 @@ public sealed class TrackFactoryTests
         (b.X - a.X) * (c.Y - a.Y) -
         (b.Y - a.Y) * (c.X - a.X);
 
-    private sealed class RecordingRefLineSolver : IRefLineSolver
-    {
-        public bool WasCalled { get; private set; }
-
-        public RefLine Generate(IReadOnlyList<RefLineTrackPoint> track)
-        {
-            WasCalled = true;
-            return CenterLineRefLineSolver.Instance.Generate(track);
-        }
-    }
 }

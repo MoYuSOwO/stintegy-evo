@@ -1,10 +1,8 @@
 using System;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
-using StintegyEVO.Core.Track.RefLines;
 using Xunit;
 
 namespace StintegyEVO.Core.Tests;
@@ -14,12 +12,11 @@ public sealed class OvertakeModeTests
     private static readonly Lazy<TrackData> Loop = new(() =>
         new TrackBuilder(
                 Vector2.Zero,
-                startWidth: 12f,
-                refLineSolver: CenterLineRefLineSolver.Instance
+                startWidth: 12f
             )
-            .AddStraight(400f)
+            .AddStraight(1400f)
             .AddTurn(180f, 40f)
-            .AddStraight(400f)
+            .AddStraight(1400f)
             .AddTurn(180f, 40f)
             .CloseLoop()
             .Build(new TrackGridConfig())
@@ -29,134 +26,58 @@ public sealed class OvertakeModeTests
     public void NobodyCarriesTheModeOffTheGrid()
     {
         TrackData track = Loop.Value;
+        float line = track.StartingLineS;
         RaceSimulation simulation = new(track);
-        RaceCar leader = CreateCar(track, 60f, "lead");
-        RaceCar chaser = CreateCar(track, 40f, "chase");
+        RaceCar leader = CreateStationaryCar(track, line + 60f, "lead");
+        RaceCar chaser = CreateStationaryCar(track, line + 40f, "chase");
         simulation.AddCar(leader);
         simulation.AddCar(chaser);
 
-        simulation.Step(1f / 60f);
+        simulation.Step(1f / 120f);
 
         Assert.Equal(0f, chaser.State.OvertakeAssist);
         Assert.Equal(0f, leader.State.OvertakeAssist);
     }
 
     [Theory]
-    [InlineData(18f, 1f)]
-    [InlineData(70f, 0f)]
-    public void TheLineDecidesByTimeGapToTheCarAhead(
-        float gapMeters,
-        float expectedAssist
-    )
+    [InlineData(18f)]
+    [InlineData(70f)]
+    public void CrossingTheLineNeverInventsAnOvertakeGrant(float gapMeters)
     {
-        // The cars start on the opening straight and run a whole lap, so the
-        // decision happens at a genuine crossing. The line sits at the exit
-        // of the final corner, taken at roughly 30 m/s, which puts the one
-        // second threshold near 30 m. The metric reads a little low there -
-        // the leader is already accelerating away while the chaser is still
-        // slow - so 18 m sits safely inside it and 70 m safely outside, and
-        // the observed gap is cross-checked so a drifting approach cannot
-        // silently invert the case.
         TrackData track = Loop.Value;
-        float length = track.LengthMeters;
+        float line = track.StartingLineS;
         RaceSimulation simulation = new(track);
-        RaceCar leader = CreateCar(track, 40f + gapMeters, "lead");
-        RaceCar chaser = CreateCar(track, 40f, "chase");
+        RaceCar leader = CreateStationaryCar(track, line + gapMeters, "lead");
+        RaceCar chaser = CreateStationaryCar(track, line - 0.5f, "chase");
         simulation.AddCar(leader);
         simulation.AddCar(chaser);
-
-        bool crossed = false;
-        float gapSecondsAtCrossing = float.NaN;
-        int crossings = Crossings(chaser, length);
-        for (int frame = 0; frame < 60 * 60 && !crossed; frame++)
-        {
-            simulation.Step(1f / 60f);
-            if (Crossings(chaser, length) > crossings)
-            {
-                crossed = true;
-                gapSecondsAtCrossing = RaceSimulation.OnTrackDistanceAhead(
-                    leader.Progress.RaceDistanceMeters,
-                    chaser.Progress.RaceDistanceMeters,
-                    length
-                ) / MathF.Max(chaser.State.Speed, 1f);
-            }
-        }
-
-        Assert.True(crossed, "the chaser never crossed the line");
-        Assert.True(
-            expectedAssist > 0.5f
-                ? gapSecondsAtCrossing < 0.9f
-                : gapSecondsAtCrossing > 1.1f,
-            $"approach drifted to an ambiguous {gapSecondsAtCrossing:0.00} s gap"
-        );
-        Assert.Equal(expectedAssist, chaser.State.OvertakeAssist);
+        simulation.Step(1f / 120f);
+        float before = chaser.Progress.RaceDistanceMeters;
+        PlaceAt(track, chaser, line + 0.25f, speed: 20f);
+        simulation.Step(1f / 120f);
+        Assert.True(before < 0f && chaser.Progress.RaceDistanceMeters > 0f);
+        Assert.Equal(0f, chaser.State.OvertakeAssist);
         Assert.Equal(0f, leader.State.OvertakeAssist);
     }
 
-    [Fact(Skip =
-        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
-    public void TheGrantLatchesForTheLapAndExpiresAtTheNextCrossing()
+    [Fact]
+    public void OnlyTheExternalHostChangesDeviceActivation()
     {
         TrackData track = Loop.Value;
-        float length = track.LengthMeters;
+        float line = track.StartingLineS;
+        RaceCar car = CreateStationaryCar(track, line - 0.5f, "external");
         RaceSimulation simulation = new(track);
-        RaceCar leader = CreateCar(track, 55f, "lead");
-        RaceCar chaser = CreateCar(track, 40f, "chase");
-        simulation.AddCar(leader);
-        simulation.AddCar(chaser);
-
-        // Lap one at equal pace, so the chaser earns the mode at its first
-        // crossing. Then the leader gets full power while the chaser is
-        // turned down, the gap opens well past one second, and the grant must
-        // hold anyway until the next crossing takes it away.
-        int startCrossings = Crossings(chaser, length);
-        bool earned = false;
-        bool sawWideGapWithModeStillOn = false;
-        bool expired = false;
-        for (int frame = 0; frame < 120 * 60 && !expired; frame++)
-        {
-            simulation.Step(1f / 60f);
-            int lapsDone = Crossings(chaser, length) - startCrossings;
-            if (lapsDone == 1 && !earned)
-            {
-                Assert.Equal(1f, chaser.State.OvertakeAssist);
-                earned = true;
-                leader.Strategy = new CarStrategy(
-                    TireUsageMode.Attack,
-                    PowerOutputMode.Attack
-                );
-                chaser.Strategy = new CarStrategy(
-                    TireUsageMode.Protect,
-                    PowerOutputMode.Save
-                );
-            }
-            float gapSeconds = RaceSimulation.OnTrackDistanceAhead(
-                leader.Progress.RaceDistanceMeters,
-                chaser.Progress.RaceDistanceMeters,
-                length
-            ) / MathF.Max(chaser.State.Speed, 1f);
-            if (lapsDone == 1 && gapSeconds > 1.1f)
-            {
-                Assert.Equal(1f, chaser.State.OvertakeAssist);
-                sawWideGapWithModeStillOn = true;
-            }
-            if (lapsDone >= 2)
-            {
-                expired = true;
-                Assert.Equal(0f, chaser.State.OvertakeAssist);
-            }
-        }
-
-        Assert.True(earned, "the mode was never earned at the first crossing");
-        Assert.True(
-            sawWideGapWithModeStillOn,
-            "the gap never opened past 1.1 s while the mode was held"
-        );
-        Assert.True(expired, "the chaser never reached its second crossing");
+        simulation.AddCar(car);
+        car.State.OvertakeAssist = 0.65f;
+        simulation.Step(1f / 120f);
+        PlaceAt(track, car, line + 0.25f, speed: 20f);
+        simulation.Step(1f / 120f);
+        Assert.Equal(0.65f, car.State.OvertakeAssist);
+        Assert.Equal(0.65f, simulation.CaptureFrame()[0].OvertakeAssist);
+        car.State.OvertakeAssist = 0f;
+        simulation.Step(1f / 120f);
+        Assert.Equal(0f, car.State.OvertakeAssist);
     }
-
-    private static int Crossings(RaceCar car, float trackLength) =>
-        (int)MathF.Floor(car.Progress.RaceDistanceMeters / trackLength);
 
     [Theory]
     [InlineData(5005f, 4010f, 1000f, 5f)]
@@ -307,10 +228,10 @@ public sealed class OvertakeModeTests
                                 chaser.Collision.LengthMeters) * 0.5f;
         TrackSample chaserSample = track.Sample(200f);
         TrackSample leaderSample = track.Sample(200f + centerDistance);
-        chaser.State.Position = chaserSample.RefPosition;
-        chaser.State.Heading = chaserSample.RefHeading;
-        leader.State.Position = leaderSample.RefPosition;
-        leader.State.Heading = leaderSample.RefHeading;
+        chaser.State.Position = chaserSample.Center;
+        chaser.State.Heading = chaserSample.Heading;
+        leader.State.Position = leaderSample.Center;
+        leader.State.Heading = leaderSample.Heading;
         simulation.AddCar(leader);
         simulation.AddCar(chaser);
 
@@ -329,12 +250,46 @@ public sealed class OvertakeModeTests
         for (int frame = 0; frame < 20 * 60; frame++)
         {
             simulation.Step(1f / 60f);
-            // A solo car never qualifies at the line, so hold the flag by
-            // hand to isolate the physics of the mode itself.
+            // Host-controlled activation isolates the device's physical effect.
             if (assist)
                 car.State.OvertakeAssist = 1f;
         }
         return car.Progress.RaceDistanceMeters;
+    }
+
+    private static RaceCar CreateStationaryCar(
+        TrackData track,
+        float s,
+        string id
+    )
+    {
+        TrackSample sample = track.Sample(s);
+        return TestControlFixtures.ExternalCar(
+            id,
+            new CarState
+            {
+                Position = sample.Center,
+                Heading = sample.Heading,
+                Speed = 0f,
+                Energy = PowertrainState.Filled(0.9f)
+            }
+        );
+    }
+
+    private static void PlaceAt(
+        TrackData track,
+        RaceCar car,
+        float s,
+        float speed
+    )
+    {
+        TrackSample sample = track.Sample(s);
+        car.State.Position = sample.Center;
+        car.State.Heading = sample.Heading;
+        car.State.SideslipAngleRadians = 0f;
+        car.State.YawRateRadiansPerSecond = 0f;
+        car.State.SteerAngleRadians = 0f;
+        car.State.Speed = speed;
     }
 
     private static RaceCar CreateCar(
@@ -345,32 +300,17 @@ public sealed class OvertakeModeTests
     )
     {
         TrackSample sample = track.Sample(s);
-        return new RaceCar(
+        return TestControlFixtures.ExternalCar(
             id,
-            config ?? new CarConfig(),
-            new TireConfig
-            {
-                StartingSurfaceTempC = 90f,
-                StartingCoreTempC = 90f
-            },
-            new ReferenceLineDriver(
-                new VehicleSpeedPlanningConfig(),
-                new DriverProfile(
-                    id,
-                    new DriverAbilities { Pace = 100f },
-                    // One seed for the whole field: correlated form noise
-                    // keeps a same-pace pair at a stable gap, which is what
-                    // these scenarios rely on.
-                    randomSeed: 7
-                )
-            ),
             new CarState
             {
-                Position = sample.RefPosition,
-                Heading = sample.RefHeading,
+                Position = sample.Center,
+                Heading = sample.Heading,
                 Speed = 45f,
                 Energy = PowertrainState.Filled(0.9f)
-            }
+            },
+            new DriverInput(0f, 2f),
+            config
         );
     }
 }

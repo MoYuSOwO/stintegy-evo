@@ -94,13 +94,10 @@ public sealed class CarState
     public float DownforceVelocityDeficit { get; set; }
 
     /// <summary>
-    /// How strongly this car's overtake mode is running, zero to one, this
-    /// lap: earned by being
-    /// within one second of the car ahead at the line, and spent over the whole
-    /// following lap. It trims drag - a genuine straight-line gain, as with a
-    /// drag reduction system - and hands back part of what the wake took from
-    /// downforce, which is capped at clean-air level and so only shortens the
-    /// cornering penalty of running behind someone.
+    /// How strongly this car's overtake device is running, zero to one.
+    /// The external race host supplies activation; Core does not infer eligibility
+    /// from gaps or lap crossings. Physics applies the configured drag trim and
+    /// downforce recovery, capped at clean-air downforce.
     /// </summary>
     public float OvertakeAssist { get; set; }
 

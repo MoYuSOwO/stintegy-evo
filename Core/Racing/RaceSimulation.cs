@@ -14,36 +14,45 @@ public sealed class RaceSimulation
     private const float MinimumStepSeconds = 1e-7f;
 
     private readonly List<RaceCar> _cars = [];
+    private readonly IReadOnlyList<RaceCar> _carsView;
+    private readonly DriverTrackView _driverTrack;
+    private RaceEnvironmentSnapshot _stepEnvironment;
+    private bool _stepping;
     private DriverInput[] _stepInputs = [];
-    private float[] _stepTireEnergyEfficiencies = [];
-    private float[] _stepCorneringEfficiencies = [];
-    private float[] _stepLimitSettleUses = [];
     private CarStrategy[] _stepStrategies = [];
     private TrackPose[] _stepPoses = [];
     private TrackBoundaryContact?[] _preStepContacts = [];
     private TrackBoundaryContact?[] _sweepContacts = [];
     private CarState[] _startStates = [];
     private CarState[] _predictedStates = [];
-    private TrafficMotionPlan?[] _stepTrafficMotionPlans = [];
-    private TrafficMotionPlan?[] _previousTrafficMotionPlans = [];
-    private int[] _overtakeAssistCrossings = [];
-    private readonly RacingRoomCoordinator _racingRoomCoordinator = new();
-    private RacingRoomSnapshot _lastRacingRoom;
 
     public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
     {
         Track = track ?? throw new ArgumentNullException(nameof(track));
         Environment = environment ?? new RaceEnvironment();
+        _driverTrack = new DriverTrackView(Track);
+        _carsView = _cars.AsReadOnly();
     }
 
     public TrackData Track { get; }
     public RaceEnvironment Environment { get; }
-    public IReadOnlyList<RaceCar> Cars => _cars;
+    public IReadOnlyList<RaceCar> Cars => _carsView;
     public float RaceTimeSeconds { get; private set; }
 
     public void AddCar(RaceCar car)
     {
         ArgumentNullException.ThrowIfNull(car);
+        if (_stepping)
+            throw new InvalidOperationException("Cannot change the entry list during a step.");
+        foreach (RaceCar existing in _cars)
+        {
+            if (existing.Id == car.Id)
+                throw new ArgumentException("Car ids must be unique within a race.", nameof(car));
+            if (car.Driver is not null && existing.Driver is not null &&
+                (existing.Driver.Profile.Id == car.Driver.Profile.Id ||
+                 ReferenceEquals(existing.Driver.Controller, car.Driver.Controller)))
+                throw new ArgumentException("A driver and controller can belong to only one entry.", nameof(car));
+        }
 
         TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
         TrackPose pose = Track.Project(car.State.Position);
@@ -54,23 +63,40 @@ public sealed class RaceSimulation
             contact.HasValue
         );
         car.LastBoundaryContact = contact;
-        RaceDriverInitContext context = new(car, Track, pose, Environment, RaceTimeSeconds);
-        car.Driver.Initialize(in context);
         _cars.Add(car);
+        try
+        {
+            if (car.Driver is not null)
+            {
+                DriverContext context = CaptureFrameContext(car);
+                _stepping = true;
+                car.Driver.Controller.Initialize(in context);
+            }
+        }
+        catch
+        {
+            _cars.Remove(car);
+            throw;
+        }
+        finally { _stepping = false; }
     }
 
     public void Step(float dt)
     {
-        if (dt <= 0f)
+        if (!float.IsFinite(dt) || dt < 0f)
+            throw new ArgumentOutOfRangeException(nameof(dt));
+        if (_stepping)
+            throw new InvalidOperationException("Race steps cannot be nested.");
+        if (dt == 0f)
             return;
+        _stepping = true;
+        try { StepCore(dt); }
+        finally { _stepping = false; }
+    }
 
-        foreach (RaceCar car in _cars)
-        {
-            car.LastBoundaryContact = null;
-            car.BoundaryContactSeconds = 0f;
-            car.HitCarThisStep = false;
-        }
-
+    private void StepCore(float dt)
+    {
+        bool firstDriverStep = true;
         float remainingDriverTime = dt;
         while (remainingDriverTime > MinimumStepSeconds)
         {
@@ -78,7 +104,8 @@ public sealed class RaceSimulation
                 remainingDriverTime,
                 MaxDriverStepSeconds
             );
-            EvaluateDrivers(driverStep);
+            EvaluateDrivers(driverStep, firstDriverStep);
+            firstDriverStep = false;
 
             float remainingPhysicsTime = driverStep;
             while (remainingPhysicsTime > MinimumStepSeconds)
@@ -95,188 +122,95 @@ public sealed class RaceSimulation
         }
     }
 
-    /// <summary>
-    /// One more look at the grid with nobody driving on it.
-    ///
-    /// A driver evaluation and a look at the world are welded together in
-    /// <see cref="EvaluateDrivers"/>, which is right for a race: a driver
-    /// looks in order to act. It is wrong for a caller that has to hand the
-    /// world to something outside the simulation and wait for an answer,
-    /// because the answer arrives after the looking. This gives that caller
-    /// the same frame the drivers get, without anybody acting on it.
-    ///
-    /// What it refreshes and what it leaves alone is the whole design.
-    /// Positions, poses and the wake are recomputed, because those are what
-    /// an observation is mostly made of and they have moved since the last
-    /// evaluation. The racing-room coordinator and the traffic plans are
-    /// reused from that evaluation rather than run again: both carry memory
-    /// across frames, and a look at the world must not age anything. The
-    /// cost is that those two blocks are one driver frame stale, which is
-    /// sixteen milliseconds of adjudication geometry — cheaper by far than
-    /// a sample that quietly advances the race.
-    /// </summary>
-    public RaceDriverFrameContext CaptureFrameContext(RaceCar car)
+    /// <summary>Observes the race without advancing time, controllers, or physical state.</summary>
+    public RaceFrameSnapshot CaptureFrame()
     {
-        ArgumentNullException.ThrowIfNull(car);
-
-        int carCount = _cars.Count;
-        int index = _cars.IndexOf(car);
-        if (index < 0)
+        RaceCarSnapshot[] snapshots = new RaceCarSnapshot[_cars.Count];
+        for (int i = 0; i < _cars.Count; i++)
         {
-            throw new ArgumentException(
-                "That car is not in this race.",
-                nameof(car)
-            );
+            RaceCar car = _cars[i];
+            snapshots[i] = RaceCarSnapshot.Capture(car, Track.Project(car.State.Position), Track.LengthMeters);
         }
-
-        EnsureStepCapacity(carCount);
-
-        RaceCarSnapshot[] carSnapshots = new RaceCarSnapshot[carCount];
-        for (int i = 0; i < carCount; i++)
-        {
-            RaceCar other = _cars[i];
-            TrackPose pose = Track.Project(other.State.Position);
-            _stepPoses[i] = pose;
-            carSnapshots[i] = RaceCarSnapshot.Capture(
-                other,
-                pose,
-                Track.LengthMeters
-            );
-        }
-
-        ApplyWakeEffects(carSnapshots);
-
-        RaceFrameSnapshot frame = new(
-            RaceTimeSeconds,
-            carSnapshots,
-            _stepTrafficMotionPlans,
-            _previousTrafficMotionPlans,
-            _lastRacingRoom
-        );
-        return new RaceDriverFrameContext(
-            car,
-            Track,
-            _stepPoses[index],
-            Environment,
-            RaceTimeSeconds,
-            frame,
-            index
-        );
+        CalculateWakeEffects(snapshots);
+        return new RaceFrameSnapshot(RaceTimeSeconds,
+            new(Environment.AirTempC, Environment.TrackTempC, Environment.SurfaceGripScalar), snapshots);
     }
 
-    private void EvaluateDrivers(float dt)
+    public DriverContext CaptureFrameContext(RaceCar car)
+    {
+        ArgumentNullException.ThrowIfNull(car);
+        int index = _cars.IndexOf(car);
+        if (index < 0)
+            throw new ArgumentException("That car is not in this race.", nameof(car));
+        if (car.Driver is null)
+            throw new InvalidOperationException("This entry has no driver. Use CaptureFrame for externally controlled entries.");
+        return new DriverContext(car.Driver.Profile, _driverTrack, CaptureFrame(), index);
+    }
+
+    private void EvaluateDrivers(float dt, bool resetContacts)
     {
         int carCount = _cars.Count;
         if (carCount == 0)
             return;
-
         EnsureStepCapacity(carCount);
+        for (int i = 0; i < carCount; i++)
+            _startStates[i].CopyFrom(_cars[i].State);
+        RaceFrameSnapshot frame;
+        try
+        {
+            for (int i = 0; i < carCount; i++)
+            {
+                RaceCar car = _cars[i];
+                _preStepContacts[i] = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
+                _stepPoses[i] = Track.Project(car.State.Position);
+                // Freeze all host inputs before any controller callback is invoked.
+                _stepInputs[i] = car.ExternalInput;
+            }
 
-        // Wall correction is independent per car, but must finish for every car
-        // before the shared driver snapshot is captured.
+            frame = CaptureFrame();
+            _stepEnvironment = frame.Environment;
+            for (int i = 0; i < carCount; i++)
+            {
+                RaceCarSnapshot snapshot = frame[i];
+                _stepStrategies[i] = snapshot.Strategy;
+            }
+            for (int i = 0; i < carCount; i++)
+            {
+                RaceCar car = _cars[i];
+                if (car.Driver is not null)
+                {
+                    DriverContext context = new(car.Driver.Profile, _driverTrack, frame, i);
+                    _stepInputs[i] = car.Driver.Controller.GetControl(in context, dt);
+                }
+                DriverInput input = _stepInputs[i];
+                if (!float.IsFinite(input.DesiredCurvature) || !float.IsFinite(input.DesiredAccel) ||
+                    !float.IsFinite(input.FrontBrakeBiasOffset))
+                    throw new InvalidOperationException($"Non-finite control for car '{car.Id}'.");
+            }
+        }
+        catch
+        {
+            for (int i = 0; i < carCount; i++)
+                _cars[i].State.CopyFrom(_startStates[i]);
+            throw;
+        }
+        // Publish world fields and commands only after every control validates.
         for (int i = 0; i < carCount; i++)
         {
             RaceCar car = _cars[i];
-            _preStepContacts[i] = TrackBoundaryResolver.ResolveCurrent(
-                Track,
-                car.State,
-                car.Collision
-            );
-        }
-
-        RaceCarSnapshot[] carSnapshots = new RaceCarSnapshot[carCount];
-        for (int i = 0; i < carCount; i++)
-        {
-            RaceCar car = _cars[i];
-            TrackPose pose = Track.Project(car.State.Position);
-            _stepPoses[i] = pose;
-            carSnapshots[i] = RaceCarSnapshot.Capture(
-                car,
-                pose,
-                Track.LengthMeters
-            );
-            _stepTrafficMotionPlans[i] = null;
-        }
-
-        ApplyWakeEffects(carSnapshots);
-        RacingRoomSnapshot racingRoom = _racingRoomCoordinator.Update(
-            carSnapshots
-        );
-        _lastRacingRoom = racingRoom;
-
-        // Planning is a write-only phase over one frozen physical snapshot.
-        // No driver can read another driver's partially prepared plan. The
-        // separate previous-plan buffers are stable snapshots captured after
-        // the preceding evaluation phase.
-        RaceFrameSnapshot planningFrame = new(
-            RaceTimeSeconds,
-            carSnapshots,
-            _stepTrafficMotionPlans,
-            _previousTrafficMotionPlans,
-            racingRoom
-        );
-        for (int i = 0; i < carCount; i++)
-        {
-            RaceCar car = _cars[i];
-            if (car.Driver is not ITrafficMotionPlanSource source)
-                continue;
-
-            RaceDriverFrameContext planningContext = new(
-                car,
-                Track,
-                _stepPoses[i],
-                Environment,
-                RaceTimeSeconds,
-                planningFrame,
-                i
-            );
-            source.PrepareTrafficMotionPlan(in planningContext, dt);
-        }
-
-        // Barrier: only after every source has prepared may any submitted plan
-        // become visible to the shared decision frame.
-        for (int i = 0; i < carCount; i++)
-        {
-            _stepTrafficMotionPlans[i] = _cars[i].Driver is
-                ITrafficMotionPlanSource source
-                    ? source.FreezeTrafficMotionPlan()
-                    : null;
-        }
-
-        RaceFrameSnapshot frame = new(
-            RaceTimeSeconds,
-            carSnapshots,
-            _stepTrafficMotionPlans,
-            racingRoom
-        );
-
-        // Driver evaluation is a read phase: every driver receives the exact same
-        // pre-physics vehicle snapshot regardless of car insertion order.
-        for (int i = 0; i < carCount; i++)
-        {
-            RaceCar car = _cars[i];
-            RaceDriverFrameContext context = new(
-                car,
-                Track,
-                _stepPoses[i],
-                Environment,
-                RaceTimeSeconds,
-                frame,
-                i
-            );
-            DriverInput input = car.Driver.GetControl(in context, dt);
-
-            _stepInputs[i] = input;
-            _stepStrategies[i] = car.Strategy;
-            _stepTireEnergyEfficiencies[i] = car.Driver.TireEnergyEfficiency;
-            _stepCorneringEfficiencies[i] = car.Driver.CorneringEfficiency;
-            _stepLimitSettleUses[i] = car.Driver.LimitSettleUse;
-            car.LastInput = input;
+            if (resetContacts)
+            {
+                car.LastBoundaryContact = null;
+                car.BoundaryContactSeconds = 0f;
+                car.HitCarThisStep = false;
+            }
+            car.State.AirVelocityDeficit = frame[i].AirVelocityDeficit;
+            car.State.DownforceVelocityDeficit = frame[i].DownforceVelocityDeficit;
+            car.State.WakeDownforceLoss = frame[i].WakeDownforceLoss;
+            _cars[i].LastInput = _stepInputs[i];
             if (_preStepContacts[i].HasValue)
-                car.LastBoundaryContact = _preStepContacts[i];
+                _cars[i].LastBoundaryContact = _preStepContacts[i];
         }
-
-        CapturePreviousTrafficMotionPlans(carCount);
     }
 
     /// <summary>
@@ -296,12 +230,6 @@ public sealed class RaceSimulation
     /// <summary>Beyond this there is nothing left worth computing.</summary>
     private const float WakeReachMeters = 80f;
 
-    /// <summary>
-    /// How close a car must be to the one ahead, as it crosses the line, to
-    /// earn overtake mode for the lap that follows.
-    /// </summary>
-    private const float OvertakeAssistGapSeconds = 1f;
-
     private static float GaussianFalloff(float gap, float decayLengthMeters)
     {
         float scale = MathF.Max(decayLengthMeters, 1e-3f);
@@ -318,7 +246,7 @@ public sealed class RaceSimulation
     /// the list. A car takes the strongest wake on offer rather than adding up
     /// several: two cars in line ahead punch one hole in the air, not two.
     /// </summary>
-    private void ApplyWakeEffects(RaceCarSnapshot[] snapshots)
+    private void CalculateWakeEffects(RaceCarSnapshot[] snapshots)
     {
         int carCount = snapshots.Length;
         for (int i = 0; i < carCount; i++)
@@ -403,15 +331,12 @@ public sealed class RaceSimulation
                 0f,
                 _cars[i].CarConfig.DirtyAirSensitivity
             );
-            _cars[i].State.AirVelocityDeficit = strongestTow;
-            _cars[i].State.DownforceVelocityDeficit = MathF.Min(
-                1f,
-                strongestDownforceDeficit * sensitivity
-            );
-            _cars[i].State.WakeDownforceLoss = MathF.Min(
-                1f,
-                strongestDirtyAir * sensitivity
-            );
+            snapshots[i] = ego with
+            {
+                AirVelocityDeficit = strongestTow,
+                DownforceVelocityDeficit = MathF.Min(1f, strongestDownforceDeficit * sensitivity),
+                WakeDownforceLoss = MathF.Min(1f, strongestDirtyAir * sensitivity)
+            };
         }
     }
 
@@ -432,11 +357,8 @@ public sealed class RaceSimulation
             CarPhysicsStepInput physicsInput = new(
                 _stepInputs[i],
                 _stepStrategies[i],
-                Environment.AirTempC,
-                Environment.TrackTempC,
-                _stepTireEnergyEfficiencies[i],
-                _stepCorneringEfficiencies[i],
-                _stepLimitSettleUses[i]
+                _stepEnvironment.AirTempC,
+                _stepEnvironment.TrackTempC
             )
             {
                 RoadAttitude = SampleRoadAttitude(car),
@@ -486,70 +408,6 @@ public sealed class RaceSimulation
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
         }
 
-        UpdateOvertakeAssist();
-    }
-
-    /// <summary>
-    /// Overtake mode is settled once a lap, as the car crosses the line: a
-    /// car within one second of whoever is directly ahead of it on the road
-    /// carries the mode for the whole of the next lap. Deciding it at a
-    /// single point, for a whole lap, keeps the right from flickering with
-    /// every metre of gap, and keeps the rule something a driver could be
-    /// told rather than something only a solver could follow. The right
-    /// swaps sides on its own: whoever completes a pass stops qualifying at
-    /// the next crossing, and the car just passed starts to. Nobody carries
-    /// the mode off the grid - the first decision waits for the first real
-    /// crossing, the way the real aids sit disabled on an opening lap.
-    /// </summary>
-    private void UpdateOvertakeAssist()
-    {
-        if (_overtakeAssistCrossings.Length < _cars.Count)
-        {
-            int previous = _overtakeAssistCrossings.Length;
-            Array.Resize(ref _overtakeAssistCrossings, _cars.Count);
-            for (int i = previous; i < _overtakeAssistCrossings.Length; i++)
-                _overtakeAssistCrossings[i] = int.MinValue;
-        }
-
-        for (int i = 0; i < _cars.Count; i++)
-        {
-            RaceCar car = _cars[i];
-            // Continuous race distance over lap length is a crossing counter
-            // that, unlike the clamped lap number, still ticks for a car
-            // gridded behind the line - and only forward progress advances
-            // it, so sliding backwards across the line cannot re-roll the
-            // decision at a hundred and twenty hertz.
-            int crossings = (int)MathF.Floor(
-                car.Progress.RaceDistanceMeters / Track.LengthMeters
-            );
-            if (_overtakeAssistCrossings[i] == int.MinValue)
-            {
-                _overtakeAssistCrossings[i] = crossings;
-                continue;
-            }
-            if (crossings <= _overtakeAssistCrossings[i])
-                continue;
-            _overtakeAssistCrossings[i] = crossings;
-
-            float ownDistance = car.Progress.RaceDistanceMeters;
-            float nearestAhead = float.PositiveInfinity;
-            for (int j = 0; j < _cars.Count; j++)
-            {
-                if (j == i)
-                    continue;
-                float delta = OnTrackDistanceAhead(
-                    _cars[j].Progress.RaceDistanceMeters,
-                    ownDistance,
-                    Track.LengthMeters
-                );
-                if (delta > 0f && delta < nearestAhead)
-                    nearestAhead = delta;
-            }
-
-            float speed = MathF.Max(car.State.Speed, 1f);
-            car.State.OvertakeAssist =
-                nearestAhead / speed <= OvertakeAssistGapSeconds ? 1f : 0f;
-        }
     }
 
     /// <summary>
@@ -578,39 +436,17 @@ public sealed class RaceSimulation
         int previousCapacity = _stepInputs.Length;
         int capacity = Math.Max(required, Math.Max(4, previousCapacity * 2));
         Array.Resize(ref _stepInputs, capacity);
-        Array.Resize(ref _stepTireEnergyEfficiencies, capacity);
-        Array.Resize(ref _stepCorneringEfficiencies, capacity);
-        Array.Resize(ref _stepLimitSettleUses, capacity);
         Array.Resize(ref _stepStrategies, capacity);
         Array.Resize(ref _stepPoses, capacity);
         Array.Resize(ref _preStepContacts, capacity);
         Array.Resize(ref _sweepContacts, capacity);
         Array.Resize(ref _startStates, capacity);
         Array.Resize(ref _predictedStates, capacity);
-        Array.Resize(ref _stepTrafficMotionPlans, capacity);
-        Array.Resize(ref _previousTrafficMotionPlans, capacity);
 
         for (int i = previousCapacity; i < capacity; i++)
         {
             _startStates[i] = new CarState();
             _predictedStates[i] = new CarState();
-        }
-    }
-
-    private void CapturePreviousTrafficMotionPlans(int carCount)
-    {
-        for (int i = 0; i < carCount; i++)
-        {
-            TrafficMotionPlan? current = _stepTrafficMotionPlans[i];
-            if (current is null)
-            {
-                _previousTrafficMotionPlans[i]?.Clear();
-                continue;
-            }
-
-            TrafficMotionPlan snapshot =
-                _previousTrafficMotionPlans[i] ??= new TrafficMotionPlan();
-            snapshot.CopyFrom(current);
         }
     }
 
@@ -659,7 +495,7 @@ public sealed class RaceSimulation
 
         // The day's grip goes in through the dynamic layer, which is
         // exactly the slot it was reserved for.
-        float today = Environment.SurfaceGripScalar;
+        float today = _stepEnvironment.SurfaceGripScalar;
         return new WheelSurfaceGrip(
             SurfaceGrip.At(sample, OffsetOf(front + side), today),
             SurfaceGrip.At(sample, OffsetOf(front - side), today),

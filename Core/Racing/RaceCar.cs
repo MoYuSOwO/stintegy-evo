@@ -10,7 +10,7 @@ public sealed class RaceCar
         string id,
         CarConfig carConfig,
         TireConfig tireConfig,
-        IRaceDriver driver,
+        Driver? driver = null,
         CarState? state = null,
         CarCollisionConfig? collision = null,
         bool installFreshTires = true
@@ -19,7 +19,7 @@ public sealed class RaceCar
         Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("Car id is required.", nameof(id)) : id;
         CarConfig = carConfig ?? throw new ArgumentNullException(nameof(carConfig));
         TireConfig = tireConfig ?? throw new ArgumentNullException(nameof(tireConfig));
-        Driver = driver ?? throw new ArgumentNullException(nameof(driver));
+        Driver = driver;
         State = state ?? new CarState();
         Collision = collision ?? new CarCollisionConfig();
 
@@ -32,7 +32,14 @@ public sealed class RaceCar
     public CarConfig CarConfig { get; }
     public TireConfig TireConfig { get; private set; }
     public CarStrategy Strategy { get; set; } = CarStrategy.Default;
-    public IRaceDriver Driver { get; set; }
+    public Driver? Driver { get; }
+
+    /// <summary>
+    /// A held command supplied by an external host when no controller is attached.
+    /// Defaults to zero; Core does not invent an autonomous fallback driver.
+    /// Controller-driven entries ignore this input.
+    /// </summary>
+    public DriverInput ExternalInput { get; set; }
     public RaceProgress Progress { get; } = new();
     public CarCollisionConfig Collision { get; }
     public DriverInput LastInput { get; internal set; }

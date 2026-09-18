@@ -2,20 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
-using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
-using StintegyEVO.Core.Track.RefLines;
 using StintegyEVO.Core.Util;
 using Xunit;
 
 namespace StintegyEVO.Core.Tests;
 
 /// <summary>
-/// Pins the 2.5D road: a climb costs speed, a descent gives it back, and a
-/// banked corner both carries part of the cornering load and adds grip
-/// while it does so. The car stays a body on a surface — nothing here
-/// simulates it as a rigid body in three dimensions.
+/// Pins the physical 2.5D road: centreline curvature, grade, banking,
+/// elevation closure, and the force resolution that consumes those values.
+/// No planner-generated line or driving controller participates.
 /// </summary>
 public sealed class RoadAttitudeTests
 {
@@ -139,62 +135,6 @@ public sealed class RoadAttitudeTests
     }
 
     [Fact]
-    public void BankedCornersPlanFasterThanFlatOnes()
-    {
-        TrackData flat = BuildOval(bank: TrackSurface.Flat);
-        TrackData banked = BuildOval(
-            bank: new TrackSurface(BankSlope: 0.5f)
-        );
-        // Sample where the corner actually is, rather than guessing a
-        // fraction that moves whenever the oval's proportions change.
-        float turnS = SharpestPoint(flat);
-        Assert.True(MathF.Abs(flat.Sample(turnS).RefCurvature) > 1e-3f);
-
-        float flatLimit = PlannedSpeedAt(flat, turnS);
-        float bankedLimit = PlannedSpeedAt(banked, turnS);
-
-        Assert.True(
-            bankedLimit > flatLimit * 1.05f,
-            $"banked {bankedLimit:0.0} should beat flat {flatLimit:0.0}"
-        );
-    }
-
-    [Fact]
-    public void ABankedOvalIsFasterToDriveThanAFlatOne()
-    {
-        // The end-to-end check the analytic ones cannot make: a real car,
-        // planning and driving itself, over the same oval twice. Every sign
-        // in the chain has to agree for this to come out the right way
-        // round, which is exactly how the first version's inverted bank was
-        // caught.
-        float flat = RunSimulated(TrackSurface.Flat);
-        float banked = RunSimulated(new TrackSurface(BankSlope: 0.45f));
-        float wrongWay = RunSimulated(new TrackSurface(BankSlope: -0.45f));
-
-        Assert.True(
-            banked > flat * 1.02f,
-            $"banked {banked:0} m should beat flat {flat:0} m"
-        );
-        Assert.True(
-            wrongWay < flat,
-            $"a bank leaning out of the corner ({wrongWay:0} m) must cost " +
-            $"against flat ({flat:0} m)"
-        );
-    }
-
-    [Fact]
-    public void ClimbShowsUpInASimulatedCar()
-    {
-        float flatDistance = RunSimulated(TrackSurface.Flat);
-        float climbDistance = RunSimulated(new TrackSurface(Grade: 0.08f));
-        Assert.True(
-            climbDistance < flatDistance,
-            $"climbing {climbDistance:0} m should fall short of level " +
-            $"{flatDistance:0} m"
-        );
-    }
-
-    [Fact]
     public void RoadCircuitsAreCrownedOnStraightsAndTiltIntoCorners()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
@@ -210,7 +150,7 @@ public sealed class RoadAttitudeTests
         Assert.True(MathF.Abs(corner.BankSlope) > 0.02f);
         Assert.InRange(MathF.Abs(corner.BankSlope), 0f, 0.05f);
         Assert.Equal(
-            MathF.Sign(corner.RefCurvature),
+            MathF.Sign(corner.Curvature),
             MathF.Sign(corner.BankSlope)
         );
     }
@@ -248,23 +188,6 @@ public sealed class RoadAttitudeTests
         Assert.True(
             MathF.Abs(wall) > MathF.Abs(apron) * 1.4f,
             $"wall {wall:0.000} should be far steeper than apron {apron:0.000}"
-        );
-    }
-
-    [Fact]
-    public void TheSpeedwayIsQuickerThanTheSameShapeUnbanked()
-    {
-        float banked = LapDistance(TrackFactory.BankedSpeedwayTestTrack());
-        float flat = LapDistance(BuildFlatSpeedway());
-        // Measured at about four percent. Less than the corner speed alone
-        // would suggest, because the planner claims the demand the bank
-        // lifts off the tyres more readily than the load it presses on, and
-        // because a short track spends much of its lap accelerating out
-        // rather than cornering. The pin is set below that so it fails on a
-        // sign or a wiring mistake rather than on tuning.
-        Assert.True(
-            banked > flat * 1.03f,
-            $"banked speedway {banked:0} m should beat the flat one {flat:0} m"
         );
     }
 
@@ -409,21 +332,6 @@ public sealed class RoadAttitudeTests
         );
     }
 
-    [Fact(Skip =
-        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
-    public void AClimbCostsAndTheMatchingDescentPaysItBack()
-    {
-        // End to end on a real circuit: a lap of Monaco against the same
-        // layout levelled. What matters is that the two come out close,
-        // because a closed lap spends climbing exactly what it recovers
-        // descending — a hilly circuit is not a slow one, it is one whose
-        // speed is differently distributed. A large gap either way would
-        // mean the gradient was leaking energy.
-        float hilly = LapDistance(TrackFactory.MonacoStyleTestTrack());
-        float level = LapDistance(BuildLevelMonaco());
-        Assert.InRange(hilly / level, 0.97f, 1.03f);
-    }
-
     [Fact]
     public void TheSimpleLayoutClimbsItsStartStraightAndGivesItBack()
     {
@@ -461,7 +369,7 @@ public sealed class RoadAttitudeTests
         {
             TrackSample sample = track.Sample(s);
             Assert.Equal(
-                MathF.Sign(sample.RefCurvature),
+                MathF.Sign(sample.Curvature),
                 MathF.Sign(sample.BankSlope)
             );
         }
@@ -474,10 +382,10 @@ public sealed class RoadAttitudeTests
         // anyone edits the layout without moving them, the bank lands on a
         // straight and this catches it.
         TrackData track = TrackFactory.SimpleTestTrack();
-        Assert.True(MathF.Abs(track.Sample(580f).RefCurvature) > 0.02f);
-        Assert.True(MathF.Abs(track.Sample(1450f).RefCurvature) > 0.005f);
-        Assert.True(MathF.Abs(track.Sample(275f).RefCurvature) < 0.002f);
-        Assert.True(MathF.Abs(track.Sample(1080f).RefCurvature) < 0.002f);
+        Assert.True(MathF.Abs(track.Sample(580f).Curvature) > 0.02f);
+        Assert.True(MathF.Abs(track.Sample(1450f).Curvature) > 0.005f);
+        Assert.True(MathF.Abs(track.Sample(275f).Curvature) < 0.002f);
+        Assert.True(MathF.Abs(track.Sample(1080f).Curvature) < 0.002f);
     }
 
     [Fact]
@@ -521,138 +429,43 @@ public sealed class RoadAttitudeTests
     }
 
     [Fact]
-    public void ThePlanSlowsOverACrestAndPressesOnThroughACompression()
+    public void NoCircuitTurnsItsBankOverInASingleMetre()
     {
-        // Sampled at the top of the hill and at the bottom of it, because
-        // those are the two places where the road is momentarily level and
-        // what is left is purely how it bends. Anywhere else the gradient
-        // would be answering as well.
-        TrackData hilly = RollingOval(heightMetres: 12f);
-        TrackData flat = RollingOval(heightMetres: 0f);
-
-        Assert.InRange(hilly.Sample(SummitMetres).Grade, -0.005f, 0.005f);
-        Assert.InRange(hilly.Sample(DipMetres).Grade, -0.005f, 0.005f);
-        Assert.True(hilly.Sample(SummitMetres).VerticalRate < -1e-4f);
-        Assert.True(hilly.Sample(DipMetres).VerticalRate > 1e-4f);
-
-        float level = PlannedSpeedAt(flat, SummitMetres);
-        float overACrest = PlannedSpeedAt(hilly, SummitMetres);
-        float throughACompression = PlannedSpeedAt(hilly, DipMetres);
-
-        Assert.True(
-            overACrest < level * 0.985f,
-            $"over a crest {overACrest:0.0} should be planned below the same " +
-            $"corner on the level, {level:0.0}"
-        );
-        Assert.True(
-            throughACompression > level * 1.015f,
-            $"through a compression {throughACompression:0.0} should beat " +
-            $"the same corner on the level, {level:0.0}"
-        );
-    }
-
-    // Halfway round each of the oval's two turns.
-    private const float SummitMetres = 400f + MathF.PI * 90f / 2f;
-    private const float DipMetres = SummitMetres + 400f + MathF.PI * 90f;
-
-    /// <summary>
-    /// One oval with a hill over it, the top of the hill in the middle of
-    /// one turn and the bottom in the middle of the other, so a corner can
-    /// be compared against the same corner on the level. Passing zero gives
-    /// the identical layout dead flat, which is the control.
-    /// </summary>
-    private static TrackData RollingOval(float heightMetres)
-    {
-        const float lap = 2f * 400f + 2f * MathF.PI * 90f;
-        return new TrackBuilder(
-                Vector2.Zero,
-                startWidth: 16f,
-                refLineSolver: CenterLineRefLineSolver.Instance
-            )
-            .AddStraight(400f)
-            .AddTurn(180f, 90f)
-            .AddStraight(400f)
-            .AddTurn(180f, 90f)
-            .CloseLoop()
-            .WithSurface(TrackElevation.ProfileByDistance([
-                (SummitMetres - 0.25f * lap, 0f),
-                (SummitMetres, heightMetres),
-                (SummitMetres + 0.25f * lap, 0f),
-                (DipMetres, -heightMetres)
-            ]))
-            .Build(new TrackGridConfig());
-    }
-
-    [Fact]
-    public void ThePlanBrakesEarlierForACornerItIsDescendingInto()
-    {
-        // Where the plan lifts, not how fast it is somewhere. A car coming
-        // down the hill is quicker all the way along the approach -- it has
-        // been accelerating the whole way -- so its speed at any fixed point
-        // says nothing. What the gradient decides is the braking point.
-        float level = BrakingPointMetresBeforeTheCorner(0f);
-        float downhill = BrakingPointMetresBeforeTheCorner(-0.08f);
-        float uphill = BrakingPointMetresBeforeTheCorner(0.08f);
-
-        Assert.True(
-            downhill > level + 2f,
-            $"descending should brake {downhill:0} m out, further than the " +
-            $"{level:0} m a level approach needs"
-        );
-        Assert.True(
-            uphill < level - 1f,
-            $"climbing should brake {uphill:0} m out, later than the " +
-            $"{level:0} m a level approach needs"
-        );
-    }
-
-    /// <summary>
-    /// How far before the hairpin the plan stops accelerating, on an
-    /// approach of the given gradient. One gradient the whole way round, so
-    /// the road never bends in the vertical plane and nothing but the
-    /// gradient separates the three runs; the lap does not close in height
-    /// and is not meant to.
-    /// </summary>
-    private static float BrakingPointMetresBeforeTheCorner(float grade)
-    {
-        const float approach = 300f;
-        TrackData track = new TrackBuilder(
-                Vector2.Zero,
-                startWidth: 16f,
-                startLeftBuffer: 5f,
-                startRightBuffer: 5f
-            )
-            .AddStraight(approach)
-            .AddTurn(180f, 40f)
-            .AddStraight(approach)
-            .AddTurn(180f, 40f)
-            .CloseLoop()
-            .WithSurface(context => new TrackSurface(Grade: grade))
-            .Build(new TrackGridConfig());
-
-        RaceCar car = CreateCar(track, s: 10f, speed: 70f);
-        VehicleSpeedPlanner planner = new();
-        VehicleSpeedLookahead plan = planner.PlanReferenceLookahead(
-            new VehicleSpeedLookahead(),
-            car,
-            track,
-            startS: 10f,
-            horizonMeters: 320f,
-            stepMeters: 2f,
-            DriverPlanningModifiers.Neutral
-        );
-
-        float peak = 0f;
-        float peakAt = 0f;
-        for (float d = 0f; d < approach; d += 1f)
+        // Banking is run in and out over tens of metres on a real road. It
+        // cannot reverse under a car in one, and a surface that does is not
+        // a road but a step in the lateral force balance.
+        //
+        // The two that did: the simple layout flipped seventeen degrees of
+        // added bank to seventeen the other way between one node and the
+        // next, where the hairpin handed over to the esses; and the speedway
+        // put a reverse-banked node at each turn exit, where the curvature
+        // it was built from dithered across zero on the straight. Both came
+        // of reading a bank's direction from the sign of a noisy, stepped
+        // curvature rather than from how committed the corner is. The worst
+        // any circuit manages now is 0.135 per metre.
+        foreach ((string name, TrackData track) in NamedCircuits())
         {
-            float speed = plan.Sample(d).TargetSpeed;
-            if (speed <= peak)
-                continue;
-            peak = speed;
-            peakAt = d;
+            float worst = 0f;
+            float worstAtS = 0f;
+            int metres = (int)track.LengthMeters;
+            for (int s = 0; s < metres; s++)
+            {
+                float change = MathF.Abs(
+                    track.Sample(s + 1).BankSlope - track.Sample(s).BankSlope
+                );
+                if (change > worst)
+                {
+                    worst = change;
+                    worstAtS = s;
+                }
+            }
+
+            Assert.True(
+                worst < 0.2f,
+                $"{name} changes its bank by {worst:0.000} per metre at " +
+                $"s={worstAtS:0}, which is a step rather than a transition"
+            );
         }
-        return approach - peakAt;
     }
 
     private static float HeightAt(TrackData track, float target)
@@ -692,38 +505,6 @@ public sealed class RoadAttitudeTests
         for (float s = 0f; s < track.LengthMeters; s += 2f)
             steepest = MathF.Max(steepest, MathF.Abs(track.Sample(s).Grade));
         return steepest;
-    }
-
-    private static TrackData BuildLevelMonaco() =>
-        TrackBuilder.FromClosedCenterline(
-                TrackCenterlineData.Monaco, 3_337f, 3f, 3f)
-            .WithSurface(TrackSurfaces.RoadCircuit)
-            .Build(new TrackGridConfig());
-
-    private static float LapDistance(TrackData track)
-    {
-        RaceCar car = CreateCar(track, s: 10f, speed: 60f);
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(car);
-        for (int i = 0; i < 60 * 40; i++)
-            simulation.Step(1f / 60f);
-        return car.Progress.TotalDistance;
-    }
-
-    private static TrackData BuildFlatSpeedway()
-    {
-        return new TrackBuilder(
-                Vector2.Zero,
-                startWidth: 15f,
-                startLeftBuffer: 6f,
-                startRightBuffer: 6f
-            )
-            .AddStraight(350f)
-            .AddTurn(180f, 90f)
-            .AddStraight(350f)
-            .AddTurn(180f, 90f)
-            .CloseLoop()
-            .Build(new TrackGridConfig());
     }
 
     /// <summary>
@@ -771,7 +552,7 @@ public sealed class RoadAttitudeTests
         float bestCurvature = 0f;
         for (float s = 0f; s < track.LengthMeters; s += 5f)
         {
-            float curvature = MathF.Abs(track.Sample(s).RefCurvature);
+            float curvature = MathF.Abs(track.Sample(s).Curvature);
             if (curvature > bestCurvature)
             {
                 bestCurvature = curvature;
@@ -779,24 +560,6 @@ public sealed class RoadAttitudeTests
             }
         }
         return bestS;
-    }
-
-    private static float PlannedSpeedAt(TrackData track, float s)
-    {
-        // Fast enough that the car's own top speed is not the binding
-        // constraint, so what comes back is the corner's limit.
-        RaceCar car = CreateCar(track, s, speed: 85f);
-        VehicleSpeedPlanner planner = new();
-        VehicleSpeedLookahead plan = planner.PlanReferenceLookahead(
-            new VehicleSpeedLookahead(),
-            car,
-            track,
-            s,
-            horizonMeters: 20f,
-            stepMeters: 2f,
-            DriverPlanningModifiers.Neutral
-        );
-        return plan.Sample(0f).TargetSpeed;
     }
 
     private static float RunStraight(RoadAttitude road)
@@ -827,200 +590,11 @@ public sealed class RoadAttitudeTests
         return state.Speed;
     }
 
-    [Fact]
-    public void NoCircuitTurnsItsBankOverInASingleMetre()
-    {
-        // Banking is run in and out over tens of metres on a real road. It
-        // cannot reverse under a car in one, and a surface that does is not
-        // a road but a step in the lateral force balance.
-        //
-        // The two that did: the simple layout flipped seventeen degrees of
-        // added bank to seventeen the other way between one node and the
-        // next, where the hairpin handed over to the esses; and the speedway
-        // put a reverse-banked node at each turn exit, where the curvature
-        // it was built from dithered across zero on the straight. Both came
-        // of reading a bank's direction from the sign of a noisy, stepped
-        // curvature rather than from how committed the corner is. The worst
-        // any circuit manages now is 0.135 per metre.
-        foreach ((string name, TrackData track) in NamedCircuits())
-        {
-            float worst = 0f;
-            float worstAtS = 0f;
-            int metres = (int)track.LengthMeters;
-            for (int s = 0; s < metres; s++)
-            {
-                float change = MathF.Abs(
-                    track.Sample(s + 1).BankSlope - track.Sample(s).BankSlope
-                );
-                if (change > worst)
-                {
-                    worst = change;
-                    worstAtS = s;
-                }
-            }
-
-            Assert.True(
-                worst < 0.2f,
-                $"{name} changes its bank by {worst:0.000} per metre at " +
-                $"s={worstAtS:0}, which is a step rather than a transition"
-            );
-        }
-    }
-
-    [Fact]
-    public void ThePlanReadsTheBankWhereTheCarWillActuallyBe()
-    {
-        // A progressively banked corner is not one surface but a range of
-        // them, and the reference line is only one place across it. A plan
-        // that always reads the bank at the reference line prices a corner
-        // the car is not driving: run high on Daytona's banking and the plan
-        // has to see the steeper road, or the whole point of the high line
-        // is invisible to it.
-        TrackData track = BuildBankedOval();
-        float turnS = SharpestPoint(track);
-
-        float high = PlannedSpeedOnLine(track, turnS, offsetMeters: 5f);
-        float low = PlannedSpeedOnLine(track, turnS, offsetMeters: -5f);
-
-        Assert.True(
-            high > low * 1.02f,
-            $"the steeper high line ({high:0.0} m/s) should plan faster " +
-            $"than the shallow apron ({low:0.0} m/s)"
-        );
-    }
-
-    /// <summary>
-    /// Plans a path that holds one fixed offset from the centreline through
-    /// a corner. Both lines are given the same commanded curvature on
-    /// purpose, so the only thing that can separate them is the road each
-    /// one is standing on.
-    /// </summary>
-    private static float PlannedSpeedOnLine(
-        TrackData track,
-        float turnS,
-        float offsetMeters
-    )
-    {
-        const int points = 21;
-        const float step = 2f;
-        float startS = turnS - points * step * 0.5f;
-        RaceCar car = CreateCar(track, startS, speed: 85f);
-
-        VehiclePathPrediction path = new();
-        path.Reset(points);
-        for (int i = 0; i < points; i++)
-        {
-            float s = startS + i * step;
-            TrackSample sample = track.Sample(s);
-            path.Add(new VehiclePathPredictionPoint(
-                i * step,
-                sample.Center + sample.Normal * offsetMeters,
-                MathF.Atan2(sample.Tangent.Y, sample.Tangent.X),
-                s,
-                0f,
-                sample.RefCurvature,
-                sample.RefCurvature,
-                0f,
-                sample.RefCurvature,
-                85f
-            ));
-        }
-
-        VehicleSpeedPlanner planner = new();
-        return planner
-            .PlanPredictedPath(new VehicleSpeedLookahead(), car, path, track)
-            .Current.TargetSpeed;
-    }
-
-    [Fact]
-    public void TheControllerPaysForTheGradientItIsDrivingOn()
-    {
-        // The plan knowing about the hill is only half of it. The controller
-        // asks the axle for a number and the road adds its pull afterwards,
-        // so unless the gradient is answered on the way out, the only thing
-        // left to answer it is the proportional speed term — and a
-        // proportional term meets a standing pull with a standing error, so
-        // the car climbs slower than the plan it is obeying. Measured over
-        // twenty seconds of an eight percent oval, paying for it is worth
-        // 1.8% of the distance covered.
-        float expected = GravityMetersPerSecondSquared * 0.08f /
-                         MathF.Sqrt(1f + 0.08f * 0.08f);
-
-        // On a level road the term has to vanish outright: anything else
-        // would move every result on every flat circuit.
-        Assert.InRange(GradeCompensation(TrackSurface.Flat), -1e-4f, 1e-4f);
-        Assert.InRange(
-            GradeCompensation(new TrackSurface(Grade: 0.08f)),
-            expected * 0.98f,
-            expected * 1.02f
-        );
-        Assert.InRange(
-            GradeCompensation(new TrackSurface(Grade: -0.08f)),
-            -expected * 1.02f,
-            -expected * 0.98f
-        );
-    }
-
-    private const float GravityMetersPerSecondSquared = 9.80665f;
-
-    /// <summary>
-    /// What the driver adds to the axle request to answer the road, averaged
-    /// over a settled run.
-    /// </summary>
-    private static float GradeCompensation(TrackSurface surface)
-    {
-        TrackData track = BuildOval(surface);
-        RaceCar car = CreateCar(track, s: 10f, speed: 45f);
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(car);
-
-        ReferenceLineDriver driver = (ReferenceLineDriver)car.Driver;
-        double total = 0d;
-        int samples = 0;
-        for (int i = 0; i < 60 * 20; i++)
-        {
-            simulation.Step(1f / 60f);
-            if (i < 60 * 5)
-                continue;
-            total += driver.LastTelemetry.GradeCompensationAcceleration;
-            samples++;
-        }
-        return (float)(total / Math.Max(samples, 1));
-    }
-
-    private static float RunSimulated(TrackSurface surface)
-    {
-        TrackData track = BuildOval(surface);
-        RaceCar car = CreateCar(track, s: 10f, speed: 45f);
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(car);
-        for (int i = 0; i < 60 * 20; i++)
-            simulation.Step(1f / 60f);
-        return car.Progress.TotalDistance;
-    }
-
-    private static TrackData BuildOval(TrackSurface bank)
-    {
-        return new TrackBuilder(
-                Vector2.Zero,
-                startWidth: 16f,
-                refLineSolver: CenterLineRefLineSolver.Instance
-            )
-            .WithSurface(context => bank)
-            .AddStraight(400f)
-            .AddTurn(180f, 50f)
-            .AddStraight(400f)
-            .AddTurn(180f, 50f)
-            .CloseLoop()
-            .Build(new TrackGridConfig());
-    }
-
     private static TrackData BuildBankedOval()
     {
         return new TrackBuilder(
                 Vector2.Zero,
-                startWidth: 16f,
-                refLineSolver: CenterLineRefLineSolver.Instance
+                startWidth: 16f
             )
             .WithSurface(context => new TrackSurface(
                 BankSlope: 0.45f,
@@ -1032,27 +606,5 @@ public sealed class RoadAttitudeTests
             .AddTurn(180f, 50f)
             .CloseLoop()
             .Build(new TrackGridConfig());
-    }
-
-    private static RaceCar CreateCar(TrackData track, float s, float speed)
-    {
-        TrackSample sample = track.Sample(s);
-        return new RaceCar(
-            "surface-test",
-            new CarConfig(),
-            new TireConfig
-            {
-                StartingSurfaceTempC = 90f,
-                StartingCoreTempC = 90f
-            },
-            new ReferenceLineDriver(),
-            new CarState
-            {
-                Position = sample.RefPosition,
-                Heading = sample.RefHeading,
-                Speed = speed,
-                Energy = PowertrainState.Filled(0.8f)
-            }
-        );
     }
 }

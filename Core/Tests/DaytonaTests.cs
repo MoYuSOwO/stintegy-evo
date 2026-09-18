@@ -1,10 +1,5 @@
 using System;
-using System.Numerics;
-using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
-using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
-using StintegyEVO.Core.Track.RefLines;
 using Xunit;
 
 namespace StintegyEVO.Core.Tests;
@@ -65,92 +60,6 @@ public sealed class DaytonaTests
             $"banking changes by {worst:0.0000} per metre at its sharpest"
         );
     }
-
-    [Fact(Skip =
-        "the analytic driver is an instrument now, not a protected baseline: this probe reads the loading at one point of the banking off a lap it drives itself, and on a car with slip angles and a run-off that is no longer full grip it does not reliably get there. The banking's physics is pinned by RoadAttitudeTests. See Training/experiments/2026-09-07-slip-angle.")]
-    public void TheBankingCarriesHalfTheCorner()
-    {
-        // The point of the circuit, stated as physics rather than as lap
-        // time: at the same speed through the same radius, thirty-one
-        // degrees takes about half the lateral off the tyres and puts about
-        // a third more load on them.
-        (float use, float load, float speed) flat = TurnLoading(FlatOval());
-        (float use, float load, float speed) banked =
-            TurnLoading(TrackFactory.DaytonaStyleTestTrack());
-
-        Assert.InRange(banked.speed - flat.speed, -3f, 3f);
-        Assert.True(
-            banked.use < flat.use * 0.7f,
-            $"banked lateral use {banked.use:0.00} against flat {flat.use:0.00}"
-        );
-        Assert.True(
-            banked.load > flat.load * 1.15f,
-            $"banked load {banked.load:0} N against flat {flat.load:0} N"
-        );
-    }
-
-    /// <summary>
-    /// Peak speed reached in the middle of the first turn, and what the
-    /// tyres were carrying there.
-    /// </summary>
-    private static (float Use, float Load, float Speed) TurnLoading(
-        TrackData track
-    )
-    {
-        TrackSample start = track.Sample(0f);
-        RaceCar car = new(
-            "daytona-probe",
-            new CarConfig(),
-            new TireConfig
-            {
-                StartingSurfaceTempC = 90f,
-                StartingCoreTempC = 90f
-            },
-            new ReferenceLineDriver(),
-            new CarState
-            {
-                Position = start.RefPosition,
-                Heading = start.RefHeading,
-                Speed = 0f,
-                Energy = PowertrainState.Filled(0.8f)
-            }
-        );
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(car);
-
-        float use = 0f, load = 0f, speed = 0f;
-        for (int i = 0; i < 90 * 120; i++)
-        {
-            simulation.Step(1f / 120f);
-            float s = track.Project(car.State.Position).S;
-            if (s < 1_400f || s > 1_700f || car.State.Speed <= speed)
-                continue;
-            speed = car.State.Speed;
-            CarTelemetry telemetry = car.State.Telemetry;
-            use = MathF.Max(
-                telemetry.FrontLateralUse,
-                telemetry.RearLateralUse
-            );
-            load = car.State.FrontLeft.LoadN + car.State.FrontRight.LoadN +
-                   car.State.RearLeft.LoadN + car.State.RearRight.LoadN;
-        }
-        return (use, load, speed);
-    }
-
-    private static TrackData FlatOval() =>
-        new TrackBuilder(
-                Vector2.Zero,
-                startWidth: 18f,
-                startLeftBuffer: 5f,
-                startRightBuffer: 5f,
-                refLineSolver: CenterLineRefLineSolver.Instance
-            )
-            .AddStraight(1_050f)
-            .AddTurn(180f, 305f)
-            .AddStraight(1_050f)
-            .AddTurn(180f, 305f)
-            .CloseLoop()
-            .Build(new TrackGridConfig());
 
     private static float Degrees(float tangent) =>
         MathF.Atan(tangent) * 180f / MathF.PI;

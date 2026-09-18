@@ -34,7 +34,7 @@ public partial class CircuitView3D : Node3D
                     Strip(mesh, a, b, ea, side * wa, eb, side * wb, Runoff, 0f);
                     Strip(mesh, a, b, ea, ea + side * 0.14f, eb, eb + side * 0.14f, LowPolyMesh.Ivory, 0.045f);
                     // Kerbs appear only where there is room and the road actually turns.
-                    if (MathF.Abs(sa.RefCurvature) > 0.0012f)
+                    if (MathF.Abs(sa.Curvature) > 0.0012f)
                         Strip(mesh, a, b, ea + side * 0.18f, ea + side * 1.1f, eb + side * 0.18f, eb + side * 1.1f,
                             i % 2 == 0 ? LowPolyMesh.Vermilion : LowPolyMesh.Ivory, 0.065f);
                     Wall(mesh, a, b, side * wa, side * wb);

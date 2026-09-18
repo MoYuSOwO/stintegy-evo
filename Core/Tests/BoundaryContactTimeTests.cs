@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
@@ -22,7 +21,7 @@ public sealed class BoundaryContactTimeTests
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         RaceSimulation simulation = new(track);
-        RaceCar car = OnTheReferenceLine(track, 100f, 30f);
+        RaceCar car = OnTheCenterline(track, 100f, 30f);
         simulation.AddCar(car);
 
         for (int i = 0; i < 120; i++)
@@ -57,11 +56,11 @@ public sealed class BoundaryContactTimeTests
         (_, float hard, _) = DriveIntoTheBarrier(0.25f);
 
         // A quarter of a curvature for the lean, where an eighth used to
-        // do. The driver's reflex trims the pedals against the share of the
-        // tyre the mode allots, so a car leaning on a barrier is carrying
-        // less speed into it than it used to and the two cases converge.
-        // The separation is restored by asking for a harder lean rather
-        // than by lowering what counts as one.
+        // do. The fixed command trims the requested longitudinal input only
+        // through the physical tyre limit, so a car leaning on a barrier is
+        // carrying less speed into it than it used to and the two cases
+        // converge. The separation is restored by asking for a harder lean
+        // rather than by lowering what counts as one.
         //
         // A narrower margin than this used to have, and the reason is that
         // the road outside the line stopped being the same road. A car on
@@ -100,7 +99,7 @@ public sealed class BoundaryContactTimeTests
     }
 
     /// <summary>
-    /// Holds a curvature from the racing line until the car finds the
+    /// Holds a curvature from the road centreline until the car finds the
     /// barrier, and reports how many steps touched it, for how long in
     /// total, and the most any single step recorded.
     /// </summary>
@@ -110,18 +109,16 @@ public sealed class BoundaryContactTimeTests
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         TrackSample at = track.Sample(275f);
-        RaceCar car = new(
+        RaceCar car = TestControlFixtures.ExternalCar(
             "leaner",
-            new CarConfig(),
-            new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f },
-            new FixedInputDriver(new DriverInput(curvature, 2f)),
             new CarState
             {
-                Position = at.RefPosition,
-                Heading = at.RefHeading,
+                Position = at.Center,
+                Heading = at.Heading,
                 Speed = 25f,
                 Energy = PowertrainState.Filled(0.9f)
-            }
+            },
+            new DriverInput(curvature, 2f)
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
@@ -141,35 +138,23 @@ public sealed class BoundaryContactTimeTests
         return (steps, total, most);
     }
 
-    private static RaceCar OnTheReferenceLine(
+    private static RaceCar OnTheCenterline(
         TrackData track,
         float s,
         float speed
     )
     {
         TrackSample at = track.Sample(s);
-        return new RaceCar(
+        return TestControlFixtures.ExternalCar(
             "clean",
-            new CarConfig(),
-            new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f },
-            new ReferenceLineDriver(),
             new CarState
             {
-                Position = at.RefPosition,
-                Heading = at.RefHeading,
+                Position = at.Center,
+                Heading = at.Heading,
                 Speed = speed,
                 Energy = PowertrainState.Filled(0.9f)
-            }
+            },
+            new DriverInput(at.Curvature, 0f)
         );
-    }
-
-    private sealed class FixedInputDriver(DriverInput input) : IRaceDriver
-    {
-        public void Initialize(in RaceDriverInitContext context) { }
-
-        public DriverInput GetControl(
-            in RaceDriverFrameContext context,
-            float dt
-        ) => input;
     }
 }

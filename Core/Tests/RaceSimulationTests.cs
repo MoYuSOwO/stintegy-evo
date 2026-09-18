@@ -53,166 +53,6 @@ public sealed class RaceSimulationTests
         );
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PlanningReadsThePreviousFrozenPlanWithoutSeeingCurrentPlans(
-        bool reverseOrder
-    )
-    {
-        TrackData track = BuildTrack();
-        PreviousFramePlanProbeDriver firstDriver = new("second");
-        PreviousFramePlanProbeDriver secondDriver = new("first");
-        RaceCar first = CreateRaceCar(
-            "first",
-            track,
-            track.Sample(12f),
-            speed: 12f,
-            firstDriver
-        );
-        RaceCar second = CreateRaceCar(
-            "second",
-            track,
-            track.Sample(42f),
-            speed: 24f,
-            secondDriver
-        );
-        RaceSimulation simulation = new(track);
-        if (reverseOrder)
-        {
-            simulation.AddCar(second);
-            simulation.AddCar(first);
-        }
-        else
-        {
-            simulation.AddCar(first);
-            simulation.AddCar(second);
-        }
-
-        simulation.Step(1f / 120f);
-        simulation.Step(1f / 120f);
-
-        Assert.Equal(2, firstDriver.PrepareCount);
-        Assert.Equal(2, secondDriver.PrepareCount);
-        Assert.Equal([false, false], firstDriver.SawCurrentPlanDuringPrepare);
-        Assert.Equal([false, false], secondDriver.SawCurrentPlanDuringPrepare);
-        Assert.Equal([null, 101f], firstDriver.PreviousPlanSpeedsDuringPrepare);
-        Assert.Equal([null, 101f], secondDriver.PreviousPlanSpeedsDuringPrepare);
-        Assert.Equal([101f, 102f], firstDriver.CurrentPlanSpeedsDuringControl);
-        Assert.Equal([101f, 102f], secondDriver.CurrentPlanSpeedsDuringControl);
-        Assert.Equal([false, false], firstDriver.SawPreviousPlanDuringControl);
-        Assert.Equal([false, false], secondDriver.SawPreviousPlanDuringControl);
-    }
-
-    [Fact]
-    public void FirstDriverStepCollectsCurrentFramePlansBeforeControl()
-    {
-        TrackData track = BuildTrack();
-        CurrentFramePlanProbeDriver firstDriver = new("second");
-        CurrentFramePlanProbeDriver secondDriver = new("first");
-        RaceCar first = CreateRaceCar(
-            "first",
-            track,
-            track.Sample(12f),
-            speed: 12f,
-            firstDriver
-        );
-        RaceCar second = CreateRaceCar(
-            "second",
-            track,
-            track.Sample(42f),
-            speed: 24f,
-            secondDriver
-        );
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(first);
-        simulation.AddCar(second);
-
-        simulation.Step(1f / 120f);
-
-        Assert.Equal(1, firstDriver.PrepareCount);
-        Assert.Equal(1, secondDriver.PrepareCount);
-        Assert.True(firstDriver.SawOtherCurrentFramePlan);
-        Assert.True(secondDriver.SawOtherCurrentFramePlan);
-    }
-
-    [Fact]
-    public void ReferenceDriverPublishesAPlanOnTheFirstDriverStep()
-    {
-        TrackData track = BuildTrack();
-        RaceCar planned = CreateRaceCar(
-            "planned",
-            track,
-            track.Sample(12f),
-            speed: 12f,
-            new ReferenceLineDriver()
-        );
-        PlanObserverDriver observerDriver = new("planned");
-        RaceCar observer = CreateRaceCar(
-            "observer",
-            track,
-            track.Sample(80f),
-            speed: 10f,
-            observerDriver
-        );
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(planned);
-        simulation.AddCar(observer);
-
-        simulation.Step(1f / 120f);
-
-        Assert.True(observerDriver.SawObservedPlan);
-    }
-
-    [Fact]
-    public void ReferenceDriverPublishesItsPlannedPathSpeed()
-    {
-        TrackData track = BuildTrack();
-        TrackSample start = track.Sample(70f);
-        ReferenceLineDriver plannedDriver = new();
-        RaceCar planned = new(
-            "planned",
-            new CarConfig(),
-            WarmTires(),
-            plannedDriver,
-            new CarState
-            {
-                Position = start.Center + start.Normal * 3f,
-                Heading = start.RefHeading + 0.3f,
-                Speed = 40f,
-                Energy = PowertrainState.Filled(0.8f)
-            }
-        );
-        PlanObserverDriver observerDriver = new("planned");
-        RaceCar observer = CreateRaceCar(
-            "observer",
-            track,
-            track.Sample(300f),
-            speed: 10f,
-            observerDriver
-        );
-        RaceSimulation simulation = new(track);
-        simulation.AddCar(planned);
-        simulation.AddCar(observer);
-
-        simulation.Step(1f / 120f);
-
-        float plannedStartSpeed =
-            plannedDriver.CurrentSpeedLookahead.Sample(0f).TargetSpeed;
-        Assert.True(
-            MathF.Abs(
-                plannedStartSpeed -
-                plannedDriver.CurrentPathPrediction[0].EstimatedSpeed
-            ) > 0.1f,
-            "the fixture must distinguish the path speed plan from the predictor seed"
-        );
-        Assert.Equal(
-            plannedStartSpeed,
-            observerDriver.ObservedPlanStartSpeedMetersPerSecond,
-            precision: 3
-        );
-    }
-
     [Fact]
     public void StepFeedsTrackContextToDriverAndUpdatesProgress()
     {
@@ -226,11 +66,11 @@ public sealed class RaceSimulationTests
         simulation.Step(0.1f);
 
         Assert.Equal(1, driver.InitCount);
-        Assert.Same(car, driver.LastInitContext.Car);
-        Assert.Equal(track, driver.LastInitContext.Track);
+        Assert.Equal(car.Id, driver.LastInitContext.Car.Id);
+        Assert.Equal(track.LengthMeters, driver.LastInitContext.Track.LengthMeters);
         Assert.True(driver.CallCount > 0);
-        Assert.Same(car, driver.LastContext.Car);
-        Assert.Equal(track, driver.LastContext.Track);
+        Assert.Equal(car.Id, driver.LastContext.Car.Id);
+        Assert.Equal(track.LengthMeters, driver.LastContext.Track.LengthMeters);
         Assert.True(car.Progress.TotalDistance > 0f, "car progress should advance along the projected track");
         Assert.True(simulation.RaceTimeSeconds > 0f, "race clock should advance after stepping");
         Assert.Equal(driver.Input, car.LastInput);
@@ -280,10 +120,10 @@ public sealed class RaceSimulationTests
 
         simulation.Step(1f / 120f);
 
-        Assert.True(firstDriver.LastContext.HasFrameSnapshot);
-        Assert.True(secondDriver.LastContext.HasFrameSnapshot);
-        Assert.Equal("first", firstDriver.LastContext.CarSnapshot.Id);
-        Assert.Equal("second", secondDriver.LastContext.CarSnapshot.Id);
+        Assert.Equal(2, firstDriver.LastContext.Frame.Count);
+        Assert.Equal(2, secondDriver.LastContext.Frame.Count);
+        Assert.Equal("first", firstDriver.LastContext.Car.Id);
+        Assert.Equal("second", secondDriver.LastContext.Car.Id);
         Assert.Equal(2, firstDriver.LastContext.Frame.Count);
         Assert.Equal(2, secondDriver.LastContext.Frame.Count);
         Assert.Equal(24f, firstDriver.ObservedSpeedMetersPerSecond);
@@ -420,7 +260,7 @@ public sealed class RaceSimulationTests
         CarState state = new()
         {
             Position = start.Center + start.Normal * outsideLeftWallD,
-            Heading = start.RefHeading,
+            Heading = start.Heading,
             Speed = 0f,
             Energy = PowertrainState.Filled(0.8f)
         };
@@ -428,7 +268,7 @@ public sealed class RaceSimulationTests
             "wall-test",
             new CarConfig(),
             WarmTires(),
-            new FixedDriver(new DriverInput(0f, 0f)),
+            null,
             state,
             collision
         );
@@ -493,7 +333,7 @@ public sealed class RaceSimulationTests
             "wall-sweep",
             new CarConfig(),
             WarmTires(),
-            new FixedDriver(new DriverInput(0f, 0f)),
+            null,
             state,
             collision
         );
@@ -527,7 +367,7 @@ public sealed class RaceSimulationTests
             "right-wall-sweep",
             new CarConfig(),
             WarmTires(),
-            new FixedDriver(new DriverInput(0f, 0f)),
+            null,
             state,
             collision
         );
@@ -550,7 +390,7 @@ public sealed class RaceSimulationTests
         CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
         RaceCar a = CreateRaceCar("a", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision);
         RaceCar b = CreateRaceCar("b", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision);
-        b.State.Position += new Vector2(MathF.Cos(start.RefHeading), MathF.Sin(start.RefHeading)) * 2f;
+        b.State.Position += new Vector2(MathF.Cos(start.Heading), MathF.Sin(start.Heading)) * 2f;
         RaceSimulation simulation = new(track);
         simulation.AddCar(a);
         simulation.AddCar(b);
@@ -629,7 +469,7 @@ public sealed class RaceSimulationTests
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
         CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
-        Vector2 forward = new(MathF.Cos(start.RefHeading), MathF.Sin(start.RefHeading));
+        Vector2 forward = new(MathF.Cos(start.Heading), MathF.Sin(start.Heading));
         RaceCar rear = CreateRaceCar("rear", track, start, speed: 30f, new FixedDriver(new DriverInput(0f, 0f)), collision);
         RaceCar front = CreateRaceCar("front", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision);
         front.State.Position += forward * 4f;
@@ -786,7 +626,7 @@ public sealed class RaceSimulationTests
         TrackData track,
         TrackSample start,
         float speed,
-        IRaceDriver driver,
+        IDriverController driver,
         CarCollisionConfig? collision = null
     )
     {
@@ -794,11 +634,11 @@ public sealed class RaceSimulationTests
             id,
             new CarConfig(),
             WarmTires(),
-            driver,
+            new Driver(new DriverProfile(id, new DriverAbilities()), driver),
             new CarState
             {
                 Position = start.Center,
-                Heading = start.RefHeading,
+                Heading = start.Heading,
                 Speed = speed,
                 Energy = PowertrainState.Filled(0.8f)
             },
@@ -949,21 +789,21 @@ public sealed class RaceSimulationTests
         ) * 0.25f;
     }
 
-    private sealed class FixedDriver(DriverInput input) : IRaceDriver
+    private sealed class FixedDriver(DriverInput input) : IDriverController
     {
         public DriverInput Input { get; } = input;
         public int InitCount { get; private set; }
         public int CallCount { get; private set; }
-        public RaceDriverInitContext LastInitContext { get; private set; }
-        public RaceDriverFrameContext LastContext { get; private set; }
+        public DriverContext LastInitContext { get; private set; }
+        public DriverContext LastContext { get; private set; }
 
-        public void Initialize(in RaceDriverInitContext context)
+        public void Initialize(in DriverContext context)
         {
             InitCount++;
             LastInitContext = context;
         }
 
-        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        public DriverInput GetControl(in DriverContext context, float dt)
         {
             CallCount++;
             LastContext = context;
@@ -971,12 +811,12 @@ public sealed class RaceSimulationTests
         }
     }
 
-    private sealed class SnapshotTrafficDriver(string observedCarId) : IRaceDriver
+    private sealed class SnapshotTrafficDriver(string observedCarId) : IDriverController
     {
-        public RaceDriverFrameContext LastContext { get; private set; }
+        public DriverContext LastContext { get; private set; }
         public float ObservedSpeedMetersPerSecond { get; private set; }
 
-        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        public DriverInput GetControl(in DriverContext context, float dt)
         {
             LastContext = context;
             if (!context.Frame.TryGetCar(observedCarId, out RaceCarSnapshot observed))
@@ -987,180 +827,11 @@ public sealed class RaceSimulationTests
         }
     }
 
-    private sealed class CurrentFramePlanProbeDriver(string observedCarId) :
-        IRaceDriver,
-        ITrafficMotionPlanSource
-    {
-        private readonly VehiclePathPrediction _path = new();
-        private readonly TrafficMotionPlan _plan = new();
-
-        public int PrepareCount { get; private set; }
-        public bool SawOtherCurrentFramePlan { get; private set; }
-
-        public void PrepareTrafficMotionPlan(
-            in RaceDriverFrameContext context,
-            float dt
-        )
-        {
-            PrepareCount++;
-            _path.Reset(2);
-            Vector2 forward = context.Pose.Sample.Tangent;
-            float speed = context.Car.State.Speed;
-            _path.Add(new VehiclePathPredictionPoint(
-                0f,
-                context.Car.State.Position,
-                context.Car.State.VelocityHeading,
-                context.Pose.S,
-                0f,
-                0f,
-                0f,
-                0f,
-                0f,
-                speed
-            ));
-            _path.Add(new VehiclePathPredictionPoint(
-                10f,
-                context.Car.State.Position + forward * 10f,
-                context.Car.State.VelocityHeading,
-                context.Track.WrapS(context.Pose.S + 10f),
-                0f,
-                0f,
-                0f,
-                0f,
-                0f,
-                speed
-            ));
-            _plan.BuildFrom(_path);
-        }
-
-        public TrafficMotionPlan? FreezeTrafficMotionPlan()
-        {
-            return _plan.Count > 0 ? _plan : null;
-        }
-
-        public DriverInput GetControl(
-            in RaceDriverFrameContext context,
-            float dt
-        )
-        {
-            SawOtherCurrentFramePlan =
-                context.Frame.FindTrafficMotionPlan(observedCarId) is not null;
-            return default;
-        }
-    }
-
-    private sealed class PreviousFramePlanProbeDriver(string observedCarId) :
-        IRaceDriver,
-        ITrafficMotionPlanSource
-    {
-        private readonly VehiclePathPrediction _path = new();
-        private readonly TrafficMotionPlan _plan = new();
-
-        public int PrepareCount { get; private set; }
-        public List<bool> SawCurrentPlanDuringPrepare { get; } = [];
-        public List<float?> PreviousPlanSpeedsDuringPrepare { get; } = [];
-        public List<float?> CurrentPlanSpeedsDuringControl { get; } = [];
-        public List<bool> SawPreviousPlanDuringControl { get; } = [];
-
-        public void PrepareTrafficMotionPlan(
-            in RaceDriverFrameContext context,
-            float dt
-        )
-        {
-            PrepareCount++;
-            SawCurrentPlanDuringPrepare.Add(
-                context.Frame.FindTrafficMotionPlan(observedCarId) is not null
-            );
-            PreviousPlanSpeedsDuringPrepare.Add(StartSpeed(
-                context.Frame.FindPreviousTrafficMotionPlan(observedCarId)
-            ));
-
-            float markerSpeed = 100f + PrepareCount;
-            _path.Reset(2);
-            Vector2 forward = context.Pose.Sample.Tangent;
-            _path.Add(new VehiclePathPredictionPoint(
-                0f,
-                context.Car.State.Position,
-                context.Car.State.VelocityHeading,
-                context.Pose.S,
-                0f,
-                0f,
-                0f,
-                0f,
-                0f,
-                markerSpeed
-            ));
-            _path.Add(new VehiclePathPredictionPoint(
-                10f,
-                context.Car.State.Position + forward * 10f,
-                context.Car.State.VelocityHeading,
-                context.Track.WrapS(context.Pose.S + 10f),
-                0f,
-                0f,
-                0f,
-                0f,
-                0f,
-                markerSpeed
-            ));
-            _plan.BuildFrom(_path);
-        }
-
-        public TrafficMotionPlan? FreezeTrafficMotionPlan()
-        {
-            return _plan.Count > 0 ? _plan : null;
-        }
-
-        public DriverInput GetControl(
-            in RaceDriverFrameContext context,
-            float dt
-        )
-        {
-            CurrentPlanSpeedsDuringControl.Add(StartSpeed(
-                context.Frame.FindTrafficMotionPlan(observedCarId)
-            ));
-            SawPreviousPlanDuringControl.Add(
-                context.Frame.FindPreviousTrafficMotionPlan(observedCarId) is not null
-            );
-            return default;
-        }
-
-        private static float? StartSpeed(TrafficMotionPlan? plan)
-        {
-            return plan is not null &&
-                   plan.TrySample(0f, out TrafficMotionPlanPoint start)
-                ? start.SpeedMetersPerSecond
-                : null;
-        }
-    }
-
-    private sealed class PlanObserverDriver(string observedCarId) : IRaceDriver
-    {
-        public bool SawObservedPlan { get; private set; }
-        public float ObservedPlanStartSpeedMetersPerSecond { get; private set; }
-
-        public DriverInput GetControl(
-            in RaceDriverFrameContext context,
-            float dt
-        )
-        {
-            TrafficMotionPlan? plan =
-                context.Frame.FindTrafficMotionPlan(observedCarId);
-            SawObservedPlan = plan is not null;
-            if (plan is not null &&
-                plan.TrySample(0f, out TrafficMotionPlanPoint start))
-            {
-                ObservedPlanStartSpeedMetersPerSecond =
-                    start.SpeedMetersPerSecond;
-            }
-            return default;
-        }
-    }
-
-    private sealed class LiveSpeedProbeDriver(RaceCar observedCar) : IRaceDriver
+    private sealed class LiveSpeedProbeDriver(RaceCar observedCar) : IDriverController
     {
         public float ObservedSpeedMetersPerSecond { get; private set; }
 
-        public DriverInput GetControl(in RaceDriverFrameContext context, float dt)
+        public DriverInput GetControl(in DriverContext context, float dt)
         {
             ObservedSpeedMetersPerSecond = observedCar.State.Speed;
             return new DriverInput(0f, 0f);

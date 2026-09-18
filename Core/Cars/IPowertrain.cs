@@ -4,6 +4,17 @@ using System.Collections.Generic;
 namespace StintegyEVO.Core.Cars;
 
 /// <summary>
+/// The physical resource category. Encoding it for a controller, network or
+/// transport protocol is an adapter's responsibility, not part of the powertrain.
+/// </summary>
+public enum PowertrainResourceClass
+{
+    None = 0,
+    Battery = 1,
+    Fuel = 2,
+}
+
+/// <summary>
 /// One thing a car spends over a race and cannot get back for free.
 /// </summary>
 /// <param name="Id">Stable name, for saved files and telemetry columns.</param>
@@ -13,27 +24,6 @@ namespace StintegyEVO.Core.Cars;
 /// empty as full; a hundred kilograms or so for a fuel tank, which is the
 /// whole reason a petrol car gets quicker as the race goes on.
 /// </param>
-/// <summary>
-/// What kind of thing a resource is, as a number a network can be shown.
-///
-/// The id and the label are for people. A policy that is going to drive
-/// more than one car needs to know that the slot it is looking at holds
-/// charge rather than fuel, because the two behave differently — charge
-/// comes back under braking and fuel does not, and a car whose store gets
-/// lighter as it empties handles differently at the end of a stint than
-/// one whose does not. Naming the kind is how a policy can carry that
-/// across cars instead of relearning it per car.
-///
-/// Numbered from zero for "no resource in this slot", so that an unused
-/// slot reads as absent in both its presence flag and its class.
-/// </summary>
-public enum PowertrainResourceClass
-{
-    None = 0,
-    Battery = 1,
-    Fuel = 2,
-}
-
 public readonly record struct PowertrainResourceInfo(
     string Id,
     string Label,
