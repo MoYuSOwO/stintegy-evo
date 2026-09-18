@@ -400,6 +400,22 @@ public static class TrackBoundaryResolver
         Vector2 velocity = state.Velocity;
         float yawRate = state.YawRateRadiansPerSecond;
 
+        // At a crawl the car model is kinematic, and the yaw rate it reports
+        // is not a rotation the body carries: it is the heading being laid
+        // onto the direction of travel, a whole angle in a step, which reads
+        // as ten radians a second and more. Taken as real, that rate puts a
+        // corner through the wall at tens of metres a second, and the
+        // impulse that stops the corner turns the phantom rotation into
+        // translation: a car stopped against the barrier at half a metre a
+        // second came off it at four, with ten times its static tyre load
+        // for the step. Below the dynamic speed the wall meets the car as a
+        // body that translates only.
+        if (state.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        {
+            yawRate = 0f;
+            invInertia = 0f;
+        }
+
         Vector2 pointVelocity = PointVelocity(velocity, yawRate, arm);
         float normalSpeed = Vector2.Dot(pointVelocity, normal);
         if (normalSpeed >= 0f)
