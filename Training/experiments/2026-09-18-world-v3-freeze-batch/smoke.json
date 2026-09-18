@@ -1,0 +1,1426 @@
+[
+ {
+  "track": "silverstone",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 9.375,
+  "budget_deviation_range": [
+   -0.013,
+   0.002
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 95.86,
+   "wall": -328.79,
+   "off_course": -103.1,
+   "tyre_slip": -2.69,
+   "mode_excess": -26.01,
+   "retirement": -690.0,
+   "budget": 135.33
+  }
+ },
+ {
+  "track": "silverstone",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.432,
+  "budget_deviation_range": [
+   -0.015,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 25.97,
+   "wall": -1104.24,
+   "off_course": -266.38,
+   "tyre_slip": -238.25,
+   "mode_excess": -0.49,
+   "budget": -127.2
+  }
+ },
+ {
+  "track": "silverstone",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.749,
+  "budget_deviation_range": [
+   -0.146,
+   0.092
+  ],
+  "terminals": {
+   "3": 22
+  },
+  "components": {
+   "own_progress": 98.34,
+   "wall": -345.97,
+   "off_course": -100.53,
+   "tyre_slip": -2.43,
+   "mode_excess": -17.7,
+   "retirement": -660.0,
+   "budget": 119.44
+  }
+ },
+ {
+  "track": "silverstone",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.621,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 23.06,
+   "wall": -1064.53,
+   "off_course": -256.15,
+   "tyre_slip": -49.07,
+   "mode_excess": -1.62,
+   "budget": -4.04
+  }
+ },
+ {
+  "track": "shanghai",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 9.908,
+  "budget_deviation_range": [
+   -0.013,
+   0.005
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 175.43,
+   "wall": -199.14,
+   "off_course": -63.12,
+   "tyre_slip": -5.91,
+   "mode_excess": -21.05,
+   "retirement": -690.0,
+   "budget": 278.95
+  }
+ },
+ {
+  "track": "shanghai",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 7.61,
+  "budget_deviation_range": [
+   -0.017,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 32.59,
+   "wall": -1159.37,
+   "off_course": -285.94,
+   "tyre_slip": -93.9,
+   "mode_excess": -0.51,
+   "budget": -146.06
+  }
+ },
+ {
+  "track": "shanghai",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.779,
+  "budget_deviation_range": [
+   -0.15,
+   0.092
+  ],
+  "terminals": {
+   "3": 19,
+   "5": 1
+  },
+  "components": {
+   "own_progress": 191.04,
+   "wall": -192.2,
+   "off_course": -72.72,
+   "tyre_slip": -4.28,
+   "mode_excess": -14.23,
+   "retirement": -570.0,
+   "budget": 219.23
+  }
+ },
+ {
+  "track": "shanghai",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.958,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 16.93,
+   "wall": -1496.02,
+   "off_course": -325.95,
+   "tyre_slip": -76.95,
+   "mode_excess": -2.27,
+   "budget": -1.2
+  }
+ },
+ {
+  "track": "zandvoort",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 9.318,
+  "budget_deviation_range": [
+   -0.013,
+   0.001
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 114.09,
+   "wall": -270.27,
+   "off_course": -89.86,
+   "tyre_slip": -3.7,
+   "mode_excess": -22.14,
+   "retirement": -690.0,
+   "budget": 252.11
+  }
+ },
+ {
+  "track": "zandvoort",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 8.13,
+  "budget_deviation_range": [
+   -0.015,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 20.94,
+   "wall": -1118.18,
+   "off_course": -267.23,
+   "tyre_slip": -33.4,
+   "mode_excess": -0.59,
+   "budget": -73.33
+  }
+ },
+ {
+  "track": "zandvoort",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 8.437,
+  "budget_deviation_range": [
+   -0.132,
+   0.085
+  ],
+  "terminals": {
+   "3": 19
+  },
+  "components": {
+   "own_progress": 84.87,
+   "wall": -261.76,
+   "off_course": -81.79,
+   "tyre_slip": -2.48,
+   "mode_excess": -16.77,
+   "retirement": -570.0,
+   "budget": 74.77
+  }
+ },
+ {
+  "track": "zandvoort",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 8.863,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 18.38,
+   "wall": -1224.52,
+   "off_course": -282.06,
+   "tyre_slip": -24.93,
+   "mode_excess": -1.31,
+   "budget": 34.85
+  }
+ },
+ {
+  "track": "simple-right",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 6.09,
+  "budget_deviation_range": [
+   -0.013,
+   0.002
+  ],
+  "terminals": {
+   "3": 34
+  },
+  "components": {
+   "own_progress": 144.78,
+   "wall": -188.57,
+   "off_course": -66.65,
+   "tyre_slip": -6.48,
+   "mode_excess": -16.6,
+   "retirement": -1020.0,
+   "budget": 271.38
+  }
+ },
+ {
+  "track": "simple-right",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 8.63,
+  "budget_deviation_range": [
+   -0.015,
+   0.002
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 35.99,
+   "wall": -1686.79,
+   "off_course": -380.73,
+   "tyre_slip": -38.37,
+   "mode_excess": -1.55,
+   "budget": -83.48
+  }
+ },
+ {
+  "track": "simple-right",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 6.036,
+  "budget_deviation_range": [
+   -0.187,
+   0.086
+  ],
+  "terminals": {
+   "3": 31
+  },
+  "components": {
+   "own_progress": 159.46,
+   "wall": -172.21,
+   "off_course": -59.84,
+   "tyre_slip": -6.98,
+   "mode_excess": -30.43,
+   "retirement": -930.0,
+   "budget": 209.28
+  }
+ },
+ {
+  "track": "simple-right",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 10.18,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "3": 1
+  },
+  "components": {
+   "own_progress": 22.28,
+   "wall": -1764.73,
+   "off_course": -381.67,
+   "tyre_slip": -27.59,
+   "mode_excess": -2.89,
+   "retirement": -30.0,
+   "budget": 36.09
+  }
+ },
+ {
+  "track": "simple-left",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 5.81,
+  "budget_deviation_range": [
+   -0.013,
+   0.003
+  ],
+  "terminals": {
+   "3": 29
+  },
+  "components": {
+   "own_progress": 167.59,
+   "wall": -147.47,
+   "off_course": -53.78,
+   "tyre_slip": -8.11,
+   "mode_excess": -35.02,
+   "retirement": -870.0,
+   "budget": 200.43
+  }
+ },
+ {
+  "track": "simple-left",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 8.63,
+  "budget_deviation_range": [
+   -0.014,
+   0.0
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 31.18,
+   "wall": -3282.73,
+   "off_course": -698.67,
+   "tyre_slip": -122.9,
+   "mode_excess": -3.61,
+   "budget": -99.49
+  }
+ },
+ {
+  "track": "simple-left",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 6.036,
+  "budget_deviation_range": [
+   -0.187,
+   0.086
+  ],
+  "terminals": {
+   "3": 31
+  },
+  "components": {
+   "own_progress": 159.48,
+   "wall": -172.21,
+   "off_course": -59.83,
+   "tyre_slip": -6.96,
+   "mode_excess": -30.4,
+   "retirement": -930.0,
+   "budget": 209.26
+  }
+ },
+ {
+  "track": "simple-left",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 10.18,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "3": 1
+  },
+  "components": {
+   "own_progress": 26.09,
+   "wall": -3340.98,
+   "off_course": -699.55,
+   "tyre_slip": -124.52,
+   "mode_excess": -3.91,
+   "retirement": -30.0,
+   "budget": -55.97
+  }
+ },
+ {
+  "track": "banked-sweeper",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 8.945,
+  "budget_deviation_range": [
+   -0.013,
+   0.004
+  ],
+  "terminals": {
+   "3": 21
+  },
+  "components": {
+   "own_progress": 145.37,
+   "wall": -385.44,
+   "off_course": -130.25,
+   "tyre_slip": -7.04,
+   "mode_excess": -24.09,
+   "retirement": -630.0,
+   "budget": 278.46
+  }
+ },
+ {
+  "track": "banked-sweeper",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.993,
+  "budget_deviation_range": [
+   -0.018,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 29.75,
+   "wall": -1555.85,
+   "off_course": -384.01,
+   "tyre_slip": -29.76,
+   "mode_excess": -0.58,
+   "budget": -231.81
+  }
+ },
+ {
+  "track": "banked-sweeper",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.814,
+  "budget_deviation_range": [
+   -0.138,
+   0.093
+  ],
+  "terminals": {
+   "5": 1,
+   "3": 22
+  },
+  "components": {
+   "own_progress": 135.64,
+   "wall": -386.2,
+   "off_course": -127.48,
+   "tyre_slip": -6.6,
+   "mode_excess": -18.28,
+   "retirement": -660.0,
+   "budget": 226.76
+  }
+ },
+ {
+  "track": "banked-sweeper",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 10.022,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 22.7,
+   "wall": -1270.12,
+   "off_course": -313.21,
+   "tyre_slip": -12.97,
+   "mode_excess": -1.51,
+   "budget": -28.14
+  }
+ },
+ {
+  "track": "sepang",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 9.581,
+  "budget_deviation_range": [
+   -0.013,
+   0.003
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 165.2,
+   "wall": -194.83,
+   "off_course": -53.21,
+   "tyre_slip": -4.63,
+   "mode_excess": -34.67,
+   "retirement": -690.0,
+   "budget": 251.07
+  }
+ },
+ {
+  "track": "sepang",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.275,
+  "budget_deviation_range": [
+   -0.018,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 23.29,
+   "wall": -3416.93,
+   "off_course": -730.58,
+   "tyre_slip": -18.36,
+   "mode_excess": -0.73,
+   "budget": -307.65
+  }
+ },
+ {
+  "track": "sepang",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.628,
+  "budget_deviation_range": [
+   -0.171,
+   0.081
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 155.86,
+   "wall": -198.54,
+   "off_course": -53.44,
+   "tyre_slip": -4.09,
+   "mode_excess": -26.44,
+   "retirement": -690.0,
+   "budget": 211.61
+  }
+ },
+ {
+  "track": "sepang",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 10.131,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 23.06,
+   "wall": -2657.88,
+   "off_course": -568.45,
+   "tyre_slip": -15.01,
+   "mode_excess": -1.85,
+   "budget": -78.06
+  }
+ },
+ {
+  "track": "monaco",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 10.522,
+  "budget_deviation_range": [
+   -0.013,
+   0.001
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 68.21,
+   "wall": -313.27,
+   "off_course": -90.13,
+   "tyre_slip": -4.29,
+   "mode_excess": -15.48,
+   "retirement": -690.0,
+   "budget": 118.72
+  }
+ },
+ {
+  "track": "monaco",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 8.994,
+  "budget_deviation_range": [
+   -0.017,
+   0.0
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 15.33,
+   "wall": -2184.91,
+   "off_course": -454.43,
+   "tyre_slip": -69.8,
+   "mode_excess": -0.77,
+   "budget": -179.22
+  }
+ },
+ {
+  "track": "monaco",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 10.522,
+  "budget_deviation_range": [
+   -0.141,
+   0.081
+  ],
+  "terminals": {
+   "3": 20
+  },
+  "components": {
+   "own_progress": 59.23,
+   "wall": -261.11,
+   "off_course": -77.28,
+   "tyre_slip": -4.05,
+   "mode_excess": -20.68,
+   "retirement": -600.0,
+   "budget": 131.47
+  }
+ },
+ {
+  "track": "monaco",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 8.994,
+  "budget_deviation_range": [
+   -0.132,
+   0.047
+  ],
+  "terminals": {
+   "3": 1
+  },
+  "components": {
+   "own_progress": 19.04,
+   "wall": -822.52,
+   "off_course": -188.45,
+   "tyre_slip": -12.21,
+   "mode_excess": -2.61,
+   "retirement": -30.0,
+   "budget": 4.9
+  }
+ },
+ {
+  "track": "daytona",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 9.742,
+  "budget_deviation_range": [
+   -0.013,
+   0.003
+  ],
+  "terminals": {
+   "3": 12
+  },
+  "components": {
+   "own_progress": 167.71,
+   "wall": -461.35,
+   "off_course": -139.89,
+   "tyre_slip": -1.05,
+   "mode_excess": -32.53,
+   "retirement": -360.0,
+   "budget": 385.26
+  }
+ },
+ {
+  "track": "daytona",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 6.431,
+  "budget_deviation_range": [
+   -0.015,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 19.04,
+   "wall": -934.86,
+   "off_course": -208.1,
+   "tyre_slip": -84.79,
+   "mode_excess": -0.79,
+   "budget": -119.03
+  }
+ },
+ {
+  "track": "daytona",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.626,
+  "budget_deviation_range": [
+   -0.146,
+   0.087
+  ],
+  "terminals": {
+   "5": 1,
+   "3": 17
+  },
+  "components": {
+   "own_progress": 186.36,
+   "wall": -405.5,
+   "off_course": -139.37,
+   "tyre_slip": -5.06,
+   "mode_excess": -25.26,
+   "retirement": -510.0,
+   "budget": 363.47
+  }
+ },
+ {
+  "track": "daytona",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.689,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 14.87,
+   "wall": -739.27,
+   "off_course": -170.94,
+   "tyre_slip": -11.5,
+   "mode_excess": -12.26,
+   "budget": 47.51
+  }
+ },
+ {
+  "track": "speedway",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 6.738,
+  "budget_deviation_range": [
+   -0.013,
+   0.006
+  ],
+  "terminals": {
+   "3": 9
+  },
+  "components": {
+   "own_progress": 370.06,
+   "wall": -150.12,
+   "tyre_slip": -1.51,
+   "mode_excess": -8.66,
+   "retirement": -270.0,
+   "budget": 384.98
+  }
+ },
+ {
+  "track": "speedway",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 6.353,
+  "budget_deviation_range": [
+   -0.013,
+   0.002
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 395.12,
+   "wall": -1864.54,
+   "tyre_slip": -4.96,
+   "mode_excess": -0.44,
+   "budget": 117.46
+  }
+ },
+ {
+  "track": "speedway",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 6.738,
+  "budget_deviation_range": [
+   -0.154,
+   0.058
+  ],
+  "terminals": {
+   "5": 1,
+   "3": 9
+  },
+  "components": {
+   "own_progress": 392.08,
+   "wall": -145.94,
+   "tyre_slip": -3.38,
+   "mode_excess": -9.02,
+   "retirement": -270.0,
+   "budget": 436.63
+  }
+ },
+ {
+  "track": "speedway",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.749,
+  "budget_deviation_range": [
+   -0.132,
+   0.049
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 295.93,
+   "wall": -1291.64,
+   "tyre_slip": -7.12,
+   "mode_excess": -0.65,
+   "budget": 119.55
+  }
+ },
+ {
+  "track": "baku",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 10.948,
+  "budget_deviation_range": [
+   -0.013,
+   0.004
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 116.93,
+   "wall": -324.56,
+   "off_course": -102.44,
+   "tyre_slip": -3.7,
+   "mode_excess": -32.01,
+   "retirement": -690.0,
+   "budget": 118.84
+  }
+ },
+ {
+  "track": "baku",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 8.057,
+  "budget_deviation_range": [
+   -0.015,
+   0.0
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 31.24,
+   "wall": -5540.83,
+   "off_course": -1158.9,
+   "tyre_slip": -17.66,
+   "mode_excess": -1.18,
+   "budget": -168.29
+  }
+ },
+ {
+  "track": "baku",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 10.62,
+  "budget_deviation_range": [
+   -0.149,
+   0.05
+  ],
+  "terminals": {
+   "3": 22
+  },
+  "components": {
+   "own_progress": 129.31,
+   "wall": -346.01,
+   "off_course": -110.88,
+   "tyre_slip": -5.23,
+   "mode_excess": -16.82,
+   "retirement": -660.0,
+   "budget": 177.14
+  }
+ },
+ {
+  "track": "baku",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 10.235,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 35.2,
+   "wall": -3487.75,
+   "off_course": -747.4,
+   "tyre_slip": -44.78,
+   "mode_excess": -1.05,
+   "budget": 64.29
+  }
+ },
+ {
+  "track": "spa",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 8.939,
+  "budget_deviation_range": [
+   -0.013,
+   0.004
+  ],
+  "terminals": {
+   "3": 10
+  },
+  "components": {
+   "own_progress": 56.34,
+   "wall": -398.08,
+   "off_course": -114.01,
+   "tyre_slip": -1.37,
+   "mode_excess": -7.62,
+   "retirement": -300.0,
+   "budget": 186.78
+  }
+ },
+ {
+  "track": "spa",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 8.442,
+  "budget_deviation_range": [
+   -0.016,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 32.32,
+   "wall": -1726.63,
+   "off_course": -407.87,
+   "tyre_slip": -34.44,
+   "mode_excess": -1.14,
+   "budget": -197.28
+  }
+ },
+ {
+  "track": "spa",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 7.124,
+  "budget_deviation_range": [
+   -0.154,
+   0.05
+  ],
+  "terminals": {
+   "3": 10,
+   "5": 1
+  },
+  "components": {
+   "own_progress": 74.67,
+   "wall": -367.04,
+   "off_course": -106.75,
+   "tyre_slip": -1.5,
+   "mode_excess": -10.36,
+   "retirement": -300.0,
+   "budget": 167.32
+  }
+ },
+ {
+  "track": "spa",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.175,
+  "budget_deviation_range": [
+   -0.132,
+   0.047
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 20.57,
+   "wall": -1365.61,
+   "off_course": -312.83,
+   "tyre_slip": -29.19,
+   "mode_excess": -1.14,
+   "budget": 0.81
+  }
+ },
+ {
+  "track": "monza",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 10.032,
+  "budget_deviation_range": [
+   -0.013,
+   0.004
+  ],
+  "terminals": {
+   "3": 22
+  },
+  "components": {
+   "own_progress": 166.56,
+   "wall": -410.61,
+   "off_course": -121.25,
+   "tyre_slip": -3.47,
+   "mode_excess": -26.97,
+   "retirement": -660.0,
+   "budget": 284.97
+  }
+ },
+ {
+  "track": "monza",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.029,
+  "budget_deviation_range": [
+   -0.015,
+   0.0
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 36.75,
+   "wall": -1303.67,
+   "off_course": -312.57,
+   "tyre_slip": -66.61,
+   "mode_excess": -0.82,
+   "budget": -82.42
+  }
+ },
+ {
+  "track": "monza",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 10.031,
+  "budget_deviation_range": [
+   -0.132,
+   0.075
+  ],
+  "terminals": {
+   "3": 23
+  },
+  "components": {
+   "own_progress": 196.98,
+   "wall": -368.32,
+   "off_course": -118.21,
+   "tyre_slip": -3.18,
+   "mode_excess": -19.38,
+   "retirement": -690.0,
+   "budget": 281.16
+  }
+ },
+ {
+  "track": "monza",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.602,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 21.16,
+   "wall": -1190.82,
+   "off_course": -276.03,
+   "tyre_slip": -15.28,
+   "mode_excess": -1.49,
+   "budget": 28.93
+  }
+ },
+ {
+  "track": "interlagos",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 9.579,
+  "budget_deviation_range": [
+   -0.013,
+   0.001
+  ],
+  "terminals": {
+   "3": 18
+  },
+  "components": {
+   "own_progress": 74.85,
+   "wall": -391.89,
+   "off_course": -107.98,
+   "tyre_slip": -1.91,
+   "mode_excess": -22.27,
+   "retirement": -540.0,
+   "budget": 163.44
+  }
+ },
+ {
+  "track": "interlagos",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 7.247,
+  "budget_deviation_range": [
+   -0.027,
+   0.002
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 35.65,
+   "wall": -4045.21,
+   "off_course": -877.05,
+   "tyre_slip": -105.7,
+   "mode_excess": -0.89,
+   "budget": -664.98
+  }
+ },
+ {
+  "track": "interlagos",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 10.255,
+  "budget_deviation_range": [
+   -0.172,
+   0.09
+  ],
+  "terminals": {
+   "3": 15
+  },
+  "components": {
+   "own_progress": 61.02,
+   "wall": -314.14,
+   "off_course": -83.37,
+   "tyre_slip": -1.72,
+   "mode_excess": -24.09,
+   "retirement": -450.0,
+   "budget": 82.7
+  }
+ },
+ {
+  "track": "interlagos",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.622,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 44.11,
+   "wall": -2129.28,
+   "off_course": -504.02,
+   "tyre_slip": -36.27,
+   "mode_excess": -1.58,
+   "budget": 14.39
+  }
+ },
+ {
+  "track": "singapore",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 11.029,
+  "budget_deviation_range": [
+   -0.013,
+   0.002
+  ],
+  "terminals": {
+   "3": 26
+  },
+  "components": {
+   "own_progress": 100.1,
+   "wall": -318.8,
+   "off_course": -88.78,
+   "tyre_slip": -3.14,
+   "mode_excess": -27.19,
+   "retirement": -780.0,
+   "budget": 210.92
+  }
+ },
+ {
+  "track": "singapore",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.046,
+  "budget_deviation_range": [
+   -0.015,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 20.88,
+   "wall": -1471.1,
+   "off_course": -335.27,
+   "tyre_slip": -22.3,
+   "mode_excess": -0.56,
+   "budget": -88.6
+  }
+ },
+ {
+  "track": "singapore",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 11.241,
+  "budget_deviation_range": [
+   -0.18,
+   0.091
+  ],
+  "terminals": {
+   "3": 25
+  },
+  "components": {
+   "own_progress": 81.79,
+   "wall": -271.77,
+   "off_course": -79.11,
+   "tyre_slip": -3.29,
+   "mode_excess": -23.66,
+   "retirement": -750.0,
+   "budget": 181.88
+  }
+ },
+ {
+  "track": "singapore",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.647,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 16.5,
+   "wall": -1968.1,
+   "off_course": -425.62,
+   "tyre_slip": -42.58,
+   "mode_excess": -1.29,
+   "budget": -94.92
+  }
+ },
+ {
+  "track": "portimao",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 10.188,
+  "budget_deviation_range": [
+   -0.013,
+   0.004
+  ],
+  "terminals": {
+   "3": 26
+  },
+  "components": {
+   "own_progress": 142.64,
+   "wall": -156.98,
+   "off_course": -56.62,
+   "tyre_slip": -4.82,
+   "mode_excess": -26.5,
+   "retirement": -780.0,
+   "budget": 173.59
+  }
+ },
+ {
+  "track": "portimao",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.664,
+  "budget_deviation_range": [
+   -0.018,
+   0.0
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 19.04,
+   "wall": -1122.97,
+   "off_course": -257.45,
+   "tyre_slip": -24.74,
+   "mode_excess": -0.43,
+   "budget": -252.46
+  }
+ },
+ {
+  "track": "portimao",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.981,
+  "budget_deviation_range": [
+   -0.184,
+   0.092
+  ],
+  "terminals": {
+   "3": 30
+  },
+  "components": {
+   "own_progress": 143.24,
+   "wall": -233.54,
+   "off_course": -75.59,
+   "tyre_slip": -5.26,
+   "mode_excess": -24.01,
+   "retirement": -900.0,
+   "budget": 148.28
+  }
+ },
+ {
+  "track": "portimao",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 9.815,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "3": 1
+  },
+  "components": {
+   "own_progress": 25.79,
+   "wall": -2093.28,
+   "off_course": -447.31,
+   "tyre_slip": -23.42,
+   "mode_excess": -3.56,
+   "retirement": -30.0,
+   "budget": -46.75
+  }
+ },
+ {
+  "track": "flat-sweeper",
+  "curriculum": false,
+  "policy": "coast",
+  "max_abs_obs": 8.961,
+  "budget_deviation_range": [
+   -0.013,
+   0.002
+  ],
+  "terminals": {
+   "3": 20
+  },
+  "components": {
+   "own_progress": 134.29,
+   "wall": -400.79,
+   "off_course": -111.73,
+   "tyre_slip": -6.29,
+   "mode_excess": -16.71,
+   "retirement": -600.0,
+   "budget": 339.39
+  }
+ },
+ {
+  "track": "flat-sweeper",
+  "curriculum": false,
+  "policy": "constant",
+  "max_abs_obs": 9.992,
+  "budget_deviation_range": [
+   -0.021,
+   0.001
+  ],
+  "terminals": {},
+  "components": {
+   "own_progress": 54.17,
+   "wall": -2375.63,
+   "off_course": -587.07,
+   "tyre_slip": -35.94,
+   "mode_excess": -0.55,
+   "budget": -214.06
+  }
+ },
+ {
+  "track": "flat-sweeper",
+  "curriculum": true,
+  "policy": "coast",
+  "max_abs_obs": 9.088,
+  "budget_deviation_range": [
+   -0.159,
+   0.052
+  ],
+  "terminals": {
+   "5": 1,
+   "3": 20
+  },
+  "components": {
+   "own_progress": 130.32,
+   "wall": -401.54,
+   "off_course": -112.33,
+   "tyre_slip": -5.06,
+   "mode_excess": -13.67,
+   "retirement": -600.0,
+   "budget": 254.88
+  }
+ },
+ {
+  "track": "flat-sweeper",
+  "curriculum": true,
+  "policy": "constant",
+  "max_abs_obs": 10.021,
+  "budget_deviation_range": [
+   -0.132,
+   0.048
+  ],
+  "terminals": {
+   "5": 1
+  },
+  "components": {
+   "own_progress": 31.36,
+   "wall": -1283.35,
+   "off_course": -348.87,
+   "tyre_slip": -20.0,
+   "mode_excess": -1.17,
+   "budget": 88.28
+  }
+ }
+]
