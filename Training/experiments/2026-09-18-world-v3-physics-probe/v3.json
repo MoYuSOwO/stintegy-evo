@@ -1,0 +1,71 @@
+{
+ "label": "v3",
+ "python_dir": "/Users/jayhuang/Code/stintegy-evo/.worktrees/world-v3/Training/python",
+ "checkpoint": "/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1225000.pt",
+ "lanes": 12,
+ "seconds": 600.0,
+ "seed_base": 900001,
+ "modes": [
+  3,
+  3
+ ],
+ "tracks": {
+  "silverstone": {
+   "laps": 56.0,
+   "spins": 3.0,
+   "clean_laps": 11.0,
+   "clean_share": 0.19642857142857142,
+   "fastest_clean": 101.31605919691026,
+   "mean_clean": 102.08067735629089,
+   "off_per_lap": 0.40000002086162567,
+   "four_wheel_clean_share": 0.6785714285714286,
+   "charge_per_lap": 0.027659624399117556,
+   "wear_per_lap": 0.06110767543884132,
+   "stalls": 0.0,
+   "wall_reward_mean": -0.9034178814326879,
+   "wall_seconds_total": 5.29166672483809,
+   "wall_seconds_per_lap": 0.07609644405660428,
+   "touching_step_share": 0.0010925925925925925,
+   "mean_speed_while_touching": 18.785353915166045,
+   "laps_driven_by_distance": 69.53894877008824
+  },
+  "monaco": {
+   "laps": 0.0,
+   "spins": 44.0,
+   "clean_laps": 0.0,
+   "clean_share": 0.0,
+   "fastest_clean": Infinity,
+   "mean_clean": null,
+   "off_per_lap": 0.0,
+   "four_wheel_clean_share": 0.0,
+   "charge_per_lap": 0.011930027612369503,
+   "wear_per_lap": 0.03831499562897961,
+   "stalls": 135.0,
+   "wall_reward_mean": -99.67252489566089,
+   "wall_seconds_total": 1542.033332293212,
+   "wall_seconds_per_lap": 38.216176520892226,
+   "touching_step_share": 0.2442777777777778,
+   "mean_speed_while_touching": 11.749018710546185,
+   "laps_driven_by_distance": 40.35027762262415
+  },
+  "singapore": {
+   "laps": 0.0,
+   "spins": 3.0,
+   "clean_laps": 0.0,
+   "clean_share": 0.0,
+   "fastest_clean": Infinity,
+   "mean_clean": null,
+   "off_per_lap": 0.0,
+   "four_wheel_clean_share": 0.0,
+   "charge_per_lap": 0.029207028847280377,
+   "wear_per_lap": 0.24427015602559662,
+   "stalls": 8.0,
+   "wall_reward_mean": -610.5615424409689,
+   "wall_seconds_total": 5691.8249780933875,
+   "wall_seconds_per_lap": 488.74813116171794,
+   "touching_step_share": 0.7938703703703703,
+   "mean_speed_while_touching": 14.693018830195303,
+   "laps_driven_by_distance": 11.645722234403932
+  }
+ }
+}
