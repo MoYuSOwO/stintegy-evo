@@ -15,7 +15,12 @@ public static class CarPhysics
     private const float MinimumWearGripFactor = 0.45f;
     private const float RearSlipOnsetCombinedUse = 0.82f;
     private const float RearSlipDominanceRange = 0.2f;
-    private const float DynamicYawMinimumSpeed = 5f;
+    /// <summary>
+    /// Below this speed the lateral model is kinematic: sideslip is not
+    /// carried and the body follows its path. Contact resolvers read it to
+    /// know where an attitude they hand over would simply be discarded.
+    /// </summary>
+    internal const float DynamicYawMinimumSpeed = 5f;
     private const float DynamicYawBlendRange = 5f;
     private const float SideslipEnergyLossScale = 1f;
 
