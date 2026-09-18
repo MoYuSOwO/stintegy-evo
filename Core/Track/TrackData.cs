@@ -163,6 +163,19 @@ public sealed class StartingGridAccessor
     }
 }
 
+/// <summary>
+/// The physical road a car can run on: a sampled centreline with its tangent,
+/// normal and curvature; widths, edges and run-off; elevation, slope and
+/// banking; surfaces and their grip; projection of world positions to
+/// <c>(s, d)</c>, wrapping, the starting line and the grid.
+/// </summary>
+/// <remarks>
+/// The centreline is a geometric reference, not the right answer: the same road
+/// admits any line a controller chooses, and no preferred, offset or reference
+/// line, curvature objective or path planner belongs here. What happens at the
+/// edge is priced by surfaces, grip and walls, not by a hidden off-track flag;
+/// judging fault or conduct is a rules layer's business outside the world.
+/// </remarks>
 public class TrackData
 {
     public const float StepLength = 1.0f;

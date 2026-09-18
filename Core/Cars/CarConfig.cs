@@ -2,6 +2,18 @@ using System;
 
 namespace StintegyEVO.Core.Cars;
 
+/// <summary>
+/// Everything that makes one car physically different from another.
+/// </summary>
+/// <remarks>
+/// Device slots are the whole vocabulary. Core carries every vehicle mechanism
+/// it knows -- the combined-grip limiter, drag reduction, a powertrain's
+/// resource slots -- and a car without one of them has that mechanism's
+/// parameters at zero rather than a different interface: strength zero is a
+/// limiter not fitted, a drag reduction nobody activates does nothing, and a
+/// resource slot with nothing in it is <see cref="PowertrainResourceClass.None"/>.
+/// A second car is new values in these boxes, never a new shape.
+/// </remarks>
 public sealed class CarConfig
 {
     /// <summary>

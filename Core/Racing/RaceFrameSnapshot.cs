@@ -150,7 +150,12 @@ public readonly record struct CarCapabilities(
 
 public readonly record struct RaceEnvironmentSnapshot(float AirTempC, float TrackTempC, float SurfaceGripScalar);
 
-/// <summary>A retained, immutable physical world frame. No controller's private plan is part of the world.</summary>
+/// <summary>
+/// A retained, immutable physical world frame: positions, attitude, speeds, track
+/// projection, tyres, energy, strategy state, contact and telemetry. No controller's
+/// private plan, network handle, reward value or training-episode state is part of the
+/// world, and a retained frame does not change as the live cars move on.
+/// </summary>
 public readonly struct RaceFrameSnapshot
 {
     private readonly ImmutableArray<RaceCarSnapshot> _cars;

@@ -1,74 +1,58 @@
-# Low-poly 3D 初版
+# 3D low-poly 主场景
 
-本版从 master `1c97008` 开始制作。打开工程后默认进入银石 3D 场景，默认只有一辆车，加载完成后自动开始连续刷圈，空格可暂停／继续。车辆由 master 已有的规则司机驾驶，未接入其他分支的银石学习专家。
+`Levels/lowpoly.tscn` 是当前主入口；旧 2D `Levels/root.tscn` 仅为遗留兼容保留，不纳入本次运行验收。
 
-## 如何打开
-
-使用 Godot **4.6.3 .NET**，导入当前 worktree 的 `project.godot`，构建后运行。命令行方式：
+## 启动
 
 ```sh
-dotnet build StintegyEVO.csproj
+dotnet build StintegyEVO.csproj -c Debug
 /Applications/Godot_mono.app/Contents/MacOS/Godot --path .
 ```
 
-首次准备银石时会计算原有的最小曲率参考线，本机约需半分钟，期间会显示加载文字。原来的二维调试场景保留在 `Levels/root.tscn`。
+必须使用 Godot **.NET/Mono** 版本。编辑器运行加载 Debug 应用程序集，单独编译 Release 不能更新它。
+默认场景不加载驾驶器：只展示赛道、一辆静止车和 `NO CONTROLLER` HUD，不推进仿真时钟。
 
-## 镜头和操作
+## 外部接入
 
-| 操作 | 效果 |
-|---|---|
-| 1 | Chase：透视车后追逐，随车头转向，默认镜头 |
-| 2 | Side：侧上方近距离跟车，看车身形体和周围道路 |
-| 3 | Overview：侧面高空总览，观察整条赛道和场边建筑 |
-| 滚轮 | 缩放当前镜头 |
-| 鼠标右键拖动 | 绕观察点旋转 |
-| 左右方向键／点击排名行 | 切换观察车辆 |
-| F | 切换 Chase 和 Side |
-| 空格／RUN、PAUSE | 开始或暂停仿真 |
-| Q、E | 降低、提高轮胎使用档 |
-| A、D | 降低、提高动力输出档 |
-| H | 隐藏／显示 HUD |
+在节点进入场景树前调用 `RaceView3D.BindSimulation(simulation)`，移交非空仿真。
+绑定的世界正常步进，包括没有控制器但带初始速度的车辆。
 
-镜头覆盖全长 5.891 公里的赛道时，真实尺寸的车必然很小。右下角小地图用于定位当前车辆，近距离细节用跟车镜头查看。
+等待 `IsInitialized` 后，可在 Godot 主线程调用：
 
-## 设计依据
-
-这些链接分别对应参考作品和具体制作方法；本版没有下载或复用游戏美术资产，也没有生成图片资产。
-
-1. [Art of Rally 官方画面](https://www.artofrally.com/)：参考有辨识度的车身轮廓、简洁环境和俯斜构图。落到本项目，是降低环境颜色的存在感，把车、路肩和比赛线路留给视线。
-2. [Blender 的平滑／平面着色教程](https://docs.blender.org/UATEST/manual/en/dev/modeling/meshes/editing/face/shading.html)：低多边形的可读性来自形体和面的法线。本版用独立面法线表达车鼻、侧箱、前后翼和轮胎，不靠密集纹理伪装细节。
-3. [Godot 程序化网格教程](https://docs.godotengine.org/en/stable/tutorials/3d/procedural_geometry/surfacetool.html)：用于顶点、法线和颜色的组织。道路按纵向分块，横向细分以表现路拱与横坡。
-4. [Godot 环境与后处理教程](https://docs.godotengine.org/en/stable/tutorials/3d/environment_and_post_processing.html)：本版采用一盏暖色太阳、较冷的环境补光和 Filmic 色调映射。顶点颜色明确按 sRGB 转换，避免整体发白。
-5. [Godot MultiMesh 文档](https://docs.godotengine.org/en/stable/classes/class_multimeshinstance3d.html)：树木按空间簇实例化，避免为每棵树增加独立更新逻辑。
-
-采用灰绿色环境、深灰路面、红白路肩；车队用有限的红、黄、蓝绿和白色配色。建筑有明确用途：看台、车库、计时桥。HUD 用米白平面和深色文字，红色只承担选中状态，不使用玻璃卡片、装饰性渐变或发光边框。
-
-## 真实性与初版边界
-
-- 赛车尺寸来自碰撞尺寸的现行默认量级；车位、朝向和驾驶行为来自 Core。
-- 赛道中心线、高差和横坡读取 Core。高差从坡度积分恢复并处理闭环误差；Core 自带银石高程就是近似模型，不是实测地形。
-- 场边建筑是示意性模型，不是银石建筑的精确复刻。
-- 场景不新增 Godot 刚体或碰撞体，未修改车辆动力学、规则司机或训练代码。
-- master 的规则司机在本机 20 车密集发车场景中仍很重。仿真在单个后台任务中按固定 1/60 秒推进，画面读取完成后的快照，保持镜头和界面可操作。固定步进保留时间余量，低帧率时可在一次后台任务中计算多步（最多 6 步）；车辆按独立时间轴插值，启动时预留 100 ms 状态缓冲。
-- HUD 中 FPS 是画面帧率，CORE 是一次仿真步耗时，SIM 是由该耗时估算的最高实时倍率。画面流畅不代表仿真达到实时。暂停时画面立即定格，正在计算的一批物理步可收尾；追赶积压限制在 100 ms 内。
-
-## 验证
-
-基线核心测试 259 项通过；3 项几何测试检查坡度与高度一致、横坡方向和赛道首尾接缝；6 项时序测试检查不同渲染帧率下的固定步进、暂停清空积压以及批量快照插值。图形冒烟测试会操作三个镜头、缩放、选车、窗口缩放和暂停／继续，并保存真实 Metal 视口截图：
-
-```sh
-dotnet test Core/Tests/StintegyEVO.Core.Tests.csproj -c Release --filter FullyQualifiedName~TrackSurfaceGeometryTests
-/Applications/Godot_mono.app/Contents/MacOS/Godot --path . --script res://Tools/lowpoly_smoke.gd
+```csharp
+view.SetExternalInput(0, desiredCurvature: 0f, desiredAccel: 2f);
 ```
 
-截图位于 `.tmp/lowpoly/`。运行机器负载会影响结果，应将渲染和仿真耗时分开比较。
+这是命令队列，不是控制算法。命令在后台物理任务释放世界后应用；首次提交会启动默认预览。
+后续零命令仍继续物理（滑行、阻力、坡度），不代表暂停。暂停时提交命令不会越过暂停。
+视图运行期间不要并发修改 `Simulation`；退出场景会等待在途任务结束，归还所有权。
 
-运动时序回归：`--script res://Tools/lowpoly_motion_smoke.gd`，在 120／60／30 FPS 限制下记录车辆停帧数、位移速度分位数和仿真实时倍率。
+## 操作
 
-## 构建配置
+| 输入 | 行为 |
+|---|---|
+| 1 / 2 / 3 | 跟车、侧视、全局镜头 |
+| 滚轮 / 右键拖动 | 缩放 / 绕观察点旋转 |
+| 左右方向键 / 排名行 | 切换观察车辆 |
+| F | 切换跟车与侧视 |
+| 空格 / RUN、PAUSE | 暂停、恢复已经接入的仿真，不自动创建驾驶器 |
+| Q / E | 轮胎使用档 |
+| A / D | 动力输出档 |
+| H | HUD 显隐 |
 
-默认编辑器构建开启视图代码优化，并引用 `Release` 的 Core；解决方案的 Debug／ExportDebug 配置也映射到 Release Core。启动日志逐个打印视图和 Core 程序集的配置、JIT 优化禁用标志和实际路径，避免误测旧 DLL。
+## 数据与验收
 
-Godot 4.6.3 编辑器读取 Debug 输出，所以这属于“优化后的编辑器视图 + Release Core”，不是完整导出的 Release 游戏。完整 C# 发布配置可用 `dotnet build StintegyEVO.csproj -c ExportRelease` 构建；可执行发布包仍需 Godot 的导出模板与 `--export-release`。如需逐行调试 Core，可直接构建项目并传入 `-p:SimulationConfiguration=Debug -p:Optimize=false`。
+车辆姿态来自 Core，3D 不另建 Godot 刚体。物理在一个后台任务中以 1/60 秒步进；
+渲染消费已完成步的姿态副本。HUD、策略、CSV 只在物理任务完成后读取世界。
+`STINTEGY_CSV_TELEMETRY=1` 导出 `.tmp/telemetry.csv`，也可指定路径。
 
-参考：[Godot 4.6.3 程序集路径选择源码](https://github.com/godotengine/godot/blob/4.6.3-stable/modules/mono/godotsharp_dirs.cpp)。
+```sh
+python3 Tools/verify_boundary.py --godot /Applications/Godot_mono.app/Contents/MacOS/Godot --render
+```
+
+- `lowpoly_smoke.gd`：静止预览、相机/HUD/策略、外部输入、零命令滑行、暂停和恢复；有窗口时保存五张真实截图。
+- `lowpoly_motion_smoke.gd`：已知外部输入的位移、运动帧比例和仿真节奏。
+- `CompositionSmoke`：测试专用外部控制器、无控制器滑行世界、输入验证和所有权归还；不进入普通产品构建。
+- headless 模式明确跳过截图，不宣称视觉验证通过。脚本与外层运行器都有超时保护。
+
+完整验收用 `python3 Tools/verify_boundary.py --godot <Godot .NET 可执行文件>`；加 `--render` 得到真实截图。

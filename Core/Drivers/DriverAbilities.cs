@@ -7,6 +7,13 @@ namespace StintegyEVO.Core.Drivers;
 /// ability. Controllers interpret how each rating affects their commands;
 /// this domain model does not prescribe a sampling or driving algorithm.
 /// </summary>
+/// <remarks>
+/// Every rating is a finite number in the closed range 0..100; a profile with
+/// anything else is rejected. A rating's meaning belongs to the driver, never to
+/// the car: mapping it onto behaviour happens in a controller, upstream of
+/// <see cref="StintegyEVO.Core.Cars.DriverInput"/>, and must not come back into
+/// <see cref="StintegyEVO.Core.Cars.CarPhysics"/> as a second driver model.
+/// </remarks>
 public sealed record DriverAbilities
 {
     public float Pace { get; init; } = 100f;

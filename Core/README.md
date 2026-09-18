@@ -63,4 +63,4 @@ DriverInput GetControl(in DriverContext context, float dt);
 - `Driver == null` 不应触发默认规则或默认驾驶器；Core 使用保持型 `ExternalInput`，其默认值为零命令。Core 仍会对零输入正常计算物理；独立 3D 预览是通过暂不调用 Step 保持静止，而非把零输入定义成冻结。
 - 不要在 Core 中加入包/插件加载框架来解决外部策略、规则或模型分发问题。
 
-更完整的契约、赛道几何、验证与迁移说明位于 [`../docs/architecture/README_zh.md`](../docs/architecture/README_zh.md)。
+各项契约写在对应类型（`IDriverController`、`RaceFrameSnapshot`、`DriverAbilities`、`CarConfig`、`TrackData`）的 XML 文档注释里，并由 `Core/Tests` 守住。
