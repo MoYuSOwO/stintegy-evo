@@ -32,7 +32,10 @@ internal static class Program
                 bool solo,
                 bool randomiseEpisodeStart,
                 EpisodeStartDistribution episodeStarts,
-                bool hiddenCurriculum
+                bool hiddenCurriculum,
+                float raceKilometres,
+                float budgetLambda,
+                float budgetGamma
             ) =
                 ParseOptions(args);
             BatchedTrainingHost host = new(
@@ -49,7 +52,10 @@ internal static class Program
                 decisionHz,
                 randomiseEpisodeStart,
                 episodeStarts,
-                hiddenCurriculum
+                hiddenCurriculum,
+                raceKilometres,
+                budgetLambda,
+                budgetGamma
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -75,7 +81,10 @@ internal static class Program
         bool Solo,
         bool RandomiseEpisodeStart,
         EpisodeStartDistribution EpisodeStarts,
-        bool HiddenCurriculum
+        bool HiddenCurriculum,
+        float RaceKilometres,
+        float BudgetLambda,
+        float BudgetGamma
     ) ParseOptions(string[] args)
     {
         int batchSize = 1;
@@ -94,6 +103,9 @@ internal static class Program
         float decisionHz = DirectDriveController.DefaultDecisionHz;
         bool randomiseEpisodeStart = false;
         bool hiddenCurriculum = false;
+        float raceKilometres = EnergyBudget.DefaultRaceKilometres;
+        float budgetLambda = EnergyBudget.DefaultLambda;
+        float budgetGamma = EnergyBudget.DefaultGamma;
         EpisodeStartDistribution episodeStarts = new();
         for (int i = 0; i < args.Length; i++)
         {
@@ -192,6 +204,15 @@ internal static class Program
                     throw new ArgumentException(
                         "--analytic-hz is retired with the analytic driver."
                     );
+                case "--race-km":
+                    raceKilometres = ParsePositiveFloat(option, value);
+                    break;
+                case "--budget-lambda":
+                    budgetLambda = ParseFiniteFloat(option, value);
+                    break;
+                case "--budget-gamma":
+                    budgetGamma = ParsePositiveFloat(option, value);
+                    break;
                 case "--ego-modes":
                     egoStrategy = ParseModes(option, value);
                     break;
@@ -259,7 +280,10 @@ internal static class Program
             solo,
             randomiseEpisodeStart,
             episodeStarts,
-            hiddenCurriculum
+            hiddenCurriculum,
+            raceKilometres,
+            budgetLambda,
+            budgetGamma
         );
     }
 

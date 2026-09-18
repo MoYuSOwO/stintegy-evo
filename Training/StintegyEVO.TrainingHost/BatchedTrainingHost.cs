@@ -43,7 +43,10 @@ public sealed class BatchedTrainingHost
         float decisionHz = DirectDriveController.DefaultDecisionHz,
         bool randomiseEpisodeStart = false,
         EpisodeStartDistribution? episodeStarts = null,
-        bool hiddenCurriculum = false
+        bool hiddenCurriculum = false,
+        float raceKilometres = EnergyBudget.DefaultRaceKilometres,
+        float budgetLambda = EnergyBudget.DefaultLambda,
+        float budgetGamma = EnergyBudget.DefaultGamma
     )
     {
         if (batchSize <= 0)
@@ -113,7 +116,10 @@ public sealed class BatchedTrainingHost
                 decisionHz,
                 randomiseEpisodeStart,
                 episodeStarts,
-                hiddenCurriculum
+                hiddenCurriculum,
+                raceKilometres,
+                budgetLambda,
+                budgetGamma
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

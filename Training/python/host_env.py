@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 4
+VERSION = 5
 
 # The decision rate the host defaults to, mirrored from
 # DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
@@ -45,13 +45,16 @@ TERMINAL_NAMES = (
     # A barrier no longer ends a race -- it is priced for as long as it
     # lasts, like leaving the track -- so nothing between "contact" and
     # "stalled" ends an episode any more.
-    "none", "passed", "contact", "stalled", "timeout"
+    "none", "passed", "contact", "stalled", "timeout",
+    # The race's flag (protocol 5): a true terminal, so the energy budget's
+    # bill is settled there rather than bootstrapped past.
+    "finished",
 )
 
 COMPONENT_NAMES = (
     "own_progress", "relative_progress", "pass", "contact", "wall",
     "off_course", "tyre_slip", "time", "timeout_outcome",
-    "mode_excess", "retirement",
+    "mode_excess", "retirement", "budget",
 )
 
 DEFAULT_HOST_PROJECT = str(
@@ -71,6 +74,8 @@ class HostEnv:
         episode_seconds: float | None = None,
         randomise_episode_start: bool = False,
         hidden_curriculum: bool = False,
+        budget_gamma: float | None = None,
+        race_km: float | None = None,
         host_project: str = DEFAULT_HOST_PROJECT,
         quiet: bool = True,
         ego_modes: tuple[int, int] | None = None,
@@ -112,6 +117,12 @@ class HostEnv:
             # strength and perception noise, never shown to the policy.
             # Training only; evaluation stays nominal.
             command += ["--hidden-curriculum"]
+        if budget_gamma is not None:
+            # The host shapes with phi' - phi by default; see
+            # EnergyBudget.DefaultGamma for why not the learner's gamma.
+            command += ["--budget-gamma", str(budget_gamma)]
+        if race_km is not None:
+            command += ["--race-km", str(race_km)]
         if ego_modes is not None:
             command += ["--ego-modes", f"{ego_modes[0]},{ego_modes[1]}"]
         if ego_analytic:

@@ -6,7 +6,8 @@ public enum TrainingTerminalReason : byte
     Passed,
     Contact,
     Stalled,
-    Timeout
+    Timeout,
+    Finished
 }
 
 public readonly record struct TrainingStepResult(
@@ -21,10 +22,11 @@ public readonly record struct TrainingStepResult(
     float TimePenalty,
     float TimeoutOutcome,
     float ModeExcessPenalty,
-    float RetirementPenalty
+    float RetirementPenalty,
+    float BudgetShaping = 0f
 )
 {
-    public const int ComponentCount = 11;
+    public const int ComponentCount = 12;
 
     public bool Done => TerminalReason != TrainingTerminalReason.None;
 
@@ -39,7 +41,8 @@ public readonly record struct TrainingStepResult(
         TimePenalty +
         TimeoutOutcome +
         ModeExcessPenalty +
-        RetirementPenalty;
+        RetirementPenalty +
+        BudgetShaping;
 
     public float GetComponent(int index) => index switch
     {
@@ -54,6 +57,7 @@ public readonly record struct TrainingStepResult(
         8 => TimeoutOutcome,
         9 => ModeExcessPenalty,
         10 => RetirementPenalty,
+        11 => BudgetShaping,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 }

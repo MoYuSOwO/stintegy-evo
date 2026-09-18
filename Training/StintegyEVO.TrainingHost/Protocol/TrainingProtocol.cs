@@ -41,8 +41,12 @@ public static class TrainingProtocol
     /// terms as the two before it, and it is never a reward: training keeps
     /// the stricter centreline ruler, which is where the car's margin comes
     /// from.
+    ///
+    /// Version 5 is the world-v3 freeze batch: a 457-channel observation, a
+    /// twelfth reward component (the budget shaping), and a sixth terminal
+    /// reason (finished: the race's flag).
     /// </summary>
-    public const int Version = 4;
+    public const int Version = 5;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

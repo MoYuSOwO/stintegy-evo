@@ -248,6 +248,11 @@ public sealed class DirectDriveDuelEnvironment
     private readonly bool _randomiseEpisodeStart;
     private readonly bool _hiddenCurriculum;
     private ulong _noiseState;
+    private readonly float _raceMeters;
+    private readonly float _budgetLambda;
+    private readonly float _budgetGamma;
+    private float _raceProgressAtStart;
+    private float _budgetPotential;
     private readonly EpisodeStartDistribution _episodeStarts;
     private RaceSimulation? _simulation;
     private RaceCar? _ego;
@@ -271,6 +276,17 @@ public sealed class DirectDriveDuelEnvironment
     /// the environment was built with the curriculum on.
     /// </summary>
     public HiddenCurriculum.Draw Curriculum { get; private set; } = new(1f, 0f);
+
+    /// <summary>How far through the race the ego is, 0 at the start, 1 at the flag.</summary>
+    public float RaceProgress => _ego is null
+        ? _raceProgressAtStart
+        : _raceProgressAtStart +
+          (_ego.Progress.TotalDistance - _egoDistanceOrigin) / _raceMeters;
+
+    /// <summary>Remaining charge minus the ego's target line; zero with no line.</summary>
+    public float BudgetDeviation => _ego is null
+        ? 0f
+        : EnergyBudget.Deviation(RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung);
     public float ElapsedSeconds => _elapsedSeconds;
     public bool IsTerminal => _terminal;
     public float SignedLeadDistanceMeters => CalculateSignedLeadDistance();
@@ -319,9 +335,21 @@ public sealed class DirectDriveDuelEnvironment
         float decisionHz = DirectDriveController.DefaultDecisionHz,
         bool randomiseEpisodeStart = false,
         EpisodeStartDistribution? episodeStarts = null,
-        bool hiddenCurriculum = false
+        bool hiddenCurriculum = false,
+        float raceKilometres = EnergyBudget.DefaultRaceKilometres,
+        float budgetLambda = EnergyBudget.DefaultLambda,
+        float budgetGamma = EnergyBudget.DefaultGamma
     )
     {
+        if (!float.IsFinite(raceKilometres) || raceKilometres <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(raceKilometres));
+        if (!float.IsFinite(budgetLambda) || budgetLambda < 0f)
+            throw new ArgumentOutOfRangeException(nameof(budgetLambda));
+        if (!float.IsFinite(budgetGamma) || budgetGamma <= 0f || budgetGamma > 1f)
+            throw new ArgumentOutOfRangeException(nameof(budgetGamma));
+        _raceMeters = raceKilometres * 1000f;
+        _budgetLambda = budgetLambda;
+        _budgetGamma = budgetGamma;
         if (!solo)
         {
             throw new NotSupportedException(
@@ -485,6 +513,14 @@ public sealed class DirectDriveDuelEnvironment
         );
         _terminal = terminalReason != TrainingTerminalReason.None;
 
+        // The budget, shaped: phi' - phi by default (EnergyBudget.DefaultGamma). At the flag the episode
+        // truly ends and the last phi' is the settled bill; the learner does
+        // not bootstrap past it.
+        float budgetPotential = EnergyBudget.Potential(
+            RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung, _budgetLambda);
+        float budgetShaping = _budgetGamma * budgetPotential - _budgetPotential;
+        _budgetPotential = budgetPotential;
+
         bool offCourse = _ego.Progress.Region != TrackRegion.RacingSurface;
         // Ground covered while spinning is not ground the driver drove, and
         // it is the same argument that masks the progress reward off the
@@ -547,7 +583,8 @@ public sealed class DirectDriveDuelEnvironment
             // least as expensive as running out of road.
             RetirementPenalty: terminalReason == TrainingTerminalReason.Stalled
                 ? -30f
-                : 0f
+                : 0f,
+            BudgetShaping: budgetShaping
         );
     }
 
@@ -695,6 +732,28 @@ public sealed class DirectDriveDuelEnvironment
         _noiseState = random.NextSeed();
         Curriculum = _hiddenCurriculum ? drawnCurriculum : new(1f, 0f);
 
+        // Where in the race the episode begins, drawn jointly with the
+        // charge (freeze design 3, the §7 window fix): progress uniform over
+        // the race, charge about the Normal line at that progress, from
+        // fifteen points under it to ten over. Drawn whether or not used and
+        // after everything else. Nominal starts sit on the Normal line.
+        float progressDraw = random.NextSingle(0f, 1f);
+        float chargeDraw = random.NextSingle(0f, 1f);
+        if (_randomiseEpisodeStart)
+        {
+            _raceProgressAtStart = progressDraw;
+            float onLine = EnergyBudget.Target(
+                progressDraw, (int)PowerOutputMode.Normal)!.Value;
+            egoStart = egoStart with
+            {
+                Charge = Math.Clamp(onLine - 0.15f + 0.25f * chargeDraw, 0.02f, 1f)
+            };
+        }
+        else
+        {
+            _raceProgressAtStart = EnergyBudget.ProgressOnNormalLine(egoStart.Charge);
+        }
+
         // The weather and the road come from the same switch as the car,
         // because they answer the same question: is this a training
         // episode or an exam?
@@ -742,6 +801,8 @@ public sealed class DirectDriveDuelEnvironment
         // it - which is no longer possible now that the clock is ours.
         _simulation.Step(WarmupStepSeconds);
         _egoDistanceOrigin = _ego.Progress.TotalDistance;
+        _budgetPotential = EnergyBudget.Potential(
+            RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung, _budgetLambda);
         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
         SampleObservation(observation);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
@@ -773,6 +834,11 @@ public sealed class DirectDriveDuelEnvironment
                 return TrainingTerminalReason.Passed;
         }
 
+        // The flag. A true terminal, so that the budget's bill is settled
+        // there rather than bootstrapped past.
+        if (RaceProgress >= 1f)
+            return TrainingTerminalReason.Finished;
+
         if (Ego.State.Speed < StalledSpeedMetersPerSecond)
             _stalledHoldSeconds += AgentStepSeconds;
         else
@@ -796,6 +862,7 @@ public sealed class DirectDriveDuelEnvironment
     /// </summary>
     private void SampleObservation(Span<float> observation)
     {
+        _egoDriver!.BudgetDeviation = BudgetDeviation;
         DriverContext context = _simulation!.CaptureFrameContext(_ego!);
         _egoDriver!.Observe(in context);
         _egoDriver.LastObservation.CopyTo(observation);
