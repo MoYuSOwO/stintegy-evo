@@ -862,8 +862,14 @@ public sealed class CarPhysicsTests
         );
     }
 
+    /// <summary>
+    /// era/world-v3: the power rungs are target lines for the driver, not
+    /// caps on the motor, so the same flat-out command drives and spends
+    /// the same on every rung. (On master the rungs are still caps and this
+    /// test read the other way: Attack quicker and hungrier than Save.)
+    /// </summary>
     [Fact]
-    public void AttackBatteryModeAcceleratesMoreButSpendsMoreEnergyThanSave()
+    public void EveryPowerRungDrivesAtFullPower()
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
@@ -874,9 +880,9 @@ public sealed class CarPhysicsTests
         StepMany(save, car, tires, input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Save), steps: 60);
         StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack), steps: 60);
 
-        Assert.True(attack.Speed > save.Speed, "attack battery mode should produce more straight-line speed");
-        Assert.True(attack.Energy.Primary < save.Energy.Primary, "attack battery mode should spend more energy");
-        Assert.True(attack.Telemetry.DrivePowerWatts > save.Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
+        Assert.Equal(attack.Speed, save.Speed);
+        Assert.Equal(attack.Energy.Primary, save.Energy.Primary);
+        Assert.Equal(attack.Telemetry.DrivePowerWatts, save.Telemetry.DrivePowerWatts);
     }
 
     [Fact]
@@ -892,7 +898,16 @@ public sealed class CarPhysicsTests
     /// </summary>
     public void DrivePowerFallsBetweenTheNamedSettings()
     {
-        ElectricPowertrain powertrain = ElectricPowertrain.Default;
+        // Configured apart, as a pack that still had caps would be; the
+        // default pack gives full power on every rung (era/world-v3).
+        ElectricPowertrain powertrain = new()
+        {
+            SaveDrivePowerLimitWatts = 372000f,
+            EcoDrivePowerLimitWatts = 381000f,
+            NormalDrivePowerLimitWatts = 390000f,
+            PushDrivePowerLimitWatts = 400000f,
+            AttackDrivePowerLimitWatts = 409000f
+        };
         float eco = powertrain.GetDrivePowerLimitWatts(PowerOutputMode.Eco);
         float normal = powertrain.GetDrivePowerLimitWatts(PowerOutputMode.Normal);
         float between = powertrain.GetDrivePowerLimitWatts(0.375f);

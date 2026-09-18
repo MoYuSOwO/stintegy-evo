@@ -146,11 +146,34 @@ public sealed class ElectricPowertrain : IPowertrain
     /// </summary>
     public float MinPowerSpeed { get; init; } = 8f;
 
-    public float SaveDrivePowerLimitWatts { get; init; } = 372000f;
-    public float EcoDrivePowerLimitWatts { get; init; } = 381000f;
-    public float NormalDrivePowerLimitWatts { get; init; } = 390000f;
-    public float PushDrivePowerLimitWatts { get; init; } = 400000f;
-    public float AttackDrivePowerLimitWatts { get; init; } = 409000f;
+    /// <summary>
+    /// The drive power the pack delivers, the same on every rung of the
+    /// output ladder (era/world-v3, freeze batch).
+    ///
+    /// The rungs used to be five caps, 372 to 409 kW. A cap is not how
+    /// anybody saves energy: most of a lap's energy goes into pushing air,
+    /// power goes as the cube of speed, and a cap bites only where the car
+    /// is already power-limited, so it trades time for energy along a
+    /// straight line. Measured on world-v3, the five caps moved consumption
+    /// by 4% (29.7 to 30.9 MJ a lap) at 1.2 to 1.5 s per MJ, where lifting
+    /// before braking zones saves at 0.5 s per MJ (gate 1, 2026-09-18).
+    /// So the rungs now carry a target line for the driver to meet, which
+    /// is the training host's business, and the pack gives full power on
+    /// all of them. Low-charge sag below stays: that is the battery, not a
+    /// rung.
+    ///
+    /// Revival condition: if the 5x5 mode matrix loses its ordering once
+    /// the caps are gone (Attack no quicker than Save), the cap question is
+    /// reopened. This is a world mechanism of the era branch and belongs on
+    /// its graduation list.
+    /// </summary>
+    public const float FullDrivePowerWatts = 409000f;
+
+    public float SaveDrivePowerLimitWatts { get; init; } = FullDrivePowerWatts;
+    public float EcoDrivePowerLimitWatts { get; init; } = FullDrivePowerWatts;
+    public float NormalDrivePowerLimitWatts { get; init; } = FullDrivePowerWatts;
+    public float PushDrivePowerLimitWatts { get; init; } = FullDrivePowerWatts;
+    public float AttackDrivePowerLimitWatts { get; init; } = FullDrivePowerWatts;
 
     public float GetDrivePowerLimitWatts(PowerOutputMode mode)
     {
