@@ -1,0 +1,88 @@
+{
+ "track": "silverstone",
+ "per_zone_lift_m": 100.0,
+ "braking_zones_m": [
+  765.0,
+  985.0,
+  1835.0,
+  2075.0,
+  5395.0
+ ],
+ "zones": [
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 26.0,
+   "spins": 5.0,
+   "mean_clean": 102.14729331868324,
+   "fastest_clean": 101.08235570835157,
+   "energy_mj_per_lap": 29.886788384291204,
+   "charge_per_lap": 0.027169807622082914,
+   "zone_m": 765.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 26.0,
+   "spins": 1.0,
+   "mean_clean": 103.08283531167801,
+   "fastest_clean": 101.89558861411052,
+   "energy_mj_per_lap": 30.02158611639285,
+   "charge_per_lap": 0.027292351014902592,
+   "zone_m": 985.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 22.0,
+   "spins": 2.0,
+   "mean_clean": 102.11435565207904,
+   "fastest_clean": 101.21976976767012,
+   "energy_mj_per_lap": 30.052406170847057,
+   "charge_per_lap": 0.027320369246224597,
+   "zone_m": 1835.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 21.0,
+   "spins": 2.0,
+   "mean_clean": 102.48147916310323,
+   "fastest_clean": 101.84054037062066,
+   "energy_mj_per_lap": 30.124956697862025,
+   "charge_per_lap": 0.02738632427078366,
+   "zone_m": 2075.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 23.0,
+   "spins": 3.0,
+   "mean_clean": 102.081303906244,
+   "fastest_clean": 101.02221214377317,
+   "energy_mj_per_lap": 29.93899785922159,
+   "charge_per_lap": 0.027217270781110536,
+   "zone_m": 5395.0
+  }
+ ]
+}

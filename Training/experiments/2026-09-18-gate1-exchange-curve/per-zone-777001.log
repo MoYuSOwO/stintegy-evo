@@ -1,0 +1,7 @@
+braking zones at [760.0, 990.0, 1830.0, 2075.0, 3850.0, 5400.0] m (6 per lap)
+{"modes": [3, 3], "lift_m": 100.0, "laps": 59.0, "clean_laps": 22.0, "spins": 2.0, "mean_clean": 102.35269200693318, "fastest_clean": 101.16013530023241, "energy_mj_per_lap": 29.89545131856614, "charge_per_lap": 0.02717768301687831}
+{"modes": [3, 3], "lift_m": 100.0, "laps": 58.0, "clean_laps": 30.0, "spins": 6.0, "mean_clean": 103.03625639819687, "fastest_clean": 101.87490141385194, "energy_mj_per_lap": 29.959310516574178, "charge_per_lap": 0.02723573683324925}
+{"modes": [3, 3], "lift_m": 100.0, "laps": 55.0, "clean_laps": 18.0, "spins": 4.0, "mean_clean": 102.16789042645554, "fastest_clean": 101.19958254269449, "energy_mj_per_lap": 30.336449255880524, "charge_per_lap": 0.027578590232618657}
+{"modes": [3, 3], "lift_m": 100.0, "laps": 58.0, "clean_laps": 23.0, "spins": 5.0, "mean_clean": 102.64543181363095, "fastest_clean": 101.6331975062372, "energy_mj_per_lap": 30.065013616530848, "charge_per_lap": 0.02733183056048259}
+{"modes": [3, 3], "lift_m": 100.0, "laps": 56.0, "clean_laps": 23.0, "spins": 6.0, "mean_clean": 102.26797700470232, "fastest_clean": 101.5013630558787, "energy_mj_per_lap": 30.005105412106907, "charge_per_lap": 0.027277368556460825}
+{"modes": [3, 3], "lift_m": 100.0, "laps": 58.0, "clean_laps": 19.0, "spins": 4.0, "mean_clean": 102.16063545287716, "fastest_clean": 101.47691764777608, "energy_mj_per_lap": 29.818130326678517, "charge_per_lap": 0.02710739120607138}

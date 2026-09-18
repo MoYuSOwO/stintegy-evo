@@ -1,0 +1,158 @@
+{
+ "track": "silverstone",
+ "lanes": 12,
+ "seconds": 600.0,
+ "seed_base": 424242,
+ "checkpoint": "/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/evalparent2h-1225000.pt",
+ "braking_zones_m": [
+  765.0,
+  985.0,
+  1835.0,
+  2075.0,
+  5395.0
+ ],
+ "ladder": [
+  {
+   "modes": [
+    3,
+    1
+   ],
+   "lift_m": 0.0,
+   "laps": 57.0,
+   "clean_laps": 18.0,
+   "spins": 1.0,
+   "mean_clean": 102.96888453444254,
+   "fastest_clean": 102.22063939665475,
+   "energy_mj_per_lap": 29.668595085008466,
+   "charge_per_lap": 0.026971450077280423
+  },
+  {
+   "modes": [
+    3,
+    2
+   ],
+   "lift_m": 0.0,
+   "laps": 57.0,
+   "clean_laps": 24.0,
+   "spins": 0.0,
+   "mean_clean": 102.68350880316306,
+   "fastest_clean": 101.80083976005645,
+   "energy_mj_per_lap": 29.969172032115438,
+   "charge_per_lap": 0.02724470184737767
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 0.0,
+   "laps": 57.0,
+   "clean_laps": 18.0,
+   "spins": 7.0,
+   "mean_clean": 102.28056299125502,
+   "fastest_clean": 101.25563073835845,
+   "energy_mj_per_lap": 30.36121047400428,
+   "charge_per_lap": 0.027601100430912982
+  },
+  {
+   "modes": [
+    3,
+    4
+   ],
+   "lift_m": 0.0,
+   "laps": 57.0,
+   "clean_laps": 15.0,
+   "spins": 4.0,
+   "mean_clean": 101.83219504584099,
+   "fastest_clean": 100.95694411918646,
+   "energy_mj_per_lap": 30.743988588154,
+   "charge_per_lap": 0.027949080534685453
+  },
+  {
+   "modes": [
+    3,
+    5
+   ],
+   "lift_m": 0.0,
+   "laps": 56.0,
+   "clean_laps": 21.0,
+   "spins": 3.0,
+   "mean_clean": 101.65606322979845,
+   "fastest_clean": 100.62652486381225,
+   "energy_mj_per_lap": 30.993079697692696,
+   "charge_per_lap": 0.02817552699790245
+  }
+ ],
+ "lift": [
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 0.0,
+   "laps": 57.0,
+   "clean_laps": 18.0,
+   "spins": 7.0,
+   "mean_clean": 102.28056299125502,
+   "fastest_clean": 101.25563073835845,
+   "energy_mj_per_lap": 30.36121047400428,
+   "charge_per_lap": 0.027601100430912982
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 50.0,
+   "laps": 57.0,
+   "clean_laps": 23.0,
+   "spins": 3.0,
+   "mean_clean": 102.6465398856507,
+   "fastest_clean": 101.4596953075654,
+   "energy_mj_per_lap": 29.341191345763846,
+   "charge_per_lap": 0.02667381031433077
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 24.0,
+   "spins": 5.0,
+   "mean_clean": 103.64897592527068,
+   "fastest_clean": 102.57186672186026,
+   "energy_mj_per_lap": 28.556172661751692,
+   "charge_per_lap": 0.02596015696522881
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 150.0,
+   "laps": 56.0,
+   "clean_laps": 27.0,
+   "spins": 4.0,
+   "mean_clean": 104.47046755461899,
+   "fastest_clean": 102.8957637311575,
+   "energy_mj_per_lap": 27.750635309119232,
+   "charge_per_lap": 0.025227850281017483
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 200.0,
+   "laps": 56.0,
+   "clean_laps": 35.0,
+   "spins": 3.0,
+   "mean_clean": 105.00754114270022,
+   "fastest_clean": 103.68506324146654,
+   "energy_mj_per_lap": 26.843424918284608,
+   "charge_per_lap": 0.024403113562076917
+  }
+ ]
+}
