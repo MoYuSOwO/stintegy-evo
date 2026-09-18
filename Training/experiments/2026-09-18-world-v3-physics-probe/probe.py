@@ -78,6 +78,8 @@ def main() -> int:
     parser.add_argument("--json", required=True)
     parser.add_argument("--zero-channel", type=int, action="append", default=[],
                         help="ablation: hold this observation index at zero")
+    parser.add_argument("--clamp-channel", default=None,
+                        help="ablation: INDEX:MAX, clip that observation index to [-MAX, MAX]")
     args = parser.parse_args()
     modes = tuple(int(x) for x in args.modes.split(","))
 
@@ -91,17 +93,25 @@ def main() -> int:
         agent = sac.SacAgent(env.obs_size, env.action_size, sac.SacConfig())
         print(f"[{args.label}] host {host_env.DEFAULT_HOST_PROJECT}", flush=True)
     agent.load(args.checkpoint)
-    if args.zero_channel:
+    if args.zero_channel or args.clamp_channel:
         act = agent.act
+        clamp = None
+        if args.clamp_channel:
+            index, limit = args.clamp_channel.split(":")
+            clamp = (int(index), float(limit))
 
         def masked(obs, deterministic=False):
             obs = obs.copy()
-            obs[:, args.zero_channel] = 0.0
+            if args.zero_channel:
+                obs[:, args.zero_channel] = 0.0
+            if clamp is not None:
+                obs[:, clamp[0]] = np.clip(obs[:, clamp[0]], -clamp[1], clamp[1])
             return act(obs, deterministic=deterministic)
 
         agent.act = masked
 
-    results = {"label": args.label, "zeroed_channels": args.zero_channel, "python_dir": args.python_dir,
+    results = {"label": args.label, "zeroed_channels": args.zero_channel,
+               "clamped_channel": args.clamp_channel, "python_dir": args.python_dir,
                "checkpoint": args.checkpoint, "lanes": args.lanes,
                "seconds": args.seconds, "seed_base": args.seed_base,
                "modes": list(modes), "tracks": {}}

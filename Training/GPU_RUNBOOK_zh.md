@@ -99,7 +99,7 @@ cd Training/python && ../.venv/bin/python -u gpu_preflight.py --checkpoint check
 2000 步 16 车道训练冒烟（打印 tps）→ **对照 Mac 参考读数**。
 
 参考读数（`Training/gpu-reference.json`）：`evalparent2h-1225000.pt`，种子 900001，
-12 车道 × 600 秒，名义 3/3——56 圈、3 旋转、11 圈干净、最快干净圈 1:41.316（world-v3 读数；world-v2 时为 57 圈、0 旋转、27 圈干净、1:41.585，差异见 `experiments/2026-09-18-world-v3-physics-probe`）。
+12 车道 × 600 秒，名义 3/3——58 圈、4 旋转、28 圈干净、最快干净圈 1:41.227（world-v3 读数，限制器切除通道按 0.316 截断；world-v2 时为 57 圈、0 旋转、27 圈干净、1:41.585，差异见 `experiments/2026-09-18-world-v3-physics-probe`）。
 容差：圈数 ±2、最快干净圈 ±0.5 秒、干净圈数 ±25%。**超出容差即停**：
 这台机器上的世界和 Mac 上的不够接近，先查再点火。
 

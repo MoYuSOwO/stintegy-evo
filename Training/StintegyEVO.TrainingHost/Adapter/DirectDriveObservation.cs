@@ -278,6 +278,29 @@ public static class DirectDriveObservation
     internal const float RelativeLateralScale = 20f;
     internal const float RelativeSpeedScale = 50f;
     internal const float AlongsideBodyMeters = 4.8f;
+
+    /// <summary>
+    /// Ceiling on the ego's limiter-cut channel, in the channel's own scaled
+    /// units (a cut of 6.32 m/s^2).
+    ///
+    /// The channel read the old traction control's cut on world-v2, where
+    /// it never exceeded 0.316 across a nominal Silverstone session, and
+    /// reads the combined-grip limiter's cut on world-v3, which reaches
+    /// 1.93 because the limiter can take away a whole brake application.
+    /// Handed that range, the world-v2 checkpoint left the road five times
+    /// as often; clipped to the range it knew, it drove as it did on
+    /// world-v2 (experiments/2026-09-18-world-v3-physics-probe: clean laps
+    /// 48% against 47%, 0.067 s off a lap against 0.067). Clipping rather
+    /// than zeroing keeps the ordering of small cuts, which a continued
+    /// bake can recalibrate from; a zeroed channel has no gradient to learn
+    /// from and would outlive the reason for it.
+    ///
+    /// Sentence of death: the next observation generation (the world
+    /// sealing batch) gives this channel its proper published range, the
+    /// car's full drive acceleration from the published envelope, and this
+    /// constant goes.
+    /// </summary>
+    internal const float LimiterCutCeiling = 0.316f;
 }
 
 /// <summary>
@@ -587,8 +610,11 @@ public sealed class DirectDriveObservationBuilder
         observation[cursor++] = lastAccelerationNorm;
         observation[cursor++] = car.Telemetry.RearSlideSeverity /
                                 DirectDriveObservation.RearSlideScale;
-        observation[cursor] = car.Telemetry.CombinedGripLimiterCutAccel /
-                              DirectDriveObservation.AccelerationScale;
+        observation[cursor] = MathF.Min(
+            car.Telemetry.CombinedGripLimiterCutAccel /
+            DirectDriveObservation.AccelerationScale,
+            DirectDriveObservation.LimiterCutCeiling
+        );
     }
 
     /// <summary>

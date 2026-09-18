@@ -1,10 +1,10 @@
 {
-  "_what": "Mac reading of a fixed checkpoint, for gpu_preflight.py --reference. Measured 2026-09-18 on era/world-v3 (master d08498e + #63 + four-wheel ruler + host on the controller contract), certify-equivalent evaluate(), 12 lanes x 600 s, nominal 3/3. Replaces the world-v2 reading (57 laps, 0 spins, 27 clean, 101.585 s); see experiments/2026-09-18-world-v3-physics-probe.",
+  "_what": "Mac reading of a fixed checkpoint, for gpu_preflight.py --reference. Measured 2026-09-18 on era/world-v3 (master d08498e + #63 + four-wheel ruler + host on the controller contract, limiter-cut channel clipped at 0.316), certify-equivalent evaluate(), 12 lanes x 600 s, nominal 3/3. Replaces the world-v2 reading (57 laps, 0 spins, 27 clean, 101.585 s); see experiments/2026-09-18-world-v3-physics-probe.",
   "checkpoint": "checkpoints/evalparent2h-1225000.pt",
   "checkpoint_sha256": "bddbcb2f808041cc6bd267fdf18835bb62e9d66b795a868c9a47df33c9e05671",
   "seed_base": 900001,
-  "laps": 56,
-  "spins": 3,
-  "clean_laps": 11,
-  "fastest_clean": 101.316
+  "laps": 58,
+  "spins": 4,
+  "clean_laps": 28,
+  "fastest_clean": 101.227
 }
