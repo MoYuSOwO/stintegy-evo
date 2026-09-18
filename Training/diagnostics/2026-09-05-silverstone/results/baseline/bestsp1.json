@@ -1,0 +1,65 @@
+{
+  "name": "bestsp1",
+  "seed": 900000,
+  "batch": 2,
+  "steps": 4000,
+  "alpha": 0.01822812855243683,
+  "initial_allowance": [
+    0.9549999833106995,
+    0.9769999980926514
+  ],
+  "initial_ceiling": [
+    0.6927506923675537,
+    0.6527574062347412
+  ],
+  "laps": [
+    {
+      "lane": 0,
+      "seconds": 116.34646512346058,
+      "finish": 162.3117157134925,
+      "clean": false
+    },
+    {
+      "lane": 1,
+      "seconds": 116.77684094110704,
+      "finish": 219.5054110105581,
+      "clean": false
+    },
+    {
+      "lane": 0,
+      "seconds": 116.55021106165543,
+      "finish": 278.86192677514794,
+      "clean": false
+    },
+    {
+      "lane": 1,
+      "seconds": 117.05702285187576,
+      "finish": 336.56243386243386,
+      "clean": false
+    },
+    {
+      "lane": 0,
+      "seconds": 116.21075633397015,
+      "finish": 395.0726831091181,
+      "clean": false
+    }
+  ],
+  "terminals": [
+    0,
+    0
+  ],
+  "components_mean": {
+    "own_progress": 0.09890354483248666,
+    "relative_progress": 0.0,
+    "pass": 0.0,
+    "contact": 0.0,
+    "wall": 0.0,
+    "off_course": -0.0038172905794344844,
+    "tyre_slip": -0.0003402631901814299,
+    "time": 0.0,
+    "timeout_outcome": 0.0,
+    "mode_excess": -0.00040008339936582613,
+    "retirement": 0.0
+  },
+  "wall_seconds": 6.0988872499438
+}

@@ -1,0 +1,83 @@
+device: cpu
+env: obs=317 action=2 lanes=16 solo=True
+step    2000 transitions     32000 reward -0.3053 alpha 0.439 q +5.53 967 tps
+          own_progress=+0.0048 wall=-0.2906 action_magnitude=-0.0007 action_delta=-0.0135 time=-0.0030 mode_excess=-0.0022
+          terminals {'wall': 310, 'stalled': 13}
+step    4000 transitions     64000 reward -0.1443 alpha 0.135 q +3.60 797 tps
+          own_progress=+0.0040 wall=-0.1294 action_magnitude=-0.0007 action_delta=-0.0133 time=-0.0030 mode_excess=-0.0019
+          terminals {'stalled': 36, 'wall': 138}
+step    6000 transitions     96000 reward -0.0413 alpha 0.045 q +1.97 757 tps
+          own_progress=+0.0026 wall=-0.0272 action_magnitude=-0.0007 action_delta=-0.0115 time=-0.0030 mode_excess=-0.0015
+          terminals {'stalled': 47, 'wall': 29, 'timeout': 1}
+step    8000 transitions    128000 reward -0.0292 alpha 0.016 q +1.51 746 tps
+          own_progress=+0.0026 wall=-0.0169 action_magnitude=-0.0008 action_delta=-0.0094 time=-0.0030 mode_excess=-0.0017
+          terminals {'wall': 18, 'stalled': 44, 'timeout': 2}
+step   10000 transitions    160000 reward -0.0410 alpha 0.006 q +1.57 739 tps
+          own_progress=+0.0023 wall=-0.0309 action_magnitude=-0.0009 action_delta=-0.0070 time=-0.0030 mode_excess=-0.0014
+          terminals {'wall': 33, 'stalled': 33, 'timeout': 3}
+step   12000 transitions    192000 reward -0.0309 alpha 0.004 q -1.27 726 tps
+          own_progress=+0.0020 wall=-0.0225 action_magnitude=-0.0008 action_delta=-0.0053 time=-0.0030 mode_excess=-0.0013
+          terminals {'wall': 24, 'stalled': 31, 'timeout': 6}
+step   14000 transitions    224000 reward -0.0233 alpha 0.004 q -0.87 719 tps
+          own_progress=+0.0020 wall=-0.0159 action_magnitude=-0.0008 action_delta=-0.0041 time=-0.0030 mode_excess=-0.0015
+          terminals {'stalled': 20, 'wall': 17, 'timeout': 9}
+step   16000 transitions    256000 reward -0.0284 alpha 0.004 q -2.18 713 tps
+          own_progress=+0.0022 wall=-0.0216 action_magnitude=-0.0008 action_delta=-0.0038 time=-0.0030 mode_excess=-0.0014
+          terminals {'timeout': 7, 'stalled': 32, 'wall': 23}
+step   18000 transitions    288000 reward -0.0219 alpha 0.003 q -2.83 711 tps
+          own_progress=+0.0023 wall=-0.0150 action_magnitude=-0.0009 action_delta=-0.0041 time=-0.0030 mode_excess=-0.0012
+          terminals {'stalled': 24, 'wall': 16, 'timeout': 10}
+step   20000 transitions    320000 reward -0.0193 alpha 0.003 q -2.25 707 tps
+          own_progress=+0.0021 wall=-0.0122 action_magnitude=-0.0009 action_delta=-0.0040 time=-0.0030 mode_excess=-0.0013
+          terminals {'wall': 13, 'timeout': 10, 'stalled': 28}
+  eval  train progress +3.42 walls 15 mode -1.656 | held-out(sepang) progress +2.20 walls 7
+  saved best (progress +3.42)
+step   22000 transitions    352000 reward -0.0204 alpha 0.003 q -3.29 684 tps
+          own_progress=+0.0022 wall=-0.0141 action_magnitude=-0.0009 action_delta=-0.0033 time=-0.0030 mode_excess=-0.0013
+          terminals {'wall': 15, 'stalled': 31, 'timeout': 5}
+step   24000 transitions    384000 reward -0.0268 alpha 0.003 q -3.34 683 tps
+          own_progress=+0.0023 wall=-0.0197 action_magnitude=-0.0009 action_delta=-0.0039 time=-0.0030 mode_excess=-0.0017
+          terminals {'stalled': 45, 'timeout': 10, 'wall': 21}
+step   26000 transitions    416000 reward -0.0213 alpha 0.003 q -3.58 683 tps
+          own_progress=+0.0025 wall=-0.0150 action_magnitude=-0.0009 action_delta=-0.0032 time=-0.0030 mode_excess=-0.0016
+          terminals {'stalled': 40, 'wall': 16, 'timeout': 6}
+step   28000 transitions    448000 reward -0.0182 alpha 0.003 q -3.53 679 tps
+          own_progress=+0.0022 wall=-0.0112 action_magnitude=-0.0009 action_delta=-0.0038 time=-0.0030 mode_excess=-0.0014
+          terminals {'stalled': 33, 'timeout': 11, 'wall': 12}
+step   30000 transitions    480000 reward -0.0276 alpha 0.003 q -3.40 673 tps
+          own_progress=+0.0025 wall=-0.0206 action_magnitude=-0.0009 action_delta=-0.0043 time=-0.0030 mode_excess=-0.0012
+          terminals {'timeout': 8, 'stalled': 33, 'wall': 22}
+step   32000 transitions    512000 reward -0.0189 alpha 0.003 q -3.68 667 tps
+          own_progress=+0.0023 wall=-0.0112 action_magnitude=-0.0009 action_delta=-0.0048 time=-0.0030 mode_excess=-0.0013
+          terminals {'timeout': 12, 'stalled': 37, 'wall': 12}
+step   34000 transitions    544000 reward -0.0166 alpha 0.003 q -3.21 666 tps
+          own_progress=+0.0024 wall=-0.0094 action_magnitude=-0.0009 action_delta=-0.0042 time=-0.0030 mode_excess=-0.0015
+          terminals {'wall': 10, 'stalled': 29, 'timeout': 9}
+step   36000 transitions    576000 reward -0.0212 alpha 0.003 q -3.77 667 tps
+          own_progress=+0.0024 wall=-0.0141 action_magnitude=-0.0009 action_delta=-0.0039 time=-0.0030 mode_excess=-0.0017
+          terminals {'timeout': 11, 'stalled': 46, 'wall': 15}
+step   38000 transitions    608000 reward -0.0218 alpha 0.003 q -4.07 669 tps
+          own_progress=+0.0022 wall=-0.0141 action_magnitude=-0.0009 action_delta=-0.0044 time=-0.0030 mode_excess=-0.0016
+          terminals {'stalled': 38, 'timeout': 11, 'wall': 15}
+step   40000 transitions    640000 reward -0.0191 alpha 0.003 q -4.89 669 tps
+          own_progress=+0.0025 wall=-0.0112 action_magnitude=-0.0009 action_delta=-0.0047 time=-0.0030 mode_excess=-0.0018
+          terminals {'stalled': 48, 'timeout': 8, 'wall': 12}
+  eval  train progress +3.17 walls 6 mode -1.729 | held-out(sepang) progress +2.51 walls 6
+step   42000 transitions    672000 reward -0.0119 alpha 0.003 q -4.00 662 tps
+          own_progress=+0.0021 wall=-0.0047 action_magnitude=-0.0009 action_delta=-0.0042 time=-0.0030 mode_excess=-0.0012
+          terminals {'stalled': 41, 'wall': 5, 'timeout': 10}
+step   44000 transitions    704000 reward -0.0338 alpha 0.003 q -4.17 663 tps
+          own_progress=+0.0026 wall=-0.0262 action_magnitude=-0.0010 action_delta=-0.0045 time=-0.0030 mode_excess=-0.0016
+          terminals {'stalled': 40, 'wall': 28, 'timeout': 10}
+step   46000 transitions    736000 reward -0.0141 alpha 0.003 q -3.49 664 tps
+          own_progress=+0.0023 wall=-0.0056 action_magnitude=-0.0010 action_delta=-0.0050 time=-0.0030 mode_excess=-0.0018
+          terminals {'wall': 6, 'stalled': 52, 'timeout': 10}
+step   48000 transitions    768000 reward -0.0194 alpha 0.003 q -4.18 664 tps
+          own_progress=+0.0022 wall=-0.0112 action_magnitude=-0.0009 action_delta=-0.0049 time=-0.0030 mode_excess=-0.0016
+          terminals {'wall': 12, 'stalled': 33, 'timeout': 9}
+step   50000 transitions    800000 reward -0.0193 alpha 0.003 q -4.30 665 tps
+          own_progress=+0.0024 wall=-0.0112 action_magnitude=-0.0009 action_delta=-0.0047 time=-0.0030 mode_excess=-0.0018
+          terminals {'timeout': 9, 'stalled': 48, 'wall': 12}
+step   52000 transitions    832000 reward -0.0129 alpha 0.002 q -4.16 666 tps
+          own_progress=+0.0021 wall=-0.0047 action_magnitude=-0.0009 action_delta=-0.0050 time=-0.0030 mode_excess=-0.0014
+          terminals {'stalled': 28, 'timeout': 12, 'wall': 5}

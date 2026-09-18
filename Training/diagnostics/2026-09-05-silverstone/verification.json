@@ -1,0 +1,4 @@
+{
+  "timing": "confirmed original phase mismatch; isolated aligned branch satisfies action/post-state timing",
+  "nstep": "discounted reward, timeout bootstrap, terminal, lane separation, tail horizon passed"
+}

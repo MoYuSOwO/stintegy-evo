@@ -14,9 +14,9 @@ gdunit4_testadapter_v5/
 # Python virtual environments.
 .venv/
 
-# The historical training tree remains available in Git history, but is not
-# part of the master product boundary and must not be re-added accidentally.
-/Training/
+# era/world-v3 carries the training tree; master does not. Live run logs
+# stay out of `git add -A`; finished rounds are archived with `git add -f`.
+Training/python/*.log
 
 # Learned-policy/model resources belong to external integrations.
 *.nn

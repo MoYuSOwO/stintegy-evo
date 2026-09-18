@@ -1,0 +1,42 @@
+{
+  "old": {
+    "lap": 100.97261602518661,
+    "mean_clean_lap": 102.50600183530247,
+    "clean_laps": 43.0,
+    "laps": 55.0,
+    "spins": 34.0,
+    "checkpoint_sha256": "4aa211080f44a0a2cc59023199a31e5c72e2a193da6a294e361bdd9b23825b83"
+  },
+  "new": {
+    "lap": 111.03767938051698,
+    "mean_clean_lap": 111.03767938051698,
+    "clean_laps": 1.0,
+    "laps": 49.0,
+    "spins": 91.0,
+    "checkpoint_sha256": "4aa211080f44a0a2cc59023199a31e5c72e2a193da6a294e361bdd9b23825b83"
+  },
+  "new_oldtrack": {
+    "lap": null,
+    "mean_clean_lap": null,
+    "clean_laps": 0.0,
+    "laps": 47.0,
+    "spins": 106.0,
+    "checkpoint_sha256": "4aa211080f44a0a2cc59023199a31e5c72e2a193da6a294e361bdd9b23825b83"
+  },
+  "new_oldphysics": {
+    "lap": 100.75855601327034,
+    "mean_clean_lap": 102.30279589033084,
+    "clean_laps": 47.0,
+    "laps": 55.0,
+    "spins": 26.0,
+    "checkpoint_sha256": "4aa211080f44a0a2cc59023199a31e5c72e2a193da6a294e361bdd9b23825b83"
+  },
+  "new_thermal1": {
+    "lap": 100.74375901116447,
+    "mean_clean_lap": 101.82290170265026,
+    "clean_laps": 48.0,
+    "laps": 55.0,
+    "spins": 28.0,
+    "checkpoint_sha256": "4aa211080f44a0a2cc59023199a31e5c72e2a193da6a294e361bdd9b23825b83"
+  }
+}

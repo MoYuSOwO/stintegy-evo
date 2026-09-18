@@ -1,0 +1,33 @@
+{
+  "checkpoint": "/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/bestparent.pt",
+  "checkpoint_sha256": "1fd2f6ea4103f49133c7416225e5d6e4141ea19bd580c6db13bcd4916258cd85",
+  "checkpoint_step": 550000,
+  "fixed_alpha": 0.0018570494139567018,
+  "steps_per_arm": 25000,
+  "batch": 64,
+  "updates_per_step": 2,
+  "eval_every": 12500,
+  "eval_seconds": 600,
+  "eval_batch": 6,
+  "seed": 1,
+  "device": "cpu",
+  "torch_threads": 4,
+  "replay_restored": false,
+  "host": "/Users/jayhuang/Code/stintegy-evo/.tmp/reset-comparison-20260910/host/StintegyEVO.TrainingHost",
+  "production_hashes": {
+    "Training/python/train.py": "247970ea1f0d5fba7d7e98884be52e2a1f88d5865b32589dc6911b9df31e551a",
+    "Training/python/spin_forensics.py": "132941111b54bd66545d4c697ae566dce17cf5d6296e7740fdd02aa0bb0c5c41",
+    "Core/Cars/CarPhysics.cs": "8eec088a82f8883d1b17363af8bd2b19ef9594304a3d545a1c5c4a947d30c354"
+  },
+  "evaluation_torch_threads": 1,
+  "host_hashes": {
+    "StintegyEVO.TrainingHost.pdb": "9f9827c08cacbb052cf3173284bc432dbd2f4b9efb3b74083e44346a5703f6ea",
+    "StintegyEVO.TrainingHost.dll": "83a8a7d893b048ec1495509d874d55a6f63c5028f6e23ab2f20c32fd3e014f0a",
+    "StintegyEVO.TrainingHost.runtimeconfig.json": "f50d026163a7f892de90c429457bd41131f1c0fa5c98d7b8b7464139507f0cb4",
+    "StintegyEVO.TrainingHost": "b61bf64ede4e4a7b4d817307d64590683c5af7e4cb14d27375857a6803c47ee7",
+    "StintegyEVO.Core.pdb": "e21fa6656f2093c03c521b09b7ed4b047c6f63640d09429728ebd7ba30912baf",
+    "StintegyEVO.Core.dll": "c35e05dc773f2734e34f8750b56bd892e981a445a1f0b05269e5974eb13d2549",
+    "StintegyEVO.TrainingHost.deps.json": "3641d0794156d607573a50275d87da82f855e5a8fcacb4c4062add2e95c6fd58"
+  },
+  "preflight_note": "Interrupted initial <=1500-step nominal attempt for thread timing; excluded from experimental results. Both formal arms restart at550000."
+}

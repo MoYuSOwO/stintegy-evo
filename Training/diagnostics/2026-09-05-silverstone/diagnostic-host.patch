@@ -1,0 +1,175 @@
+--- a/Core/Drivers/Learned/DirectDriveRaceDriver.cs
++++ b/Core/Drivers/Learned/DirectDriveRaceDriver.cs
+@@ -34,6 +34,7 @@
+     private readonly IDrivingPolicy _policy;
+     private readonly VehicleSpeedPlanningConfig _planningConfig;
+     private readonly DirectDriveObservationBuilder _observationBuilder = new();
++    private readonly DirectDriveObservationBuilder _diagnosticPostBuilder = new();
+     private readonly float[] _observation =
+         new float[DirectDriveObservation.ObservationSize];
+     private readonly float[] _action =
+@@ -66,6 +67,7 @@
+     public void Initialize(in RaceDriverInitContext context)
+     {
+         _observationBuilder.Reset();
++        _diagnosticPostBuilder.Reset();
+         _secondsSinceDecision = 0f;
+         _hasDecision = false;
+         _heldInput = default;
+@@ -147,6 +149,21 @@
+         return _heldInput;
+     }
+ 
++    public void DiagnosticBeginAction() => _hasDecision = false;
++
++    public void DiagnosticCapturePostStep(in RaceDriverFrameContext context, Span<float> observation)
++    {
++        var car=context.Car;
++        var state=car.State;
++        float allowance=car.TireConfig.GetAccelerationUsage(car.Strategy);
++        var limits=CarPhysics.EstimatePerformanceLimits(state,car.CarConfig,car.TireConfig,
++            car.Strategy,state.Speed,state.Telemetry.ActualCurvature,allowance);
++        float driveLimit=MathF.Max(1f,limits.MaximumDriveAcceleration*_planningConfig.DriveAccelerationUsage);
++        float fraction=Math.Clamp(driveLimit/MathF.Max(car.CarConfig.MaxDriveAcceleration,1e-3f),0f,1f);
++        _diagnosticPostBuilder.Build(in context,new DirectDriveCarLimits(fraction,allowance),
++            _lastCurvatureNorm,_lastAccelerationNorm,observation);
++    }
++
+     private static float SanitizeUnit(float value)
+     {
+         return float.IsFinite(value) ? Math.Clamp(value, -1f, 1f) : 0f;
+--- a/Training/StintegyEVO.TrainingHost/Program.cs
++++ b/Training/StintegyEVO.TrainingHost/Program.cs
+@@ -12,6 +12,8 @@
+ {
+     public static int Main(string[] args)
+     {
++        if (args.Length == 1 && args[0] == "--diagnose-timing")
++            return DiagnosticTiming.Run();
+         if (args.Length == 1 && args[0] == "--scan")
+             return RunReachabilityScan();
+         if (args.Length == 1 && args[0] == "--trace")
+--- /dev/null
++++ b/Training/StintegyEVO.TrainingHost/DiagnosticTiming.cs
+@@ -0,0 +1,64 @@
++using System.Text.Json;
++using StintegyEVO.Core.Cars;
++using StintegyEVO.Core.Drivers;
++using StintegyEVO.Core.Drivers.Learned;
++using StintegyEVO.TrainingHost.Environment;
++
++namespace StintegyEVO.TrainingHost;
++
++internal static class DiagnosticTiming
++{
++    public static int Run()
++    {
++        var env = new DirectDriveDuelEnvironment(solo:true);
++        var obs = new float[DirectDriveObservation.ObservationSize];
++        env.ResetScenario("speedway", 1, 500, 20, 50, obs);
++        var wrapper = new RecordingDriver(env.Ego.Driver);
++        env.Ego.Driver = wrapper;
++        for (int i=0;i<4;i++)
++        {
++            float command = i%2==0 ? 1f : -1f;
++            wrapper.Frames.Clear();
++            float before=env.Ego.State.Speed;
++            var result=env.Step(new float[]{0,command},obs);
++            Console.WriteLine(JsonSerializer.Serialize(new {
++                step=i,command,before,after=env.Ego.State.Speed,
++                returnedSpeed=obs[DirectDriveObservation.EgoOffset]*100f,
++                returnedLastAction=obs[DirectDriveObservation.EgoOffset+11],
++                reward=result.Reward, frames=wrapper.Frames
++            }));
++        }
++        var first = new DirectDriveDuelEnvironment(solo:true);
++        var second = new DirectDriveDuelEnvironment(solo:true);
++        var oa = new float[452]; var ob = new float[452];
++        first.ResetScenario("speedway",1,500,20,50,oa);
++        second.ResetScenario("speedway",1,500,20,50,ob);
++        first.Step(new float[]{0,1},oa);
++        second.Step(new float[]{0,1},ob);
++        var ra=first.Step(new float[]{0,1},oa);
++        var rb=second.Step(new float[]{0,-1},ob);
++        Console.WriteLine(JsonSerializer.Serialize(new {
++            test="opposite_current_actions",
++            sameReturnedObservation=oa.SequenceEqual(ob),
++            maxObservationDifference=oa.Zip(ob,(a,b)=>Math.Abs(a-b)).Max(),
++            positiveActionPostSpeed=first.Ego.State.Speed,
++            negativeActionPostSpeed=second.Ego.State.Speed,
++            positiveReward=ra.Reward,negativeReward=rb.Reward
++        }));
++        return 0;
++    }
++
++    private sealed class RecordingDriver(IRaceDriver inner) : IRaceDriver
++    {
++        public List<object> Frames {get;} = new();
++        public float TireEnergyEfficiency=>inner.TireEnergyEfficiency;
++        public float CorneringEfficiency=>inner.CorneringEfficiency;
++        public float LimitSettleUse=>inner.LimitSettleUse;
++        public DriverInput GetControl(in RaceDriverFrameContext context,float dt)
++        {
++            var input=inner.GetControl(in context,dt);
++            Frames.Add(new {time=context.RaceTimeSeconds,dt,accel=input.DesiredAccel});
++            return input;
++        }
++    }
++}
+--- a/Training/StintegyEVO.TrainingHost/Environment/DirectDriveDuelEnvironment.cs
++++ b/Training/StintegyEVO.TrainingHost/Environment/DirectDriveDuelEnvironment.cs
+@@ -359,9 +359,19 @@
+         float opponentDistanceBefore =
+             _opponent?.Progress.TotalDistance ?? 0f;
+ 
++        if (System.Environment.GetEnvironmentVariable("STINTEGY_DIAG_NO_WEAR") == "1")
++        {
++            _ego.State.FrontLeft.Wear = 0f;
++            _ego.State.FrontRight.Wear = 0f;
++            _ego.State.RearLeft.Wear = 0f;
++            _ego.State.RearRight.Wear = 0f;
++        }
++        if (System.Environment.GetEnvironmentVariable("STINTEGY_DIAG_ALIGNED") == "1")
++            _egoDriver.DiagnosticBeginAction();
+         _simulation.Step(AgentStepSeconds);
+         _elapsedSeconds += AgentStepSeconds;
+         _egoDriver.LastObservation.CopyTo(observation);
++        DiagnosticCaptureAligned(observation);
+ 
+         float egoProgress = _ego.Progress.TotalDistance - egoDistanceBefore;
+         float opponentProgress = _opponent is null
+@@ -509,6 +519,10 @@
+             (TireUsageMode)(random.NextInt(5) + 1),
+             (PowerOutputMode)(random.NextInt(5) + 1)
+         );
++        if (int.TryParse(System.Environment.GetEnvironmentVariable("STINTEGY_DIAG_TIRE"), out int tire))
++            EgoStrategy = EgoStrategy with { TireMode = (TireUsageMode)tire };
++        if (int.TryParse(System.Environment.GetEnvironmentVariable("STINTEGY_DIAG_POWER"), out int power))
++            EgoStrategy = EgoStrategy with { PowerRung = power };
+ 
+         RaceEnvironment raceEnvironment = new()
+         {
+@@ -554,6 +568,7 @@
+         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
+         _egoDriver.LastObservation.CopyTo(observation);
+         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
++        DiagnosticCaptureAligned(observation);
+         MaximumAbsoluteReferenceOffsetMeters = 0f;
+         _elapsedSeconds = 0f;
+         _passHoldSeconds = 0f;
+@@ -593,6 +608,15 @@
+         return _elapsedSeconds + 1e-6f >= _episodeDurationSeconds
+             ? TrainingTerminalReason.Timeout
+             : TrainingTerminalReason.None;
++    }
++
++    private void DiagnosticCaptureAligned(Span<float> observation)
++    {
++        if (System.Environment.GetEnvironmentVariable("STINTEGY_DIAG_ALIGNED") != "1") return;
++        if (!_solo) throw new InvalidOperationException("Diagnostic post-step capture is solo-only.");
++        var context=new RaceDriverFrameContext(Ego,Simulation.Track,Simulation.Track.Project(Ego.State.Position),
++            Simulation.Environment,Simulation.RaceTimeSeconds);
++        _egoDriver!.DiagnosticCapturePostStep(in context,observation);
+     }
+ 
+     private float CalculateSignedLeadDistance() =>

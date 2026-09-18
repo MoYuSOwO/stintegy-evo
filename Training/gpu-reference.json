@@ -1,0 +1,10 @@
+{
+  "_what": "Mac reading of a fixed checkpoint, for gpu_preflight.py --reference. Measured 2026-09-14 on era/world-v2 (past-peak reflex; identical physics at 6463355), certify.py, 12 lanes x 600 s, nominal 3/3.",
+  "checkpoint": "checkpoints/evalparent2h-1225000.pt",
+  "checkpoint_sha256": "bddbcb2f808041cc6bd267fdf18835bb62e9d66b795a868c9a47df33c9e05671",
+  "seed_base": 900001,
+  "laps": 57,
+  "spins": 0,
+  "clean_laps": 27,
+  "fastest_clean": 101.585
+}

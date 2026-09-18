@@ -1,0 +1,218 @@
+{
+  "recorded_date": "2026-09-11",
+  "base_commit": "c056c3de09ca18bcab7c3d38576cda0390165d32",
+  "physics_branch": "fix/thermal-slip-heat",
+  "files": [
+    {
+      "path": "README_zh.md",
+      "size_bytes": 14568,
+      "sha256": "f9f7763b99ae30daff967b12e6bfbf41a9f9d82018ac704c5776bfc9a6052209"
+    },
+    {
+      "path": "evidence/continuation/baseline.json",
+      "size_bytes": 1964,
+      "sha256": "0e8721e4b30954fb109de637363f3cb2d3de54f53bfd243008907a4d56c8eea5"
+    },
+    {
+      "path": "evidence/continuation/checkpoint-inventory.json",
+      "size_bytes": 605,
+      "sha256": "9907c653dabca0d3dd8ac12a6ad6deaa891cae3305de7d4267d2d20d3cfb386e"
+    },
+    {
+      "path": "evidence/continuation/command.json",
+      "size_bytes": 775,
+      "sha256": "86abcb8a0f96d51163868c1255319719caa8331f6a15ed52a5936abd240fb7d0"
+    },
+    {
+      "path": "evidence/continuation/comparison.json",
+      "size_bytes": 4892,
+      "sha256": "d809f8e6af22a075ed9ee8333d51e1dc0468361561a322ceff53cd5630c2b9f6"
+    },
+    {
+      "path": "evidence/continuation/host-build.log",
+      "size_bytes": 719,
+      "sha256": "d3230abb7c8b5ffd316c2b22d355937ab7e7a80d27a625826c10dfe7c8cc1b68"
+    },
+    {
+      "path": "evidence/continuation/manifest.json",
+      "size_bytes": 2687,
+      "sha256": "e57ba9ea6ae81deaa1d58ed2a435f33acdcf7881a2103484bde6c0d655fa9133"
+    },
+    {
+      "path": "evidence/continuation/physics-change.patch",
+      "size_bytes": 3784,
+      "sha256": "002a3e615fd562fe3f99f8487acd1a400eac79ba15c8d8a60e516f3b71e7f011"
+    },
+    {
+      "path": "evidence/continuation/physics-corrected.log",
+      "size_bytes": 17531,
+      "sha256": "c6fd9e36db94b5a16d9958a4d1f26b695e5ae386453225dedb77929092b8deb6"
+    },
+    {
+      "path": "evidence/continuation/physics-red.log",
+      "size_bytes": 1416,
+      "sha256": "f87b0311950f8107cd437a7604bbd15a291b973b25c378e7389d279c3bb12633"
+    },
+    {
+      "path": "evidence/continuation/status.json",
+      "size_bytes": 188,
+      "sha256": "0916d6bf247623ead9ac7e130cdc3f7fad05a7f50a15e9316fb045350e4e97b7"
+    },
+    {
+      "path": "evidence/continuation/supervisor.log",
+      "size_bytes": 1013,
+      "sha256": "6b0879b3e400bbe267ee539801d891e4c50878b0ad96610feffc24ce9e0cbeaa"
+    },
+    {
+      "path": "evidence/continuation/supervisor.py",
+      "size_bytes": 3194,
+      "sha256": "b2e4c14ba8fcbf37a21953354c4ccfa8c62c8685bc76db18f956fe257247e43d"
+    },
+    {
+      "path": "evidence/continuation/train_arm.py",
+      "size_bytes": 742,
+      "sha256": "7814e23072c12d967409a28eb4d67d5b8eb917d086473dd280797a6d65bd2a87"
+    },
+    {
+      "path": "evidence/continuation/training.log",
+      "size_bytes": 16805,
+      "sha256": "61baed6714e4e5bed4692e823221437b3dc0e6fd842326af0c67f403fa424caf"
+    },
+    {
+      "path": "evidence/heat-sources/README.md",
+      "size_bytes": 11311,
+      "sha256": "be0aecba552269be3ec9e3bfefda8b64fbc4db267fd28bb3f9bf36abdc4f3727"
+    },
+    {
+      "path": "evidence/heat-sources/bench_baseline.json",
+      "size_bytes": 579658,
+      "sha256": "88e3393d067e78c9ef51d5f4d8d434fab01101da3740ea548eeb29a557180659"
+    },
+    {
+      "path": "evidence/heat-sources/bench_side0.json",
+      "size_bytes": 578968,
+      "sha256": "c2dfaa54a243b1459284c449aad0d95814a458e8e71688835f487819ba716dd9"
+    },
+    {
+      "path": "evidence/heat-sources/heat-budget.json",
+      "size_bytes": 17976,
+      "sha256": "13cee0713b1e28470750c1591a1693d35856ed00c1c491c66545f298f944b349"
+    },
+    {
+      "path": "evidence/heat-sources/manifest.json",
+      "size_bytes": 943,
+      "sha256": "968fc6ac435d3ea1107bc56637d332512c41a7501f2c2ad78f8e5d713d344bfc"
+    },
+    {
+      "path": "evidence/heat-sources/shadow-thermal.json",
+      "size_bytes": 1150,
+      "sha256": "9ab0cebeed8b234ad03dbe32ff8cf9a7054a8c6bc07d486bf6201c9e9367ea4a"
+    },
+    {
+      "path": "evidence/heat-sources/summary.json",
+      "size_bytes": 15567,
+      "sha256": "5ab6da0331de8dd1c82c0d5b3b2829a0ff4f6ac25990a9e13df1f3523dfb4594"
+    },
+    {
+      "path": "evidence/pace-transfer/README.md",
+      "size_bytes": 3358,
+      "sha256": "27aabd5afdc37615fd545f7080e8a71ca16dadc2fb296be563bd158630c759db"
+    },
+    {
+      "path": "evidence/pace-transfer/summary.json",
+      "size_bytes": 1212,
+      "sha256": "515fe00ce083482a263d02948a056d33b397ddac0bff989d5ab840d6bf9bb0b1"
+    },
+    {
+      "path": "evidence/pace-transfer/thermal-time-only.patch",
+      "size_bytes": 520,
+      "sha256": "d487f0becd7fafc4dc4860c1a221db7353d07bb4223e7d09d3235e5a0b0ea30c"
+    },
+    {
+      "path": "evidence/regression/Program.cs",
+      "size_bytes": 4640,
+      "sha256": "7442bef96ef8814789b18250680087d75507b42d1896a3ac8dcb029e2853ffab"
+    },
+    {
+      "path": "evidence/regression/README.md",
+      "size_bytes": 7977,
+      "sha256": "69ab482b66c4bc812345a7b505b8339ae4c9cda1a59f79fadc56655ebd1830af"
+    },
+    {
+      "path": "evidence/regression/base-driver.jsonl",
+      "size_bytes": 127602,
+      "sha256": "1ae3a38ec69fbf43b86640c0074302ade02e5efdec7bc248e77c420c85b307de"
+    },
+    {
+      "path": "evidence/regression/base-golden-test.log",
+      "size_bytes": 324,
+      "sha256": "09301d7a9925761109fe6c0dad5311df50b70e4d9686c553bb69c5d565ab0a6f"
+    },
+    {
+      "path": "evidence/regression/base-golden.txt",
+      "size_bytes": 1240,
+      "sha256": "579aa94d65f701f43ab5cb92a21cdc6bdd241a516f82150bcf6a919d0ff2f393"
+    },
+    {
+      "path": "evidence/regression/base-thermal.jsonl",
+      "size_bytes": 3389,
+      "sha256": "a265bebf274c4728af440f7f591ff63c8b978f717c08a3d9eb9fe9c475c9806e"
+    },
+    {
+      "path": "evidence/regression/boundary-probe.jsonl",
+      "size_bytes": 124623,
+      "sha256": "092dacc8e9e5fd603b0c3c75f71488b8a91a393f0e53d9defc6aa1eb3daa5444"
+    },
+    {
+      "path": "evidence/regression/changed-driver.jsonl",
+      "size_bytes": 127867,
+      "sha256": "5f3027d43e26f5bd4a1e9e560336c4856dd5587794c6af4ff5a2a5c79c4da2ad"
+    },
+    {
+      "path": "evidence/regression/changed-golden-test.log",
+      "size_bytes": 3741,
+      "sha256": "29512ff4984cd3cc7f5104dfdff985b59ec1bcc8b76411264c92786d06d799aa"
+    },
+    {
+      "path": "evidence/regression/changed-golden.txt",
+      "size_bytes": 1239,
+      "sha256": "4e53a29c78751b90ba97a61671ee24bcb650ebf5ee8349c52f9a9fc1b152367d"
+    },
+    {
+      "path": "evidence/regression/changed-thermal.jsonl",
+      "size_bytes": 3618,
+      "sha256": "997677dac1db0bfbc570b38abd847e51b85dae1a15f9f5c55c26b1f0e10ea50b"
+    },
+    {
+      "path": "evidence/regression/full-suite-before.log",
+      "size_bytes": 3393,
+      "sha256": "1dc7199a45c76007ee6bb44f30fce2e45dcf890d4d62df48bd0208a8bf790536"
+    },
+    {
+      "path": "evidence/regression/summary.json",
+      "size_bytes": 2613,
+      "sha256": "77eb2a536db05d6081773e44430008536da9eadab1cb9efb4ad6004139b894f6"
+    },
+    {
+      "path": "evidence/reset-comparison/README.md",
+      "size_bytes": 3126,
+      "sha256": "466ec5d2f0193bd69fcd99dcac6b19889f51f356530357386f84f0ab24af9545"
+    },
+    {
+      "path": "evidence/reset-comparison/comparison.json",
+      "size_bytes": 4302,
+      "sha256": "29cb275fc32aca54d30e2ef88c6da18b539af3b73ce86e1fd7fb02aca2efab11"
+    },
+    {
+      "path": "evidence/reset-comparison/diagnostic-readers.patch",
+      "size_bytes": 1788,
+      "sha256": "0924fe3a14808a60bb4c054cdf5a6202f649b00f7b93789a446167021aa21749"
+    },
+    {
+      "path": "evidence/reset-comparison/manifest.json",
+      "size_bytes": 1861,
+      "sha256": "e9efb0bc1144be5d8ffb9ffd7134804f03ff27b804afcdd95d05cd37b20d41cf"
+    }
+  ],
+  "note": "Evidence snapshots preserve their original content and historical timestamps/statements. Checkpoints are inventoried but not bundled."
+}

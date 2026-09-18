@@ -1,0 +1,59 @@
+{
+  "name": "latestsp1",
+  "seed": 900000,
+  "batch": 2,
+  "steps": 4000,
+  "alpha": 0.017160246148705482,
+  "initial_allowance": [
+    0.9549999833106995,
+    0.9769999980926514
+  ],
+  "initial_ceiling": [
+    0.6927506923675537,
+    0.6527574062347412
+  ],
+  "laps": [
+    {
+      "lane": 0,
+      "seconds": 126.39751359190927,
+      "finish": 176.78234244946495,
+      "clean": false
+    },
+    {
+      "lane": 1,
+      "seconds": 129.75833551766644,
+      "finish": 242.6506517311609,
+      "clean": false
+    },
+    {
+      "lane": 0,
+      "seconds": 132.49671329096768,
+      "finish": 309.2790557404326,
+      "clean": false
+    },
+    {
+      "lane": 1,
+      "seconds": 135.69717798503274,
+      "finish": 378.34782971619364,
+      "clean": false
+    }
+  ],
+  "terminals": [
+    0,
+    0
+  ],
+  "components_mean": {
+    "own_progress": 0.08959444895898923,
+    "relative_progress": 0.0,
+    "pass": 0.0,
+    "contact": 0.0,
+    "wall": -1.3983742101117968e-06,
+    "off_course": -0.00033514870633371175,
+    "tyre_slip": -0.0008873005559830771,
+    "time": 0.0,
+    "timeout_outcome": 0.0,
+    "mode_excess": -0.000701384988172066,
+    "retirement": 0.0
+  },
+  "wall_seconds": 5.28980691707693
+}

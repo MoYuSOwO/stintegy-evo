@@ -1,0 +1,4 @@
+=== seed 1 starting 2026-09-07 06:16:20 ===
+Terminated: 15             "$PY" -u train.py --solo --track silverstone --batch 64 --steps 400000 --seed "$SEED" --tag "15hz-s$SEED" > "run-15hz-s$SEED.log" 2>&1
+=== seed 1 finished 2026-09-07 11:53:35 rc=0 ===
+=== seed 2 starting 2026-09-07 11:53:35 ===

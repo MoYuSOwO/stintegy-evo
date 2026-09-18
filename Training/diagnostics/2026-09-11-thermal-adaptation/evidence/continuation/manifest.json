@@ -1,0 +1,51 @@
+{
+  "checkpoint": "/Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/parent-550k.pt",
+  "original_checkpoint": "/Users/jayhuang/Code/stintegy-evo/Training/python/checkpoints/bestparent.pt",
+  "checkpoint_step": 550000,
+  "steps": 25000,
+  "fixed_alpha": 0.0018570494139567018,
+  "batch": 64,
+  "updates_per_step": 2,
+  "episode_seconds": 600,
+  "fixed_episode_start": true,
+  "eval_every": 12500,
+  "eval_seconds": 600,
+  "eval_batch": 12,
+  "seed": 1,
+  "torch_threads": 4,
+  "evaluation_torch_threads": 1,
+  "replay_restored": false,
+  "worktree": "/Users/jayhuang/Code/stintegy-evo/.worktrees/thermal-adaptation",
+  "branch": "fix/thermal-slip-heat",
+  "checkpoint_sha256": "1fd2f6ea4103f49133c7416225e5d6e4141ea19bd580c6db13bcd4916258cd85",
+  "checkpoint_choice": "User explicitly requested the current-generation model; legacy plan superseded before training started.",
+  "alpha_note": "Preserves the explicit alpha used in the latest 25k continuation experiment; historic frozen floor was not serialized.",
+  "host": "/Users/jayhuang/Code/stintegy-evo/.tmp/thermal-adaptation-20260911/host/StintegyEVO.TrainingHost",
+  "host_sha256": {
+    "StintegyEVO.TrainingHost.pdb": "6c4e834ca945b16538e44f8235043aa770c73f69a96b998dc8297a9f3e87ed2c",
+    "BlasSharp.AppleAccelerate.dll": "78cc3e662da481f37c3245839566e2fb047dadfe1f9820de713ab821bca78e88",
+    "StintegyEVO.TrainingHost.dll": "8c6edd87cd401e73e88d37ebc1cddb43278b165aa4d5233bec5d598a38003e7d",
+    "BlasSharp.OpenBlas.dll": "f22d70365092b42506e05db4698169d7d3f42d68be943350c62f70bc4052e79d",
+    "StintegyEVO.TrainingHost.runtimeconfig.json": "f50d026163a7f892de90c429457bd41131f1c0fa5c98d7b8b7464139507f0cb4",
+    "StintegyEVO.TrainingHost": "b61bf64ede4e4a7b4d817307d64590683c5af7e4cb14d27375857a6803c47ee7",
+    "Highs.Native.dll": "c24ef69b43fdec93081374c2f9075a4400919b64ad41f9c6f98c2750144f83c4",
+    "StintegyEVO.Core.pdb": "f1ed329c049e30919abe101660ba00f79fd7c70369c340f1d594cb9e287cef07",
+    "BlasSharp.Shared.dll": "c18753f9ee3a5bdbfb7ab14ac573025e6a47b41dfbb685d750e8c961e3253c6f",
+    "StintegyEVO.Core.dll": "22aadcc35b04c393f7f3180573b9b090c6d1da12cd67241633832569ce694db8",
+    "StintegyEVO.TrainingHost.deps.json": "3641d0794156d607573a50275d87da82f855e5a8fcacb4c4062add2e95c6fd58"
+  },
+  "validation": {
+    "baseline": {
+      "passed": 380,
+      "failed": 0,
+      "skipped": 13
+    },
+    "corrected": {
+      "passed": 368,
+      "failed": 13,
+      "skipped": 13
+    },
+    "targeted_duplicate_heat_regression": "failed before with 0.008972 C residual; passed after removal",
+    "status": "experimental; full regression suite not green; not approved for production integration"
+  }
+}
