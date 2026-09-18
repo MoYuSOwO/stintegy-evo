@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using StintegyEVO.Core.Track.RefLines;
 using StintegyEVO.Core.Util;
 
 namespace StintegyEVO.Core.Track;
@@ -9,9 +8,6 @@ namespace StintegyEVO.Core.Track;
 public class TrackBuilder
 {
     private Func<TrackSurfaceContext, TrackSurface>? _surfaceAt;
-
-    private static readonly IRefLineSolver DefaultRefLineSolver =
-        new MinimumCurvatureRefLineSolver();
 
     /// <summary>
     /// One metre of road. The buffers are floored on the way in rather
@@ -44,8 +40,6 @@ public class TrackBuilder
     private readonly float _startLeftBuffer;
     private readonly float _startRightBuffer;
     private readonly float _startAngle;
-    private readonly IRefLineSolver _refLineSolver;
-
     private Vector2 currentPos;
     private float currentWidth;
     private float currentLeftBuffer;
@@ -57,8 +51,7 @@ public class TrackBuilder
         float startWidth,
         float startLeftBuffer = 0,
         float startRightBuffer = 0,
-        float startAngleDeg = 0,
-        IRefLineSolver? refLineSolver = null
+        float startAngleDeg = 0
     )
     {
         _startPos = startPos;
@@ -66,7 +59,6 @@ public class TrackBuilder
         _startLeftBuffer = startLeftBuffer;
         _startRightBuffer = startRightBuffer;
         _startAngle = MathHelper.DegToRad(startAngleDeg);
-        _refLineSolver = refLineSolver ?? DefaultRefLineSolver;
 
         currentPos = _startPos;
         currentWidth = _startWidth;
@@ -868,11 +860,11 @@ public class TrackBuilder
     }
 
     private static float CentrelineCurvature(
-        IReadOnlyList<RefLineTrackPoint> points,
+        IReadOnlyList<Vector2> tangents,
         int index
     )
     {
-        int count = points.Count;
+        int count = tangents.Count;
         if (count < 3)
             return 0f;
 
@@ -886,8 +878,8 @@ public class TrackBuilder
         float turn = 0f;
         for (int step = -half; step < half; step++)
         {
-            Vector2 a = points[((index + step) % count + count) % count].Tangent;
-            Vector2 b = points[((index + step + 1) % count + count) % count].Tangent;
+            Vector2 a = tangents[((index + step) % count + count) % count];
+            Vector2 b = tangents[((index + step + 1) % count + count) % count];
             turn += MathHelper.NormalizeAngle(
                 MathF.Atan2(b.Y, b.X) - MathF.Atan2(a.Y, a.X)
             );
@@ -1101,53 +1093,51 @@ public class TrackBuilder
 
     public TrackData Build(TrackGridConfig startingConfig)
     {
-        List<RefLineTrackPoint> refTrackPoints = [];
+        // Track geometry ends at the physical road centreline.  Tangent and
+        // curvature are derived from the sampled road itself; no racing-line
+        // solver is consulted or stored in the track model.
+        Vector2[] tangents = new Vector2[nodes.Count];
         for (int i = 0; i < nodes.Count; i++)
         {
             Vector2 p_2 = GetCircular(nodes, i - 2).Center;
             Vector2 p_1 = GetCircular(nodes, i - 1).Center;
             Vector2 p1 = GetCircular(nodes, i + 1).Center;
             Vector2 p2 = GetCircular(nodes, i + 2).Center;
-
-            refTrackPoints.Add(
-                new RefLineTrackPoint(
-                    nodes[i].Center,
-                    MathHelper.FivePointStencil(p_2, p_1, p1, p2),
-                    nodes[i].Width
-                )
-            );
+            tangents[i] = MathHelper.FivePointStencil(p_2, p_1, p1, p2);
         }
-        RefLine refNodes = _refLineSolver.Generate(refTrackPoints);
+
+        float[] curvatures = new float[nodes.Count];
         TrackSurface[] surfaces = new TrackSurface[nodes.Count];
         for (int i = 0; i < nodes.Count; i++)
         {
+            curvatures[i] = CentrelineCurvature(tangents, i);
             surfaces[i] = _surfaceAt is null
                 ? TrackSurface.Flat
                 : _surfaceAt(new TrackSurfaceContext(
                     i * TrackData.StepLength,
-                    CentrelineCurvature(refTrackPoints, i),
-                    refTrackPoints[i].Width * 0.5f,
+                    curvatures[i],
+                    nodes[i].Width * 0.5f,
                     nodes.Count * TrackData.StepLength
                 ));
         }
         WriteVerticalRate(surfaces);
 
-        List<TrackNode> resNodes = [];
+        List<TrackNode> result = new(nodes.Count);
         for (int i = 0; i < nodes.Count; i++)
         {
-            resNodes.Add(
+            result.Add(
                 new TrackNode(
-                    refTrackPoints[i].Center,
-                    refTrackPoints[i].Tangent,
-                    refTrackPoints[i].Width,
+                    nodes[i].Center,
+                    tangents[i],
+                    curvatures[i],
+                    nodes[i].Width,
                     nodes[i].LeftBuffer,
                     nodes[i].RightBuffer,
-                    refNodes[i],
                     surfaces[i]
                 )
             );
         }
-        return new TrackData(resNodes, startingConfig);
+        return new TrackData(result, startingConfig);
     }
 
     public static float SmoothStep(float from, float to, float weight)
@@ -1662,8 +1652,7 @@ public static class TrackFactory
             Vector2.Zero,
             startWidth: DaytonaWidthMeters,
             startLeftBuffer: GrandPrixTestBufferMeters,
-            startRightBuffer: GrandPrixTestBufferMeters,
-            refLineSolver: CenterLineRefLineSolver.Instance
+            startRightBuffer: GrandPrixTestBufferMeters
         );
         builder.WithSurface(DaytonaSurface);
         return builder

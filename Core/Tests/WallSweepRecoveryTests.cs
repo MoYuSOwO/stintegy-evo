@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
@@ -18,14 +17,14 @@ namespace StintegyEVO.Core.Tests;
 /// the car away from the wall. The velocity response did not help either:
 /// it only acts when the centre of the car is moving into the wall, and
 /// here it was moving out. So the car was put back where it started, the
-/// next step asked for the same rotation, and the reference-line driver
-/// sat at one spot on the test track for 5223 frames with its wheels
-/// turning at six metres a second.
+/// next step asked for the same rotation, and the same fixed physical command
+/// sat at one spot on the test track for 5223 frames with its wheels turning
+/// at six metres a second.
 ///
 /// The state below is that spot, frozen at 70 s on the corrected thermal
-/// physics (Training/diagnostics/2026-09-11-thermal-adaptation, evidence/
+/// physics (the historical thermal-adaptation evidence,
 /// regression). It is recorded as numbers rather than re-driven, so the
-/// test goes on meaning what it means when the car or the driver changes;
+/// test goes on meaning what it means when the car or the physical model changes;
 /// the preconditions check that it still describes a corner rotating into
 /// a wall while the body moves clear, and say so if the track moves under
 /// it.
@@ -83,12 +82,10 @@ public sealed class WallSweepRecoveryTests
             StartingSurfaceTempC = 90f,
             StartingCoreTempC = 90f
         });
-        RaceCar car = new(
+        RaceCar car = TestControlFixtures.ExternalCar(
             "pinned",
-            new CarConfig(),
-            new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f },
-            new ReferenceLineDriver(),
-            state
+            state,
+            new DriverInput(0f, 2f)
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);

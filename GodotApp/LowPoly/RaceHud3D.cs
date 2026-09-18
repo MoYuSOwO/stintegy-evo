@@ -25,7 +25,7 @@ public partial class RaceHud3D : CanvasLayer
         root.Theme = new Theme { DefaultFont = font, DefaultFontSize = 14 };
         var header = Panel(root, Control.LayoutPreset.TopWide, new Vector2(20, 18), new Vector2(-20, 78));
         var title = Label(header, "STINTEGY", 21, new(18, 9)); title.AddThemeConstantOverride("outline_size", 0);
-        Label(header, "S I L V E R S T O N E   /   SOLO PRACTICE", 10, new(19, 37), Muted);
+        Label(header, "S I L V E R S T O N E   /   SIMULATION VIEW", 10, new(19, 37), Muted);
         _clock.Position = new(358, 19); _clock.AddThemeFontSizeOverride("font_size", 17); _clock.AddThemeColorOverride("font_color", Ink); header.AddChild(_clock);
         var controls = new HBoxContainer { Position = new(-529, 12), Size = new(510, 36), AnchorLeft = 1, AnchorRight = 1 };
         controls.AddThemeConstantOverride("separation", 5); header.AddChild(controls);
@@ -60,7 +60,8 @@ public partial class RaceHud3D : CanvasLayer
         var sim = _race.Simulation; var car = sim.Cars[_race.SelectedCarIndex];
         var elapsed = TimeSpan.FromSeconds(sim.RaceTimeSeconds);
         _clock.Text = $"{elapsed.Minutes:00}:{elapsed.Seconds:00}  /  {sim.Cars.Count} {(sim.Cars.Count == 1 ? "CAR" : "CARS")}";
-        _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    LAP {car.Progress.Lap + 1:00}";
+        string controller = car.Driver == null ? "NO CONTROLLER" : "CONTROLLER ATTACHED";
+        _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    {controller}    /    LAP {car.Progress.Lap + 1:00}";
         _speed.Text = $"{car.State.Speed * 3.6f:000} km/h";
         float wear = (car.State.FrontLeft.Wear + car.State.FrontRight.Wear + car.State.RearLeft.Wear + car.State.RearRight.Wear) / 4;
         _dashboard.Refresh(car.CarConfig, car.State, car.Strategy);
@@ -78,7 +79,7 @@ public partial class RaceHud3D : CanvasLayer
         RefreshControls();
         _stats.Text = coreMs > 0
             ? $"{Engine.GetFramesPerSecond():0} FPS  /  SIM {_race.SimulationRate:0.00}x  /  CORE {coreMs:0.0} ms"
-            : $"{Engine.GetFramesPerSecond():0} FPS  /  PREPARING LAP";
+            : $"{Engine.GetFramesPerSecond():0} FPS  /  {(_race.IsPreview ? "PREVIEW — NO CONTROLLER" : "STARTING")}";
         _map.Refresh(_race.SelectedCarIndex);
     }
     public void RefreshControls()

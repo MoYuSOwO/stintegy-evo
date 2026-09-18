@@ -1,7 +1,5 @@
 using System;
-using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
-using StintegyEVO.Core.Racing;
+using System.Numerics;
 using StintegyEVO.Core.Track;
 using Xunit;
 
@@ -50,91 +48,35 @@ public sealed class FamousCircuitTests
         Assert.InRange(steepest, 0.10f, 0.14f);
     }
 
-    /// <summary>
-    /// Each circuit closes, and the fallback driver still gets round it.
-    ///
-    /// It used to have to get round cleanly, and that is retired: the
-    /// analytic driver is an instrument now, not the baseline a learned lap
-    /// is quoted against, and a controller written for a car that granted
-    /// every curvature on request has no claim on a car with slip angles.
-    ///
-    /// All four of these circuits are the exception, and they are named
-    /// rather than hidden. They are the hardest four in the set - walls
-    /// seven metres apart, a climb past anything in training, braking from
-    /// real speed - and on a car with slip angles the old controller runs
-    /// wide in them and stays against a barrier. It still laps Silverstone,
-    /// Shanghai, Monaco, Zandvoort and the simple layouts; the survey is in
-    /// the batch's notes. What is asserted here is the property each
-    /// circuit was brought into the set for, which is its geometry.
-    /// </summary>
-    [Fact(Skip =
-        "the analytic driver is an instrument now, not a protected baseline: this asserts a result it can no longer produce on a car with slip angles, and the batch's order retired its acceptance rather than tuning the physics back. See Training/experiments/2026-09-07-slip-angle.")]
+    [Fact]
     public void AllFourCloseAndKeepTheGeometryTheyWereAddedFor()
     {
-        (string, Func<TrackData>)[] tracks =
+        (string Name, Func<TrackData> Build)[] tracks =
         [
             ("baku", TrackFactory.BakuStyleTestTrack),
             ("spa", TrackFactory.SpaStyleTestTrack),
             ("monza", TrackFactory.MonzaStyleTestTrack),
             ("interlagos", TrackFactory.InterlagosStyleTestTrack),
         ];
-        foreach ((string name, Func<TrackData> make) in tracks)
+
+        foreach ((string name, Func<TrackData> build) in tracks)
         {
-            TrackData track = make();
+            TrackData track = build();
             float height = 0f;
-            for (int s = 0; s < (int)track.LengthMeters; s++)
-                height += track.Sample(s + 0.5f).Grade;
+            for (int metre = 0; metre < (int)track.LengthMeters; metre++)
+                height += track.Sample(metre + 0.5f).Grade;
             Assert.InRange(height, -0.05f, 0.05f);
 
-            TrackSample start = track.Sample(0f);
-            RaceCar car = new(
-                name,
-                new CarConfig(),
-                new TireConfig
-                {
-                    StartingSurfaceTempC = 90f,
-                    StartingCoreTempC = 90f
-                },
-                new ReferenceLineDriver(),
-                new CarState
-                {
-                    Position = start.RefPosition,
-                    Heading = start.RefHeading,
-                    Speed = 0f,
-                    Energy = PowertrainState.Filled(0.8f)
-                }
-            );
+            TrackSample startSample = track.Sample(0f);
+            TrackSample endSample = track.Sample(track.LengthMeters);
             Assert.True(
-                (start.RefPosition - track.Sample(track.LengthMeters).RefPosition)
-                    .Length() < 1f,
+                Vector2.Distance(startSample.Center, endSample.Center) < 1e-4f,
                 $"{name} does not close"
             );
-            RaceSimulation simulation = new(track);
-            simulation.AddCar(car);
-            int touchedFrames = 0;
-            for (int i = 0; i < 200 * 120; i++)
-            {
-                simulation.Step(1f / 120f);
-                if (car.LastBoundaryContact.HasValue)
-                    touchedFrames++;
-            }
-        // Zero contact used to be the assertion here, back when the
-        // analytic driver was the baseline every learned lap was quoted
-        // against and its results were something the car owed it. It is an
-        // instrument now, not a protected reference: the requirement is
-        // that the fallback driver still gets round, not that a controller
-        // written for a car which granted every curvature on request
-        // drives a car with slip angles just as tidily.
-            // The car is run so the circuit is exercised rather than only
-            // measured, and so a track that cannot be entered at all shows
-            // up here rather than in a training run.
-            Assert.True(
-                car.Progress.TotalDistance > 0f,
-                $"{name}: the car never got going"
-            );
-            Assert.True(
-                touchedFrames < 200 * 120,
-                $"{name}: against a barrier for the whole run"
+            Assert.InRange(
+                MathF.Abs(track.Project(startSample.Center).D),
+                0f,
+                1e-4f
             );
         }
     }

@@ -8,8 +8,8 @@ namespace StintegyEVO.Core.Tests;
 public sealed class CarPhysicsTests
 {
     /// <summary>
-    /// The tyre mode that allots the whole friction circle, so the driver's
-    /// reflex has nothing to trim and the physics is the only limit left.
+    /// The tyre mode that authorises the whole friction circle, so the
+    /// combined-grip limiter has nothing to trim.
     /// </summary>
     private static readonly CarStrategy Unclamped =
         new(TireUsageMode.Attack, PowerOutputMode.Normal);
@@ -107,9 +107,16 @@ public sealed class CarPhysicsTests
     /// Driving hard enough that the corner alone is spending most of the
     /// circle, and then asking for everything the motor and the brakes
     /// have: whatever the tyres end up spending has to land inside what
-    /// the mode allots. The reflex solves the ellipse once — the slip
+    /// the mode allots. The limiter solves the ellipse once — the slip
     /// angle's own share leaves room for a pedal share and no more — so
     /// this holds for the realised usage rather than for the request.
+    ///
+    /// Held to max(A, s) rather than A. Past a slip angle whose own share s
+    /// already exceeds A the pedals are at zero and the excess is the
+    /// steering's; with drive requested the car gets there here within a
+    /// quarter of a second. The retired traction control used to trim drive
+    /// early enough to keep this corner short of it, which is why the bound
+    /// was once written as A alone.
     /// </summary>
     [Theory]
     [InlineData(TireUsageMode.Protect, 12f)]
@@ -142,27 +149,30 @@ public sealed class CarPhysicsTests
                 1f / 60f
             );
             CarTelemetry telemetry = state.Telemetry;
+            // use <= max(A, s): the pedals cannot take an axle past the
+            // authorisation, and once the slip angle alone has, the limiter
+            // has already cut them to nothing and what is left is steering.
             Assert.InRange(
                 CombinedUse(
                     telemetry.FrontLateralUse, telemetry.FrontLongitudinalUse
                 ),
                 0f,
-                allowance + 1e-3f
+                MathF.Max(allowance, telemetry.FrontLateralUse) + 1e-3f
             );
             Assert.InRange(
                 CombinedUse(
                     telemetry.RearLateralUse, telemetry.RearLongitudinalUse
                 ),
                 0f,
-                allowance + 1e-3f
+                MathF.Max(allowance, telemetry.RearLateralUse) + 1e-3f
             );
         }
     }
 
     /// <summary>
-    /// A pedal request the mode can afford arrives untouched. The reflex is
-    /// a ceiling, not a tax: a driver inside its allowance should not be
-    /// able to tell that it exists.
+    /// A pedal request the mode can afford arrives untouched. The limiter is
+    /// a ceiling, not a tax: a command inside its authorisation should not
+    /// be able to tell that it is fitted.
     /// </summary>
     [Fact]
     public void APedalRequestInsideTheAllowanceArrivesUntouched()
@@ -198,7 +208,7 @@ public sealed class CarPhysicsTests
     /// Same corner, same impossible request for brake, one rung at a time:
     /// what the tyre ends up spending lands on that rung's allowance and
     /// not a thousandth past it — 0.955, 0.966, 0.977, 0.989, and the whole
-    /// circle at Attack, where the reflex has nothing to say.
+    /// circle at Attack, where the limiter has nothing to say.
     ///
     /// Read as what the tyre spends rather than as how hard the car slowed:
     /// at 45 m/s the drag is worth more than the whole difference between
@@ -276,7 +286,7 @@ public sealed class CarPhysicsTests
     /// slip angle's own share of the curve plus what is left of the circle
     /// after it, so a tyre worked near its peak angle is spending almost
     /// the whole circle on steering alone, and no pedal position subtracts
-    /// from that. The reflex cuts the pedals to nothing there, which is all
+    /// from that. The limiter cuts the pedals to nothing there, which is all
     /// it can do — steering is deliberately not trimmed, because that is
     /// where a car is caught rather than lost.
     ///
@@ -335,21 +345,14 @@ public sealed class CarPhysicsTests
             MathF.Sqrt(lateral * lateral + longitudinal * longitudinal)
         );
 
-    /// <summary>
-    /// Asked for more braking than the road will take, the axles clip it and
-    /// say so.
-    ///
-    /// Driven at Attack, where the tyre mode allots the whole circle and the
-    /// driver's reflex has nothing to trim. Below Attack it does: a request
-    /// this far past the allowance is now cut before the tyres ever see it,
-    /// which is what ATyreModeCannotBeDrivenPastByThePedals covers. The
-    /// physics of being over the limit is what this test is about, and the
-    /// only place it can still be reached from the pedals is here.
-    /// </summary>
+
     [Fact]
     public void LowGripHeavyBrakingIsClippedByAxles()
     {
-        CarConfig car = new();
+        // Without the combined-grip limiter: this is the physics of a tyre
+        // asked for more than it has, which a fitted limiter would never let
+        // the pedals reach below the Attack rung.
+        CarConfig car = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,
@@ -358,13 +361,7 @@ public sealed class CarPhysicsTests
         };
         CarState state = CreateState(speed: 32f, batterySoc: 0.5f, tires);
 
-        CarPhysics.Step(
-            state,
-            car,
-            tires,
-            PhysicsInput(new DriverInput(0f, -12f), Unclamped),
-            1f / 60f
-        );
+        CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(0f, -12f)), 1f / 60f);
 
         Assert.True(state.Telemetry.OverLimit > 0f, "brake demand above low-grip capacity should be reported as over limit");
         Assert.True(
@@ -377,8 +374,15 @@ public sealed class CarPhysicsTests
     [Fact]
     public void BrakeOverlimitReducesDeliveredBrake()
     {
-        CarConfig noEfficiencyLoss = new() { OverLimitMinGripEfficiency = 1f };
-        CarConfig defaultEfficiencyLoss = new();
+        // Without the combined-grip limiter: this is the physics of a tyre
+        // asked for more than it has, which a fitted limiter would never let
+        // the pedals reach below the Attack rung.
+        CarConfig noEfficiencyLoss = new()
+        {
+            OverLimitMinGripEfficiency = 1f,
+            CombinedGripLimiterStrength = 0f
+        };
+        CarConfig defaultEfficiencyLoss = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,
@@ -387,11 +391,7 @@ public sealed class CarPhysicsTests
         };
         CarState noEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
         CarState defaultEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
-        // Attack, for the same reason as the test above: below it the
-        // driver's reflex trims a request this far past the allowance and
-        // there is no over-limit braking left to measure.
-        CarPhysicsStepInput input =
-            PhysicsInput(new DriverInput(0f, -12f), Unclamped);
+        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0f, -12f));
 
         CarPhysics.Step(noEfficiencyLossState, noEfficiencyLoss, tires, input, 1f / 60f);
         CarPhysics.Step(defaultEfficiencyLossState, defaultEfficiencyLoss, tires, input, 1f / 60f);
@@ -476,16 +476,11 @@ public sealed class CarPhysicsTests
     [Fact]
     public void RearCombinedSaturationScalesLateralAndDriveTogether()
     {
-        CarConfig car = new() { TractionControlStrength = 0f };
+        CarConfig car = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = WarmTires();
         CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        // Attack on the tyre axis as well as the power one. At Normal the
-        // driver's reflex cuts the drive the moment the corner alone is
-        // spending the allowance, and a rear axle that is never given the
-        // drive never lets go -- which is the reflex working, and would
-        // leave this test with nothing to look at.
-        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         // Most of the grip spent on the corner, so asking for drive on top of
         // it has to come out of the same circle.
         float curvature = CurvatureForGripShare(cornering, car, tires, attack, 0.9f);
@@ -576,19 +571,10 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(optimal, car, tires, PhysicsInput(balanced), 1f / 60f);
         CarPhysics.Step(frontBiased, car, tires, PhysicsInput(biased), 1f / 60f);
 
-        // The anti-lock takes most of the excess a bad split creates, so what
-        // the bias costs is mainly braking the car never gets rather than a
-        // tyre driven past what it has. Only most, though: some is still there,
-        // and the balanced car has none of it.
-        // The over-limit reading is gone from both, and that is the
-        // anti-lock doing its job rather than anything being lost. A bad
-        // split used to leave a little of the excess on the tyre because
-        // the lateral demand it was measured against was a request; it is
-        // now what the tyre is actually delivering, the anti-lock sees the
-        // circle that is really there, and it takes the whole excess. What
-        // the bias costs is therefore all of it braking the car never gets
-        // - which is what the two readings below say, and what the name of
-        // this test has always been about.
+        // The combined-grip limiter holds each axle's braking inside the
+        // share of the circle the tyre rung authorises, so neither car drives
+        // a tyre past what it has, and what the bias costs is braking the car
+        // never gets.
         Assert.Equal(0f, optimal.Telemetry.OverLimit, precision: 4);
         Assert.Equal(0f, frontBiased.Telemetry.OverLimit, precision: 4);
         Assert.True(
@@ -596,18 +582,11 @@ public sealed class CarPhysicsTests
             optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
             "a biased split should clip one axle before all remaining grip is used"
         );
-        // And it costs no cornering at all - it buys a little, which is
-        // the anti-lock's whole purpose stated backwards. A split that
-        // overloads one axle gets that axle held further back from its
-        // circle, so more of the circle is left over for steering. What a
-        // bad split costs is entirely stopping, which is the reading above.
-        Assert.True(
-            frontBiased.Telemetry.ActualLateralAccel >=
-            optimal.Telemetry.ActualLateralAccel,
-            $"a split the anti-lock has to correct should not cost cornering: " +
-            $"{optimal.Telemetry.ActualLateralAccel:0.000} became " +
-            $"{frontBiased.Telemetry.ActualLateralAccel:0.000}"
-        );
+        // Cornering is not pinned here. The anti-lock this test used to
+        // lean on held the overloaded axle back from its circle and so left
+        // steering a little more; the limiter that replaced it lets that
+        // axle spend up to the rung's authorisation, trading some of its
+        // cornering for braking, which is a different device doing its job.
     }
 
     [Fact]
@@ -643,16 +622,13 @@ public sealed class CarPhysicsTests
     [Fact]
     public void RearAxleSaturationCreatesRecoverableBodySideslip()
     {
-        CarConfig car = new();
+        // Without the combined-grip limiter, which exists to stop exactly
+        // this and would cut the drive before the rear let go.
+        CarConfig car = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeRearTiresHotAndWorn(state);
-        // Attack on the tyre axis as well as the power one. At Normal the
-        // driver's reflex cuts the drive the moment the corner alone is
-        // spending the allowance, and a rear axle that is never given the
-        // drive never lets go -- which is the reflex working, and would
-        // leave this test with nothing to look at.
-        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         // Cornering near what the worn rear will bear and then asking for all
         // the drive there is. Drive alone cannot do it: the request is clipped
         // at the car's own maximum, so the way to make an axle let go is to
@@ -792,27 +768,21 @@ public sealed class CarPhysicsTests
     }
 
     [Fact]
-    public void TractionControlCutsDriveNearTheRearCombinedGripLimit()
+    public void TheGripLimiterCutsDriveNearTheCombinedGripLimit()
     {
         CarConfig controlledCar = new();
-        CarConfig uncontrolledCar = new() { TractionControlStrength = 0f };
+        CarConfig uncontrolledCar = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = WarmTires();
         CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        // Attack on the tyre axis as well as the power one. At Normal the
-        // driver's reflex cuts the drive the moment the corner alone is
-        // spending the allowance, and a rear axle that is never given the
-        // drive never lets go -- which is the reflex working, and would
-        // leave this test with nothing to look at.
-        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
-        // Cornering hard and asking for drive on top, which is where traction
-        // control is meant to step in.
+        CarStrategy attack = new(TireUsageMode.Protect, PowerOutputMode.Attack);
+        // Cornering hard and asking for drive on top, which is where the
+        // limiter is meant to step in.
         float curvature = CurvatureForGripShare(controlled, car: controlledCar,
-            tires, attack, 0.9f);
+            tires, attack, 1.0f);
         SetSteadyCorner(controlled, controlledCar, tires, curvature);
         SetSteadyCorner(uncontrolled, uncontrolledCar, tires, curvature);
-        float drive = DriveForShare(
-            controlled, controlledCar, tires, attack, curvature, 1.2f);
+        float drive = controlledCar.MaxDriveAcceleration;
         DriverInput asked = new(curvature, drive);
         CarPhysicsStepInput input = PhysicsInput(asked, attack);
         SetSteadyCorner(controlled, controlledCar, tires, curvature);
@@ -821,20 +791,20 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(controlled, controlledCar, tires, input, 1f / 60f);
         CarPhysics.Step(uncontrolled, uncontrolledCar, tires, input, 1f / 60f);
 
-        Assert.True(controlled.Telemetry.TractionControlCutAccel > 0f);
-        Assert.Equal(0f, uncontrolled.Telemetry.TractionControlCutAccel, precision: 4);
+        Assert.True(controlled.Telemetry.CombinedGripLimiterCutAccel > 0f);
+        Assert.Equal(0f, uncontrolled.Telemetry.CombinedGripLimiterCutAccel, precision: 4);
         Assert.True(
             controlled.Telemetry.RearLongitudinalUse < uncontrolled.Telemetry.RearLongitudinalUse,
-            "TC should reduce rear drive use before the physics grip clip"
+            "the limiter should reduce rear drive use before the physics grip clip"
         );
         Assert.True(
             controlled.Telemetry.ActualLongitudinalAccel < uncontrolled.Telemetry.ActualLongitudinalAccel,
-            "TC intervention should trade acceleration for rear stability"
+            "the limiter should trade acceleration for rear stability"
         );
     }
 
     [Fact]
-    public void SideslipDissipatesSpeedAndHeatsRearTiresWhileTcIntervenes()
+    public void SideslipDissipatesSpeedAndHeatsRearTiresWhileTheLimiterIntervenes()
     {
         CarConfig car = new();
         TireConfig tires = WarmTires();
@@ -842,12 +812,7 @@ public sealed class CarPhysicsTests
         CarState sliding = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         sliding.Heading = -0.1f;
         sliding.SideslipAngleRadians = 0.1f;
-        // Attack on the tyre axis as well as the power one. At Normal the
-        // driver's reflex cuts the drive the moment the corner alone is
-        // spending the allowance, and a rear axle that is never given the
-        // drive never lets go -- which is the reflex working, and would
-        // leave this test with nothing to look at.
-        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Attack);
+        CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
         float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
         CarPhysicsStepInput input =
@@ -856,11 +821,11 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(aligned, car, tires, input, 1f / 60f);
         CarPhysics.Step(sliding, car, tires, input, 1f / 60f);
 
-        Assert.True(sliding.Telemetry.TractionControlCutAccel > 0f);
+        Assert.True(sliding.Telemetry.CombinedGripLimiterCutAccel > 0f);
         Assert.True(sliding.Telemetry.SideslipLossAccel > 0.5f);
         Assert.True(
             sliding.Telemetry.ActualLongitudinalAccel < aligned.Telemetry.ActualLongitudinalAccel,
-            "existing lateral slip should dissipate speed independently of TC"
+            "existing lateral slip should dissipate speed independently of the limiter"
         );
         Assert.True(
             AverageRearSurfaceTemp(sliding) > AverageRearSurfaceTemp(aligned),
@@ -1585,7 +1550,7 @@ public sealed class CarPhysicsTests
     }
 
     [Fact(Skip =
-        "dormant: the partial-slip branch starts at 99% of the friction circle and the car's measured ceiling is 96.6%, because tyre use went from an unbounded request to a bounded delivery. Filed in the tyre batch in Training/design-notes/2026-09-07 to be re-read with the heat model.")]
+        "dormant: the partial-slip branch starts at 99% of the friction circle and the car's measured ceiling is 96.6%, because tyre use went from an unbounded request to a bounded delivery. Filed in the historical tyre experiment record to be re-read with the heat model.")]
     public void NearLimitPartialSlipHeatDoesNotMultiplyDirectionalHeat()
     {
         CarConfig car = new();
@@ -1621,7 +1586,7 @@ public sealed class CarPhysicsTests
     }
 
     [Fact(Skip =
-        "dormant: the partial-slip branch starts at 99% of the friction circle and the car's measured ceiling is 96.6%, because tyre use went from an unbounded request to a bounded delivery. Filed in the tyre batch in Training/design-notes/2026-09-07 to be re-read with the heat model.")]
+        "dormant: the partial-slip branch starts at 99% of the friction circle and the car's measured ceiling is 96.6%, because tyre use went from an unbounded request to a bounded delivery. Filed in the historical tyre experiment record to be re-read with the heat model.")]
     public void DirectionalHeatPerUnitWorkRisesTowardTheLimit()
     {
         // Read against the limit the car can hold rather than against the

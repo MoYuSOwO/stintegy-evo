@@ -16,14 +16,11 @@
   <ItemGroup>
     <Compile Remove=".godot/**/*.cs" />
     <Compile Remove="Core/**/*.cs" />
-    <!--
-      Both of these are their own projects with their own references, and
-      the SDK's default glob would otherwise compile their sources into the
-      game: the training host and its xunit tests, which the game does not
-      reference, and any git worktree checked out inside the repository,
-      which is a second copy of everything.
-    -->
     <Compile Remove="Training/**/*.cs" />
+    <!-- Test controllers/fixtures never ship in an ordinary game build. -->
+    <Compile Remove="Tools/Tests/**/*.cs" />
+    <Compile Include="Tools/Tests/**/*.cs" Condition="'$(PresentationSmoke)' == 'true'" />
+    <!-- Nested worktrees are separate checkouts, not game source files. -->
     <Compile Remove=".worktrees/**/*.cs" />
   </ItemGroup>
 </Project>

@@ -18,7 +18,7 @@ public readonly record struct CarTelemetry(
     float OverLimit,
     float DrivePowerWatts,
     float RegenPowerWatts,
-    float TractionControlCutAccel,
+    float CombinedGripLimiterCutAccel,
     float SideslipLossAccel,
     float SideslipAngleRadians,
     float RearSlideSeverity,

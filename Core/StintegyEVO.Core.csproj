@@ -12,9 +12,4 @@
     <EmbeddedResource Include="Track/Data/*.csv" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="BlasSharp.AppleAccelerate" Version="0.3.0" />
-    <PackageReference Include="BlasSharp.OpenBlas" Version="0.3.0" />
-    <PackageReference Include="Highs.Native" Version="1.15.1" />
-  </ItemGroup>
 </Project>

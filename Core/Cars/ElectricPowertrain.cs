@@ -77,8 +77,7 @@ public sealed class ElectricPowertrain : IPowertrain
     ///
     /// Measured rather than chosen: driven flat out on both ladders round
     /// Silverstone, this car spends <b>27.4 MJ a lap</b> (12 lanes, 600
-    /// simulated seconds, 68 laps; the scan is
-    /// <c>Training/python/scarcity_scan.py</c>). At the old capacity that
+    /// simulated seconds, 68 laps; the scan is recorded in the historical scarcity experiment). At the old capacity that
     /// bought 53.6 laps against a race distance of 52 — the car could go
     /// flat out for the whole race and finish with charge to spare, which
     /// is why the five power settings differed by under three per cent in

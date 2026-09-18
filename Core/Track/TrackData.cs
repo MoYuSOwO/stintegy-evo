@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Numerics;
-using StintegyEVO.Core.Util;
 
 namespace StintegyEVO.Core.Track;
 
@@ -42,10 +41,11 @@ public readonly struct TrackSample
     public readonly float Width;
     public readonly float LeftBufferWidth;
     public readonly float RightBufferWidth;
-    public readonly float RefOffset;
-    public readonly Vector2 RefPosition;
-    public readonly float RefHeading;
-    public readonly float RefCurvature;
+    /// <summary>Signed curvature of the physical road centreline.</summary>
+    public readonly float Curvature;
+
+    /// <summary>Heading of the physical road centreline in radians.</summary>
+    public readonly float Heading;
 
     /// <summary>Rise over run along the direction of travel; positive uphill.</summary>
     public readonly float Grade;
@@ -90,10 +90,7 @@ public readonly struct TrackSample
         float width,
         float leftBufferWidth,
         float rightBufferWidth,
-        float refOffset,
-        Vector2 refPosition,
-        float refHeading,
-        float refCurvature,
+        float curvature,
         float grade = 0f,
         float bankSlope = 0f,
         float bankCurvature = 0f,
@@ -107,10 +104,8 @@ public readonly struct TrackSample
         Width = width;
         LeftBufferWidth = leftBufferWidth;
         RightBufferWidth = rightBufferWidth;
-        RefOffset = refOffset;
-        RefPosition = refPosition;
-        RefHeading = refHeading;
-        RefCurvature = refCurvature;
+        Curvature = curvature;
+        Heading = MathF.Atan2(tangent.Y, tangent.X);
         Grade = grade;
         BankSlope = bankSlope;
         BankCurvature = bankCurvature;
@@ -168,6 +163,19 @@ public sealed class StartingGridAccessor
     }
 }
 
+/// <summary>
+/// The physical road a car can run on: a sampled centreline with its tangent,
+/// normal and curvature; widths, edges and run-off; elevation, slope and
+/// banking; surfaces and their grip; projection of world positions to
+/// <c>(s, d)</c>, wrapping, the starting line and the grid.
+/// </summary>
+/// <remarks>
+/// The centreline is a geometric reference, not the right answer: the same road
+/// admits any line a controller chooses, and no preferred, offset or reference
+/// line, curvature objective or path planner belongs here. What happens at the
+/// edge is priced by surfaces, grip and walls, not by a hidden off-track flag;
+/// judging fault or conduct is a rules layer's business outside the world.
+/// </remarks>
 public class TrackData
 {
     public const float StepLength = 1.0f;
@@ -232,10 +240,7 @@ public class TrackData
             Lerp(a.Width, b.Width, t),
             Lerp(a.LeftBufferWidth, b.LeftBufferWidth, t),
             Lerp(a.RightBufferWidth, b.RightBufferWidth, t),
-            Lerp(a.RefOffset, b.RefOffset, t),
-            Vector2.Lerp(a.Ref, b.Ref, t),
-            LerpAngle(a.RefLinePoint.Heading, b.RefLinePoint.Heading, t),
-            Lerp(a.RefLinePoint.Curvature, b.RefLinePoint.Curvature, t),
+            Lerp(a.Curvature, b.Curvature, t),
             Lerp(a.Surface.Grade, b.Surface.Grade, t),
             Lerp(a.Surface.BankSlope, b.Surface.BankSlope, t),
             Lerp(a.Surface.BankCurvature, b.Surface.BankCurvature, t),
@@ -348,12 +353,6 @@ public class TrackData
     private static float Lerp(float from, float to, float weight)
     {
         return from + (to - from) * weight;
-    }
-
-    private static float LerpAngle(float from, float to, float weight)
-    {
-        float delta = MathHelper.NormalizeAngle(to - from);
-        return MathHelper.NormalizeAngle(from + delta * weight);
     }
 
 }

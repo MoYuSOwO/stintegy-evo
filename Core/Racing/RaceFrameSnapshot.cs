@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Collections.Immutable;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Track;
@@ -30,6 +31,26 @@ public readonly record struct RaceCarSnapshot(
     DriverInput LastInput
 )
 {
+    public DriverProfile? DriverProfile { get; init; }
+    public CarStrategy Strategy { get; init; }
+    public float SteerAngleRadians { get; init; }
+    public float SideslipHoldSeconds { get; init; }
+    public bool Spinning { get; init; }
+    public float SpinSeconds { get; init; }
+    public int SpinEvents { get; init; }
+    public float AirVelocityDeficit { get; init; }
+    public float DownforceVelocityDeficit { get; init; }
+    public float WakeDownforceLoss { get; init; }
+    public float DragReduction { get; init; }
+    public TireSnapshot FrontLeft { get; init; }
+    public TireSnapshot FrontRight { get; init; }
+    public TireSnapshot RearLeft { get; init; }
+    public TireSnapshot RearRight { get; init; }
+    public ImmutableArray<PowertrainResourceSnapshot> Resources { get; init; }
+    public CarCapabilities Capabilities { get; init; }
+    public CarTelemetry Telemetry { get; init; }
+    public float BoundaryContactSeconds { get; init; }
+    public bool HitCar { get; init; }
     public float RaceDistanceMeters { get; init; }
     public float TrackLengthMeters { get; init; }
     public float TrackWidthMeters { get; init; }
@@ -51,6 +72,14 @@ public readonly record struct RaceCarSnapshot(
     )
     {
         CarState state = car.State;
+        IPowertrain powertrain = car.CarConfig.Powertrain;
+        var resources = ImmutableArray.CreateBuilder<PowertrainResourceSnapshot>(powertrain.Resources.Count);
+        for (int i = 0; i < powertrain.Resources.Count && i < PowertrainState.Capacity; i++)
+        {
+            PowertrainResourceInfo info = powertrain.Resources[i];
+            resources.Add(new(info.Id, info.Label, info.Class, state.Energy[i], info.FullMassKg * state.Energy[i]));
+        }
+        float mass = car.CarConfig.MassKg + powertrain.ConsumableMassKg(state.Energy);
         return new RaceCarSnapshot(
             car.Id,
             state.Position,
@@ -71,6 +100,30 @@ public readonly record struct RaceCarSnapshot(
             car.LastInput
         )
         {
+            DriverProfile = car.Driver?.Profile,
+            Strategy = car.Strategy,
+            SteerAngleRadians = state.SteerAngleRadians,
+            SideslipHoldSeconds = state.SideslipHoldSeconds,
+            Spinning = state.Spinning,
+            SpinSeconds = state.SpinSeconds,
+            SpinEvents = state.SpinEvents,
+            AirVelocityDeficit = state.AirVelocityDeficit,
+            DownforceVelocityDeficit = state.DownforceVelocityDeficit,
+            WakeDownforceLoss = state.WakeDownforceLoss,
+            DragReduction = state.DragReduction,
+            FrontLeft = TireSnapshot.Capture(state.FrontLeft),
+            FrontRight = TireSnapshot.Capture(state.FrontRight),
+            RearLeft = TireSnapshot.Capture(state.RearLeft),
+            RearRight = TireSnapshot.Capture(state.RearRight),
+            Resources = resources.ToImmutable(),
+            Capabilities = new(
+                mass, car.CarConfig.MaxCurvatureRequest, car.CarConfig.MaxSteerAngleRadians,
+                car.CarConfig.SteerRateLimitRadiansPerSecond, car.CarConfig.MaxDriveAcceleration,
+                powertrain.DriveAccelerationLimit(state.Energy, car.Strategy, state.Speed, mass, car.CarConfig.MaxDriveAcceleration),
+                powertrain.OutputAvailability(state.Energy), car.TireConfig.CompoundId),
+            Telemetry = state.Telemetry,
+            BoundaryContactSeconds = car.BoundaryContactSeconds,
+            HitCar = car.HitCarThisStep,
             RaceDistanceMeters = car.Progress.RaceDistanceMeters,
             TrackLengthMeters = MathF.Max(0f, trackLengthMeters),
             TrackWidthMeters = pose.Sample.Width,
@@ -79,167 +132,59 @@ public readonly record struct RaceCarSnapshot(
     }
 }
 
+/// <summary>A value copy of one tyre. It never exposes the live TireState.</summary>
+public readonly record struct TireSnapshot(float SurfaceTempC, float CoreTempC, float Wear, float LoadN, float SurfaceGrip)
+{
+    internal static TireSnapshot Capture(TireState tire) =>
+        new(tire.SurfaceTempC, tire.CoreTempC, tire.Wear, tire.LoadN, tire.SurfaceGrip);
+}
+
+public readonly record struct PowertrainResourceSnapshot(
+    string Id, string Label, PowertrainResourceClass Class, float Fraction, float RemainingMassKg);
+
+/// <summary>Typed vehicle limits and current output, independent of a controller's encoding.</summary>
+public readonly record struct CarCapabilities(
+    float MassKg, float MaxCurvatureRequest, float MaxSteerAngleRadians,
+    float SteerRateLimitRadiansPerSecond, float MaxDriveAcceleration,
+    float AvailableDriveAcceleration, float OutputAvailability, string TireCompoundId);
+
+public readonly record struct RaceEnvironmentSnapshot(float AirTempC, float TrackTempC, float SurfaceGripScalar);
+
 /// <summary>
-/// A stable view of every car at the beginning of one physics substep.
+/// A retained, immutable physical world frame: positions, attitude, speeds, track
+/// projection, tyres, energy, strategy state, contact and telemetry. No controller's
+/// private plan, network handle, reward value or training-episode state is part of the
+/// world, and a retained frame does not change as the live cars move on.
 /// </summary>
 public readonly struct RaceFrameSnapshot
 {
-    private readonly RaceCarSnapshot[]? _cars;
-    private readonly TrafficMotionPlan?[]? _trafficMotionPlans;
-    private readonly TrafficMotionPlan?[]? _previousTrafficMotionPlans;
-    private readonly RacingRoomSnapshot _racingRoom;
+    private readonly ImmutableArray<RaceCarSnapshot> _cars;
 
-    internal RaceFrameSnapshot(
-        float raceTimeSeconds,
-        RaceCarSnapshot[] cars,
-        TrafficMotionPlan?[] trafficMotionPlans
-    ) : this(raceTimeSeconds, cars, trafficMotionPlans, null, default)
-    {
-    }
-
-    internal RaceFrameSnapshot(
-        float raceTimeSeconds,
-        RaceCarSnapshot[] cars,
-        TrafficMotionPlan?[] trafficMotionPlans,
-        RacingRoomSnapshot racingRoom
-    ) : this(raceTimeSeconds, cars, trafficMotionPlans, null, racingRoom)
-    {
-    }
-
-    internal RaceFrameSnapshot(
-        float raceTimeSeconds,
-        RaceCarSnapshot[] cars,
-        TrafficMotionPlan?[] trafficMotionPlans,
-        TrafficMotionPlan?[]? previousTrafficMotionPlans
-    ) : this(
-        raceTimeSeconds,
-        cars,
-        trafficMotionPlans,
-        previousTrafficMotionPlans,
-        default
-    )
-    {
-    }
-
-    internal RaceFrameSnapshot(
-        float raceTimeSeconds,
-        RaceCarSnapshot[] cars,
-        TrafficMotionPlan?[] trafficMotionPlans,
-        TrafficMotionPlan?[]? previousTrafficMotionPlans,
-        RacingRoomSnapshot racingRoom
-    )
+    internal RaceFrameSnapshot(float raceTimeSeconds, RaceEnvironmentSnapshot environment, RaceCarSnapshot[] cars)
     {
         RaceTimeSeconds = raceTimeSeconds;
-        _cars = cars ?? throw new ArgumentNullException(nameof(cars));
-        _trafficMotionPlans = trafficMotionPlans ??
-                              throw new ArgumentNullException(
-                                  nameof(trafficMotionPlans)
-                              );
-        _previousTrafficMotionPlans = previousTrafficMotionPlans;
-        _racingRoom = racingRoom;
+        Environment = environment;
+        _cars = ImmutableArray.CreateRange(cars);
     }
 
     public float RaceTimeSeconds { get; }
-    public int Count => _cars?.Length ?? 0;
-    public ReadOnlySpan<RaceCarSnapshot> Cars => _cars;
-    internal RacingRoomSnapshot RacingRoom => _racingRoom;
-
-    public RaceCarSnapshot this[int index]
-    {
-        get
-        {
-            if (_cars is null)
-                throw new IndexOutOfRangeException();
-            return _cars[index];
-        }
-    }
+    public RaceEnvironmentSnapshot Environment { get; }
+    public int Count => _cars.IsDefault ? 0 : _cars.Length;
+    public ReadOnlySpan<RaceCarSnapshot> Cars => _cars.AsSpan();
+    public RaceCarSnapshot this[int index] => _cars[index];
 
     public bool TryGetCar(string id, out RaceCarSnapshot car)
     {
         ArgumentNullException.ThrowIfNull(id);
-
-        if (_cars is not null)
+        foreach (RaceCarSnapshot candidate in Cars)
         {
-            foreach (RaceCarSnapshot candidate in _cars)
+            if (string.Equals(candidate.Id, id, StringComparison.Ordinal))
             {
-                if (string.Equals(candidate.Id, id, StringComparison.Ordinal))
-                {
-                    car = candidate;
-                    return true;
-                }
+                car = candidate;
+                return true;
             }
         }
-
         car = default;
         return false;
-    }
-
-    internal TrafficMotionPlan? GetTrafficMotionPlan(int carIndex)
-    {
-        if (_trafficMotionPlans is null ||
-            (uint)carIndex >= (uint)Count ||
-            carIndex >= _trafficMotionPlans.Length)
-        {
-            return null;
-        }
-        return _trafficMotionPlans[carIndex] is { Count: > 0 } plan
-            ? plan
-            : null;
-    }
-
-    internal TrafficMotionPlan? GetPreviousTrafficMotionPlan(int carIndex)
-    {
-        if (_previousTrafficMotionPlans is null ||
-            (uint)carIndex >= (uint)Count ||
-            carIndex >= _previousTrafficMotionPlans.Length)
-        {
-            return null;
-        }
-        return _previousTrafficMotionPlans[carIndex] is { Count: > 0 } plan
-            ? plan
-            : null;
-    }
-
-    internal TrafficMotionPlan? FindTrafficMotionPlan(string carId)
-    {
-        ArgumentNullException.ThrowIfNull(carId);
-        if (_cars is null || _trafficMotionPlans is null)
-            return null;
-
-        int count = Math.Min(_cars.Length, _trafficMotionPlans.Length);
-        for (int i = 0; i < count; i++)
-        {
-            if (string.Equals(_cars[i].Id, carId, StringComparison.Ordinal) &&
-                _trafficMotionPlans[i] is { Count: > 0 } plan)
-            {
-                return plan;
-            }
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Finds a simulation-owned snapshot of the car's preceding frozen plan.
-    /// This view is supplied only during the write-only planning phase; the
-    /// current-frame plan array remains hidden until the freeze barrier.
-    /// </summary>
-    internal TrafficMotionPlan? FindPreviousTrafficMotionPlan(string carId)
-    {
-        ArgumentNullException.ThrowIfNull(carId);
-        if (_cars is null || _previousTrafficMotionPlans is null)
-            return null;
-
-        int count = Math.Min(
-            _cars.Length,
-            _previousTrafficMotionPlans.Length
-        );
-        for (int i = 0; i < count; i++)
-        {
-            if (string.Equals(_cars[i].Id, carId, StringComparison.Ordinal))
-            {
-                return GetPreviousTrafficMotionPlan(i);
-            }
-        }
-        return null;
     }
 }

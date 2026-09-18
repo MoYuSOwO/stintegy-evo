@@ -6,7 +6,7 @@ _The maintainer will make every reasonable effort to keep the English and Chines
 
 Thank you for your interest in **StintegyEVO**! This is a solo-initiated race strategy engineer simulator project currently in early development. Focused contributions are welcome, especially when they are tied to concrete experiments, bug reports, tooling, documentation, or small implementations.
 
-The project is public and collaborative, but still exploratory. Broad feature requests, large rewrites, and long-term roadmap proposals may be deferred until the current racecraft planning and product loop are clearer.
+The project is open source, not community-driven: patches are welcome, but there is no promise about when, or whether, they will be answered or reviewed. It is also still exploratory. Broad feature requests, large rewrites, and long-term roadmap proposals may be deferred until the current racecraft planning and product loop are clearer.
 
 To help us collaborate efficiently, please take a few minutes to read the following guidelines.
 
@@ -21,7 +21,7 @@ This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDU
 ## How to Contribute
 
 ### 1. Choose a Task & Communicate First
-*   **Look at the roadmap**: Our [roadmap](README.md#-roadmap) describes current progress, suggested priorities, and dependencies between goals. Pick one that fits your interest.
+*   **Read the README**: The [README](README.md) describes what the project is and where its boundary lies. Pick something that fits inside it.
 *   **Discuss before coding**:
     *   If you have a **concrete plan**, open an **Issue** with the appropriate label and describe the goal, your approach, and how you intend to validate it.
     *   If your idea is **still shaping up**, start a **Discussion** in the appropriate category (e.g., `🧠 AI & Physics`).

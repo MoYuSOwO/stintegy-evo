@@ -9,8 +9,6 @@ using StintegyEVO.GodotApp.Debug;
 using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.Track;
 using StintegyEVO.Core.Cars;
-using StintegyEVO.Core.Drivers;
-using StintegyEVO.Core.Drivers.Learned;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using GVector2 = Godot.Vector2;
@@ -18,6 +16,11 @@ using NVector2 = System.Numerics.Vector2;
 
 namespace StintegyEVO.GodotApp.Race;
 
+/// <summary>
+/// Godot's two-dimensional presentation adapter.  It can create a stationary
+/// display grid for the standalone scene, or present a RaceSimulation assembled
+/// by an external composition root.  It never chooses or implements a driver.
+/// </summary>
 public partial class RaceView : Node2D
 {
     [Export] public TrackView? TrackRenderer { get; set; }
@@ -25,29 +28,8 @@ public partial class RaceView : Node2D
     [Export] public bool ShowFrameStats { get; set; } = true;
     [Export] public bool ExportCsvTelemetry { get; set; }
 
-    /// <summary>
-    /// Whether the trained policy drives, or the scripted grid does.
-    ///
-    /// The checkpoint on the other side of this switch is a Silverstone
-    /// specialist trained alone, and what it is worth is a lap time against
-    /// the analytic driver on an empty circuit. So it gets an empty circuit:
-    /// one car, no traffic, the same instruction the evaluation used. Twenty
-    /// scripted cars in front of it would measure the queue rather than the
-    /// policy. Turn this off for the scripted grid this scene has always
-    /// had.
-    /// </summary>
-    [Export] public bool UseLearnedDriver { get; set; } = true;
-
     private const int DefaultGridCarCount = 20;
-    private const int DefaultRosterSeed = 0x5345564F;
     private const float FollowCameraZoom = 3f;
-
-    /// <summary>
-    /// Which circuit this scene builds, and therefore which driver it asks
-    /// the catalogue for. The two have to agree, and naming it once is how
-    /// they stay agreeing.
-    /// </summary>
-    private const string LearnedTrackName = "silverstone";
 
     private readonly List<CarView> _carViews = [];
     private readonly CarDashboard _dashboard = new();
@@ -56,6 +38,7 @@ public partial class RaceView : Node2D
         Position = new GVector2(12f, 42f),
         ZIndex = 1000
     };
+    private RaceSimulation? _composedSimulation;
     private RaceSimulation? _simulation;
     private RaceCar? _playerCar;
     private RaceCsvTelemetryRecorder? _csvTelemetry;
@@ -64,34 +47,68 @@ public partial class RaceView : Node2D
     private GVector2 _overviewCameraZoom = GVector2.One;
     private int _selectedCarIndex;
     private bool _followSelectedCar;
-    private LapBoard? _lapBoard;
-    private StreamWriter? _learnedTrace;
+    private bool _ready;
+
+    public RaceSimulation? Simulation => _simulation;
+
+    /// <summary>
+    /// Supplies a simulation assembled outside the view. Call this before the
+    /// node enters the scene tree; all cars and controllers remain owned by the
+    /// caller's composition root.
+    /// </summary>
+    public void BindSimulation(RaceSimulation simulation)
+    {
+        ArgumentNullException.ThrowIfNull(simulation);
+        if (_ready)
+            throw new InvalidOperationException("BindSimulation must be called before RaceView is ready.");
+        _composedSimulation = simulation;
+    }
+
+    /// <summary>
+    /// Thin external-input bridge for hosts and smoke tests. This stores an
+    /// already-decided command; it is not a driving policy or fallback driver.
+    /// </summary>
+    public void SetExternalInput(
+        int carIndex,
+        float desiredCurvature,
+        float desiredAccel,
+        float frontBrakeBiasOffset = 0f
+    )
+    {
+        RaceCar car = GetCar(carIndex);
+        car.ExternalInput = new DriverInput(
+            desiredCurvature,
+            desiredAccel,
+            frontBrakeBiasOffset
+        );
+    }
 
     public override void _Ready()
     {
+        _ready = true;
         if (TrackRenderer == null)
             throw new InvalidOperationException("TrackRenderer is not assigned.");
 
-        // The circuit the shipped policy was trained on. The scripted grid
-        // is happy anywhere; the specialist is not, and a maiden voyage
-        // that put it somewhere else would be measuring generalization
-        // nobody has claimed.
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        _simulation = new RaceSimulation(
-            track,
-            new RaceEnvironment
-            {
-                AirTempC = 25f,
-                TrackTempC = 35f
-            }
-        );
+        TrackData track;
+        if (_composedSimulation != null)
+        {
+            _simulation = _composedSimulation;
+            track = _simulation.Track;
+        }
+        else
+        {
+            track = TrackFactory.SilverstoneStyleTestTrack();
+            _simulation = new RaceSimulation(
+                track,
+                new RaceEnvironment { AirTempC = 25f, TrackTempC = 35f }
+            );
+            CreateDefaultGrid(track);
+        }
+
         TrackRenderer.Initialize(track);
         ConfigureCamera(track);
+        CreateCarViews();
         CreateHud();
-        if (UseLearnedDriver)
-            CreateLearnedCar(track);
-        else
-            CreateDefaultGrid(track);
         if (ShowFrameStats)
         {
             _frameTimeMonitor = new FrameTimeMonitor();
@@ -107,33 +124,24 @@ public partial class RaceView : Node2D
             return;
 
         long coreStepStart = Stopwatch.GetTimestamp();
-        float step = Mathf.Min((float)delta, 0.05f);
-        _simulation.Step(step);
-        if (_lapBoard != null && _playerCar != null &&
-            _lapBoard.Update(_playerCar, _simulation.RaceTimeSeconds, step))
+        if (HasControlSource())
         {
-            GD.Print($"Lap {_lapBoard.Laps}: {_lapBoard.Readout()}");
-        }
-        if (_learnedTrace != null && _playerCar != null &&
-            _playerCar.Driver is DirectDriveRaceDriver traced)
-        {
-            NVector2 at = _playerCar.State.Position;
-            _learnedTrace.WriteLine(
-                $"{_simulation.RaceTimeSeconds:0.###},{at.X:0.##},{at.Y:0.##}," +
-                $"{_playerCar.State.Speed:0.###},{traced.LastAction[0]:0.####}," +
-                $"{(_playerCar.Progress.Region == TrackRegion.RacingSurface ? 1 : 0)}"
+            _simulation.Step(Mathf.Min((float)delta, 0.05f));
+            _frameTimeMonitor?.RecordCoreStep(
+                Stopwatch.GetElapsedTime(coreStepStart).TotalMilliseconds
             );
         }
-        _frameTimeMonitor?.RecordCoreStep(
-            Stopwatch.GetElapsedTime(coreStepStart).TotalMilliseconds
-        );
+
         if (_csvTelemetry != null && _playerCar != null)
+        {
             _csvTelemetry.Write(
                 _simulation.RaceTimeSeconds,
                 _playerCar,
                 _simulation.Track,
                 _simulation.Environment
             );
+        }
+
         foreach (CarView view in _carViews)
             view.SyncFromCore();
         UpdateCamera();
@@ -144,8 +152,6 @@ public partial class RaceView : Node2D
     {
         _csvTelemetry?.Dispose();
         _csvTelemetry = null;
-        _learnedTrace?.Dispose();
-        _learnedTrace = null;
     }
 
     public override void _UnhandledInput(InputEvent inputEvent)
@@ -180,9 +186,6 @@ public partial class RaceView : Node2D
         if (tireDelta == 0 && powerDelta == 0)
             return;
 
-        // Stepped against the ladders this car actually has rather than a
-        // remembered five, so a powertrain that offers a different number of
-        // settings is steppable the day it is fitted.
         int tire = Math.Clamp(
             (int)_playerCar.Strategy.TireMode + tireDelta,
             1,
@@ -196,260 +199,73 @@ public partial class RaceView : Node2D
         GetViewport().SetInputAsHandled();
     }
 
-    private RaceCar AddRaceCar(
-        string id,
-        TrackData track,
-        Grid start,
-        CarStrategy strategy,
-        Color color,
-        IRaceDriver? driver = null,
-        float initialSpeedMetersPerSecond = 0f,
-        TireConfig? tireConfig = null,
-        float chargeFraction = 0.82f
-    )
+    private bool HasControlSource()
     {
-        TrackSample startSample = track.Sample(start.S);
-        TireConfig tires = tireConfig ?? new TireConfig
+        if (_simulation == null)
+            return false;
+        foreach (RaceCar car in _simulation.Cars)
         {
-            StartingSurfaceTempC = 86f,
-            StartingCoreTempC = 84f
-        };
-        RaceCar car = new(
-            id,
-            new CarConfig(),
-            tires,
-            driver ?? new ReferenceLineDriver(),
-            new CarState
-            {
-                Position = start.Position,
-                Heading = startSample.RefHeading,
-                Speed = MathF.Max(0f, initialSpeedMetersPerSecond),
-                Energy = PowertrainState.Filled(chargeFraction)
-            }
-        )
-        {
-            Strategy = strategy
-        };
-
-        _simulation!.AddCar(car);
-        CarView view = new();
-        view.Bind(car, color);
-        AddChild(view);
-        _carViews.Add(view);
-        return car;
-    }
-
-    /// <summary>
-    /// One car, driven by the trained policy on its own clock.
-    ///
-    /// The car is built to the conditions the evaluation quoted its lap
-    /// under rather than to this scene's usual ones: tyres at ninety
-    /// degrees, four fifths of a charge, and the Normal/Normal instruction
-    /// every evaluated lap was driven on. Those are the training host's
-    /// numbers, and a lap time is only comparable to another lap time when
-    /// the car underneath it is the same car.
-    ///
-    /// The clock, by contrast, is deliberately the other one. Training held
-    /// the driver externally because there the agent's step boundary is the
-    /// decision boundary; a race lets the driver time itself. Same contract,
-    /// different owner — and this is the first time anything has run the
-    /// internal side of it with a real policy behind it.
-    /// </summary>
-    private void CreateLearnedCar(TrackData track)
-    {
-        IRaceDriver driver =
-            InstalledPacks.Scan().Load(
-                DriverCatalog.DefaultCar, LearnedTrackName);
-        RaceCar car = AddRaceCar(
-            "learned-01",
-            track,
-            track.Grids[1],
-            new CarStrategy(TireUsageMode.Normal, 3),
-            Color.FromHtml("#4ad6a0"),
-            driver,
-            tireConfig: new TireConfig
-            {
-                StartingSurfaceTempC = 90f,
-                StartingCoreTempC = 90f
-            },
-            chargeFraction: 0.8f
-        );
-        _playerCar = car;
-        _followSelectedCar = true;
-        _lapBoard = new LapBoard(track.LengthMeters);
-        StartLearnedTraceIfRequested(track);
-
-        GD.Print(
-            $"Learned driver: catalogue entry for {LearnedTrackName}, " +
-            $"{DirectDriveRaceDriver.DefaultDecisionHz:0} Hz internal clock, " +
-            "strategy=Normal/Normal"
-        );
-    }
-
-    /// <summary>
-    /// Where the learned car actually went, if asked for.
-    ///
-    /// The existing CSV recorder is built around the analytic driver's
-    /// planner telemetry and writes nothing for a car that has no planner,
-    /// which is every learned car. This writes the four columns a line can
-    /// be drawn from, and the track's own edges beside them, so that
-    /// "it drives a racing line" is a picture somebody can look at rather
-    /// than a claim about a lap time.
-    ///
-    ///     STINTEGY_LEARNED_TRACE=/tmp/trace.csv godot --headless ...
-    /// </summary>
-    private void StartLearnedTraceIfRequested(TrackData track)
-    {
-        string? path =
-            System.Environment.GetEnvironmentVariable("STINTEGY_LEARNED_TRACE");
-        if (string.IsNullOrWhiteSpace(path))
-            return;
-
-        _learnedTrace = new StreamWriter(Path.GetFullPath(path));
-        _learnedTrace.WriteLine("time_s,x,y,speed_mps,curvature_cmd,on_track");
-        using StreamWriter edges = new(
-            Path.ChangeExtension(Path.GetFullPath(path), ".track.csv")
-        );
-        edges.WriteLine("s_m,left_x,left_y,center_x,center_y,right_x,right_y");
-        const int samples = 1200;
-        for (int i = 0; i <= samples; i++)
-        {
-            float s = track.LengthMeters * i / samples;
-            TrackSample sample = track.Sample(s);
-            NVector2 left = sample.LeftEdge;
-            NVector2 right = sample.RightEdge;
-            edges.WriteLine(
-                $"{s:0.###},{left.X:0.###},{left.Y:0.###}," +
-                $"{sample.Center.X:0.###},{sample.Center.Y:0.###}," +
-                $"{right.X:0.###},{right.Y:0.###}"
-            );
+            if (car.Driver is not null || car.ExternalInput != default)
+                return true;
         }
-        GD.Print($"Learned trace: {Path.GetFullPath(path)}");
-    }
-
-    /// <summary>
-    /// Lap times taken the way the evaluation takes them, so that the
-    /// number on this HUD and the number in the training log mean the same
-    /// thing. A lap is charged the seconds it spent off the racing surface
-    /// and the seconds it spent against a barrier; a lap charged nothing is
-    /// clean, and only a clean lap is quoted as a lap time.
-    /// </summary>
-    private sealed class LapBoard(float lapMeters)
-    {
-        private float _lapStartSeconds;
-        private float _offCourseSeconds;
-        private float _wallSecondsAtLapStart;
-        private int _lastLap = -1;
-
-        public float OffCourseThisLap => _offCourseSeconds;
-        public float LastLapSeconds { get; private set; }
-        public float LastLapCharged { get; private set; }
-        public float BestCleanSeconds { get; private set; } = float.PositiveInfinity;
-        public int Laps { get; private set; }
-        public int CleanLaps { get; private set; }
-
-        /// <summary>Returns true on the frame a lap is completed.</summary>
-        public bool Update(RaceCar car, float raceTimeSeconds, float dt)
-        {
-            if (car.Progress.Region != TrackRegion.RacingSurface)
-                _offCourseSeconds += dt;
-
-            int lap = (int)(car.Progress.RaceDistanceMeters / lapMeters);
-            if (lap == _lastLap)
-                return false;
-            bool completed = _lastLap >= 0;
-            if (completed)
-            {
-                LastLapSeconds = raceTimeSeconds - _lapStartSeconds;
-                float wall = car.BoundaryContactSeconds - _wallSecondsAtLapStart;
-                LastLapCharged = LastLapSeconds + _offCourseSeconds + wall;
-                Laps++;
-                if (_offCourseSeconds <= 0f && wall <= 0f)
-                {
-                    CleanLaps++;
-                    BestCleanSeconds = MathF.Min(BestCleanSeconds, LastLapSeconds);
-                }
-            }
-            _lastLap = lap;
-            _lapStartSeconds = raceTimeSeconds;
-            _offCourseSeconds = 0f;
-            _wallSecondsAtLapStart = car.BoundaryContactSeconds;
-            return completed;
-        }
-
-        public string Readout()
-        {
-            if (Laps == 0)
-                return $"Lap 1 in progress  |  off {_offCourseSeconds:0.00}s";
-            return
-                $"Last {Clock(LastLapSeconds)} (charged {Clock(LastLapCharged)})  |  " +
-                $"Best clean {Clock(BestCleanSeconds)}  |  " +
-                $"Clean {CleanLaps}/{Laps}  |  off {_offCourseSeconds:0.00}s";
-        }
-
-        private static string Clock(float seconds)
-        {
-            return float.IsFinite(seconds)
-                ? $"{(int)(seconds / 60f)}:{seconds % 60f:00.000}"
-                : "--:--.---";
-        }
+        return false;
     }
 
     private void CreateDefaultGrid(TrackData track)
     {
-        Random random = new(DefaultRosterSeed);
         int carCount = Math.Min(DefaultGridCarCount, track.StartingGridCount);
         for (int gridPosition = 1; gridPosition <= carCount; gridPosition++)
         {
-            string id = $"grid-{gridPosition:D2}";
-            DriverProfile profile = new(
-                id,
-                CreateDriverAbilities(random),
-                (ulong)random.NextInt64(1, long.MaxValue)
+            Grid start = track.Grids[gridPosition];
+            TrackSample sample = track.Sample(start.S);
+            RaceCar car = new(
+                $"display-{gridPosition:D2}",
+                new CarConfig(),
+                new TireConfig
+                {
+                    StartingSurfaceTempC = 86f,
+                    StartingCoreTempC = 84f
+                },
+                state: new CarState
+                {
+                    Position = sample.Center,
+                    Heading = sample.Heading,
+                    Speed = 0f,
+                    Energy = PowertrainState.Filled(0.82f)
+                }
             );
-            Color color = gridPosition == 1
-                ? Color.FromHtml("#ff5d73")
-                : Color.FromHsv(
-                    (float)random.NextDouble(),
-                    0.68f,
-                    0.95f
-                );
-            RaceCar car = AddRaceCar(
-                id,
-                track,
-                track.Grids[gridPosition],
-                CarStrategy.Default,
-                color,
-                new ReferenceLineDriver(profile)
-            );
-            _playerCar ??= car;
+            _simulation!.AddCar(car);
         }
 
-        GD.Print(
-            $"Default grid: cars={carCount}, seed={DefaultRosterSeed}, " +
-            "strategy=Normal/Normal"
-        );
+        GD.Print($"Default 2D display: cars={carCount}; No controller; vehicles stationary");
     }
 
-    private static DriverAbilities CreateDriverAbilities(Random random)
+    private void CreateCarViews()
     {
-        return new DriverAbilities
+        if (_simulation == null)
+            return;
+
+        for (int i = 0; i < _simulation.Cars.Count; i++)
         {
-            Pace = NextRating(random, 84f, 96f),
-            Consistency = NextRating(random, 82f, 96f),
-            CarControl = NextRating(random, 84f, 97f),
-            TireManagement = NextRating(random, 78f, 94f),
-            Adaptability = NextRating(random, 82f, 96f),
-            Reactions = NextRating(random, 82f, 97f),
-            Awareness = NextRating(random, 82f, 97f),
-            Overtaking = NextRating(random, 80f, 96f),
-            Defending = NextRating(random, 80f, 96f)
-        };
+            RaceCar car = _simulation.Cars[i];
+            CarView view = new();
+            view.Bind(car, CarColor(i));
+            AddChild(view);
+            _carViews.Add(view);
+        }
+
+        if (_simulation.Cars.Count > 0)
+        {
+            _selectedCarIndex = 0;
+            _playerCar = _simulation.Cars[0];
+        }
     }
 
-    private static float NextRating(Random random, float minimum, float maximum)
+    private static Color CarColor(int index)
     {
-        return minimum + (float)random.NextDouble() * (maximum - minimum);
+        if (index == 0)
+            return Color.FromHtml("#ff5d73");
+        return Color.FromHsv((index * 0.173f) % 1f, 0.68f, 0.95f);
     }
 
     private void CreateHud()
@@ -458,7 +274,7 @@ public partial class RaceView : Node2D
         ColorRect panel = new()
         {
             Position = new GVector2(8f, 36f),
-            Size = new GVector2(570f, 148f),
+            Size = new GVector2(650f, 166f),
             Color = Color.FromHtml("#111820d8"),
             MouseFilter = Control.MouseFilterEnum.Ignore
         };
@@ -472,62 +288,32 @@ public partial class RaceView : Node2D
 
     private void RefreshTelemetry()
     {
-        if (_simulation == null || _playerCar == null)
+        if (_simulation == null)
             return;
-
-        var state = _playerCar.State;
-        var telemetry = state.Telemetry;
-        float frontTemp = (state.FrontLeft.SurfaceTempC + state.FrontRight.SurfaceTempC) * 0.5f;
-        float rearTemp = (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
-        string trafficStatus = TrafficStatus(_playerCar);
-        _dashboard.Refresh(_playerCar.CarConfig, state, _playerCar.Strategy);
-        _telemetryLabel.Text =
-            $"{_playerCar.Id}  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
-            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.CarConfig.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
-            $"Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C  |  Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}\n" +
-            $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
-            $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
-            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  Slide {telemetry.RearSlideSeverity:0.00}  TC {telemetry.TractionControlCutAccel:0.00}  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s\n" +
-            trafficStatus;
-    }
-
-    private string TrafficStatus(RaceCar car)
-    {
-        // A learned car has no traffic evaluator to report on — collision
-        // avoidance is the policy's own skill — so this line shows what the
-        // policy last asked the car for instead, which is the one thing
-        // about it that is otherwise invisible.
-        if (car.Driver is DirectDriveRaceDriver learned)
+        if (_playerCar == null)
         {
-            ReadOnlySpan<float> action = learned.LastAction;
-            string board = _lapBoard?.Readout() ?? "no lap board";
-            return
-                $"Policy curvature {action[0]:+0.000;-0.000; 0.000}  " +
-                $"accel {action[1]:+0.000;-0.000; 0.000}  |  " +
-                $"Region {car.Progress.Region}  |  {board}";
+            _telemetryLabel.Text = "No cars in composed simulation";
+            return;
         }
 
-        if (car.Driver is not ReferenceLineDriver driver)
-            return "Traffic unavailable";
-
-        ReferenceLineDriverTelemetry telemetry = driver.LastTelemetry;
-        if (telemetry.TrafficConstraintKind == TrafficSpeedConstraintKind.None)
-            return "Traffic UNCONSTRAINED";
-
-        return
-            $"Traffic {telemetry.TrafficConstraintKind.ToString().ToUpperInvariant()} " +
-            $"{telemetry.TrafficOpponentId ?? "?"}  |  " +
-            $"Gap {telemetry.TrafficCurrentClearanceMeters:0.0} m  |  " +
-            $"Plan {telemetry.TrafficConstraintDistanceMeters:0} m @ " +
-            $"{telemetry.TrafficTargetSpeedMetersPerSecond * 3.6f:0} km/h";
+        CarState state = _playerCar.State;
+        CarTelemetry telemetry = state.Telemetry;
+        float frontTemp = Average(state.FrontLeft.SurfaceTempC, state.FrontRight.SurfaceTempC);
+        float rearTemp = Average(state.RearLeft.SurfaceTempC, state.RearRight.SurfaceTempC);
+        _dashboard.Refresh(_playerCar.CarConfig, state, _playerCar.Strategy);
+        _telemetryLabel.Text =
+            $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
+            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.CarConfig.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
+            $"Input curvature/accel {telemetry.Input.DesiredCurvature:+0.000;-0.000;0.000} 1/m  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
+            $"Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}  Longitudinal use {telemetry.FrontLongitudinalUse:0.00}/{telemetry.RearLongitudinalUse:0.00}  Over-limit {telemetry.OverLimit:0.00}\n" +
+            $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
+            $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  Slide {telemetry.RearSlideSeverity:0.00}  GL {telemetry.CombinedGripLimiterCutAccel:0.00}  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
     }
 
-    /// <summary>
-    /// Every store the car carries and how much of each is left, named by the
-    /// powertrain rather than by this panel - so a car with a tank reads out
-    /// a tank here, and a hybrid reads out both of its stores, without the
-    /// panel being told either exists.
-    /// </summary>
+    private static string ControllerStatus(RaceCar car) =>
+        car.Driver == null ? "No controller" : "Controller attached";
+
     private string StoresReadout()
     {
         StringBuilder readout = new();
@@ -539,9 +325,6 @@ public partial class RaceView : Node2D
             if (resource.RemainingMassKg > 0f)
                 readout.Append($" ({resource.RemainingMassKg:0} kg)");
         }
-
-        // Only worth the space when it is biting, which is when the car is
-        // about to feel wrong for a reason the driver cannot otherwise see.
         if (_dashboard.OutputAvailability < 0.999f)
             readout.Append($"  OUTPUT {_dashboard.OutputAvailability * 100f:0}%");
         return readout.ToString();
@@ -554,17 +337,15 @@ public partial class RaceView : Node2D
         {
             if (readout.Length > 0)
                 readout.Append("  ");
-            readout.Append(
-                $"{mode.Label} {mode.Rung} {mode.Ordinal}/{mode.RungCount}"
-            );
+            readout.Append($"{mode.Label} {mode.Rung} {mode.Ordinal}/{mode.RungCount}");
         }
         return readout.ToString();
     }
 
-    private static string WheelStatus(TireState tire)
-    {
-        return $"{tire.SurfaceTempC:0}/{tire.CoreTempC:0} C {tire.Wear * 100f:0.0}%";
-    }
+    private static float Average(float left, float right) => (left + right) * 0.5f;
+
+    private static string WheelStatus(TireState tire) =>
+        $"{tire.SurfaceTempC:0}/{tire.CoreTempC:0} C {tire.Wear * 100f:0.0}%";
 
     private void StartCsvTelemetryIfRequested()
     {
@@ -579,11 +360,18 @@ public partial class RaceView : Node2D
         GD.Print($"CSV telemetry: {path}");
     }
 
-    private static bool IsEnabledValue(string value)
+    private static bool IsEnabledValue(string value) =>
+        value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+
+    private RaceCar GetCar(int carIndex)
     {
-        return value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
-               value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
-               value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+        if (_simulation == null)
+            throw new InvalidOperationException("RaceView has not been initialized.");
+        if ((uint)carIndex >= (uint)_simulation.Cars.Count)
+            throw new ArgumentOutOfRangeException(nameof(carIndex));
+        return _simulation.Cars[carIndex];
     }
 
     private void SelectObservedCar(int delta)
@@ -642,5 +430,4 @@ public partial class RaceView : Node2D
         _overviewCameraZoom = GVector2.One * zoom;
         UpdateCamera();
     }
-
 }

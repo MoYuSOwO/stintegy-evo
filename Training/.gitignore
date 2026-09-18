@@ -1,4 +1,0 @@
-.venv/
-python/checkpoints/
-python/__pycache__/
-experiments/**/*.pt

@@ -2,6 +2,18 @@ using System;
 
 namespace StintegyEVO.Core.Cars;
 
+/// <summary>
+/// Everything that makes one car physically different from another.
+/// </summary>
+/// <remarks>
+/// Device slots are the whole vocabulary. Core carries every vehicle mechanism
+/// it knows -- the combined-grip limiter, drag reduction, a powertrain's
+/// resource slots -- and a car without one of them has that mechanism's
+/// parameters at zero rather than a different interface: strength zero is a
+/// limiter not fitted, a drag reduction nobody activates does nothing, and a
+/// resource slot with nothing in it is <see cref="PowertrainResourceClass.None"/>.
+/// A second car is new values in these boxes, never a new shape.
+/// </remarks>
 public sealed class CarConfig
 {
     /// <summary>
@@ -133,39 +145,37 @@ public sealed class CarConfig
     /// </summary>
     public float MaxBrakeAccel { get; init; } = 40f;
     /// <summary>
-    /// Traction control and, below it, anti-lock.
+    /// The combined-grip limiter: an electronic stability device on the car,
+    /// which this class of racing permits. It trims each axle's longitudinal
+    /// force -- drive and brakes alike -- so that the tyre's combined use,
+    /// slip angle and pedals together, ends the step inside the share of the
+    /// friction circle the team's tyre rung authorises
+    /// (<see cref="TireConfig.GetAccelerationUsage(CarStrategy)"/>). It does
+    /// not steer, so it never takes a correction away.
     ///
-    /// Read these as a stand-in for the driver's reflexes rather than as
-    /// electronics bolted to the car. What they model is the thing a driver
-    /// does between the pedal and the tyre - easing off the instant an axle
-    /// starts to go - and they live here because that reflex has to exist
-    /// for the car to be driveable at all, not because this class of car
-    /// carries the boxes.
+    /// On an axle that spends a share s of its circle on its slip angle, a
+    /// longitudinal share u brings the combined use to
     ///
-    /// Which means their precision is a driver trait and will be modulated
-    /// by the ability ratings when those arrive: a great pair of hands
-    /// catches it early and gives back little, a poor pair catches it late
-    /// and gives back a lot. Anyone tuning these for realism should be
-    /// tuning a driver, not a control unit.
+    ///     use^2 = s^2 + u^2 (1 - s^2)
+    ///
+    /// so the limiter holds u^2 to (A^2 - s^2) / (1 - s^2) for an
+    /// authorisation A, and to nothing once s alone reaches A. An
+    /// authorisation of one -- the Attack rung -- leaves nothing to limit.
+    ///
+    /// Past the tyre's peak slip angle the curve's share falls as the slide
+    /// deepens, so a ceiling read off the share would rise with it. Above
+    /// <see cref="CombinedGripLimiterPastPeakMinimumSpeed"/> an axle at or
+    /// past its peak therefore gets no drive at all. Brakes are exempt: a
+    /// sliding car always keeps its brakes. Below that speed the slip angle
+    /// is estimated from a floored speed and reads past the peak on a car
+    /// that is simply pulling away, so the lockout stays off there.
+    ///
+    /// Strength blends between the raw request (zero) and the limited one
+    /// (one). Zero is the device not fitted, and is bit-for-bit the same car
+    /// as one that never had it.
     /// </summary>
-    public float TractionControlActivationUse { get; init; } = 0.99f;
-    public float TractionControlStrength { get; init; } = 0.65f;
-
-    /// <summary>
-    /// Where the anti-lock starts holding the brakes back, and how much of the
-    /// excess it takes away, in the same terms as the traction control beside
-    /// it. Both axles, because both of them lock.
-    ///
-    /// Strength deliberately short of one: what it removes is braking the car
-    /// does not get back, so an anti-lock that held the tyre exactly at its
-    /// limit would be leaving the corner entry to a system that cannot see the
-    /// corner. Taking most of the excess and no more lets the driver keep
-    /// asking for slightly too much, which is what they do.
-    ///
-    /// Zero switches it off.
-    /// </summary>
-    public float AntiLockActivationUse { get; init; } = 0.99f;
-    public float AntiLockStrength { get; init; } = 0.65f;
+    public float CombinedGripLimiterStrength { get; init; } = 1f;
+    public float CombinedGripLimiterPastPeakMinimumSpeed { get; init; } = 10f;
     public float RollingDragAccel { get; init; } = 0.18f;
     public float AeroDragAccelPerSpeedSquared { get; init; } = 0.0009f;
 
@@ -266,7 +276,7 @@ public sealed class CarConfig
     public float DirtyAirSensitivity { get; init; } = 1f;
 
     /// <summary>
-    /// Fraction of aerodynamic drag removed while the car's overtake mode
+    /// Fraction of aerodynamic drag removed while the car's drag reduction
     /// runs. A drag reduction system is the model: the published worth of one
     /// is ten to twelve km/h of top speed, and with top speed going as the
     /// cube root of drag, three metres per second at eighty needs roughly a
@@ -277,16 +287,16 @@ public sealed class CarConfig
     /// every start at the same second, and eight wins some starts and not
     /// others - possible, never guaranteed.
     /// </summary>
-    public float OvertakeAssistDragReduction { get; init; } = 0.08f;
+    public float DragReductionDragShare { get; init; } = 0.08f;
 
     /// <summary>
     /// Fraction of the downforce lost to a leading car's wake that the
-    /// overtake mode hands back. It scales what the wake removed, so in clean
+    /// drag reduction device hands back. It scales what the wake removed, so in clean
     /// air it does nothing, and at one it would erase the cornering penalty
     /// of following entirely; half keeps dirty air a real cost while letting
     /// a committed follower live close enough to strike.
     /// </summary>
-    public float OvertakeAssistDownforceRecovery { get; init; } = 0.5f;
+    public float DragReductionWakeDownforceRecovery { get; init; } = 0.5f;
 
     public float CorneringScrubAccel { get; init; } = 1.15f;
     /// <summary>

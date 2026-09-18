@@ -11,12 +11,25 @@ gdunit4_testadapter_v5/
 **/bin/
 **/obj/
 
-# Training run logs. Finished rounds get archived deliberately with
-# `git add -f`; live ones should not ride along on `git add -A`.
-Training/python/*.log
-
-# Python virtual environments. One of these was once committed as a
-# symlink to an absolute path on one machine — useless everywhere else,
-# and it took a history rewrite to remove.
+# Python virtual environments.
 .venv/
-Training/.venv
+
+# The historical training tree remains available in Git history, but is not
+# part of the master product boundary and must not be re-added accidentally.
+/Training/
+
+# Learned-policy/model resources belong to external integrations.
+*.nn
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.tflite
+*.npz
+*.npy
+
+# Local verification output.
+TestResults/
+*.trx
+*.coverage
