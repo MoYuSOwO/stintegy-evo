@@ -1,0 +1,104 @@
+{
+ "track": "silverstone",
+ "per_zone_lift_m": 100.0,
+ "braking_zones_m": [
+  755.0,
+  985.0,
+  1830.0,
+  2075.0,
+  3860.0,
+  5400.0
+ ],
+ "zones": [
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 27.0,
+   "spins": 2.0,
+   "mean_clean": 102.21265735426056,
+   "fastest_clean": 101.13666992844333,
+   "energy_mj_per_lap": 29.857561725606278,
+   "charge_per_lap": 0.027143237932369342,
+   "zone_m": 755.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 55.0,
+   "clean_laps": 31.0,
+   "spins": 2.0,
+   "mean_clean": 102.96309786870287,
+   "fastest_clean": 102.14691871337266,
+   "energy_mj_per_lap": 29.99300620342544,
+   "charge_per_lap": 0.02726636927584131,
+   "zone_m": 985.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 20.0,
+   "spins": 1.0,
+   "mean_clean": 102.12517107092341,
+   "fastest_clean": 101.14483925692554,
+   "energy_mj_per_lap": 30.051434123487613,
+   "charge_per_lap": 0.027319485566806922,
+   "zone_m": 1830.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 55.0,
+   "clean_laps": 21.0,
+   "spins": 3.0,
+   "mean_clean": 102.6295601521809,
+   "fastest_clean": 101.67192009690962,
+   "energy_mj_per_lap": 30.05924194191189,
+   "charge_per_lap": 0.027326583583556264,
+   "zone_m": 2075.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 57.0,
+   "clean_laps": 19.0,
+   "spins": 2.0,
+   "mean_clean": 102.14107967615301,
+   "fastest_clean": 101.6888050444689,
+   "energy_mj_per_lap": 30.09932890140214,
+   "charge_per_lap": 0.027363026274001945,
+   "zone_m": 3860.0
+  },
+  {
+   "modes": [
+    3,
+    3
+   ],
+   "lift_m": 100.0,
+   "laps": 56.0,
+   "clean_laps": 21.0,
+   "spins": 3.0,
+   "mean_clean": 102.22191939493847,
+   "fastest_clean": 101.40025880314977,
+   "energy_mj_per_lap": 29.873008257270964,
+   "charge_per_lap": 0.027157280233882693,
+   "zone_m": 5400.0
+  }
+ ]
+}
