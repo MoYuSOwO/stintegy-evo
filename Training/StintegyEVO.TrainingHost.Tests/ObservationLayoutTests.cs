@@ -85,6 +85,24 @@ public sealed class ObservationLayoutTests
         Assert.True(largest > 0f, "the limiter never cut, so nothing was checked");
     }
 
+    /// <summary>
+    /// The same per-channel bounds as train.OBSERVATION_BOUNDS: 3, except the
+    /// tyre loads (6), and the ego's yaw rate (10) and sideslip (2 pi / 0.5)
+    /// in the current and previous frame.
+    /// </summary>
+    private static float Bound(int channel)
+    {
+        int tyre = DirectDriveObservation.TireAndBatteryOffset;
+        if (channel == tyre + 3 || channel == tyre + 7 || channel == tyre + 11 || channel == tyre + 15)
+            return 6f;
+        foreach (int ego in new[] { DirectDriveObservation.EgoOffset, DirectDriveObservation.PreviousDynamicOffset })
+        {
+            if (channel == ego + 3) return 10f;
+            if (channel == ego + 4) return 2f * MathF.PI / 0.5f + 1e-3f;
+        }
+        return 3f;
+    }
+
     private static float[] Reset(string track)
     {
         DirectDriveDuelEnvironment environment = new(solo: true);
@@ -105,7 +123,7 @@ public sealed class ObservationLayoutTests
             for (int c = 0; c < observation.Length; c++)
             {
                 Assert.True(float.IsFinite(observation[c]), $"channel {c} at step {i}");
-                Assert.InRange(MathF.Abs(observation[c]), 0f, 20f);
+                Assert.InRange(MathF.Abs(observation[c]), 0f, Bound(c));
             }
             float unit = observation[sin] * observation[sin] +
                          observation[cos] * observation[cos];

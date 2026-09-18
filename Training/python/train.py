@@ -170,6 +170,22 @@ TIRE_BLOCK = 198
 WEAR_SLOTS = (TIRE_BLOCK + 2, TIRE_BLOCK + 6, TIRE_BLOCK + 10, TIRE_BLOCK + 14)
 PRIMARY_STORE = TIRE_BLOCK + 16
 
+# Per-channel magnitude bounds for the self-check (freeze design section 4).
+# Every channel is O(1) and held to 3, except where its range is set by
+# construction or by physics the smoke measured, each named here: the four
+# tyre loads (a share of static corner load; downforce at speed on banking
+# reaches 4.5), the sideslip (up to pi over 0.5 when a car slides
+# backwards), and the yaw rate (a crawling car in the kinematic regime lays
+# its heading onto its travel at up to 17 rad/s, 8.5 scaled). The previous
+# frame's copies of the ego channels take the same bounds.
+PREVIOUS_FRAME = 347
+OBSERVATION_BOUNDS = np.full(OBSERVATION_SIZE, 3.0)
+for _load in (TIRE_BLOCK + 3, TIRE_BLOCK + 7, TIRE_BLOCK + 11, TIRE_BLOCK + 15):
+    OBSERVATION_BOUNDS[_load] = 6.0
+for _ego in (EGO_SPEED, PREVIOUS_FRAME):
+    OBSERVATION_BOUNDS[_ego + 3] = 10.0            # yaw rate / 2
+    OBSERVATION_BOUNDS[_ego + 4] = 2.0 * np.pi / 0.5 + 1e-3  # sideslip / 0.5
+
 
 def assert_observation_layout(obs: np.ndarray) -> None:
     """Check the observation is laid out the way this file thinks it is.
@@ -185,7 +201,8 @@ def assert_observation_layout(obs: np.ndarray) -> None:
     - absence is written on capacity: a resource slot whose capacity is
       zero must read zero remaining as well, and every present slot has a
       capacity above zero;
-    - every channel is O(1), since nothing is statistically normalised.
+    - every channel is within its bound (OBSERVATION_BOUNDS: 3, with the
+      named exceptions), since nothing is statistically normalised.
     """
     if obs.shape[-1] != OBSERVATION_SIZE:
         raise AssertionError(
@@ -212,11 +229,14 @@ def assert_observation_layout(obs: np.ndarray) -> None:
         raise AssertionError(
             "the primary store reads zero capacity; the car has a battery"
         )
-    largest = float(np.max(np.abs(obs)))
-    if not np.all(np.isfinite(obs)) or largest > 20.0:
-        worst = int(np.argmax(np.max(np.abs(np.nan_to_num(obs, nan=1e9)), axis=0)))
+    if not np.all(np.isfinite(obs)):
+        raise AssertionError("the observation has a non-finite channel")
+    excess = np.max(np.abs(obs), axis=0) - OBSERVATION_BOUNDS
+    if np.any(excess > 0.0):
+        worst = int(np.argmax(excess))
         raise AssertionError(
-            f"channel {worst} is not O(1) (largest |value| {largest:.3g})"
+            f"channel {worst} reads {np.max(np.abs(obs[:, worst])):.3g}, over its "
+            f"bound {OBSERVATION_BOUNDS[worst]:.3g}"
         )
 
 
