@@ -17,6 +17,15 @@ namespace StintegyEVO.GodotApp.LowPoly;
 /// one stationary car without a controller. Hosts may bind an externally
 /// assembled simulation before _Ready; this node only renders and steps it.
 /// </summary>
+/// <remarks>
+/// Main scene: Levels/lowpoly.tscn. After IsInitialized, call SetExternalInput on
+/// the Godot main thread; commands queue and apply once the physics worker has
+/// released the world. While the view owns a simulation the host must not read,
+/// mutate or step it from another thread, and controllers (which run on the
+/// worker) should use only their DriverContext. Leaving the tree joins the worker
+/// and hands the simulation back. STINTEGY_CSV_TELEMETRY=1 (or a path) records
+/// physical telemetry after each completed physics task.
+/// </remarks>
 public partial class RaceView3D : Node3D
 {
     public RaceSimulation Simulation { get; private set; } = null!;
