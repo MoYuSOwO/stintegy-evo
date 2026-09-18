@@ -52,31 +52,21 @@ public sealed class BoundaryContactTimeTests
         // barrier for one substep and a step that leans on it throughout
         // used to be indistinguishable, which left a car that had already
         // touched with no reason to come off before the step was out.
-        (_, float gentle, _) = DriveIntoTheBarrier(0.05f);
-        (_, float hard, _) = DriveIntoTheBarrier(0.25f);
+        (_, float gentle, _) = DriveIntoTheBarrier(0.15f, steerOffAfterContact: true);
+        (_, float hard, _) = DriveIntoTheBarrier(0.15f);
 
-        // A quarter of a curvature for the lean, where an eighth used to
-        // do. The fixed command trims the requested longitudinal input only
-        // through the physical tyre limit, so a car leaning on a barrier is
-        // carrying less speed into it than it used to and the two cases
-        // converge. The separation is restored by asking for a harder lean
-        // rather than by lowering what counts as one.
-        //
-        // A narrower margin than this used to have, and the reason is that
-        // the road outside the line stopped being the same road. A car on
-        // its way into a barrier now has wheels on the run-off, where more
-        // steering buys less turning, so the hard case and the gentle one
-        // converge on their way there. The ordering is what this test is
-        // for and the ordering holds.
-        // A fifth rather than a quarter, and the reason is arithmetic
-        // rather than physics. Contact seconds are counted in substeps, so
-        // these readings live on a lattice: the gentle case is ten sixtieths
-        // and the hard one twelve and a half, whose ratio is exactly 1.25.
-        // A strict comparison against the very lattice point the data lands
-        // on decides itself on the last bit of a float. The ordering is what
-        // this test is for; the margin only has to be clear of the noise,
-        // and it must not sit on a value the measurement can produce
-        // exactly.
+        // A glance is a car that touches and steers away; a lean is one
+        // that keeps pressing. Both arrive the same way. This used to be two
+        // different curvatures held throughout, which only made a glance
+        // because the wall used to snap a car's heading parallel to itself
+        // and zero its slide: the gentle car came off the wall pointing
+        // along it, for free. The wall no longer straightens anyone, so a
+        // car that keeps steering into it stays on it however gently it
+        // steers, and the difference has to come from what the driver does.
+
+        // The lattice caution still applies: contact seconds are counted
+        // in substeps, so the margin must not sit on a ratio the
+        // measurement can produce exactly.
         Assert.True(
             hard > gentle * 1.2f,
             $"leaning on the barrier ({hard:0.000} s) should cost more than " +
@@ -104,7 +94,8 @@ public sealed class BoundaryContactTimeTests
     /// total, and the most any single step recorded.
     /// </summary>
     private static (int Steps, float Total, float Most) DriveIntoTheBarrier(
-        float curvature
+        float curvature,
+        bool steerOffAfterContact = false
     )
     {
         TrackData track = TrackFactory.SimpleTestTrack();
@@ -130,6 +121,8 @@ public sealed class BoundaryContactTimeTests
         {
             simulation.Step(0.1f);
             float seconds = car.BoundaryContactSeconds;
+            if (steerOffAfterContact && seconds > 0f)
+                car.ExternalInput = new DriverInput(-curvature, 2f);
             total += seconds;
             most = MathF.Max(most, seconds);
             if (seconds > 0f)

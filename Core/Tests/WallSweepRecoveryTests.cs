@@ -91,11 +91,20 @@ public sealed class WallSweepRecoveryTests
         simulation.AddCar(car);
 
         int contactFrames = 0;
+        bool leftTheWall = false;
         for (int i = 0; i < 60 * 10; i++)
         {
             simulation.Step(1f / 60f);
-            if (car.LastBoundaryContact.HasValue)
+            // The first stay against the wall only. With its steering held
+            // at zero the car drives straight on round a curving track and
+            // finds the other wall later, which is a different contact.
+            // Before the wall stopped aligning cars with itself that later
+            // arrival was also snapped parallel and cut short, so counting
+            // every contact frame used to read the same as counting this one.
+            if (car.LastBoundaryContact.HasValue && !leftTheWall)
                 contactFrames++;
+            else
+                leftTheWall = true;
             Assert.True(
                 TrackBoundaryResolver.IsInsideTrackWalls(track, car.State, car.Collision),
                 $"through the wall at frame {i}"

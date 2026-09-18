@@ -54,7 +54,7 @@ public sealed class RaceSimulation
                 throw new ArgumentException("A driver and controller can belong to only one entry.", nameof(car));
         }
 
-        TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
+        TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.CarConfig);
         TrackPose pose = Track.Project(car.State.Position);
         car.Progress.Reset(
             Track,
@@ -161,7 +161,7 @@ public sealed class RaceSimulation
             for (int i = 0; i < carCount; i++)
             {
                 RaceCar car = _cars[i];
-                _preStepContacts[i] = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
+                _preStepContacts[i] = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.CarConfig);
                 _stepPoses[i] = Track.Project(car.State.Position);
                 // Freeze all host inputs before any controller callback is invoked.
                 _stepInputs[i] = car.ExternalInput;
@@ -380,7 +380,8 @@ public sealed class RaceSimulation
                 Track,
                 startState,
                 predictedState,
-                car.Collision
+                car.Collision,
+                car.CarConfig
             );
             _sweepContacts[i] = sweepContact;
         }
@@ -542,7 +543,7 @@ public sealed class RaceSimulation
         bool resolvedAny = false;
         foreach (RaceCar car in _cars)
         {
-            TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision);
+            TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.CarConfig);
             if (contact.HasValue)
             {
                 car.LastBoundaryContact = contact;
