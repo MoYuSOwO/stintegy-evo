@@ -71,7 +71,16 @@ public static class CarPhysics
         );
     }
 
-    internal static CarPerformanceLimits EstimatePerformanceLimits(
+    /// <summary>
+    /// The published performance envelope: what this car can do right now,
+    /// computed only from its public parameters (<paramref name="config"/>,
+    /// <paramref name="tires"/>), the team's strategy, and physical state.
+    /// Controllers outside Core use it to scale their commands to the car
+    /// they are driving; it applies nothing and changes nothing.
+    /// </summary>
+    /// <param name="gripUsage">The share of the friction circle to plan
+    /// against, usually the tyre rung's authorisation.</param>
+    public static CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
         CarConfig config,
         TireConfig tires,
