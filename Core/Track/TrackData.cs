@@ -179,6 +179,15 @@ public sealed class StartingGridAccessor
 public class TrackData
 {
     public const float StepLength = 1.0f;
+
+    /// <summary>
+    /// How far past a wall a queried position can legitimately be: the
+    /// corner of a car pressed against the barrier, which the wall resolver
+    /// projects in order to push it back, and a predicted pose one step
+    /// ahead of it. A car's half-diagonal is about 2.6 m and a step at
+    /// 100 m/s covers 1.7 m; five metres covers both.
+    /// </summary>
+    public const float BodyReachMeters = 5.0f;
     public const float BaseFriction = 1.0f;
 
     private readonly float cellSize;
@@ -209,12 +218,25 @@ public class TrackData
         Grids = new(this);
         GridConfig = gridConfig;
 
-        float maxWidth = 0.0f;
+        // The world is closed by its walls: no position a car can occupy is
+        // further from the centreline than half the road plus the wider
+        // run-off, and no point of a car is further than that plus a body
+        // (BodyReachMeters). The index is sized to that reach, plus one node
+        // spacing for the gap between the nearest point and the nearest
+        // node, so the three-by-three block around any such position always
+        // holds its nearest node. Sized from the road alone, as it was, a
+        // car in a wide run-off found no node and was projected onto the
+        // start line.
+        float wallReach = 0.0f;
         for (int i = 0; i < Length; i++)
         {
-            maxWidth = MathF.Max(this[i].Width, maxWidth);
+            TrackNode node = this[i];
+            wallReach = MathF.Max(
+                wallReach,
+                node.Width * 0.5f + MathF.Max(node.LeftBufferWidth, node.RightBufferWidth)
+            );
         }
-        cellSize = maxWidth * 0.7f;
+        cellSize = wallReach + BodyReachMeters + StepLength;
         BuildSpatialHash();
     }
 
@@ -321,7 +343,7 @@ public class TrackData
         long baseY = (long)Math.Floor(pos.Y / cellSize);
 
         float minDistSq = float.MaxValue;
-        int bestIdx = 0;
+        int bestIdx = -1;
 
         for (int x = -1; x <= 1; x++)
         {
@@ -345,6 +367,18 @@ public class TrackData
                     }
                 }
             }
+        }
+
+        // Every node outside the three-by-three block is at least a cell
+        // away, and the cell covers the whole of the walled world and a car
+        // body past its walls, so any position a car can put a point at
+        // finds its nearest node here. Finding none means the position is
+        // outside the world.
+        if (bestIdx < 0)
+        {
+            throw new InvalidOperationException(
+                $"Position {pos} is beyond the track walls; no centreline node lies within {cellSize:F1} m."
+            );
         }
 
         return bestIdx;
