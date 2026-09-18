@@ -321,7 +321,7 @@ public class TrackData
         long baseY = (long)Math.Floor(pos.Y / cellSize);
 
         float minDistSq = float.MaxValue;
-        int bestIdx = 0;
+        int bestIdx = -1;
 
         for (int x = -1; x <= 1; x++)
         {
@@ -343,6 +343,27 @@ public class TrackData
                             bestIdx = idx;
                         }
                     }
+                }
+            }
+        }
+
+        // Every node outside the three-by-three block is at least a cell
+        // away, so a node found within a cell is the nearest there is. A car
+        // further than that from any node -- deep in a wide run-off, where
+        // the cell is sized from the track and not from the buffers -- used
+        // to find nothing and fall back to node zero, projecting onto the
+        // start line hundreds of metres away with a plausible-looking lateral
+        // offset measured along the wrong normal. Search every node instead;
+        // it is rare, and it is the only answer that is right.
+        if (bestIdx < 0 || minDistSq > cellSize * cellSize)
+        {
+            for (int idx = 0; idx < Nodes.Length; idx++)
+            {
+                float distSq = (pos - Nodes[idx].Center).LengthSquared();
+                if (distSq < minDistSq)
+                {
+                    minDistSq = distSq;
+                    bestIdx = idx;
                 }
             }
         }
