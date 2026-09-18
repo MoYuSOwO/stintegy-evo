@@ -7,7 +7,7 @@ using Xunit;
 
 namespace StintegyEVO.Core.Tests;
 
-public sealed class OvertakeModeTests
+public sealed class DragReductionTests
 {
     private static readonly Lazy<TrackData> Loop = new(() =>
         new TrackBuilder(
@@ -35,14 +35,14 @@ public sealed class OvertakeModeTests
 
         simulation.Step(1f / 120f);
 
-        Assert.Equal(0f, chaser.State.OvertakeAssist);
-        Assert.Equal(0f, leader.State.OvertakeAssist);
+        Assert.Equal(0f, chaser.State.DragReduction);
+        Assert.Equal(0f, leader.State.DragReduction);
     }
 
     [Theory]
     [InlineData(18f)]
     [InlineData(70f)]
-    public void CrossingTheLineNeverInventsAnOvertakeGrant(float gapMeters)
+    public void CrossingTheLineNeverInventsADragReductionGrant(float gapMeters)
     {
         TrackData track = Loop.Value;
         float line = track.StartingLineS;
@@ -56,8 +56,8 @@ public sealed class OvertakeModeTests
         PlaceAt(track, chaser, line + 0.25f, speed: 20f);
         simulation.Step(1f / 120f);
         Assert.True(before < 0f && chaser.Progress.RaceDistanceMeters > 0f);
-        Assert.Equal(0f, chaser.State.OvertakeAssist);
-        Assert.Equal(0f, leader.State.OvertakeAssist);
+        Assert.Equal(0f, chaser.State.DragReduction);
+        Assert.Equal(0f, leader.State.DragReduction);
     }
 
     [Fact]
@@ -68,15 +68,15 @@ public sealed class OvertakeModeTests
         RaceCar car = CreateStationaryCar(track, line - 0.5f, "external");
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
-        car.State.OvertakeAssist = 0.65f;
+        car.State.DragReduction = 0.65f;
         simulation.Step(1f / 120f);
         PlaceAt(track, car, line + 0.25f, speed: 20f);
         simulation.Step(1f / 120f);
-        Assert.Equal(0.65f, car.State.OvertakeAssist);
-        Assert.Equal(0.65f, simulation.CaptureFrame()[0].OvertakeAssist);
-        car.State.OvertakeAssist = 0f;
+        Assert.Equal(0.65f, car.State.DragReduction);
+        Assert.Equal(0.65f, simulation.CaptureFrame()[0].DragReduction);
+        car.State.DragReduction = 0f;
         simulation.Step(1f / 120f);
-        Assert.Equal(0f, car.State.OvertakeAssist);
+        Assert.Equal(0f, car.State.DragReduction);
     }
 
     [Theory]
@@ -115,9 +115,9 @@ public sealed class OvertakeModeTests
         {
             AirVelocityDeficit = 0.08f,
             WakeDownforceLoss = 0.05f,
-            OvertakeAssist = 1f
+            DragReduction = 1f
         };
-        CarState cleanAirAssisted = new() { OvertakeAssist = 1f };
+        CarState cleanAirAssisted = new() { DragReduction = 1f };
 
         float clean = CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
             cleanAir,
@@ -252,7 +252,7 @@ public sealed class OvertakeModeTests
             simulation.Step(1f / 60f);
             // Host-controlled activation isolates the device's physical effect.
             if (assist)
-                car.State.OvertakeAssist = 1f;
+                car.State.DragReduction = 1f;
         }
         return car.Progress.RaceDistanceMeters;
     }

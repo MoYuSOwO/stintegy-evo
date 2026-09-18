@@ -264,7 +264,7 @@ public sealed class CarConfig
     public float DirtyAirSensitivity { get; init; } = 1f;
 
     /// <summary>
-    /// Fraction of aerodynamic drag removed while the car's overtake mode
+    /// Fraction of aerodynamic drag removed while the car's drag reduction
     /// runs. A drag reduction system is the model: the published worth of one
     /// is ten to twelve km/h of top speed, and with top speed going as the
     /// cube root of drag, three metres per second at eighty needs roughly a
@@ -275,16 +275,16 @@ public sealed class CarConfig
     /// every start at the same second, and eight wins some starts and not
     /// others - possible, never guaranteed.
     /// </summary>
-    public float OvertakeAssistDragReduction { get; init; } = 0.08f;
+    public float DragReductionDragShare { get; init; } = 0.08f;
 
     /// <summary>
     /// Fraction of the downforce lost to a leading car's wake that the
-    /// overtake mode hands back. It scales what the wake removed, so in clean
+    /// drag reduction device hands back. It scales what the wake removed, so in clean
     /// air it does nothing, and at one it would erase the cornering penalty
     /// of following entirely; half keeps dirty air a real cost while letting
     /// a committed follower live close enough to strike.
     /// </summary>
-    public float OvertakeAssistDownforceRecovery { get; init; } = 0.5f;
+    public float DragReductionWakeDownforceRecovery { get; init; } = 0.5f;
 
     public float CorneringScrubAccel { get; init; } = 1.15f;
     /// <summary>

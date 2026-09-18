@@ -41,7 +41,7 @@ public readonly record struct RaceCarSnapshot(
     public float AirVelocityDeficit { get; init; }
     public float DownforceVelocityDeficit { get; init; }
     public float WakeDownforceLoss { get; init; }
-    public float OvertakeAssist { get; init; }
+    public float DragReduction { get; init; }
     public TireSnapshot FrontLeft { get; init; }
     public TireSnapshot FrontRight { get; init; }
     public TireSnapshot RearLeft { get; init; }
@@ -110,7 +110,7 @@ public readonly record struct RaceCarSnapshot(
             AirVelocityDeficit = state.AirVelocityDeficit,
             DownforceVelocityDeficit = state.DownforceVelocityDeficit,
             WakeDownforceLoss = state.WakeDownforceLoss,
-            OvertakeAssist = state.OvertakeAssist,
+            DragReduction = state.DragReduction,
             FrontLeft = TireSnapshot.Capture(state.FrontLeft),
             FrontRight = TireSnapshot.Capture(state.FrontRight),
             RearLeft = TireSnapshot.Capture(state.RearLeft),
