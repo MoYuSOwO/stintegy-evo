@@ -59,6 +59,21 @@ public sealed class RaceCar
     public float BoundaryContactSeconds { get; internal set; }
 
     internal bool TouchedBoundaryThisSubstep { get; set; }
+
+    /// <summary>
+    /// How long, during the last call to <see cref="RaceSimulation.Step"/>,
+    /// all four of this car's wheels were beyond the white line.
+    ///
+    /// The race steward's ruler, not the trainer's. Training charges the
+    /// moment the car's centre leaves the road, and that strictness is where
+    /// the car's margin comes from; a race only calls a car off when every
+    /// wheel is over, which leaves about half a car's width of legal room
+    /// that normal driving never reaches. This reading exists for
+    /// certification and for the race result, and it must never be put into
+    /// a reward: a trainer that used it would move the line out to the new
+    /// edge and the margin would be gone.
+    /// </summary>
+    public float FourWheelsOffSeconds { get; internal set; }
     public bool HitCarThisStep { get; internal set; }
 
     public void InstallFreshTires(TireConfig tireConfig)

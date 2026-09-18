@@ -202,6 +202,7 @@ public sealed class RaceSimulation
             {
                 car.LastBoundaryContact = null;
                 car.BoundaryContactSeconds = 0f;
+                car.FourWheelsOffSeconds = 0f;
                 car.HitCarThisStep = false;
             }
             car.State.AirVelocityDeficit = frame[i].AirVelocityDeficit;
@@ -407,6 +408,16 @@ public sealed class RaceSimulation
             TrackPose finalPose = Track.Project(car.State.Position);
             TrackRegion region = TrackBoundaryResolver.Classify(finalPose);
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
+            WheelOffsets wheels = MeasureWheelOffsets(car);
+            if (TrackLimits.AllFourWheelsBeyondTheLine(
+                    wheels.Sample.HalfWidth,
+                    wheels.FrontLeft,
+                    wheels.FrontRight,
+                    wheels.RearLeft,
+                    wheels.RearRight))
+            {
+                car.FourWheelsOffSeconds += dt;
+            }
         }
 
     }
@@ -478,6 +489,27 @@ public sealed class RaceSimulation
     /// </summary>
     private WheelSurfaceGrip SampleWheelSurfaceGrip(RaceCar car)
     {
+        WheelOffsets wheels = MeasureWheelOffsets(car);
+        // The day's grip goes in through the dynamic layer, which is
+        // exactly the slot it was reserved for.
+        float today = _stepEnvironment.SurfaceGripScalar;
+        return new WheelSurfaceGrip(
+            SurfaceGrip.At(wheels.Sample, wheels.FrontLeft, today),
+            SurfaceGrip.At(wheels.Sample, wheels.FrontRight, today),
+            SurfaceGrip.At(wheels.Sample, wheels.RearLeft, today),
+            SurfaceGrip.At(wheels.Sample, wheels.RearRight, today)
+        );
+    }
+
+    /// <summary>
+    /// Where each of a car's four wheels is across the road, from the one
+    /// projection its progress tracker already holds plus its heading and
+    /// dimensions. Shared by the grip under each wheel and by the
+    /// four-wheel track-limits reading, so the two can never disagree about
+    /// where a wheel is.
+    /// </summary>
+    private WheelOffsets MeasureWheelOffsets(RaceCar car)
+    {
         TrackSample sample = Track.Sample(car.Progress.CurrentS);
         float centre = car.Progress.CurrentD;
         float heading = car.State.Heading;
@@ -494,16 +526,22 @@ public sealed class RaceSimulation
         Vector2 rear = -forward * config.RearAxleOffsetMeters;
         Vector2 side = left * halfTrack;
 
-        // The day's grip goes in through the dynamic layer, which is
-        // exactly the slot it was reserved for.
-        float today = _stepEnvironment.SurfaceGripScalar;
-        return new WheelSurfaceGrip(
-            SurfaceGrip.At(sample, OffsetOf(front + side), today),
-            SurfaceGrip.At(sample, OffsetOf(front - side), today),
-            SurfaceGrip.At(sample, OffsetOf(rear + side), today),
-            SurfaceGrip.At(sample, OffsetOf(rear - side), today)
+        return new WheelOffsets(
+            sample,
+            OffsetOf(front + side),
+            OffsetOf(front - side),
+            OffsetOf(rear + side),
+            OffsetOf(rear - side)
         );
     }
+
+    private readonly record struct WheelOffsets(
+        TrackSample Sample,
+        float FrontLeft,
+        float FrontRight,
+        float RearLeft,
+        float RearRight
+    );
 
     private RoadAttitude SampleRoadAttitude(RaceCar car)
     {
