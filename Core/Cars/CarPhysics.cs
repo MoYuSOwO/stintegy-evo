@@ -1975,7 +1975,10 @@ public static class CarPhysics
             (directionalHeat + lateralSlipHeat) +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             wakeCorneringHeat;
-        surfaceHeat *= loadScale;
+        // The tyre's stress scale: how hard this pairing of driver and tyre
+        // works the rubber for the same slip (TireConfig.TireStressScale).
+        // Rolling heat is not the driver's and is left alone.
+        surfaceHeat *= loadScale * Math.Clamp(tires.TireStressScale, 0f, 10f);
         surfaceHeat += rollingSurfaceHeat;
 
         float airCoolingMultiplier = CalculateAirCoolingMultiplier(
@@ -2036,8 +2039,9 @@ public static class CarPhysics
         // hot-tread terms; the proxy saturated at the peak and so never
         // priced anything past it.
         float tireWorkWear =
-            directionalWear + partialSlipWear +
-            tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit;
+            (directionalWear + partialSlipWear +
+             tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit) *
+            Math.Clamp(tires.TireStressScale, 0f, 10f);
         float wearDelta = tireWorkWear * tireWorkSpeedMultiplier *
                           tempWearFactor * loadScale * dt;
 

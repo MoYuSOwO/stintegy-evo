@@ -739,6 +739,11 @@ public sealed class DirectDriveDuelEnvironment
         // after everything else. Nominal starts sit on the Normal line.
         float progressDraw = random.NextSingle(0f, 1f);
         float chargeDraw = random.NextSingle(0f, 1f);
+        // The tyre stress scale, the curriculum's third draw, last of all.
+        float stress = HiddenCurriculum.TireStressFromUniforms(
+            random.NextSingle(0f, 1f), random.NextSingle(0f, 1f));
+        if (_hiddenCurriculum)
+            Curriculum = Curriculum with { TireStressScale = stress };
         if (_randomiseEpisodeStart)
         {
             _raceProgressAtStart = progressDraw;
@@ -776,7 +781,7 @@ public sealed class DirectDriveDuelEnvironment
         {
             CombinedGripLimiterStrength = Curriculum.LimiterStrength
         };
-        TireConfig egoTires = TiresFor(egoStart);
+        TireConfig egoTires = TiresFor(egoStart, Curriculum.TireStressScale);
         // Clocked from here: the agent step and the decision period are
         // the same interval, so the controller keeps no clock of its own.
         _egoDriver = new DirectDriveController(egoConfig, egoTires);
@@ -923,10 +928,11 @@ public sealed class DirectDriveDuelEnvironment
         return Math.Clamp(lateralSafeSpeed * 0.75f, 20f, 60f);
     }
 
-    private static TireConfig TiresFor(in EpisodeStart start) => new()
+    private static TireConfig TiresFor(in EpisodeStart start, float stressScale) => new()
     {
         StartingSurfaceTempC = start.SurfaceTempC,
-        StartingCoreTempC = start.CoreTempC
+        StartingCoreTempC = start.CoreTempC,
+        TireStressScale = stressScale
     };
 
     /// <summary>

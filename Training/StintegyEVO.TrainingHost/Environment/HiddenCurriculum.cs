@@ -9,7 +9,8 @@ namespace StintegyEVO.TrainingHost.Environment;
 /// Mass sits at the clean end, because the clean parent is the ceiling a
 /// policy is built towards; a long tail keeps states and distortions a
 /// deployed driver will meet inside the training distribution, so they can
-/// be recovered from. Each is drawn once per episode and held for all of
+/// be recovered from. Three things are drawn: the combined-grip limiter's
+/// strength, perception noise, and the tyre stress scale. Each is drawn once per episode and held for all of
 /// it, because a deployed driver's distortion is a fixed trait, and the
 /// training distribution has to contain that constancy.
 ///
@@ -46,7 +47,28 @@ public static class HiddenCurriculum
     /// </summary>
     public static readonly (int Channel, float SigmaMax)[] NoisyChannels = BuildNoisyChannels();
 
-    public readonly record struct Draw(float LimiterStrength, float NoiseScale);
+    /// <summary>Share of episodes whose tyres are worked at the nominal stress.</summary>
+    public const float NominalTireStressShare = 0.70f;
+
+    /// <summary>
+    /// The rest draw a tyre stress scale uniformly from this band
+    /// (TireConfig.TireStressScale; user ruling 2026-09-18). It is the
+    /// carrier of the TireManagement rating once driver files fill it, and a
+    /// value the roster will set must be one the parent has already met.
+    /// </summary>
+    public const float TireStressMinimum = 0.85f;
+    public const float TireStressMaximum = 1.15f;
+
+    public readonly record struct Draw(
+        float LimiterStrength,
+        float NoiseScale,
+        float TireStressScale = 1f
+    );
+
+    public static float TireStressFromUniforms(float pick, float level) =>
+        pick < NominalTireStressShare
+            ? 1f
+            : TireStressMinimum + (TireStressMaximum - TireStressMinimum) * level;
 
     /// <summary>
     /// One episode's draw from four uniforms in [0, 1). The noise scale is a

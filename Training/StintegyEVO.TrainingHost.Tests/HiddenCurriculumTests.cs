@@ -36,6 +36,43 @@ public sealed class HiddenCurriculumTests
     }
 
     [Fact]
+    public void TheTireStressDrawHasTheDesignedShareAndBand()
+    {
+        int nominal = 0;
+        const int samples = 10_000;
+        for (int i = 0; i < samples; i++)
+        {
+            float pick = (i + 0.5f) / samples;
+            float stress = HiddenCurriculum.TireStressFromUniforms(pick, pick);
+            if (stress == 1f) nominal++;
+            else Assert.InRange(stress, 0.85f, 1.15f);
+        }
+        Assert.Equal(0.70, nominal / (double)samples, 2);
+    }
+
+    [Fact]
+    public void TheDrawnTireStressReachesTheTyresAndNotTheObservation()
+    {
+        DirectDriveDuelEnvironment plain = new(solo: true);
+        DirectDriveDuelEnvironment hidden = new(solo: true, hiddenCurriculum: true);
+        float[] a = new float[DirectDriveObservation.ObservationSize];
+        float[] b = new float[DirectDriveObservation.ObservationSize];
+        for (long seed = 0; seed < 200; seed++)
+        {
+            hidden.ResetTrack("silverstone", seed, b);
+            if (hidden.Curriculum.TireStressScale == 1f ||
+                hidden.Curriculum.NoiseScale > 0f ||
+                hidden.Curriculum.LimiterStrength != 1f)
+                continue;
+            Assert.Equal(hidden.Curriculum.TireStressScale, hidden.Ego.TireConfig.TireStressScale);
+            plain.ResetTrack("silverstone", seed, a);
+            Assert.Equal(a, b);
+            return;
+        }
+        Assert.Fail("no episode drew only a tyre stress scale");
+    }
+
+    [Fact]
     public void EvaluationIsNominal()
     {
         DirectDriveDuelEnvironment environment = new(solo: true);
@@ -46,6 +83,7 @@ public sealed class HiddenCurriculumTests
             Assert.Equal(1f, environment.Curriculum.LimiterStrength);
             Assert.Equal(0f, environment.Curriculum.NoiseScale);
             Assert.Equal(1f, environment.Ego.CarConfig.CombinedGripLimiterStrength);
+            Assert.Equal(1f, environment.Ego.TireConfig.TireStressScale);
         }
     }
 

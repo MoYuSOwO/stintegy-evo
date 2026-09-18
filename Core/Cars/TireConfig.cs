@@ -232,6 +232,30 @@ public sealed class TireConfig
     /// </summary>
     public float NearLimitWearRate { get; init; } = 0.00012f;
     public float OverLimitWearRate { get; init; } = 0.00110f;
+
+    /// <summary>
+    /// How hard the rubber is worked for the same slip: one scale on the
+    /// heat and the wear that sliding puts into the tyre (directional,
+    /// lateral-slip, over-limit and wake-cornering terms; rolling heat is
+    /// untouched).
+    ///
+    /// A sub-grid closure. The tyre model resolves forces and slip at the
+    /// axle, which is coarser than the craft that separates one driver's
+    /// tyre life from another's -- how a car is placed through a slide,
+    /// how smoothly load is fed in -- and than the difference between two
+    /// batches of the same compound. What those do below the model's
+    /// resolution is summed into this one equivalent coefficient. Its range
+    /// is kept to about fifteen per cent either side of one so that the
+    /// resolved behaviour stays the dominant term.
+    ///
+    /// A static assembly value on the tyre's box, set once for a car and a
+    /// driver's file, like any published parameter. It is not a per-step
+    /// input and does not reintroduce driver ability as a live physics
+    /// input; that prohibition is about the command boundary, and this sits
+    /// with the tyre's other constants. (era/world-v3, user ruling
+    /// 2026-09-18; recorded for the graduation contract.)
+    /// </summary>
+    public float TireStressScale { get; init; } = 1f;
     public float ColdWearPerCSquared { get; init; } = 0.0015f;
     public float HotWearPerCSquared { get; init; } = 0.0035f;
 }
