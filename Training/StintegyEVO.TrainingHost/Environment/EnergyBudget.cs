@@ -39,6 +39,11 @@ public static class EnergyBudget
     /// the 1100 MJ pack. Three times the most that overspending can earn,
     /// the same margin the mode-excess penalty was priced at, so that no
     /// megajoule is worth taking from the line: 12,500.
+    ///
+    /// Watch condition: three times is meant to make the line bite, and it
+    /// may bite too hard. If an early from-scratch parent drives Normal the
+    /// way Save should be driven -- finishing well above 9% while giving up
+    /// lap time it did not need to -- lambda is lowered and reconsidered.
     /// </summary>
     public const float DefaultLambda = 12_500f;
 
