@@ -135,69 +135,45 @@ public static class DirectDriveObservation
     /// implies. How badly the rear axle is sliding is not the body's
     /// sideslip angle and cannot be had from it; it comes out of the axle
     /// over-limits and the lateral each end actually delivered. And how much
-    /// drive the traction control just took away is buried in the gap
+    /// the combined-grip limiter just took away is buried in the gap
     /// between the acceleration asked for and the one that arrived, along
     /// with drag and grip, with no way to separate the three.
     ///
     /// These stand in for the per-tyre slip angles on Sony's list, which
     /// this physics cannot produce because it resolves forces at the axle.
     /// </summary>
-    /// <summary>
-    /// Generic resource slots: how much of each store this car carries, and
-    /// what the pit wall wants left of it.
-    ///
-    /// Four slots because a pure electric car has one store, a hybrid two,
-    /// and a petrol car with a deployment battery three — four leaves a
-    /// slot spare and stops the next machine being a generational change.
-    /// The format is the one the opponent block already proved: a fixed
-    /// number of slots, each led by a presence flag, everything zero in the
-    /// ones nobody is using. A plain network handles a consistently zero
-    /// slot perfectly well, which buys most of what a variable-length
-    /// encoding would and costs none of the machinery.
-    ///
-    /// Five channels each:
-    ///   0  present            1 if this slot holds a store, else 0
-    ///   1  class              what kind of store, see
-    ///                         <see cref="PowertrainResourceClass"/>
-    ///   2  remaining          fraction of capacity still there
-    ///   3  target remaining   what the strategist wants left, DORMANT
-    ///   4  budget deviation   ahead of or behind that line, DORMANT
-    ///
-    /// The last two are wired to zero and stay there. They are the budget
-    /// re-core's channels, and they are laid in now rather than later
-    /// because the parent policy is being baked from scratch on this
-    /// layout anyway: putting them in during a generation the checkpoints
-    /// are void costs nothing, and adding them afterwards would cost
-    /// another observation surgery. When the re-core arrives, it turns
-    /// them on. It does not change a dimension, and the network it turns
-    /// them on for has known the shape since birth.
-    /// </summary>
-    public const int ResourceSlotCount = 4;
-    public const int ResourceSlotChannels = 5;
-    public const int ResourceSlotsSize =
-        ResourceSlotCount * ResourceSlotChannels;
-
-    /// <summary>
-    /// Eight channels of ground held for the car's own static parameters,
-    /// zero-filled.
-    ///
-    /// The tenant is known: the setup vector — balance, downforce step,
-    /// brake bias baseline and whatever else a tuning screen will
-    /// eventually expose. In a single-car era every one of these is a
-    /// constant and the network will correctly ignore all eight. They are
-    /// reserved now for the same reason as the dormant budget channels: a
-    /// generation whose checkpoints are already void is the only free time
-    /// to change a dimension.
-    ///
-    /// Setup goes here, and driver ability does not, and the difference is
-    /// deliberate. Ability is a hidden distortion applied at the interface
-    /// — the driver does not know, and the network stays a Platonic
-    /// driver. Setup is visible state the driver can feel and adapt to.
-    /// Ability deceives the interface; setup informs the network.
-    /// </summary>
-    public const int VehicleDescriptorSize = 8;
-
     public const int EgoSize = 14;
+
+    /// <summary>
+    /// The stores the car carries and where the pit wall wants them, the
+    /// world-v3 contract (PLAN §3.4 items 1 and 2, freeze design 1.2).
+    ///
+    /// Two resource-slot pairs, each (remaining fraction, capacity): the
+    /// state as a fraction of the store, the scale as an absolute capacity
+    /// over a world constant, <see cref="ReferenceStoreJoules"/>. A slot the
+    /// car does not have reads capacity zero, which is how absence is
+    /// written (iron rule four): on the static quantity, never on a reading
+    /// that can legitimately fall to zero. A battery car's second slot is
+    /// therefore (0, 0) for ever, and a hybrid fills it.
+    ///
+    /// Then the budget deviation: remaining charge minus the pit wall's
+    /// target line at this point of the race, zero when the instruction
+    /// carries no line. It is what the budget shaping charges for, and a
+    /// charge the driver cannot see is the mode-excess mistake again.
+    ///
+    ///   0  slot 1 remaining   1  slot 1 capacity
+    ///   2  slot 2 remaining   3  slot 2 capacity
+    ///   4  budget deviation
+    /// </summary>
+    public const int ResourceSlotCount = 2;
+    public const int ResourceAndBudgetSize = ResourceSlotCount * 2 + 1;
+
+    /// <summary>
+    /// The store capacity a capacity channel of one means: the reference
+    /// car's pack, 1100 MJ.
+    /// </summary>
+    internal const float ReferenceStoreJoules = 1.1e9f;
+
     public const int OpponentCount = 6;
     public const int OpponentSize = 16;
 
@@ -207,13 +183,11 @@ public static class DirectDriveObservation
     public const int ModeOffset = TireAndBatteryOffset + TireAndBatterySize;
     public const int AeroOffset = ModeOffset + ModeSize;
     public const int RoadAndLimitsOffset = AeroOffset + AeroSize;
-    // The new static blocks sit here, before ego, so that ego and the
-    // opponents stay adjacent and last: they are the two the previous
-    // frame is kept for, and that copy is one contiguous slice.
-    public const int ResourceSlotsOffset =
+    // Static blocks sit before ego, so that ego and the opponents stay
+    // adjacent and last: they are the two the previous frame is kept for,
+    // and that copy is one contiguous slice.
+    public const int ResourceAndBudgetOffset =
         RoadAndLimitsOffset + RoadAndLimitsSize;
-    public const int VehicleDescriptorOffset =
-        ResourceSlotsOffset + ResourceSlotsSize;
 
     /// <summary>
     /// Ego and opponents sit last and adjacent, because they are the two
@@ -223,7 +197,7 @@ public static class DirectDriveObservation
     /// bit was silently missing from every previous frame.
     /// </summary>
     public const int EgoOffset =
-        VehicleDescriptorOffset + VehicleDescriptorSize;
+        ResourceAndBudgetOffset + ResourceAndBudgetSize;
     public const int OpponentOffset = EgoOffset + EgoSize;
     public const int DynamicBlockOffset = EgoOffset;
     public const int DynamicBlockSize =
@@ -234,10 +208,6 @@ public static class DirectDriveObservation
         PreviousDynamicOffset + DynamicBlockSize;
 
     public const int ActionSize = 2;
-
-    /// <summary>Divides the resource class ordinal so the channel reads
-    /// as a small fraction like every other. Room for eight kinds.</summary>
-    internal const float ResourceClassScale = 8f;
 
     internal const float DistanceScale = 400f;
     internal const float LateralScale = 30f;
@@ -279,28 +249,6 @@ public static class DirectDriveObservation
     internal const float RelativeSpeedScale = 50f;
     internal const float AlongsideBodyMeters = 4.8f;
 
-    /// <summary>
-    /// Ceiling on the ego's limiter-cut channel, in the channel's own scaled
-    /// units (a cut of 6.32 m/s^2).
-    ///
-    /// The channel read the old traction control's cut on world-v2, where
-    /// it never exceeded 0.316 across a nominal Silverstone session, and
-    /// reads the combined-grip limiter's cut on world-v3, which reaches
-    /// 1.93 because the limiter can take away a whole brake application.
-    /// Handed that range, the world-v2 checkpoint left the road five times
-    /// as often; clipped to the range it knew, it drove as it did on
-    /// world-v2 (experiments/2026-09-18-world-v3-physics-probe: clean laps
-    /// 48% against 47%, 0.067 s off a lap against 0.067). Clipping rather
-    /// than zeroing keeps the ordering of small cuts, which a continued
-    /// bake can recalibrate from; a zeroed channel has no gradient to learn
-    /// from and would outlive the reason for it.
-    ///
-    /// Sentence of death: the next observation generation (the world
-    /// sealing batch) gives this channel its proper published range, the
-    /// car's full drive acceleration from the published envelope, and this
-    /// constant goes.
-    /// </summary>
-    internal const float LimiterCutCeiling = 0.316f;
 }
 
 /// <summary>
@@ -355,6 +303,7 @@ public sealed class DirectDriveObservationBuilder
         in DirectDriveCarLimits limits,
         float lastCurvatureNorm,
         float lastAccelerationNorm,
+        float budgetDeviation,
         Span<float> observation
     )
     {
@@ -389,10 +338,10 @@ public sealed class DirectDriveObservationBuilder
         WriteModes(observation, in car);
         WriteAero(observation, in car);
         WriteRoadAndLimits(observation, in car, pose, in limits);
-        WriteResourceSlots(observation, in car);
-        WriteVehicleDescriptors(observation);
+        WriteResourcesAndBudget(observation, _config, in car, budgetDeviation);
         WriteEgo(
             observation,
+            _config,
             in car,
             pose,
             lastCurvatureNorm,
@@ -573,6 +522,7 @@ public sealed class DirectDriveObservationBuilder
 
     private static void WriteEgo(
         Span<float> observation,
+        CarConfig config,
         in RaceCarSnapshot car,
         TrackPose pose,
         float lastCurvatureNorm,
@@ -610,62 +560,43 @@ public sealed class DirectDriveObservationBuilder
         observation[cursor++] = lastAccelerationNorm;
         observation[cursor++] = car.Telemetry.RearSlideSeverity /
                                 DirectDriveObservation.RearSlideScale;
-        observation[cursor] = MathF.Min(
-            car.Telemetry.CombinedGripLimiterCutAccel /
-            DirectDriveObservation.AccelerationScale,
-            DirectDriveObservation.LimiterCutCeiling
-        );
+        // The limiter's cut as a share of the car's full drive
+        // acceleration, its published range (freeze design 1.1). Braking
+        // cuts can exceed one; they are the rare hard trims and stay O(1).
+        observation[cursor] = car.Telemetry.CombinedGripLimiterCutAccel /
+                              MathF.Max(config.MaxDriveAcceleration, 1e-3f);
     }
 
-    /// <summary>
-    /// One slot per store the car carries, the rest left empty.
-    ///
-    /// The strategist's two channels are written as zero on purpose rather
-    /// than left unwritten: the span is cleared at the top of the fill, so
-    /// zero is what they would be anyway, and saying so here is what makes
-    /// the intent survive somebody reading only this method.
-    /// </summary>
-    private static void WriteResourceSlots(
+    private static void WriteResourcesAndBudget(
         Span<float> observation,
-        in RaceCarSnapshot car
+        CarConfig config,
+        in RaceCarSnapshot car,
+        float budgetDeviation
     )
     {
+        int cursor = DirectDriveObservation.ResourceAndBudgetOffset;
         var resources = car.Resources;
         for (int slot = 0; slot < DirectDriveObservation.ResourceSlotCount; slot++)
         {
-            int cursor = DirectDriveObservation.ResourceSlotsOffset +
-                         slot * DirectDriveObservation.ResourceSlotChannels;
-            if (resources.IsDefault || slot >= resources.Length)
-            {
-                // Absent, and every channel of it says so. A slot that is
-                // not there must never be readable as a store that happens
-                // to be empty.
-                continue;
-            }
-
-            observation[cursor] = 1f;
-            observation[cursor + 1] =
-                (float)resources[slot].Class /
-                DirectDriveObservation.ResourceClassScale;
-            observation[cursor + 2] = resources[slot].Fraction;
-            // Channels 3 and 4 -- the target line and the deviation from it
-            // -- are the budget re-core's, and are dormant until it lands.
-            observation[cursor + 3] = 0f;
-            observation[cursor + 4] = 0f;
+            bool present = !resources.IsDefault && slot < resources.Length;
+            observation[cursor++] = present ? resources[slot].Fraction : 0f;
+            observation[cursor++] = present
+                ? StoreCapacityJoules(config, slot) /
+                  DirectDriveObservation.ReferenceStoreJoules
+                : 0f;
         }
+        observation[cursor] = budgetDeviation;
     }
 
     /// <summary>
-    /// Ground held for the setup vector, and nothing in it yet.
-    ///
-    /// Written as an explicit loop rather than left to the clear at the top
-    /// so that the block has a place where its future occupant is named.
+    /// What a store holds when full. The electric powertrain publishes its
+    /// pack; a store whose capacity the powertrain does not publish reads
+    /// as the reference, present and unit-scaled, rather than as absent.
     /// </summary>
-    private static void WriteVehicleDescriptors(Span<float> observation)
-    {
-        for (int i = 0; i < DirectDriveObservation.VehicleDescriptorSize; i++)
-            observation[DirectDriveObservation.VehicleDescriptorOffset + i] = 0f;
-    }
+    private static float StoreCapacityJoules(CarConfig config, int slot) =>
+        config.Powertrain is ElectricPowertrain electric && slot == 0
+            ? electric.BatteryCapacityJoules
+            : DirectDriveObservation.ReferenceStoreJoules;
 
     private static void WriteTiresAndBattery(
         Span<float> observation,

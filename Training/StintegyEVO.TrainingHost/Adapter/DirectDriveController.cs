@@ -53,6 +53,15 @@ public sealed class DirectDriveController : IDriverController
     }
 
     public ReadOnlySpan<float> LastObservation => _observation;
+
+    /// <summary>
+    /// Remaining charge minus the pit wall's target line at the car's point
+    /// in the race, set by whoever owns the race before each
+    /// <see cref="Observe"/>. Zero when the instruction carries no line.
+    /// The target line is an instruction, not a physical fact, so it comes
+    /// from the race's owner rather than from the frame.
+    /// </summary>
+    public float BudgetDeviation { get; set; }
     public ReadOnlySpan<float> LastAction => _action;
 
     public void Initialize(in DriverContext context)
@@ -109,6 +118,7 @@ public sealed class DirectDriveController : IDriverController
             new DirectDriveCarLimits(driveCeilingFraction, gripAllowance),
             _lastCurvatureNorm,
             _lastAccelerationNorm,
+            BudgetDeviation,
             _observation
         );
     }

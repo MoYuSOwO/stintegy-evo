@@ -33,7 +33,7 @@ import time
 # The protocol and observation this checkout speaks. A box that reports
 # anything else is running a different world from the one being migrated.
 EXPECTED_PROTOCOL = 4
-EXPECTED_OBSERVATION = 480
+EXPECTED_OBSERVATION = 457
 
 
 class Failed(Exception):

@@ -42,18 +42,27 @@ OWN_PROGRESS_RATE = 0.02
 OFF_COURSE_RATE = 1e-3
 WALL_RATE = 5e-3
 SPEED_SCALE = 100.0
-# Where the blocks are, from Core/Drivers/Learned/DirectDriveObservation.cs.
-# Geometry 198, tyres and battery 17, mode 1, aero 3, road and limits 13,
-# resource slots 4x5, vehicle descriptors 8, then ego.
+# Where the blocks are, from
+# Training/StintegyEVO.TrainingHost/Adapter/DirectDriveObservation.cs.
+# The world-v3 contract, 457 channels: geometry 198, tyres and battery 17,
+# mode 1, aero 3, road and limits 13, resources and budget 5, ego 14,
+# opponents 6x16, then the previous frame of ego and opponents (110).
 #
+# History worth keeping: in the 480-channel generation the resource slots
+# 4x5 and vehicle descriptors 8 sat in front of ego.
 # The resource slots and the descriptors were inserted in front of ego when
 # the observation went from 452 to 480, and this constant was not moved with
 # them. It spent that era pointing at a resource slot's presence flag, which
 # is 1.0 whenever the slot is filled -- so every reader of it saw a car
 # travelling at a steady 100 m/s. Nothing threw, because a plausible number
 # is exactly what a wrong offset returns.
+OBSERVATION_SIZE = 457
 ROAD_AND_LIMITS = 219
-EGO_SPEED = 260
+RESOURCE_BLOCK = 232
+RESOURCE_SLOT_REMAINING = (RESOURCE_BLOCK, RESOURCE_BLOCK + 2)
+RESOURCE_SLOT_CAPACITY = (RESOURCE_BLOCK + 1, RESOURCE_BLOCK + 3)
+BUDGET_DEVIATION = RESOURCE_BLOCK + 4
+EGO_SPEED = 237
 EGO_HEADING_SIN = EGO_SPEED + 5
 EGO_HEADING_COS = EGO_SPEED + 6
 TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
@@ -163,14 +172,26 @@ PRIMARY_STORE = TIRE_BLOCK + 16
 
 
 def assert_observation_layout(obs: np.ndarray) -> None:
-    """Check the ego block is where this file thinks it is.
+    """Check the observation is laid out the way this file thinks it is.
 
     A stale offset does not raise; it returns a plausible number from the
     wrong channel, and every figure computed downstream stays plausible.
-    So this asks the observation for something only the right offset can
-    produce: two of the ego block's slots are the sine and cosine of the
-    same angle, and nothing else in the protocol has that property.
+    So four things are asked that only the right layout can answer
+    (freeze design, section 4):
+
+    - the width is the contract's, 457;
+    - two ego slots are the sine and cosine of the same angle, which no
+      other pair in the protocol is;
+    - absence is written on capacity: a resource slot whose capacity is
+      zero must read zero remaining as well, and every present slot has a
+      capacity above zero;
+    - every channel is O(1), since nothing is statistically normalised.
     """
+    if obs.shape[-1] != OBSERVATION_SIZE:
+        raise AssertionError(
+            f"observation has {obs.shape[-1]} channels, the contract has "
+            f"{OBSERVATION_SIZE}"
+        )
     sin = obs[:, EGO_HEADING_SIN]
     cos = obs[:, EGO_HEADING_COS]
     error = np.max(np.abs(sin * sin + cos * cos - 1.0))
@@ -179,6 +200,23 @@ def assert_observation_layout(obs: np.ndarray) -> None:
             f"the ego block is not at {EGO_SPEED}: sin^2 + cos^2 is off by "
             f"{error:.3f} at the slots that should hold a heading error. "
             "Re-read the offsets in DirectDriveObservation.cs."
+        )
+    for remaining, capacity in zip(RESOURCE_SLOT_REMAINING, RESOURCE_SLOT_CAPACITY):
+        absent = obs[:, capacity] == 0.0
+        if np.any(obs[absent, remaining] != 0.0):
+            raise AssertionError(
+                f"resource slot at {remaining} reads charge with zero capacity: "
+                "absence must be written on the capacity"
+            )
+    if not np.all(obs[:, RESOURCE_SLOT_CAPACITY[0]] > 0.0):
+        raise AssertionError(
+            "the primary store reads zero capacity; the car has a battery"
+        )
+    largest = float(np.max(np.abs(obs)))
+    if not np.all(np.isfinite(obs)) or largest > 20.0:
+        worst = int(np.argmax(np.max(np.abs(np.nan_to_num(obs, nan=1e9)), axis=0)))
+        raise AssertionError(
+            f"channel {worst} is not O(1) (largest |value| {largest:.3g})"
         )
 
 
