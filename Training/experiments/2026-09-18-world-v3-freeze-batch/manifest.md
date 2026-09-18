@@ -3,6 +3,9 @@
 记录日期：2026-09-18。设计底稿：`design-notes/2026-09-18-world-v3-freeze-design_zh.md`；
 检查单：`design-notes/world-v3-freeze-checklist_zh.md`。本档案记录实施结果、参数和验收读数。
 
+> **2026-09-19 更新**：预算目标线由绝对线改为锚点 + 斜率（用户在 parent3 约 150k 步时发现），
+> 世界指纹更新为 `8720958a877cfdd9d04ad65a571c5f0b5c12c8da`，见设计底稿三之勘误。本档案其余读数不受影响（烟测与自检不依赖目标线形状）。
+
 ## 一、落地提交（era/world-v3）
 
 | 提交 | 内容 |
