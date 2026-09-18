@@ -302,6 +302,20 @@ public static class CarContactResolver
         Vector2 velocityB = b.State.Velocity;
         float yawA = a.State.YawRateRadiansPerSecond;
         float yawB = b.State.YawRateRadiansPerSecond;
+        // A car at a crawl is kinematic: its reported yaw rate is the heading
+        // being laid onto the direction of travel, not a rotation it carries,
+        // and an impulse that took it as real would turn it into speed. Such
+        // a car meets the contact as a body that translates only.
+        if (a.State.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        {
+            yawA = 0f;
+            invInertiaA = 0f;
+        }
+        if (b.State.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        {
+            yawB = 0f;
+            invInertiaB = 0f;
+        }
 
         Vector2 relativeVelocity =
             PointVelocity(velocityB, yawB, armB) -

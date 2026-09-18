@@ -184,6 +184,28 @@ public sealed class CarContactDynamicsTests
         Assert.True(touched, "the hitter never reached the stopped car");
     }
 
+    /// <summary>
+    /// Two cars at a crawl touching while both report the kinematic yaw rate
+    /// of a heading being laid onto their travel. That rate is not a
+    /// rotation either body carries, so the contact may not turn it into
+    /// speed.
+    /// </summary>
+    [Fact]
+    public void KinematicYawRatesAreNotTurnedIntoSpeed()
+    {
+        RaceCar a = Car("a", new Vector2(0f, 0f), 0f, 0.5f, yawRate: 10f);
+        RaceCar b = Car("b", new Vector2(3.0f, 1.2f), 0.4f, 0.3f, yawRate: -10f);
+        Assert.True(CarContactResolver.AreOverlapping(a, b), "scenario must start in contact");
+        float before = a.State.Speed + b.State.Speed;
+
+        CarContactResolver.Resolve(new[] { a, b });
+
+        Assert.False(CarContactResolver.AreOverlapping(a, b));
+        Assert.InRange(a.State.Speed + b.State.Speed, 0f, before + 1e-4f);
+        Assert.InRange(MathF.Abs(a.State.YawRateRadiansPerSecond), 0f, 10f);
+        Assert.InRange(MathF.Abs(b.State.YawRateRadiansPerSecond), 0f, 10f);
+    }
+
     private static void Collide(RaceCar a, RaceCar b)
     {
         Assert.True(CarContactResolver.AreOverlapping(a, b), "scenario must start in contact");
