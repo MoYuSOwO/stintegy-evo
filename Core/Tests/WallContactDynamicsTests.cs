@@ -143,6 +143,34 @@ public sealed class WallContactDynamicsTests
     }
 
     /// <summary>
+    /// A car at a crawl against the wall, with the kind of yaw rate the
+    /// kinematic regime reports while it lays the heading onto the
+    /// direction of travel. That rate is not a rotation the body carries,
+    /// so the wall must not turn it into speed: the car may not come off
+    /// the wall faster than it arrived, and nothing about it spins up.
+    /// </summary>
+    [Fact]
+    public void AKinematicYawRateIsNotTurnedIntoSpeed()
+    {
+        (Vector2 position, float pointing) = NearLeftWall(100f, 1.2f, 0.35f);
+        CarState state = new()
+        {
+            Position = position,
+            Heading = pointing,
+            Speed = 0.5f,
+            YawRateRadiansPerSecond = 10f * TowardsLeftWall(100f)
+        };
+        CarCollisionConfig collision = new();
+        Assert.False(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
+
+        TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new CarConfig());
+
+        Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
+        Assert.InRange(state.Speed, 0f, 0.5f + 1e-4f);
+        Assert.Equal(0f, state.YawRateRadiansPerSecond);
+    }
+
+    /// <summary>
     /// A hard hit at a sharp angle, then the driver steers away and drives
     /// off. The car model has no reverse gear, so leaving the wall means
     /// turning away from it under power. It must get clear of the wall and
