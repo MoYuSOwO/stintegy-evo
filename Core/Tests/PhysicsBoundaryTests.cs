@@ -9,7 +9,9 @@ namespace StintegyEVO.Core.Tests;
 /// <summary>
 /// Regression tests for the boundary between a controller's command and the
 /// vehicle model. DriverInput remains the public command shape; no driver
-/// ability, reflex, or settle quota is smuggled into the physics step.
+/// ability, reflex, or settle quota is smuggled into the physics step. The
+/// one thing between the command and the tyres is a device on the car, the
+/// combined-grip limiter, whose parameters are published on CarConfig.
 /// </summary>
 public sealed class PhysicsBoundaryTests
 {
@@ -46,9 +48,12 @@ public sealed class PhysicsBoundaryTests
     }
 
     [Fact]
-    public void SameDriverInputDoesNotAcquireATireModePedalReflex()
+    public void WithoutTheLimiterTheTireModeDoesNotTouchTheSameCommand()
     {
-        CarConfig car = new() { TractionControlStrength = 0f };
+        // The tyre rung reaches the physics only through the fitted
+        // combined-grip limiter; a car without one drives the same command
+        // identically on every rung.
+        CarConfig car = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = WarmTires();
         CarState protect = NewState(45f, tires);
         CarState attack = NewState(45f, tires);
@@ -96,58 +101,63 @@ public sealed class PhysicsBoundaryTests
     }
 
     [Fact]
-    public void ConfiguredTractionControlStillCutsARealRearDriveRequest()
+    public void AFittedLimiterTrimsARealBrakeRequestAndAnUnfittedOneDoesNot()
     {
-        CarConfig controlledCar = new()
-        {
-            FrontDriveShare = 0f,
-            TractionControlStrength = 1f,
-            TractionControlActivationUse = 0.5f,
-            DownforceAccelPerSpeedSquared = 0f,
-            AeroDragAccelPerSpeedSquared = 0f
-        };
-        CarConfig uncontrolledCar = new()
-        {
-            FrontDriveShare = 0f,
-            TractionControlStrength = 0f,
-            DownforceAccelPerSpeedSquared = 0f,
-            AeroDragAccelPerSpeedSquared = 0f
-        };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
-            BaseMu = 0.4f
-        };
-        CarState controlled = NewState(20f, tires);
-        CarState uncontrolled = NewState(20f, tires);
-        DriverInput command = new(0f, 12f);
-        CarStrategy strategy = new(
-            TireUsageMode.Attack,
-            PowerOutputMode.Attack
-        );
+        CarConfig fitted = new();
+        CarConfig unfitted = new() { CombinedGripLimiterStrength = 0f };
+        TireConfig tires = WarmTires();
+        CarState limited = NewState(45f, tires);
+        CarState free = NewState(45f, tires);
+        DriverInput command = new(0.006f, -30f);
+        CarStrategy protect = new(TireUsageMode.Protect, PowerOutputMode.Normal);
 
-        CarPhysics.Step(
-            controlled,
-            controlledCar,
-            tires,
-            StepInput(command, strategy),
-            1f / 60f
-        );
-        CarPhysics.Step(
-            uncontrolled,
-            uncontrolledCar,
-            tires,
-            StepInput(command, strategy),
-            1f / 60f
-        );
+        CarPhysics.Step(limited, fitted, tires, StepInput(command, protect), 1f / 60f);
+        CarPhysics.Step(free, unfitted, tires, StepInput(command, protect), 1f / 60f);
 
-        Assert.True(controlled.Telemetry.TractionControlCutAccel > 0f);
-        Assert.Equal(0f, uncontrolled.Telemetry.TractionControlCutAccel, precision: 5);
+        Assert.True(limited.Telemetry.CombinedGripLimiterCutAccel > 0f);
+        Assert.Equal(0f, free.Telemetry.CombinedGripLimiterCutAccel);
         Assert.True(
-            controlled.Telemetry.RearLongitudinalUse <
-            uncontrolled.Telemetry.RearLongitudinalUse
+            limited.Telemetry.FrontLongitudinalUse <
+            free.Telemetry.FrontLongitudinalUse
         );
+    }
+
+    /// <summary>
+    /// Strength zero is bit-for-bit the car without the device. The
+    /// reference is the fitted car on the Attack rung, which authorises the
+    /// whole circle and so leaves the device nothing to do; an unfitted car
+    /// on any rung has to match it digit for digit through a sweep of
+    /// cornering, full drive and full braking.
+    /// </summary>
+    [Theory]
+    [InlineData(TireUsageMode.Protect)]
+    [InlineData(TireUsageMode.Normal)]
+    [InlineData(TireUsageMode.Push)]
+    public void AnUnfittedLimiterIsBitForBitTheIdleDevice(TireUsageMode mode)
+    {
+        CarConfig fitted = new();
+        CarConfig unfitted = new() { CombinedGripLimiterStrength = 0f };
+        TireConfig tires = WarmTires();
+        CarState idle = NewState(45f, tires);
+        CarState absent = NewState(45f, tires);
+        CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Normal);
+        CarStrategy rung = new(mode, PowerOutputMode.Normal);
+
+        for (int i = 0; i < 240; i++)
+        {
+            float pedal = i % 80 < 40 ? 12f : -30f;
+            DriverInput command = new(0.008f * MathF.Sin(i * 0.05f), pedal);
+            CarPhysics.Step(idle, fitted, tires, StepInput(command, attack), 1f / 60f);
+            CarPhysics.Step(absent, unfitted, tires, StepInput(command, rung), 1f / 60f);
+
+            Assert.Equal(idle.Speed, absent.Speed);
+            Assert.Equal(idle.SideslipAngleRadians, absent.SideslipAngleRadians);
+            Assert.Equal(idle.YawRateRadiansPerSecond, absent.YawRateRadiansPerSecond);
+            Assert.Equal(idle.Heading, absent.Heading);
+            Assert.Equal(idle.RearLeft.Wear, absent.RearLeft.Wear);
+            Assert.Equal(idle.FrontRight.SurfaceTempC, absent.FrontRight.SurfaceTempC);
+            Assert.Equal(0f, absent.Telemetry.CombinedGripLimiterCutAccel);
+        }
     }
 
     private static CarPhysicsStepInput StepInput(

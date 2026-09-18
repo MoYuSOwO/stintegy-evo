@@ -50,7 +50,7 @@ DriverInput GetControl(in DriverContext context, float dt);
 
 ## 物理语义
 
-ABS、TC、轮胎曲线、热/磨损、能量与碰撞等真实物理机制仍在 Core。旧的三个驾驶器效率参数以及 `#56` 的 driver reflex/governor 已移出物理输入和物理层；驾驶能力不能再通过隐藏的物理捷径表达。这是行为变化，不是旧结果的逐位兼容承诺。
+轮胎曲线、热/磨损、能量与碰撞等真实物理机制仍在 Core。旧的三个驾驶器效率参数已移出物理输入；驾驶能力不能再通过隐藏的物理捷径表达。命令与轮胎之间只有一个公示的车辆装置：合成抓地限制器（`CarConfig.CombinedGripLimiterStrength`，0 为未装机），它取代旧 TC/ABS，是 `#56` 踏板反射改判为装置后的形态。这些都是行为变化，不是旧结果的逐位兼容承诺。
 
 ## 赛道语义
 

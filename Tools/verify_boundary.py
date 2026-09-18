@@ -48,7 +48,7 @@ def check_sources():
     listed = subprocess.check_output(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=ROOT)
     files = [ROOT / p.decode() for p in listed.split(b'\0') if p]
     errors = []
-    legacy = re.compile(r'\b(?:IRaceDriver|ReferenceLineDriver|DirectDriveRaceDriver|ITrafficMotionPlanSource|TrafficMotionPlan|RacingRoomCoordinator|VehicleSpeedPlanner|StanleyPathPredictor|DirectDriveObservation|MlpDrivingPolicy|DriverCatalog|ReflexGovernedLongitudinal)\b')
+    legacy = re.compile(r'\b(?:IRaceDriver|ReferenceLineDriver|DirectDriveRaceDriver|ITrafficMotionPlanSource|TrafficMotionPlan|RacingRoomCoordinator|VehicleSpeedPlanner|StanleyPathPredictor|DirectDriveObservation|MlpDrivingPolicy|DriverCatalog|ReflexGovernedLongitudinal|TractionControlStrength|AntiLockStrength)\b')
     for path in files:
         if not path.is_file():
             continue

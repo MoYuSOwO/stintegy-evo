@@ -93,6 +93,12 @@ namespace StintegyEVO.Core.Tests;
 /// the intentional behavior change, while the remaining vehicle equations
 /// retain their default-equivalent factors of 1, 1, and infinity.
 ///
+/// Re-recorded on 2026-09-18 when the pedal trim returned as a device on
+/// the car -- the combined-grip limiter, published on CarConfig -- and the
+/// old traction control and anti-lock were removed in its favour. Both are
+/// intentional behaviour changes; the recordings were regenerated with
+/// STINTEGY_GOLDEN_DUMP, not made tolerant.
+///
 /// What these pins are for, stated once so the next re-record does not
 /// have to argue it from the beginning: they guard refactoring. A change
 /// that is meant to leave the car alone -- moving code, splitting a class,
@@ -164,60 +170,60 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 12.770047\n" +
-            "position 164.9534 215.7569\n" +
-            "heading 0.45483127\n" +
-            "sideslip -0.0023264813\n" +
-            "yawrate 0.20541722\n" +
-            "charge 0.7991168\n" +
-            "drivepower 117229.98\n" +
+            "speed 8.80048\n" +
+            "position 98.93204 235.75558\n" +
+            "heading 0.8840454\n" +
+            "sideslip 0.0009415779\n" +
+            "yawrate 0.15294611\n" +
+            "charge 0.79925656\n" +
+            "drivepower 77207.37\n" +
             "regenpower 0\n" +
-            "longaccel 10.008606\n" +
-            "lataccel 2.6836822\n" +
-            "wear 0.0071698944 0.009420216 0.0075157597 0.009362529\n" +
-            "coretemp 86.21752 87.1396 86.12407 86.89135";
+            "longaccel 9.667057\n" +
+            "lataccel 2.0672057\n" +
+            "wear 0.0058566164 0.00786982 0.006164585 0.0079117175\n" +
+            "coretemp 86.03198 86.968765 86.00046 86.84755";
 
         public const string SaggingPack =
-            "speed 9.623333\n" +
-            "position 250.50801 202.31549\n" +
-            "heading 0.2100835\n" +
-            "sideslip 0.0062445314\n" +
-            "yawrate 0.082632676\n" +
-            "charge 0.14940321\n" +
-            "drivepower 60714.656\n" +
+            "speed 7.596166\n" +
+            "position 243.97946 198.88283\n" +
+            "heading 0.04024779\n" +
+            "sideslip 0.00036237115\n" +
+            "yawrate 0.22732104\n" +
+            "charge 0.14956999\n" +
+            "drivepower 47939.29\n" +
             "regenpower 0\n" +
-            "longaccel 6.8514233\n" +
-            "lataccel 0.78848255\n" +
-            "wear 0.011440784 0.014601583 0.011193848 0.0131969275\n" +
-            "coretemp 87.499565 88.69267 87.13035 88.08151";
+            "longaccel 6.885049\n" +
+            "lataccel 2.0903156\n" +
+            "wear 0.010585437 0.01370168 0.010281674 0.012214332\n" +
+            "coretemp 87.169014 88.36474 86.758125 87.66973";
 
         public const string AttackLadder =
-            "speed 13.189831\n" +
-            "position 161.35965 218.01085\n" +
-            "heading 0.75849944\n" +
-            "sideslip -0.002748872\n" +
-            "yawrate 0.21108474\n" +
-            "charge 0.79911256\n" +
-            "drivepower 121238.85\n" +
+            "speed 13.267961\n" +
+            "position 114.74813 234.32831\n" +
+            "heading 0.8215183\n" +
+            "sideslip -0.0006329527\n" +
+            "yawrate 0.21838178\n" +
+            "charge 0.7992017\n" +
+            "drivepower 122731.61\n" +
             "regenpower 0\n" +
-            "longaccel 10.0086155\n" +
-            "lataccel 2.725202\n" +
-            "wear 0.007149424 0.009425152 0.0074893725 0.009354259\n" +
-            "coretemp 86.19682 87.13726 86.09876 86.88094";
+            "longaccel 10.08485\n" +
+            "lataccel 2.479764\n" +
+            "wear 0.005773776 0.007774057 0.0061882576 0.007915096\n" +
+            "coretemp 86.06723 86.9796 86.06623 86.88756";
 
         public const string EmptyPack =
-            "speed 1.5598918\n" +
-            "position 105.61316 85.152275\n" +
-            "heading -2.7538729\n" +
+            "speed 1.5601567\n" +
+            "position 106.296844 83.43118\n" +
+            "heading -2.7508006\n" +
             "sideslip 0\n" +
-            "yawrate 0.9808296\n" +
-            "charge 0.0002320636\n" +
-            "drivepower 1329.2759\n" +
+            "yawrate 0.9698462\n" +
+            "charge 0.0002327426\n" +
+            "drivepower 1329.5013\n" +
             "regenpower 0\n" +
-            "longaccel 0.76705223\n" +
-            "lataccel 1.5158868\n" +
-            "wear 0.0017003166 0.0023767313 0.0014867502 0.0021064847\n" +
-            "coretemp 84.73908 85.5291 84.36729 85.01569";
+            "longaccel 0.7672526\n" +
+            "lataccel 1.4991264\n" +
+            "wear 0.0017184519 0.0023916007 0.0014915221 0.002107772\n" +
+            "coretemp 84.76822 85.548035 84.328255 84.97534";
     }
 
     /// <summary>

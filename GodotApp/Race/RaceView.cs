@@ -308,7 +308,7 @@ public partial class RaceView : Node2D
             $"Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}  Longitudinal use {telemetry.FrontLongitudinalUse:0.00}/{telemetry.RearLongitudinalUse:0.00}  Over-limit {telemetry.OverLimit:0.00}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
             $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
-            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  Slide {telemetry.RearSlideSeverity:0.00}  TC {telemetry.TractionControlCutAccel:0.00}  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  Slide {telemetry.RearSlideSeverity:0.00}  GL {telemetry.CombinedGripLimiterCutAccel:0.00}  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
     }
 
     private static string ControllerStatus(RaceCar car) =>

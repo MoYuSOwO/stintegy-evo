@@ -367,29 +367,9 @@ public static class CarPhysics
                 out float frontBrake,
                 out float rearBrake
             );
-            frontBrake = ApplyAntiLock(
-                config, frontLatRequest, frontBrake, frontGrip);
-            rearBrake = ApplyAntiLock(
-                config, rearLatRequest, rearBrake, rearGrip);
             frontLongRequest = -frontBrake;
             rearLongRequest = -rearBrake;
             requestedLongitudinalAccel = -(frontBrake + rearBrake);
-        }
-
-        float tractionControlCutAccel = 0f;
-        if (rearLongRequest > 0f)
-        {
-            float uncontrolledRearDrive = rearLongRequest;
-            rearLongRequest = ApplyRearTractionControl(
-                config,
-                rearLatRequest,
-                rearLongRequest,
-                rearGrip
-            );
-            tractionControlCutAccel = Math.Max(
-                0f,
-                uncontrolledRearDrive - rearLongRequest
-            );
         }
 
         // Sideslip and yaw rate get their own subdivided clock: both of
@@ -410,6 +390,7 @@ public static class CarPhysics
             roadLateralDemand,
             curvatureDemandScale,
             dynamicYawBlend,
+            tires.GetAccelerationUsage(input.Strategy),
             dt
         );
         AxleResult front = lateral.Front;
@@ -688,7 +669,7 @@ public static class CarPhysics
             overLimit,
             drivePowerWatts,
             regenPowerWatts,
-            tractionControlCutAccel,
+            lateral.Front.LimiterCut + lateral.Rear.LimiterCut,
             sideslipLossAccel,
             state.SideslipAngleRadians,
             rearSlideSeverity,
@@ -1190,8 +1171,8 @@ public static class CarPhysics
     /// motor have left it.
     ///
     /// Longitudinal first, because that is commanded directly: a locked
-    /// wheel steers nothing, and the anti-lock device upstream exists precisely
-    /// to keep braking within the usable tire circle. What remains
+    /// wheel steers nothing, and the combined-grip limiter exists precisely
+    /// to keep braking within the authorised share of the circle. What remains
     /// of the circle is what the slip angle gets to work with.
     ///
     /// The tyre is charged for what it was worked at and the car receives
@@ -1203,12 +1184,26 @@ public static class CarPhysics
         float grip,
         float slipAngle,
         float peakScale,
-        float longitudinalRequest
+        float longitudinalRequest,
+        float gripAllowance,
+        float speed
     )
     {
         if (grip <= Epsilon)
             return default;
 
+        float unlimitedRequest = longitudinalRequest;
+        longitudinalRequest = CombinedGripLimitedLongitudinal(
+            config,
+            longitudinalRequest,
+            grip,
+            slipAngle,
+            peakScale,
+            gripAllowance,
+            speed
+        );
+        float limiterCut =
+            MathF.Abs(unlimitedRequest) - MathF.Abs(longitudinalRequest);
         float longitudinalDemand = MathF.Abs(longitudinalRequest) / grip;
         float longitudinalUse = MathF.Min(longitudinalDemand, 1f);
         float longitudinalEfficiency = OverLimitGripEfficiency(
@@ -1241,7 +1236,8 @@ public static class CarPhysics
             overLimit,
             combinedRequest,
             lateralUse,
-            longitudinalUse
+            longitudinalUse,
+            limiterCut
         );
     }
 
@@ -1310,6 +1306,7 @@ public static class CarPhysics
         float roadLateralDemand,
         float curvatureDemandScale,
         float dynamicYawBlend,
+        float gripAllowance,
         float dt
     )
     {
@@ -1344,10 +1341,18 @@ public static class CarPhysics
                 frontGrip,
                 frontSlip,
                 frontPeakScale,
-                frontLongRequest
+                frontLongRequest,
+                gripAllowance,
+                speed
             );
             rear = ResolveAxleSlip(
-                config, rearGrip, rearSlip, 1f, rearLongRequest
+                config,
+                rearGrip,
+                rearSlip,
+                1f,
+                rearLongRequest,
+                gripAllowance,
+                speed
             );
 
             float tyreLateral = front.LateralAccel + rear.LateralAccel;
@@ -1396,7 +1401,8 @@ public static class CarPhysics
                 frontOver * share,
                 frontCombined * share,
                 frontUse * share,
-                front.LongitudinalUse
+                front.LongitudinalUse,
+                front.LimiterCut
             ),
             new AxleResult(
                 rearLateral * share,
@@ -1404,7 +1410,8 @@ public static class CarPhysics
                 rearOver * share,
                 rearCombined * share,
                 rearUse * share,
-                rear.LongitudinalUse
+                rear.LongitudinalUse,
+                rear.LimiterCut
             ),
             pathLateral * share,
             yawAcceleration * share,
@@ -1561,56 +1568,97 @@ public static class CarPhysics
     }
 
     /// <summary>
-    /// Holds an axle's brakes back before the tyre gives up, the mirror of the
-    /// traction control below and written the same way so the pair can be read
-    /// together.
+    /// The combined-grip limiter's longitudinal ceiling for one axle; see
+    /// <see cref="CarConfig.CombinedGripLimiterStrength"/> for the device.
+    ///
+    /// The arithmetic is one square root of quantities the step already
+    /// has. The axle spends s of its circle on the slip angle it is at and
+    /// u of it on the pedals, and because the lateral capacity left is the
+    /// remainder of the circle, what it ends up using is
+    ///
+    ///     use^2 = s^2 + u^2 (1 - s^2)
+    ///
+    /// so use stays inside an authorisation A exactly when
+    ///
+    ///     u^2 &lt;= (A^2 - s^2) / (1 - s^2)
+    ///
+    /// and past a slip angle whose own share is already A, no pedal
+    /// position satisfies it: the tyre is over the authorisation on steering
+    /// alone. The limiter cuts the pedals to nothing there, which is all it
+    /// can do; the excess that remains is the steering's, and the device
+    /// leaves steering alone.
+    ///
+    /// Past the peak the share falls as the slide deepens, and a ceiling
+    /// read off it would rise with it -- at 1.8 times the peak angle it
+    /// would hand back three quarters of the throttle. An axle on the far
+    /// side of its peak therefore gets no drive, above the configured speed
+    /// only (the slip angle below it is read off a floored speed) and never
+    /// on the brakes. There is no step at the peak: wherever the limiter
+    /// trims at all, the share reaches A before the peak and the ceiling is
+    /// already zero there.
     /// </summary>
-    private static float ApplyAntiLock(
+    internal static float CombinedGripLimitedLongitudinal(
         CarConfig config,
-        float lateralRequest,
-        float brakeRequest,
-        float grip
+        float longitudinalRequest,
+        float grip,
+        float slipAngle,
+        float peakScale,
+        float gripAllowance,
+        float speed
     )
     {
-        float strength = Math.Clamp(config.AntiLockStrength, 0f, 1f);
-        if (brakeRequest <= 0f || grip <= Epsilon || strength <= 0f)
-            return brakeRequest;
+        float strength = Math.Clamp(config.CombinedGripLimiterStrength, 0f, 1f);
+        float allowance = Math.Clamp(gripAllowance, 0f, 1f);
+        if (strength <= 0f || allowance >= 1f || grip <= Epsilon)
+            return longitudinalRequest;
 
-        float activationUse = Math.Clamp(
-            config.AntiLockActivationUse,
-            0.05f,
-            1f
+        return Lerp(
+            longitudinalRequest,
+            FullyLimitedLongitudinal(
+                longitudinalRequest,
+                grip,
+                slipAngle,
+                peakScale,
+                allowance,
+                speed,
+                config.CombinedGripLimiterPastPeakMinimumSpeed
+            ),
+            strength
         );
-        float available = RemainingLongitudinalGrip(
-            grip * activationUse,
-            lateralRequest
-        );
-        return Lerp(brakeRequest, Math.Min(brakeRequest, available), strength);
     }
 
-    private static float ApplyRearTractionControl(
-        CarConfig config,
-        float lateralRequest,
-        float driveRequest,
-        float rearGrip
+    private static float FullyLimitedLongitudinal(
+        float longitudinalRequest,
+        float grip,
+        float slipAngle,
+        float peakScale,
+        float allowance,
+        float speed,
+        float pastPeakMinimumSpeed
     )
     {
-        float strength = Math.Clamp(config.TractionControlStrength, 0f, 1f);
-        if (driveRequest <= 0f || rearGrip <= Epsilon || strength <= 0f)
-            return driveRequest;
+        float peak = TireSlipCurve.PeakSlipAngleRadians *
+                     MathF.Max(peakScale, 0.05f);
+        if (longitudinalRequest > 0f &&
+            speed > pastPeakMinimumSpeed &&
+            MathF.Abs(slipAngle) >= peak)
+            return 0f;
 
-        float activationUse = Math.Clamp(
-            config.TractionControlActivationUse,
-            0.05f,
-            1f
+        float lateralShare = MathF.Min(
+            1f,
+            MathF.Abs(TireSlipCurve.Evaluate(slipAngle, peakScale))
         );
-        float activationGrip = rearGrip * activationUse;
-        float availableAtActivation = RemainingLongitudinalGrip(
-            activationGrip,
-            lateralRequest
-        );
-        float targetDrive = Math.Min(driveRequest, availableAtActivation);
-        return Lerp(driveRequest, targetDrive, strength);
+        float headroom = 1f - lateralShare * lateralShare;
+        if (headroom <= Epsilon)
+            return 0f;
+
+        float share = (allowance * allowance - lateralShare * lateralShare) /
+                      headroom;
+        if (share <= 0f)
+            return 0f;
+
+        float ceiling = MathF.Sqrt(share) * grip;
+        return Math.Clamp(longitudinalRequest, -ceiling, ceiling);
     }
 
     private static float DistributedLongitudinalLimit(
@@ -2354,7 +2402,8 @@ public static class CarPhysics
         float OverLimit,
         float CombinedRequest,
         float LateralUse,
-        float LongitudinalUse
+        float LongitudinalUse,
+        float LimiterCut
     );
 
     private readonly record struct WheelLoads(

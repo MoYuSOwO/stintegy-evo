@@ -28,7 +28,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             "speed_mps,desired_curvature_1pm,desired_accel_mps2,front_brake_bias_offset," +
             "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm," +
             "front_lateral_use,rear_lateral_use,front_longitudinal_use,rear_longitudinal_use," +
-            "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw,traction_control_cut_mps2," +
+            "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw,grip_limiter_cut_mps2," +
             "sideslip_angle_rad,rear_slide_severity,yaw_rate_radps,yaw_accel_radps2," +
             "primary_energy,air_temp_c,track_temp_c,fl_surface_temp_c,fr_surface_temp_c," +
             "rl_surface_temp_c,rr_surface_temp_c,fl_core_temp_c,fr_core_temp_c,rl_core_temp_c," +
@@ -75,7 +75,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             telemetry.LossAccel,
             telemetry.DrivePowerWatts * 0.001f,
             telemetry.RegenPowerWatts * 0.001f,
-            telemetry.TractionControlCutAccel,
+            telemetry.CombinedGripLimiterCutAccel,
             telemetry.SideslipAngleRadians,
             telemetry.RearSlideSeverity,
             telemetry.YawRateRadiansPerSecond,
