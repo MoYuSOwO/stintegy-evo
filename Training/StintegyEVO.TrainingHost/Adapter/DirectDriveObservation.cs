@@ -415,13 +415,24 @@ public sealed class DirectDriveObservationBuilder
             float camber = sample.BankCurvature * halfWidth * halfWidth;
             float lean = sample.BankSlope * halfWidth;
 
+            // Lateral offsets are scaled by the station's own nominal
+            // distance down the road, not by a fixed 30 m: a far station on
+            // the other side of a hairpin can sit most of a horizon to the
+            // side, which read as 11 against a fixed scale. Divided by how
+            // far along the road the station is, lateral becomes roughly the
+            // tangent of its bearing, dimensionless at every distance. Near
+            // stations keep the 30 m floor and their resolution. The
+            // distance is the nominal arc length, fixed by the speed, which
+            // the observation carries, so the metres can be recovered.
+            float lateralScale = MathF.Max(DirectDriveObservation.LateralScale, distance);
             WritePoint(
                 observation,
                 ref cursor,
                 sample.LeftEdge - egoPosition,
                 (lean + camber) / DirectDriveObservation.CrossHeightScale,
                 forward,
-                left
+                left,
+                lateralScale
             );
             WritePoint(
                 observation,
@@ -429,7 +440,8 @@ public sealed class DirectDriveObservationBuilder
                 sample.Center - egoPosition,
                 height / DirectDriveObservation.HeightScale,
                 forward,
-                left
+                left,
+                lateralScale
             );
             WritePoint(
                 observation,
@@ -437,7 +449,8 @@ public sealed class DirectDriveObservationBuilder
                 sample.RightEdge - egoPosition,
                 (camber - lean) / DirectDriveObservation.CrossHeightScale,
                 forward,
-                left
+                left,
+                lateralScale
             );
 
             observation[cursor++] = sample.LeftBufferWidth /
@@ -459,13 +472,13 @@ public sealed class DirectDriveObservationBuilder
         Vector2 delta,
         float scaledHeight,
         Vector2 forward,
-        Vector2 left
+        Vector2 left,
+        float lateralScale
     )
     {
         observation[cursor++] = Vector2.Dot(delta, forward) /
                                 DirectDriveObservation.DistanceScale;
-        observation[cursor++] = Vector2.Dot(delta, left) /
-                                DirectDriveObservation.LateralScale;
+        observation[cursor++] = Vector2.Dot(delta, left) / lateralScale;
         observation[cursor++] = scaledHeight;
     }
 
