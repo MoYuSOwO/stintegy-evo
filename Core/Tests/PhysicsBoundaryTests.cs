@@ -160,6 +160,39 @@ public sealed class PhysicsBoundaryTests
         }
     }
 
+    /// <summary>
+    /// The performance envelope is published: a controller outside Core can
+    /// ask what the car can do, and asking changes nothing about the car.
+    /// </summary>
+    [Fact]
+    public void ThePublishedEnvelopeIsPublicAndReadsWithoutWriting()
+    {
+        var method = typeof(CarPhysics).GetMethod(nameof(CarPhysics.EstimatePerformanceLimits));
+        Assert.NotNull(method);
+        Assert.True(method!.IsPublic);
+        Assert.True(typeof(CarPerformanceLimits).IsPublic);
+
+        CarConfig car = new();
+        TireConfig tires = WarmTires();
+        CarState state = NewState(40f, tires);
+        CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Normal);
+        CarState before = state.Clone();
+
+        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
+            state, car, tires, strategy, state.Speed, 0.01f,
+            tires.GetAccelerationUsage(strategy)
+        );
+
+        Assert.True(limits.LateralAccelerationLimit > 0f);
+        Assert.True(limits.MaximumDriveAcceleration > 0f);
+        Assert.True(limits.MaximumBrakeDeceleration > 0f);
+        Assert.Equal(before.Speed, state.Speed);
+        Assert.Equal(before.Position, state.Position);
+        Assert.Equal(before.FrontLeft.SurfaceTempC, state.FrontLeft.SurfaceTempC);
+        Assert.Equal(before.RearRight.Wear, state.RearRight.Wear);
+        Assert.Equal(before.Energy.Primary, state.Energy.Primary);
+    }
+
     private static CarPhysicsStepInput StepInput(
         DriverInput input,
         CarStrategy strategy
