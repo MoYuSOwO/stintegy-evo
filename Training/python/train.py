@@ -610,6 +610,14 @@ def main() -> int:
         action="store_true",
         help="start every episode on fresh warm tyres and 80%% charge",
     )
+    # On by default for the same reason: the freeze design's hidden
+    # curriculum (per-episode limiter strength, perception noise) is part of
+    # what a world-v3 bake is. Off only for a controlled comparison.
+    parser.add_argument(
+        "--no-hidden-curriculum",
+        action="store_true",
+        help="train with the limiter at full strength and clean perception",
+    )
     parser.add_argument("--log-every", type=int, default=1_000)
     parser.add_argument(
         "--checkpoint-dir",
@@ -698,6 +706,7 @@ def main() -> int:
         # so a lap is something training actually contains.
         episode_seconds=args.episode_seconds,
         randomise_episode_start=not args.fixed_episode_start,
+        hidden_curriculum=not args.no_hidden_curriculum,
         quiet=True,
     ) as env:
         print(

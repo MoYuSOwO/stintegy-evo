@@ -31,7 +31,8 @@ internal static class Program
                 float opponentPace,
                 bool solo,
                 bool randomiseEpisodeStart,
-                EpisodeStartDistribution episodeStarts
+                EpisodeStartDistribution episodeStarts,
+                bool hiddenCurriculum
             ) =
                 ParseOptions(args);
             BatchedTrainingHost host = new(
@@ -47,7 +48,8 @@ internal static class Program
                 egoStrategy,
                 decisionHz,
                 randomiseEpisodeStart,
-                episodeStarts
+                episodeStarts,
+                hiddenCurriculum
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -72,7 +74,8 @@ internal static class Program
         float OpponentPace,
         bool Solo,
         bool RandomiseEpisodeStart,
-        EpisodeStartDistribution EpisodeStarts
+        EpisodeStartDistribution EpisodeStarts,
+        bool HiddenCurriculum
     ) ParseOptions(string[] args)
     {
         int batchSize = 1;
@@ -90,6 +93,7 @@ internal static class Program
         CarStrategy? egoStrategy = null;
         float decisionHz = DirectDriveController.DefaultDecisionHz;
         bool randomiseEpisodeStart = false;
+        bool hiddenCurriculum = false;
         EpisodeStartDistribution episodeStarts = new();
         for (int i = 0; i < args.Length; i++)
         {
@@ -109,6 +113,11 @@ internal static class Program
             if (option == "--randomise-episode-start")
             {
                 randomiseEpisodeStart = true;
+                continue;
+            }
+            if (option == "--hidden-curriculum")
+            {
+                hiddenCurriculum = true;
                 continue;
             }
             if (i + 1 >= args.Length)
@@ -249,7 +258,8 @@ internal static class Program
             opponentPace,
             solo,
             randomiseEpisodeStart,
-            episodeStarts
+            episodeStarts,
+            hiddenCurriculum
         );
     }
 

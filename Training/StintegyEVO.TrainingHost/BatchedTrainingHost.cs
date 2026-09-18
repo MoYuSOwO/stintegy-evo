@@ -42,7 +42,8 @@ public sealed class BatchedTrainingHost
         CarStrategy? egoStrategy = null,
         float decisionHz = DirectDriveController.DefaultDecisionHz,
         bool randomiseEpisodeStart = false,
-        EpisodeStartDistribution? episodeStarts = null
+        EpisodeStartDistribution? episodeStarts = null,
+        bool hiddenCurriculum = false
     )
     {
         if (batchSize <= 0)
@@ -111,7 +112,8 @@ public sealed class BatchedTrainingHost
                 egoStrategy,
                 decisionHz,
                 randomiseEpisodeStart,
-                episodeStarts
+                episodeStarts,
+                hiddenCurriculum
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

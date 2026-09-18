@@ -246,6 +246,8 @@ public sealed class DirectDriveDuelEnvironment
 
     private readonly bool _solo;
     private readonly bool _randomiseEpisodeStart;
+    private readonly bool _hiddenCurriculum;
+    private ulong _noiseState;
     private readonly EpisodeStartDistribution _episodeStarts;
     private RaceSimulation? _simulation;
     private RaceCar? _ego;
@@ -262,6 +264,13 @@ public sealed class DirectDriveDuelEnvironment
     public float EgoStartS { get; private set; }
     public float InitialForwardGapMeters { get; private set; }
     public CarStrategy EgoStrategy { get; private set; } = CarStrategy.Default;
+
+    /// <summary>
+    /// This episode's hidden curriculum draw, for diagnostics only; the
+    /// policy is never told. Nominal (full limiter, clean perception) unless
+    /// the environment was built with the curriculum on.
+    /// </summary>
+    public HiddenCurriculum.Draw Curriculum { get; private set; } = new(1f, 0f);
     public float ElapsedSeconds => _elapsedSeconds;
     public bool IsTerminal => _terminal;
     public float SignedLeadDistanceMeters => CalculateSignedLeadDistance();
@@ -309,7 +318,8 @@ public sealed class DirectDriveDuelEnvironment
         CarStrategy? egoStrategy = null,
         float decisionHz = DirectDriveController.DefaultDecisionHz,
         bool randomiseEpisodeStart = false,
-        EpisodeStartDistribution? episodeStarts = null
+        EpisodeStartDistribution? episodeStarts = null,
+        bool hiddenCurriculum = false
     )
     {
         if (!solo)
@@ -321,6 +331,7 @@ public sealed class DirectDriveDuelEnvironment
             );
         }
         _randomiseEpisodeStart = randomiseEpisodeStart;
+        _hiddenCurriculum = hiddenCurriculum;
         _episodeStarts = episodeStarts ?? new EpisodeStartDistribution();
         if (!float.IsFinite(decisionHz) || decisionHz <= 0f)
             throw new ArgumentOutOfRangeException(nameof(decisionHz));
@@ -672,6 +683,18 @@ public sealed class DirectDriveDuelEnvironment
             ? drawnStart
             : FixedStart;
 
+        // Drawn whether or not it is used, like everything above, and after
+        // everything above, so that switching the curriculum on moves no
+        // earlier draw.
+        HiddenCurriculum.Draw drawnCurriculum = HiddenCurriculum.FromUniforms(
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f),
+            random.NextSingle(0f, 1f)
+        );
+        _noiseState = random.NextSeed();
+        Curriculum = _hiddenCurriculum ? drawnCurriculum : new(1f, 0f);
+
         // The weather and the road come from the same switch as the car,
         // because they answer the same question: is this a training
         // episode or an exam?
@@ -690,7 +713,10 @@ public sealed class DirectDriveDuelEnvironment
             SurfaceGripScalar = egoStart.SurfaceGripScalar
         };
         _simulation = new RaceSimulation(track, raceEnvironment);
-        CarConfig egoConfig = new();
+        CarConfig egoConfig = new()
+        {
+            CombinedGripLimiterStrength = Curriculum.LimiterStrength
+        };
         TireConfig egoTires = TiresFor(egoStart);
         // Clocked from here: the agent step and the decision period are
         // the same interval, so the controller keeps no clock of its own.
@@ -773,6 +799,38 @@ public sealed class DirectDriveDuelEnvironment
         DriverContext context = _simulation!.CaptureFrameContext(_ego!);
         _egoDriver!.Observe(in context);
         _egoDriver.LastObservation.CopyTo(observation);
+        if (Curriculum.NoiseScale > 0f)
+            AddPerceptionNoise(observation);
+    }
+
+    /// <summary>
+    /// Zero-mean Gaussian noise on the perception channels, at this
+    /// episode's scale of each channel's maximum. Drawn from a stream of its
+    /// own, seeded at reset, so the noise never moves the episode's other
+    /// draws and the same seed gives the same noise.
+    /// </summary>
+    private void AddPerceptionNoise(Span<float> observation)
+    {
+        foreach ((int channel, float sigmaMax) in HiddenCurriculum.NoisyChannels)
+            observation[channel] += NextGaussian() * sigmaMax * Curriculum.NoiseScale;
+    }
+
+    private float NextGaussian()
+    {
+        // Box-Muller on two splitmix64 uniforms in (0, 1].
+        float u1 = 1f - NextNoiseUniform();
+        float u2 = NextNoiseUniform();
+        return MathF.Sqrt(-2f * MathF.Log(u1)) * MathF.Cos(2f * MathF.PI * u2);
+    }
+
+    private float NextNoiseUniform()
+    {
+        _noiseState += 0x9E3779B97F4A7C15UL;
+        ulong value = _noiseState;
+        value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
+        value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
+        value ^= value >> 31;
+        return (float)((value >> 40) * (1.0 / (1UL << 24)));
     }
 
     private float CalculateSignedLeadDistance() =>
@@ -936,6 +994,8 @@ public sealed class DirectDriveDuelEnvironment
 
         public float NextSingle(float minimum, float maximum) =>
             minimum + (maximum - minimum) * NextSingle();
+
+        public ulong NextSeed() => NextUInt64();
 
         private ulong NextUInt64()
         {
