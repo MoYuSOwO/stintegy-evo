@@ -253,6 +253,7 @@ public sealed class DirectDriveDuelEnvironment
     private readonly float _budgetGamma;
     private float _raceProgressAtStart;
     private float _budgetPotential;
+    private EnergyBudget.Anchor _budgetAnchor;
     private readonly EpisodeStartDistribution _episodeStarts;
     private RaceSimulation? _simulation;
     private RaceCar? _ego;
@@ -286,7 +287,34 @@ public sealed class DirectDriveDuelEnvironment
     /// <summary>Remaining charge minus the ego's target line; zero with no line.</summary>
     public float BudgetDeviation => _ego is null
         ? 0f
-        : EnergyBudget.Deviation(RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung);
+        : EnergyBudget.Deviation(
+            _budgetAnchor, RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung);
+
+    /// <summary>Where the current rung's line was anchored.</summary>
+    public EnergyBudget.Anchor BudgetAnchor => _budgetAnchor;
+
+    /// <summary>
+    /// The pit wall changes the instruction mid-episode. The new rung's line
+    /// is anchored at the car's progress and charge now, and the budget's
+    /// potential restarts there, at zero, without a shaping reward for the
+    /// jump: changing rung earns and costs nothing by itself, and a deficit
+    /// run up under the old rung is not collected by the new one.
+    /// </summary>
+    public void Reanchor(CarStrategy strategy)
+    {
+        if (_ego is null)
+            throw new InvalidOperationException("Reset must be called first.");
+        EgoStrategy = strategy;
+        _ego.Strategy = strategy;
+        AnchorBudget();
+    }
+
+    private void AnchorBudget()
+    {
+        _budgetAnchor = new EnergyBudget.Anchor(RaceProgress, _ego!.State.Energy.Primary);
+        _budgetPotential = EnergyBudget.Potential(
+            _budgetAnchor, RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung, _budgetLambda);
+    }
     public float ElapsedSeconds => _elapsedSeconds;
     public bool IsTerminal => _terminal;
     public float SignedLeadDistanceMeters => CalculateSignedLeadDistance();
@@ -517,7 +545,7 @@ public sealed class DirectDriveDuelEnvironment
         // truly ends and the last phi' is the settled bill; the learner does
         // not bootstrap past it.
         float budgetPotential = EnergyBudget.Potential(
-            RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung, _budgetLambda);
+            _budgetAnchor, RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung, _budgetLambda);
         float budgetShaping = _budgetGamma * budgetPotential - _budgetPotential;
         _budgetPotential = budgetPotential;
 
@@ -734,9 +762,12 @@ public sealed class DirectDriveDuelEnvironment
 
         // Where in the race the episode begins, drawn jointly with the
         // charge (freeze design 3, the §7 window fix): progress uniform over
-        // the race, charge about the Normal line at that progress, from
-        // fifteen points under it to ten over. Drawn whether or not used and
-        // after everything else. Nominal starts sit on the Normal line.
+        // the race, charge about the Normal race path at that progress (what
+        // a full-race Normal drive would have left), from fifteen points
+        // under it to ten over. It covers the states a race passes through;
+        // it sets no debt, because the budget's line is anchored at the start
+        // whatever the charge. Drawn whether or not used and after
+        // everything else. Nominal starts sit on the Normal race path.
         float progressDraw = random.NextSingle(0f, 1f);
         float chargeDraw = random.NextSingle(0f, 1f);
         // The tyre stress scale, the curriculum's third draw, last of all.
@@ -747,8 +778,7 @@ public sealed class DirectDriveDuelEnvironment
         if (_randomiseEpisodeStart)
         {
             _raceProgressAtStart = progressDraw;
-            float onLine = EnergyBudget.Target(
-                progressDraw, (int)PowerOutputMode.Normal)!.Value;
+            float onLine = EnergyBudget.NormalRaceCharge(progressDraw);
             egoStart = egoStart with
             {
                 Charge = Math.Clamp(onLine - 0.15f + 0.25f * chargeDraw, 0.02f, 1f)
@@ -756,7 +786,7 @@ public sealed class DirectDriveDuelEnvironment
         }
         else
         {
-            _raceProgressAtStart = EnergyBudget.ProgressOnNormalLine(egoStart.Charge);
+            _raceProgressAtStart = EnergyBudget.ProgressOnNormalRace(egoStart.Charge);
         }
 
         // The weather and the road come from the same switch as the car,
@@ -806,8 +836,7 @@ public sealed class DirectDriveDuelEnvironment
         // it - which is no longer possible now that the clock is ours.
         _simulation.Step(WarmupStepSeconds);
         _egoDistanceOrigin = _ego.Progress.TotalDistance;
-        _budgetPotential = EnergyBudget.Potential(
-            RaceProgress, _ego.State.Energy.Primary, EgoStrategy.PowerRung, _budgetLambda);
+        AnchorBudget();
         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
         SampleObservation(observation);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;

@@ -6,9 +6,19 @@ namespace StintegyEVO.TrainingHost.Environment;
 /// The budget re-core (PLAN_zh.md §7, freeze design section 3): the power
 /// rungs are target lines for the charge, not caps on the motor.
 ///
-/// Each rung with a line asks for a share of the pack left at the flag, and
-/// the line runs straight from full at the start to that share at the
-/// finish, by race progress. The driver is charged through a potential,
+/// Each rung with a line is a slope: the rate of spending, per unit of race
+/// progress, that would take a full pack from the start to the flag with
+/// that rung's share left (Normal: 9%). The line is anchored where the
+/// instruction was given -- the episode's start, or the moment the pit
+/// wall changes rung -- and runs from the charge the car had there at that
+/// slope. So the same rung always asks for the same driving, whatever came
+/// before it: charge burned on Attack is not paid back automatically when
+/// the wall switches to Normal; the deficit is the wall's to manage, with
+/// Eco or Save, which is the strategy game. (User ruling 2026-09-19. The
+/// first implementation drew one absolute line from full at the start,
+/// which made a car starting under it earn reward for climbing back to it
+/// -- up to three times the progress reward a metre -- and taught Normal
+/// to repay debts nobody asked it to.) The driver is charged through a potential,
 /// <c>phi = -lambda * max(0, target - remaining)</c>, shaped every step as
 /// <c>phi' - phi</c> (see <see cref="DefaultGamma"/>): overspend and the bill arrives at once,
 /// recover and it is refunded. Summed over a race that telescopes to the
@@ -90,27 +100,43 @@ public static class EnergyBudget
         _ => null
     };
 
-    public static float? Target(float progress, int rung)
-    {
-        float? finish = FinishShare(rung);
-        if (finish is null)
-            return null;
-        float p = Math.Clamp(progress, 0f, 1f);
-        return 1f - (1f - finish.Value) * p;
-    }
+    /// <summary>
+    /// Where a rung's line starts: the race progress and the charge at the
+    /// moment the instruction was given.
+    /// </summary>
+    public readonly record struct Anchor(float Progress, float Charge);
+
+    /// <summary>
+    /// A rung's spending slope, pack fraction per unit of race progress, or
+    /// null for no line.
+    /// </summary>
+    public static float? Slope(int rung) =>
+        FinishShare(rung) is float finish ? 1f - finish : null;
+
+    public static float? Target(Anchor anchor, float progress, int rung) =>
+        Slope(rung) is float slope
+            ? anchor.Charge - slope * (Math.Clamp(progress, 0f, 1f) - anchor.Progress)
+            : null;
 
     /// <summary>Remaining minus target; zero when the rung has no line.</summary>
-    public static float Deviation(float progress, float remaining, int rung) =>
-        Target(progress, rung) is float target ? remaining - target : 0f;
+    public static float Deviation(Anchor anchor, float progress, float remaining, int rung) =>
+        Target(anchor, progress, rung) is float target ? remaining - target : 0f;
 
-    public static float Potential(float progress, float remaining, int rung, float lambda) =>
-        Target(progress, rung) is float target
+    public static float Potential(Anchor anchor, float progress, float remaining, int rung, float lambda) =>
+        Target(anchor, progress, rung) is float target
             ? -lambda * MathF.Max(0f, target - remaining)
             : 0f;
 
     /// <summary>
-    /// The progress at which a charge sits exactly on the Normal line.
+    /// The charge a car that had driven Normal from a full pack would have
+    /// at this progress. Not a target: the episode start draws charge about
+    /// it, so that starting charges are plausible for how far into the race
+    /// the episode begins.
     /// </summary>
-    public static float ProgressOnNormalLine(float remaining) =>
+    public static float NormalRaceCharge(float progress) =>
+        1f - (1f - NormalFinishShare) * Math.Clamp(progress, 0f, 1f);
+
+    /// <summary>The progress at which a charge sits on the Normal race path.</summary>
+    public static float ProgressOnNormalRace(float remaining) =>
         Math.Clamp((1f - remaining) / (1f - NormalFinishShare), 0f, 1f);
 }
