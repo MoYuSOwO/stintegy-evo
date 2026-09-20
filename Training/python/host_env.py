@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 5
+VERSION = 6
 
 # The decision rate the host defaults to, mirrored from
 # DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
@@ -78,6 +78,7 @@ class HostEnv:
         race_km: float | None = None,
         host_project: str = DEFAULT_HOST_PROJECT,
         quiet: bool = True,
+        duel: bool = False,
         ego_modes: tuple[int, int] | None = None,
         ego_analytic: bool = False,
         analytic_hz: float | None = None,
@@ -94,6 +95,13 @@ class HostEnv:
         ``ego_analytic`` puts the analytic driver at the wheel and ignores
         the actions sent to it, which is how the baseline a learned lap is
         quoted against gets measured on the learner's own terms.
+
+        ``duel`` puts a second car in every lane. Its observation comes back
+        in ``opponent_obs`` and its action goes to ``step`` beside the
+        ego's; the rewards, the terminals and the scoreboard stay the ego's
+        alone, because the partner is what the ego is being trained
+        against and not a second learner. Solo is the default and is
+        unchanged by any of this, down to the bit.
         """
         # A published self-contained host binary, when one is provided,
         # spawns directly: no SDK on the machine, no rebuild on spawn, and
@@ -104,7 +112,9 @@ class HostEnv:
             "dotnet", "run", "-c", "Release", "--project", host_project, "--",
         ]
         command = launcher + ["--batch", str(batch), "--seed-base", str(seed_base)]
-        if solo:
+        if duel:
+            command.append("--duel")
+        elif solo:
             command.append("--solo")
         if track:
             command += ["--track", track]
@@ -131,9 +141,15 @@ class HostEnv:
             command += ["--analytic-hz", str(analytic_hz)]
         if decision_hz is not None:
             command += ["--decision-hz", str(decision_hz)]
+        self.duel = duel
         self.step_seconds = 1.0 / (decision_hz or DEFAULT_DECISION_HZ)
         self.ego_modes = ego_modes
         self.four_wheels_off = np.zeros(batch, dtype=np.float64)
+        # Who is in front, in metres, positive while the sparring partner
+        # leads. Zero in a solo run, where there is nobody to lead.
+        self.lead_metres = np.zeros(batch, dtype=np.float64)
+        self.opponent_obs: np.ndarray | None = None
+        self.opponent_final_obs: np.ndarray | None = None
         self.ego_analytic = ego_analytic
 
         self._process = subprocess.Popen(
@@ -150,14 +166,19 @@ class HostEnv:
         self._write(KIND_HELLO)
         kind, payload = self._read()
         assert kind == KIND_HELLO_RESPONSE, kind
-        obs_size, action_size, host_batch, version = struct.unpack(
-            "<iiii", payload
+        obs_size, action_size, host_batch, version, cars = struct.unpack(
+            "<iiiii", payload
         )
         if version != VERSION:
             raise RuntimeError(f"host speaks protocol v{version}")
         self.obs_size = obs_size
         self.action_size = action_size
         self.batch = host_batch
+        # Seats per lane, from the host rather than from what was asked
+        # for: two in a duel, one solo.
+        self.cars = cars
+        if duel and cars != 2:
+            raise RuntimeError(f"asked for a duel, host gave {cars} seat(s)")
 
     # -- protocol ---------------------------------------------------------
 
@@ -188,11 +209,28 @@ class HostEnv:
         self._seed_counter += count
         return seeds
 
-    def _observations_from(self, payload: bytes) -> np.ndarray:
+    def _seats_from(self, payload: bytes) -> tuple[np.ndarray, np.ndarray | None]:
+        """Split a lane's seats: the ego's frame, then the partner's.
+
+        The ego is always the first seat of its lane, so a solo payload is
+        this one with the second seat absent rather than a different shape.
+        """
         flat = np.frombuffer(
-            payload, dtype="<f4", count=self.batch * self.obs_size
+            payload,
+            dtype="<f4",
+            count=self.batch * self.cars * self.obs_size,
         )
-        return flat.reshape(self.batch, self.obs_size).astype(np.float32)
+        seats = flat.reshape(
+            self.batch, self.cars, self.obs_size
+        ).astype(np.float32)
+        if self.cars == 1:
+            return seats[:, 0], None
+        return seats[:, 0], seats[:, 1]
+
+    def _observations_from(self, payload: bytes) -> np.ndarray:
+        ego, opponent = self._seats_from(payload)
+        self.opponent_obs = opponent
+        return ego
 
     # -- environment ------------------------------------------------------
 
@@ -206,7 +244,7 @@ class HostEnv:
         return self._observations_from(payload)
 
     def step(
-        self, actions: np.ndarray
+        self, actions: np.ndarray, opponent_actions: np.ndarray | None = None
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Advance every lane, then re-seed the lanes that finished.
 
@@ -216,14 +254,27 @@ class HostEnv:
         the transition using the terminal flag rather than bootstrapping
         through it.
         """
-        flat = np.ascontiguousarray(
-            np.clip(actions, -1.0, 1.0), dtype="<f4"
-        )
+        ego = np.clip(np.asarray(actions, dtype=np.float32), -1.0, 1.0)
+        if self.cars == 1:
+            if opponent_actions is not None:
+                raise ValueError("a solo host has no seat for a second action")
+            flat = np.ascontiguousarray(ego, dtype="<f4")
+        else:
+            if opponent_actions is None:
+                raise ValueError("a duel step needs the partner's action too")
+            partner = np.clip(
+                np.asarray(opponent_actions, dtype=np.float32), -1.0, 1.0
+            )
+            # Interleaved seat by seat within a lane, which is the order the
+            # host reads them in: ego, partner, ego, partner.
+            flat = np.ascontiguousarray(
+                np.stack([ego, partner], axis=1), dtype="<f4"
+            )
         self._write(KIND_STEP, flat.tobytes())
         kind, payload = self._read()
         assert kind == KIND_STEP_RESPONSE, kind
 
-        cursor = self.batch * self.obs_size * 4
+        cursor = self.batch * self.cars * self.obs_size * 4
         obs = self._observations_from(payload)
         reward = np.frombuffer(
             payload, dtype="<f4", count=self.batch, offset=cursor
@@ -267,6 +318,14 @@ class HostEnv:
         self.four_wheels_off = np.frombuffer(
             payload, dtype="<f4", count=self.batch, offset=cursor
         ).astype(np.float64)
+        cursor += self.batch * 4
+        # Who is in front, in metres, positive while the partner leads. The
+        # scoreboard's reading of the duel, on the same terms as the three
+        # fields above it: never an observation, never a reward.
+        if self.cars > 1:
+            self.lead_metres = np.frombuffer(
+                payload, dtype="<f4", count=self.batch, offset=cursor
+            ).astype(np.float64)
 
         # The observation the episode actually ended on. The array returned
         # below is what the policy acts on next, so finished lanes carry the
@@ -274,8 +333,11 @@ class HostEnv:
         # timeout needs the state the clock stopped at, and once the reset
         # has run this is the only copy of it.
         final_obs = obs
+        self.opponent_final_obs = self.opponent_obs
         if done.any():
             final_obs = obs.copy()
+            if self.opponent_obs is not None:
+                self.opponent_final_obs = self.opponent_obs.copy()
             seeds = self._next_seeds(self.batch)
             payload = done.astype(np.uint8).tobytes() + struct.pack(
                 f"<{self.batch}q", *seeds

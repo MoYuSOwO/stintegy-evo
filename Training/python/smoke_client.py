@@ -100,10 +100,15 @@ def main() -> int:
         write_message(process.stdin, KIND_HELLO)
         kind, payload = read_message(process.stdout)
         assert kind == KIND_HELLO_RESPONSE, kind
-        obs_size, action_size, batch, version = struct.unpack("<iiii", payload)
+        # Protocol 6 added seats per lane; this client drives the host
+        # solo, so it reads the field and expects one.
+        obs_size, action_size, batch, version, cars = struct.unpack(
+            "<iiiii", payload
+        )
+        assert cars == 1, f"this smoke client drives one car, not {cars}"
         print(
             f"hello: obs={obs_size} action={action_size} "
-            f"batch={batch} protocol=v{version}"
+            f"batch={batch} protocol=v{version} cars={cars}"
         )
 
         seeds = struct.pack(

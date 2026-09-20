@@ -11,6 +11,7 @@ namespace StintegyEVO.TrainingHost;
 public sealed class BatchedTrainingHost
 {
     private readonly int _batchSize;
+    private readonly int _carsPerLane;
     private readonly string? _trackFamily;
     private readonly DirectDriveDuelEnvironment[] _environments;
     private readonly float[] _observations;
@@ -53,14 +54,19 @@ public sealed class BatchedTrainingHost
             throw new ArgumentOutOfRangeException(nameof(batchSize));
 
         _batchSize = batchSize;
+        // One seat solo, two in a duel. Every buffer below is sized in
+        // seats rather than lanes, and the ego is always the first seat of
+        // its lane, so the solo layout is the duel layout with the second
+        // seat absent rather than a different shape.
+        _carsPerLane = solo ? 1 : 2;
         _trackFamily = string.IsNullOrWhiteSpace(trackFamily)
             ? null
             : trackFamily;
         int observationCount = checked(
-            batchSize * DirectDriveObservation.ObservationSize
+            batchSize * _carsPerLane * DirectDriveObservation.ObservationSize
         );
         int actionCount = checked(
-            batchSize * DirectDriveObservation.ActionSize
+            batchSize * _carsPerLane * DirectDriveObservation.ActionSize
         );
         _resetRequestBytes = checked(batchSize * sizeof(long));
         _maskedResetRequestBytes = checked(
@@ -77,7 +83,9 @@ public sealed class BatchedTrainingHost
             // And the spin events begun this step, for the scoreboard.
             batchSize * sizeof(byte) +
             // And the seconds all four wheels spent over the white line.
-            batchSize * sizeof(float)
+            batchSize * sizeof(float) +
+            // And, in a duel, the signed lead in metres: who is in front.
+            (solo ? 0 : batchSize * sizeof(float))
         );
         if (stepResponseBytes > TrainingProtocol.MaxPayloadLength)
         {
@@ -98,7 +106,7 @@ public sealed class BatchedTrainingHost
                 Math.Max(_resetRequestBytes, _stepRequestBytes)
             )
         ];
-        _responseBuffer = new byte[Math.Max(stepResponseBytes, 16)];
+        _responseBuffer = new byte[Math.Max(stepResponseBytes, 20)];
         _resetOneAction = ResetOne;
         _stepOneAction = StepOne;
         _maskedResetOneAction = MaskedResetOne;
@@ -210,7 +218,7 @@ public sealed class BatchedTrainingHost
 
     private void WriteHello(Stream output)
     {
-        Span<byte> payload = _responseBuffer.AsSpan(0, 16);
+        Span<byte> payload = _responseBuffer.AsSpan(0, 20);
         BinaryPrimitives.WriteInt32LittleEndian(
             payload,
             DirectDriveObservation.ObservationSize
@@ -224,6 +232,9 @@ public sealed class BatchedTrainingHost
             payload[12..],
             TrainingProtocol.Version
         );
+        // Seats per lane: what the client has to send actions for and will
+        // be sent observations for.
+        BinaryPrimitives.WriteInt32LittleEndian(payload[16..], _carsPerLane);
         TrainingProtocol.WriteMessage(
             output,
             TrainingMessageKind.HelloResponse,
@@ -323,6 +334,22 @@ public sealed class BatchedTrainingHost
             );
         }
 
+        // Who is in front, in metres, positive while the sparring partner
+        // leads. The scoreboard's own reading of the duel: the alternative
+        // is reconstructing it from the ego's opponent block, which is
+        // scaled, clipped and noised for the policy's benefit.
+        if (_carsPerLane > 1)
+        {
+            for (int i = 0; i < _batchSize; i++)
+            {
+                offset = WriteFloat(
+                    _responseBuffer,
+                    offset,
+                    _environments[i].SignedLeadDistanceMeters
+                );
+            }
+        }
+
         TrainingProtocol.WriteMessage(
             output,
             TrainingMessageKind.StepResponse,
@@ -352,23 +379,40 @@ public sealed class BatchedTrainingHost
     private void ResetEnvironment(int index, long seed)
     {
         if (_trackFamily is null)
-            _environments[index].Reset(seed, ObservationFor(index));
+        {
+            _environments[index].Reset(
+                seed, ObservationFor(index), OpponentObservationFor(index)
+            );
+        }
         else
         {
             _environments[index].ResetTrack(
                 _trackFamily,
                 seed,
-                ObservationFor(index)
+                ObservationFor(index),
+                OpponentObservationFor(index)
             );
         }
     }
 
     private void StepOne(int index)
     {
-        int actionOffset = index * DirectDriveObservation.ActionSize;
+        int actionOffset =
+            index * _carsPerLane * DirectDriveObservation.ActionSize;
+        ReadOnlySpan<float> ego = _actions.AsSpan(
+            actionOffset, DirectDriveObservation.ActionSize
+        );
+        ReadOnlySpan<float> opponent = _carsPerLane == 1
+            ? ReadOnlySpan<float>.Empty
+            : _actions.AsSpan(
+                actionOffset + DirectDriveObservation.ActionSize,
+                DirectDriveObservation.ActionSize
+            );
         _results[index] = _environments[index].Step(
-            _actions.AsSpan(actionOffset, DirectDriveObservation.ActionSize),
-            ObservationFor(index)
+            ego,
+            opponent,
+            ObservationFor(index),
+            OpponentObservationFor(index)
         );
     }
 
@@ -404,9 +448,20 @@ public sealed class BatchedTrainingHost
         }
     }
 
-    private Span<float> ObservationFor(int index) =>
+    /// <summary>The ego's seat in a lane: the first of that lane's seats.</summary>
+    private Span<float> ObservationFor(int index) => SeatFor(index, 0);
+
+    /// <summary>
+    /// The sparring partner's seat, or nothing at all when the lane has one
+    /// car. An empty span is how the environment is told this is solo.
+    /// </summary>
+    private Span<float> OpponentObservationFor(int index) =>
+        _carsPerLane == 1 ? Span<float>.Empty : SeatFor(index, 1);
+
+    private Span<float> SeatFor(int index, int seat) =>
         _observations.AsSpan(
-            index * DirectDriveObservation.ObservationSize,
+            (index * _carsPerLane + seat) *
+                DirectDriveObservation.ObservationSize,
             DirectDriveObservation.ObservationSize
         );
 

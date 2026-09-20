@@ -28,6 +28,7 @@ from host_env import (
     COMPONENT_NAMES, DEFAULT_DECISION_HZ, TERMINAL_NAMES, HostEnv,
 )
 from nstep import NStepBatcher
+from opponent import FrozenOpponent, draw_from_pool
 from sac import SacAgent, SacConfig
 
 
@@ -248,6 +249,7 @@ def evaluate(
     track: str,
     seconds: float,
     modes: tuple[int, int] = EVALUATION_MODES,
+    opponent: "FrozenOpponent | None" = None,
 ) -> dict[str, float]:
     """What the policy did on this circuit, and whether it was allowed to.
 
@@ -297,10 +299,19 @@ def evaluate(
     charged_laps: list[float] = []
     off_per_lap: list[float] = []
     lanes_with_clean = 0
+    # The duel columns, and only the minimum of them: who was in front when
+    # each episode ended, by how much, and how often the cars touched. A
+    # lap time is still a lap time with another car on the road, so
+    # everything above this is measured exactly as it is solo.
+    duel_wins = 0
+    duel_episodes = 0
+    duel_gaps: list[float] = []
+    duel_contacts = 0
     with HostEnv(
         batch=batch,
         seed_base=seed_base,
-        solo=solo,
+        solo=solo and opponent is None,
+        duel=opponent is not None,
         track=track,
         episode_seconds=seconds + 60.0,
         ego_modes=modes,
@@ -350,7 +361,33 @@ def evaluate(
         crossed: list[float | None] = [None] * batch
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
-            obs, reward, done, reason, components, race, final_obs, spins = env.step(action)
+            if opponent is None:
+                obs, reward, done, reason, components, race, final_obs, spins = (
+                    env.step(action)
+                )
+            else:
+                partner = opponent.act(env.opponent_obs)
+                obs, reward, done, reason, components, race, final_obs, spins = (
+                    env.step(action, partner)
+                )
+                duel_contacts += int(
+                    np.count_nonzero(
+                        components[COMPONENT_NAMES.index("contact")] < 0.0
+                    )
+                )
+                # The lead the step ended on, which for a finished lane is
+                # the result: the host reads it after the cars have moved
+                # and before anything re-seeds, so it is the gap at the
+                # flag rather than the fresh episode's starting gap.
+                lead = env.lead_metres
+                for lane in np.flatnonzero(done):
+                    duel_episodes += 1
+                    # Positive while the partner is ahead, so the ego's own
+                    # advantage is its negation.
+                    gap = -float(lead[lane])
+                    duel_gaps.append(gap)
+                    if gap > 0.0:
+                        duel_wins += 1
             lap_four_wheels += env.four_wheels_off
             end_charge = final_obs[:, PRIMARY_STORE].astype(np.float64)
             end_wear = np.mean(
@@ -486,6 +523,12 @@ def evaluate(
         "stalls": float(stalls),
         "spins": float(spin_events),
         "spins_per_lap": spin_events / completed if completed else 0.0,
+        # The duel's own three, zero in a solo evaluation.
+        "duel_episodes": float(duel_episodes),
+        "duel_wins": float(duel_wins),
+        "duel_win_share": duel_wins / duel_episodes if duel_episodes else 0.0,
+        "duel_gap": float(np.mean(duel_gaps)) if duel_gaps else 0.0,
+        "duel_contacts": float(duel_contacts),
         "tyre_wear": float(np.mean([obs[:, w] for w in WEAR_SLOTS])),
         "store": float(obs[:, PRIMARY_STORE].mean()),
         "modes": modes,
@@ -548,14 +591,20 @@ def clean_criterion_key(
 
 
 def report(
-    agent, args, seed_base: int, names: list[str]
+    agent, args, seed_base: int, names: list[str], opponent=None
 ) -> dict[str, dict[str, float]]:
-    """The requested circuits as flying lap times."""
+    """The requested circuits as flying lap times.
+
+    With a sparring partner the same circuits are driven wheel-to-wheel:
+    the lap columns mean what they always did, and the duel's own three
+    (who led at the flag, by how much, how often they touched) come back
+    beside them.
+    """
     out: dict[str, dict[str, float]] = {}
     for name in names:
         out[name] = evaluate(
             agent, args.eval_batch, seed_base, args.solo, name,
-            args.eval_seconds,
+            args.eval_seconds, opponent=opponent,
         )
     return out
 
@@ -602,6 +651,21 @@ def main() -> int:
     # the same objective the evaluation scores.
     parser.add_argument("--fixed-alpha", type=float, default=None)
     parser.add_argument("--solo", action="store_true")
+    # Wheel-to-wheel. The partner is a frozen checkpoint driving the second
+    # car through the same interface, and only the ego learns: the reward,
+    # the terminals and the replay buffer are the ego's alone.
+    parser.add_argument(
+        "--duel", action="store_true",
+        help="put a frozen checkpoint in the other car",
+    )
+    parser.add_argument(
+        "--opponent-checkpoint", default=None,
+        help="who to spar against; required with --duel unless --opponent-pool",
+    )
+    parser.add_argument(
+        "--opponent-pool", type=int, default=0,
+        help="STUB: draw the partner from this tag's latest K eval checkpoints",
+    )
     parser.add_argument("--track", default=None)
     parser.add_argument("--eval-every", type=int, default=25_000)
     # Four hundred seconds of watching, whatever the decision rate turns
@@ -712,10 +776,22 @@ def main() -> int:
         f"alpha={'auto' if config.fixed_alpha is None else config.fixed_alpha} "
         f"gamma={config.gamma} n_step={config.n_step} seed={args.seed}"
     )
+    opponent_path = args.opponent_checkpoint
+    if args.duel and opponent_path is None and args.opponent_pool > 0:
+        drawn = draw_from_pool(checkpoint_dir, args.tag, args.opponent_pool)
+        opponent_path = str(drawn) if drawn else None
+    if args.duel and opponent_path is None:
+        parser.error(
+            "--duel needs --opponent-checkpoint (or a pool with checkpoints in it)"
+        )
+    if args.duel and args.solo:
+        parser.error("--solo and --duel ask for different cars on the road")
+
     with HostEnv(
         batch=args.batch,
         seed_base=args.seed,
         solo=args.solo,
+        duel=args.duel,
         track=args.track,
         # Four minutes, not the host's default sixty seconds. Sixty-second
         # episodes meant no tyre ever got more than a minute old in
@@ -734,6 +810,12 @@ def main() -> int:
             f"lanes={env.batch} solo={args.solo}"
         )
         agent = SacAgent(env.obs_size, env.action_size, config)
+        sparring = None
+        if args.duel:
+            sparring = FrozenOpponent(
+                env.obs_size, env.action_size, config, opponent_path
+            )
+            print(f"sparring against {sparring.describe()}")
         resumed_step = 0
         run_kind = "fresh"
         if args.resume:
@@ -795,9 +877,18 @@ def main() -> int:
             else:
                 action = agent.act(obs)
 
-            next_obs, reward, done, reason, components, race, final_obs, spins = (
-                env.step(action)
-            )
+            if sparring is None:
+                next_obs, reward, done, reason, components, race, final_obs, spins = (
+                    env.step(action)
+                )
+            else:
+                # The partner answers the frame from its own seat, frozen
+                # and deterministic, before the ego's action is sent: one
+                # decision each, both held over the same interval.
+                partner_action = sparring.act(env.opponent_obs)
+                next_obs, reward, done, reason, components, race, final_obs, spins = (
+                    env.step(action, partner_action)
+                )
             # Distance covered this step, per lane, so the window's events
             # can be quoted per lap. Lanes that just re-seeded are skipped
             # rather than differenced: their race distance restarts, and a
@@ -915,7 +1006,8 @@ def main() -> int:
             if step % args.eval_every == 0:
                 trained, held = eval_split(args.track)
                 laps = report(
-                    agent, args, args.seed + 900_000, trained + held
+                    agent, args, args.seed + 900_000, trained + held,
+                    opponent=sparring,
                 )
                 tyre, power = EVALUATION_MODES
                 print(
@@ -955,6 +1047,13 @@ def main() -> int:
                             f"  余量 {r['store'] * 100:.0f}%"
                             f"{band_note(name, r['lap'])}{flags}"
                         )
+                        if r["duel_episodes"] > 0:
+                            print(
+                                f"      对局 {r['duel_wins']:.0f}/"
+                                f"{r['duel_episodes']:.0f} 胜"
+                                f"  差距 {r['duel_gap']:+.1f}m"
+                                f"  接触 {r['duel_contacts']:.0f} 步"
+                            )
                 # The mean charged lap over the circuits that count is what
                 # a best checkpoint is chosen on: one number, in seconds a
                 # lap, and lower is better. Absolute now rather than a gap

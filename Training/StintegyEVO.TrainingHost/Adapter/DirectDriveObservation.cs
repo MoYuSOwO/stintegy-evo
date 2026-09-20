@@ -276,10 +276,26 @@ internal readonly record struct DirectDriveCarLimits(
 /// <item>the ego channel that used to carry the traction control's cut now
 /// carries the combined-grip limiter's (TC was retired in favour of the
 /// limiter on master);</item>
-/// <item>the opponents' two planned-future points are always zero: the
-/// traffic motion plans they sampled belonged to the retired analytic
-/// driver, and world-v3 trains solo.</item>
+/// <item>the opponents' two planned-future points are always zero.</item>
 /// </list>
+///
+/// <para>
+/// The planned-future channels stay zero now that wheel-to-wheel is live,
+/// and that is a ruling rather than an omission. What they carried were
+/// traffic motion plans, which only the retired analytic driver published;
+/// nothing on this contract publishes one, because a controller's plan is
+/// its own. A sparring partner's intention is private in the same way a
+/// rival driver's is, and what can honestly be known about it — where it
+/// is, which way it points, how fast it is closing, whether it is
+/// alongside — is already in the twelve channels above them, from which
+/// the rest is the ego's to infer.
+/// </para>
+/// <para>
+/// Keeping them zero also keeps the contract at 457 channels with every
+/// block where it was, so a parent baked solo drops into the second car
+/// without a conversion: the weights are plug-in, and a duel is a
+/// different situation rather than a different observation.
+/// </para>
 /// </summary>
 public sealed class DirectDriveObservationBuilder
 {
@@ -741,10 +757,10 @@ public sealed class DirectDriveObservationBuilder
                 DirectDriveObservation.AlongsideBodyMeters ? 1f : 0f;
             // The last four channels were two points of the opponent's
             // planned future, sampled from traffic motion plans that only
-            // the retired analytic driver published. Nothing on the new
-            // contract publishes a plan -- a controller's plan is private
-            // -- so they stay zero, as they always were for a learned
-            // opponent.
+            // the retired analytic driver published. They stay zero against
+            // a learned sparring partner too, by ruling: what a driver
+            // means to do next is private, and the motion above is what a
+            // real one reads it from (see the class remarks).
             observation[cursor++] = 0f;
             observation[cursor++] = 0f;
             observation[cursor++] = 0f;

@@ -45,8 +45,17 @@ public static class TrainingProtocol
     /// Version 5 is the world-v3 freeze batch: a 457-channel observation, a
     /// twelfth reward component (the budget shaping), and a sixth terminal
     /// reason (finished: the race's flag).
+    ///
+    /// Version 6 carries wheel-to-wheel. The handshake gains a fifth field,
+    /// the number of cars a lane carries — one solo, two in a duel — and
+    /// every lane's observations and actions are that many in a row, the
+    /// ego's first. Rewards, terminals and the scoreboard fields stay one
+    /// per lane: only the ego is being trained, and the partner's race is
+    /// nobody's reward. A duel appends one more scoreboard field, the
+    /// signed lead in metres (positive when the partner is ahead), because
+    /// the alternative is asking the policy's own observation who won.
     /// </summary>
-    public const int Version = 5;
+    public const int Version = 6;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

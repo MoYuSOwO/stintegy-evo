@@ -1,0 +1,16 @@
+{
+  "solo": {
+    "lane_steps_per_second": 3986.235757590026,
+    "car_steps_per_second": 3986.235757590026,
+    "seconds": 1.6055247078184038
+  },
+  "duel": {
+    "lane_steps_per_second": 3391.043701403783,
+    "car_steps_per_second": 6782.087402807566,
+    "seconds": 1.8873245418071747
+  },
+  "ratio": 0.8506881949837105,
+  "batch": 16,
+  "steps": 400,
+  "track": "silverstone"
+}
