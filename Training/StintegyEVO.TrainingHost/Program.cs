@@ -98,7 +98,12 @@ internal static class Program
             DirectDriveDuelEnvironment.DefaultEpisodeDurationSeconds;
         CarStrategy opponentStrategy = CarStrategy.Default;
         float opponentPace = 70f;
-        bool solo = false;
+        // Solo unless asked for a duel. It used to default to false, which
+        // no caller could use because the environment threw on it; now that
+        // it would silently put a second car on the road and change the
+        // shape of every message, the wheel-to-wheel arm has to be asked
+        // for by name.
+        bool solo = true;
         CarStrategy? egoStrategy = null;
         float decisionHz = DirectDriveController.DefaultDecisionHz;
         bool randomiseEpisodeStart = false;
@@ -120,6 +125,11 @@ internal static class Program
             if (option == "--solo")
             {
                 solo = true;
+                continue;
+            }
+            if (option == "--duel")
+            {
+                solo = false;
                 continue;
             }
             if (option == "--randomise-episode-start")
