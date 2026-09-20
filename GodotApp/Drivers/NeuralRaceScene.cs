@@ -42,6 +42,13 @@ public partial class NeuralRaceScene : Node3D
 
     private readonly RaceView3D _view = new() { Name = "RaceView3D" };
     private NeuralDriverController? _controller;
+    // Frames to save and when, from STINTEGY_SHOTS="/path/prefix:2,8,20".
+    // A way to look at the circuit without sitting in front of it, and the
+    // only reason a viewer would ever want the scene to quit by itself.
+    private readonly List<float> _shotTimes = [];
+    private string? _shotPrefix;
+    private float _shotClock;
+    private int _shotsTaken;
 
     public override async void _Ready()
     {
@@ -121,6 +128,7 @@ public partial class NeuralRaceScene : Node3D
 
         _view.BindSimulation(simulation);
         AddChild(_view);
+        ArrangeShots();
         GD.Print(
             $"NEURAL: {System.IO.Path.GetFileName(model)} at the wheel; " +
             $"{NeuralDriverController.DecisionHz:0} Hz decisions; " +
@@ -151,4 +159,46 @@ public partial class NeuralRaceScene : Node3D
     }
 
     public override void _ExitTree() => _controller?.Dispose();
+
+    public override void _Process(double delta)
+    {
+        if (_shotPrefix is null || _shotsTaken >= _shotTimes.Count)
+            return;
+        _shotClock += (float)delta;
+        if (_shotClock < _shotTimes[_shotsTaken])
+            return;
+        string path = $"{_shotPrefix}{_shotsTaken:D2}.png";
+        Image image = GetViewport().GetTexture().GetImage();
+        image.SavePng(path);
+        GD.Print($"SHOT {path} at {_shotClock:0.0}s");
+        _shotsTaken++;
+        if (_shotsTaken >= _shotTimes.Count)
+            GetTree().Quit();
+    }
+
+    private void ArrangeShots()
+    {
+        string? request = System.Environment.GetEnvironmentVariable("STINTEGY_SHOTS");
+        if (string.IsNullOrWhiteSpace(request))
+            return;
+        int colon = request.LastIndexOf(':');
+        if (colon <= 0)
+            return;
+        _shotPrefix = request[..colon];
+        foreach (string piece in request[(colon + 1)..].Split(','))
+        {
+            if (float.TryParse(piece, out float when))
+                _shotTimes.Add(when);
+        }
+        _shotTimes.Sort();
+        // Which camera to watch from, for a look that is not the chase:
+        // 1 chase, 2 side, 3 the whole circuit.
+        if (int.TryParse(
+                System.Environment.GetEnvironmentVariable("STINTEGY_SHOT_CAMERA"),
+                out int camera
+            ) && camera is >= 1 and <= 3)
+        {
+            _view.SetCameraMode(camera);
+        }
+    }
 }

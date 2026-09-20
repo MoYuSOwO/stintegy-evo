@@ -214,6 +214,56 @@ public sealed class NeuralDriverInGameTests
     }
 
     /// <summary>
+    /// A whole lap, in the game, timed the way the scoreboard times one.
+    ///
+    /// This is the end-to-end question: does the driver the game runs lap
+    /// like the driver the bake graded? The checkpoint's evaluation lap at
+    /// Silverstone was 1:42.3, and a game that fed it a subtly wrong
+    /// observation, ran it at the wrong rate or stretched its action onto
+    /// the wrong envelope would still drive — just not like that.
+    /// </summary>
+    [Fact]
+    public void TheGameLapsLikeTheBakeDid()
+    {
+        if (!HasModel())
+            return;
+
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        RaceSimulation simulation = Build(track, out RaceCar car, out var driver);
+        using NeuralDriverController controller = driver;
+
+        const float step = 1f / NeuralDriverController.DecisionHz;
+        float lapMetres = track.LengthMeters;
+        float started = 0f;
+        float lap = 0f;
+        float previous = car.Progress.RaceDistanceMeters;
+        // Long enough for two crossings of the line: the car starts on it,
+        // so the first is a standing lap and the second closes a flying one.
+        for (int i = 0; i < 4200 && lap <= 0f; i++)   // 280 seconds of racing
+        {
+            simulation.Step(step);
+            float now = car.Progress.RaceDistanceMeters;
+            float time = (i + 1) * step;
+            if (MathF.Floor(now / lapMetres) > MathF.Floor(previous / lapMetres))
+            {
+                float line = MathF.Floor(now / lapMetres) * lapMetres;
+                float share = (line - previous) / MathF.Max(now - previous, 1e-6f);
+                float at = time - step + share * step;
+                if (started > 0f)
+                    lap = at - started;
+                started = at;
+            }
+            previous = now;
+        }
+
+        Console.WriteLine($"in-game flying lap {lap:0.000}s");
+        Assert.True(lap > 0f, "the car never completed a flying lap");
+        // The bake's own evaluation lap, with room for a different start
+        // and a different point on the circuit to begin from.
+        Assert.InRange(lap, 95f, 115f);
+    }
+
+    /// <summary>
     /// The network is exported rather than committed, and this xunit has no
     /// runtime skip, so a tree without one says so and passes rather than
     /// failing: the suite is not the place to discover that somebody has

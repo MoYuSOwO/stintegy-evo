@@ -10,6 +10,15 @@ public sealed class TrackSurfaceGeometry
     /// <summary>How far apart the coarse stations the meadow measures from are.</summary>
     private const float StationStepMeters = 5f;
 
+    /// <summary>
+    /// How far out the circuit's own verge reaches. Inside this band the
+    /// meadow is flat ground a fixed drop below the road, so the verge's
+    /// rim and the meadow are the same surface where they meet; the
+    /// meadow's own rolling starts here rather than under the barrier,
+    /// which is where it used to rise through the verge and show sky.
+    /// </summary>
+    public const float VergeMeters = 24f;
+
     private readonly float[] _heights;
     private readonly Vector2[] _stations;
     private readonly float _step;
@@ -71,7 +80,7 @@ public sealed class TrackSurfaceGeometry
     public float MeadowHeight(float x, float z)
     {
         (float s, float d) = NearestStation(new Vector2(x, z));
-        float t = Math.Clamp((MathF.Abs(d) - 18f) / 82f, 0f, 1f);
+        float t = Math.Clamp((MathF.Abs(d) - VergeMeters) / 82f, 0f, 1f);
         float away = t * t * (3f - 2f * t);
         return Height(s, 0f) - 2.6f + away *
             (MathF.Sin(x * 0.008f) * MathF.Cos(z * 0.006f) * 2f - 1.5f);
