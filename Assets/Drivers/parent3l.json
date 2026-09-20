@@ -1,0 +1,9 @@
+{
+  "checkpoint": "evalparent3l-2650000.pt",
+  "checkpoint_sha256": "cd9cb78af308927820aa2f68b75ee87cee7e0e40cb93b457d226d04ad9f9e780",
+  "checkpoint_step": 2650000,
+  "observation_size": 457,
+  "action_size": 2,
+  "head": "tanh(mean), deterministic",
+  "onnx_sha256": "210839f22ae062db06a62ee2f3421882672cec9f95f740afba8f7ee568aa1abd"
+}

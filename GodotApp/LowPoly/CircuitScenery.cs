@@ -75,8 +75,13 @@ public partial class CircuitScenery : Node3D
                 var sample = surface.Track.Sample(s + i * 9f);
                 float side = cluster % 2 == 0 ? 1 : -1;
                 var pos = sample.Center + sample.Normal * (side * (65f + (float)random.NextDouble() * 45f));
-                var pose = surface.Track.Project(pos);
-                if (MathF.Abs(pose.D) < pose.Sample.HalfWidth + pose.Sample.LeftBufferWidth + 8f)
+                // Measured against the scenery's own coarse centreline, not
+                // Core's projection: a tree stands a hundred metres out, and
+                // that is past the index a car is projected with, which
+                // throws rather than searching the whole circuit for it.
+                (float treeS, float treeD) = surface.NearestStation(pos);
+                TrackSample near = surface.Track.Sample(treeS);
+                if (MathF.Abs(treeD) < near.HalfWidth + near.LeftBufferWidth + 8f)
                 {
                     // Avoid placing decorative trees on a neighboring section of track.
                     multimesh.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(Vector3.One * 0.001f), new Vector3(pos.X, -100f, pos.Y)));

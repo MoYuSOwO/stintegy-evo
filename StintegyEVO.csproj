@@ -11,12 +11,22 @@
 
   <ItemGroup>
     <ProjectReference Include="Core/StintegyEVO.Core.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
+    <!-- The policy runs in the game process, so the game needs a runtime
+         that can execute a network. ONNX Runtime is MIT-licensed and is
+         the same component a shipped build would carry. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove=".godot/**/*.cs" />
     <Compile Remove="Core/**/*.cs" />
     <Compile Remove="Training/**/*.cs" />
+    <!-- Except the training adapter, which IS the observation contract: the
+         game builds the policy's 457 channels with the same source the bake
+         did, rather than with a copy that can drift from it. -->
+    <Compile Include="Training/StintegyEVO.TrainingHost/Adapter/DirectDriveObservation.cs" />
+    <Compile Include="Training/StintegyEVO.TrainingHost/Adapter/DirectDriveController.cs" />
+    <Compile Include="Training/StintegyEVO.TrainingHost/Environment/EnergyBudget.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->
     <Compile Remove="Tools/Tests/**/*.cs" />
     <Compile Include="Tools/Tests/**/*.cs" Condition="'$(PresentationSmoke)' == 'true'" />

@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="StintegyEVO"
-run/main_scene="res://Levels/lowpoly.tscn"
+run/main_scene="res://Levels/neural.tscn"
 config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
 config/icon="res://logo.svg"
 

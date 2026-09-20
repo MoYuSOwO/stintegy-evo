@@ -11,6 +11,12 @@
 
   <ItemGroup>
     <ProjectReference Include="../StintegyEVO.TrainingHost/StintegyEVO.TrainingHost.csproj" />
+    <!-- The game's neural controller, tested here because it depends on Core
+         and the training adapter and not on Godot: the one thing worth
+         checking is that the observation it feeds the policy in a race is
+         the observation the bake fed it, and that is a headless question. -->
+    <Compile Include="../../GodotApp/Drivers/NeuralDriverController.cs" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
   </ItemGroup>
 
   <ItemGroup>
