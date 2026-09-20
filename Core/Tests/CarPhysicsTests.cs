@@ -36,7 +36,6 @@ public sealed class CarPhysicsTests
             DownforceAccelPerSpeedSquared = 0f,
             AeroDragAccelPerSpeedSquared = 0f,
             RollingDragAccel = 0f,
-            CorneringScrubAccel = 0f,
             OverLimitCostCap = 0f
         };
         TireConfig tires = new()
@@ -437,11 +436,19 @@ public sealed class CarPhysicsTests
         DriverInput absurd = new(car.MaxCurvatureRequest, 0f);
         // Held for a second, because the wheels now take time to reach the
         // lock stops and an absurd request is only absurd once they have.
+        // The over-limit reading is taken along the way rather than at the
+        // end: a car asked for six times the grip it has now scrubs enough
+        // speed off to lose the back end before the second is out, and the
+        // spin choreography that follows reports no utilisation at all.
+        float worstOverLimit = 0f;
         for (int i = 0; i < 60; i++)
+        {
             CarPhysics.Step(state, car, tires, PhysicsInput(absurd), 1f / 60f);
+            worstOverLimit = Math.Max(worstOverLimit, state.Telemetry.OverLimit);
+        }
 
         Assert.True(
-            state.Telemetry.OverLimit > 0.5f,
+            worstOverLimit > 0.5f,
             "telemetry should still expose rubber dragged well past its peak"
         );
         Assert.True(state.Speed > 30f, "the cost should saturate rather than delete the speed");
@@ -822,7 +829,7 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(sliding, car, tires, input, 1f / 60f);
 
         Assert.True(sliding.Telemetry.CombinedGripLimiterCutAccel > 0f);
-        Assert.True(sliding.Telemetry.SideslipLossAccel > 0.5f);
+        Assert.True(sliding.Telemetry.InducedDragAccel > 0.5f);
         Assert.True(
             sliding.Telemetry.ActualLongitudinalAccel < aligned.Telemetry.ActualLongitudinalAccel,
             "existing lateral slip should dissipate speed independently of the limiter"
@@ -1627,7 +1634,6 @@ public sealed class CarPhysicsTests
             DownforceAccelPerSpeedSquared = 0f,
             AeroDragAccelPerSpeedSquared = 0f,
             RollingDragAccel = 0f,
-            CorneringScrubAccel = 0f
         };
         CarConfig softerFront = new()
         {
@@ -1637,7 +1643,6 @@ public sealed class CarPhysicsTests
             DownforceAccelPerSpeedSquared = 0f,
             AeroDragAccelPerSpeedSquared = 0f,
             RollingDragAccel = 0f,
-            CorneringScrubAccel = 0f
         };
         TireConfig tires = new()
         {
@@ -1731,7 +1736,6 @@ public sealed class CarPhysicsTests
             DownforceAccelPerSpeedSquared = 0f,
             AeroDragAccelPerSpeedSquared = 0f,
             RollingDragAccel = 0f,
-            CorneringScrubAccel = 0f
         };
         CarConfig extremeCompliance = new()
         {
@@ -1741,7 +1745,6 @@ public sealed class CarPhysicsTests
             DownforceAccelPerSpeedSquared = 0f,
             AeroDragAccelPerSpeedSquared = 0f,
             RollingDragAccel = 0f,
-            CorneringScrubAccel = 0f
         };
         TireConfig tires = new()
         {
@@ -2883,7 +2886,6 @@ public sealed class CarPhysicsTests
         {
             AeroDragAccelPerSpeedSquared = 0f,
             RollingDragAccel = 0f,
-            CorneringScrubAccel = 0f
         };
         CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
         CarStrategy strategy = CarStrategy.Default;
