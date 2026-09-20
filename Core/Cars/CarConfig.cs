@@ -298,7 +298,6 @@ public sealed class CarConfig
     /// </summary>
     public float DragReductionWakeDownforceRecovery { get; init; } = 0.5f;
 
-    public float CorneringScrubAccel { get; init; } = 1.15f;
     /// <summary>
     /// What is left of an axle's braking or drive once it is being asked
     /// for more than it has. Lateral force no longer passes through here -

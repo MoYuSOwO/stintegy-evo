@@ -24,6 +24,12 @@ namespace StintegyEVO.TrainingHost.Tests;
 /// every reward component of every step. The file is provenance -- if it is
 /// missing the test writes it and fails, and the only honest way to produce
 /// one is to run it on the pristine tree.
+///
+/// Re-taken on 2026-09-20 at the merge of master's cornering drag (#66):
+/// the physics changed on purpose, the parent3 chain was retired at this
+/// same merge (its heir continues by transplant onto this tree), so the
+/// pin moves with the world it guards. From here it guards THIS tree's
+/// solo path against the next refactor.
 /// </summary>
 public sealed class SoloFingerprintTests
 {

@@ -37,7 +37,7 @@ public sealed class BoundaryContactTimeTests
         // Driven into it rather than parked against it: a car placed past
         // the barrier is pushed back the moment it joins the race, so the
         // only way to be in contact is to arrive there.
-        (int steps, float total, float most) = DriveIntoTheBarrier(0.15f);
+        (int steps, float total, float most) = DriveIntoTheBarrier(LeanCurvature);
 
         Assert.True(steps > 0, "the car never reached the barrier");
         Assert.True(total > 0f, "contact was recorded as taking no time");
@@ -52,8 +52,8 @@ public sealed class BoundaryContactTimeTests
         // barrier for one substep and a step that leans on it throughout
         // used to be indistinguishable, which left a car that had already
         // touched with no reason to come off before the step was out.
-        (_, float gentle, _) = DriveIntoTheBarrier(0.15f, steerOffAfterContact: true);
-        (_, float hard, _) = DriveIntoTheBarrier(0.15f);
+        (_, float gentle, _) = DriveIntoTheBarrier(LeanCurvature, steerOffAfterContact: true);
+        (_, float hard, _) = DriveIntoTheBarrier(LeanCurvature);
 
         // A glance is a car that touches and steers away; a lean is one
         // that keeps pressing. Both arrive the same way. This used to be two
@@ -77,7 +77,7 @@ public sealed class BoundaryContactTimeTests
     [Fact]
     public void TheClockRestartsEveryStep()
     {
-        (int steps, float total, float most) = DriveIntoTheBarrier(0.15f);
+        (int steps, float total, float most) = DriveIntoTheBarrier(LeanCurvature);
 
         Assert.True(steps > 1, "needs more than one step to say anything");
         // A running total would have the last step holding all of it.
@@ -87,6 +87,20 @@ public sealed class BoundaryContactTimeTests
             "which means the clock is never being reset"
         );
     }
+
+    /// <summary>
+    /// The curvature these tests lean on the barrier with.
+    ///
+    /// It was 0.15, which at twenty-five metres a second asks the tyres for
+    /// ninety-four metres a second squared — six times what they have. That
+    /// was survivable while cornering was charged as a rate times the square
+    /// of utilisation; now that it is charged from the angle each axle is
+    /// actually dragged at, a car asked to turn that hard scrubs itself to a
+    /// standstill before it can lean on anything, and there is nothing left
+    /// to count the seconds of. The fixture asks for a corner the car can
+    /// hold instead, which is what leaning on a barrier looks like anyway.
+    /// </summary>
+    private const float LeanCurvature = 0.02f;
 
     /// <summary>
     /// Holds a curvature from the road centreline until the car finds the
