@@ -13,12 +13,18 @@ namespace StintegyEVO.TrainingHost.Environment;
 /// One agent step is one policy decision; the action chosen at step t
 /// steers the car through step t+1, a deliberate one-tick reaction latency.
 ///
-/// On world-v3 it is solo only. The scripted sparring partner of world-v2
-/// was the analytic driver and its planning stack, which left master with
-/// the boundary migration and is not carried here; a wheel-to-wheel stage
-/// will spar against a frozen checkpoint instead. The reward terms for
-/// contact, passing and relative progress are kept, and read zero with no
-/// opponent, so the reward's shape is the one world-v2 trained on.
+/// Solo by default; wheel-to-wheel when a caller asks for it. The scripted
+/// sparring partner of world-v2 was the analytic driver and its planning
+/// stack, which left master with the boundary migration, so the opponent
+/// here is not scripted at all: it is a second car on the same learned
+/// interface, handed an action from outside every step, which is how a
+/// frozen checkpoint spars. The reward terms for contact, passing and
+/// relative progress are kept, and read zero with no opponent, so the
+/// reward's shape is the one world-v2 trained on.
+///
+/// A solo episode is unchanged to the bit by the opponent's existence:
+/// nothing about the second car is drawn or built until after every draw a
+/// solo reset makes (SoloFingerprintTests pins this).
 ///
 /// The ego is an <see cref="IDriverController"/> reading frozen frames
 /// (<see cref="DirectDriveController"/>); the environment owns its clock
@@ -244,6 +250,16 @@ public sealed class DirectDriveDuelEnvironment
         new DriverAbilities()
     );
 
+    /// <summary>
+    /// The sparring partner's identity. Abilities are the same blank set:
+    /// what makes it a different driver is the policy behind its actions
+    /// and the fitment it races with, not a rating.
+    /// </summary>
+    private static readonly DriverProfile OpponentProfile = new(
+        "training-opponent",
+        new DriverAbilities()
+    );
+
     private readonly bool _solo;
     private readonly bool _randomiseEpisodeStart;
     private readonly bool _hiddenCurriculum;
@@ -259,6 +275,10 @@ public sealed class DirectDriveDuelEnvironment
     private RaceCar? _ego;
     private DirectDriveController? _egoDriver;
     private RaceCar? _opponent;
+    private DirectDriveController? _opponentDriver;
+    private EnergyBudget.Anchor _opponentBudgetAnchor;
+    private float _opponentRaceProgressAtStart;
+    private ulong _opponentNoiseState;
     private float _elapsedSeconds;
     private float _passHoldSeconds;
     private float _stalledHoldSeconds;
@@ -270,6 +290,23 @@ public sealed class DirectDriveDuelEnvironment
     public float EgoStartS { get; private set; }
     public float InitialForwardGapMeters { get; private set; }
     public CarStrategy EgoStrategy { get; private set; } = CarStrategy.Default;
+
+    /// <summary>Whether this environment carries a sparring partner.</summary>
+    public bool IsDuel => !_solo;
+
+    /// <summary>
+    /// The instruction the sparring partner is driving under, drawn per
+    /// episode like the ego's. Default with no opponent.
+    /// </summary>
+    public CarStrategy OpponentStrategy { get; private set; } = CarStrategy.Default;
+
+    /// <summary>
+    /// The sparring partner's own hidden draw — its limiter strength and
+    /// tyre stress, which is the fitment it races with. Drawn from the same
+    /// curriculum as the ego's and just as private: neither car is told the
+    /// other's. Nominal with no opponent, or with the curriculum off.
+    /// </summary>
+    public HiddenCurriculum.Draw OpponentCurriculum { get; private set; } = new(1f, 0f);
 
     /// <summary>
     /// This episode's hidden curriculum draw, for diagnostics only; the
@@ -378,14 +415,6 @@ public sealed class DirectDriveDuelEnvironment
         _raceMeters = raceKilometres * 1000f;
         _budgetLambda = budgetLambda;
         _budgetGamma = budgetGamma;
-        if (!solo)
-        {
-            throw new NotSupportedException(
-                "world-v3 trains solo. The analytic sparring partner left " +
-                "master with the boundary migration; wheel-to-wheel will " +
-                "spar against a frozen checkpoint."
-            );
-        }
         _randomiseEpisodeStart = randomiseEpisodeStart;
         _hiddenCurriculum = hiddenCurriculum;
         _episodeStarts = episodeStarts ?? new EpisodeStartDistribution();
@@ -425,28 +454,43 @@ public sealed class DirectDriveDuelEnvironment
         _solo = solo;
     }
 
-    public void Reset(long seed, Span<float> observation)
+    public void Reset(long seed, Span<float> observation) =>
+        Reset(seed, observation, Span<float>.Empty);
+
+    /// <summary>
+    /// Resets both seats. The opponent's span may be empty in a solo
+    /// environment, and must be the layout's size in a duel: its driver
+    /// reads the same frame through the same builder, from its own seat.
+    /// </summary>
+    public void Reset(long seed, Span<float> observation, Span<float> opponentObservation)
     {
         StableRandom random = new(unchecked((ulong)seed));
         TrackChoice choice = TrainingTracks[random.NextInt(TrainingTracks.Length)];
-        ResetCore(choice, ref random, observation);
+        ResetCore(choice, ref random, observation, opponentObservation);
     }
 
-    public void ResetHeldOut(long seed, Span<float> observation)
+    public void ResetHeldOut(long seed, Span<float> observation) =>
+        ResetHeldOut(seed, observation, Span<float>.Empty);
+
+    public void ResetHeldOut(long seed, Span<float> observation, Span<float> opponentObservation)
     {
         StableRandom random = new(unchecked((ulong)seed));
-        ResetCore(HeldOutTrack, ref random, observation);
+        ResetCore(HeldOutTrack, ref random, observation, opponentObservation);
     }
+
+    public void ResetTrack(string trackFamily, long seed, Span<float> observation) =>
+        ResetTrack(trackFamily, seed, observation, Span<float>.Empty);
 
     public void ResetTrack(
         string trackFamily,
         long seed,
-        Span<float> observation
+        Span<float> observation,
+        Span<float> opponentObservation
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trackFamily);
         StableRandom random = new(unchecked((ulong)seed));
-        ResetCore(FindTrack(trackFamily), ref random, observation);
+        ResetCore(FindTrack(trackFamily), ref random, observation, opponentObservation);
     }
 
     public void ResetScenario(
@@ -456,6 +500,24 @@ public sealed class DirectDriveDuelEnvironment
         float forwardGapMeters,
         float startSpeedMetersPerSecond,
         Span<float> observation
+    ) => ResetScenario(
+        trackFamily, seed, egoStartS, forwardGapMeters,
+        startSpeedMetersPerSecond, observation, Span<float>.Empty
+    );
+
+    /// <summary>
+    /// A scenario with both seats filled: the gap is where the sparring
+    /// partner starts, which is what makes this the way to set up a
+    /// wheel-to-wheel situation on purpose.
+    /// </summary>
+    public void ResetScenario(
+        string trackFamily,
+        long seed,
+        float egoStartS,
+        float forwardGapMeters,
+        float startSpeedMetersPerSecond,
+        Span<float> observation,
+        Span<float> opponentObservation
     )
     {
         if (!float.IsFinite(egoStartS))
@@ -475,6 +537,7 @@ public sealed class DirectDriveDuelEnvironment
             FindTrack(trackFamily),
             ref random,
             observation,
+            opponentObservation,
             egoStartS,
             forwardGapMeters,
             startSpeedMetersPerSecond
@@ -484,6 +547,23 @@ public sealed class DirectDriveDuelEnvironment
     public TrainingStepResult Step(
         ReadOnlySpan<float> actionValues,
         Span<float> observation
+    ) => Step(actionValues, ReadOnlySpan<float>.Empty, observation, Span<float>.Empty);
+
+    /// <summary>
+    /// One decision from each seat. Both actions are committed before
+    /// anything moves, so neither car's controls are a step fresher than
+    /// the other's, and both observations are sampled at the far end of the
+    /// same interval.
+    ///
+    /// The result is the ego's, entirely: the sparring partner is scenery
+    /// with a policy behind it, and nothing about its own race is rewarded
+    /// here. In a solo environment the opponent's action and span are empty.
+    /// </summary>
+    public TrainingStepResult Step(
+        ReadOnlySpan<float> actionValues,
+        ReadOnlySpan<float> opponentActionValues,
+        Span<float> observation,
+        Span<float> opponentObservation
     )
     {
         if (_simulation is null || _ego is null || _egoDriver is null)
@@ -512,6 +592,26 @@ public sealed class DirectDriveDuelEnvironment
         // the interval it is credited with, and scaled by the ceilings the
         // observation that produced it reported.
         _egoDriver.CommitAction(action);
+        if (_opponentDriver is not null)
+        {
+            if (opponentActionValues.Length != DirectDriveObservation.ActionSize)
+            {
+                throw new ArgumentException(
+                    "A duel step needs an action for the sparring partner too.",
+                    nameof(opponentActionValues)
+                );
+            }
+            Span<float> opponentAction = stackalloc float[
+                DirectDriveObservation.ActionSize
+            ];
+            for (int i = 0; i < opponentAction.Length; i++)
+            {
+                opponentAction[i] = float.IsFinite(opponentActionValues[i])
+                    ? Math.Clamp(opponentActionValues[i], -1f, 1f)
+                    : 0f;
+            }
+            _opponentDriver.CommitAction(opponentAction);
+        }
         float egoDistanceBefore = _ego.Progress.TotalDistance;
         float opponentDistanceBefore =
             _opponent?.Progress.TotalDistance ?? 0f;
@@ -524,6 +624,7 @@ public sealed class DirectDriveDuelEnvironment
         // next action will be committed at: one observation per decision,
         // and it is the same instant on both sides of the pipe.
         SampleObservation(observation);
+        SampleOpponentObservation(opponentObservation);
 
         float egoProgress = _ego.Progress.TotalDistance - egoDistanceBefore;
         float opponentProgress = _opponent is null
@@ -699,12 +800,15 @@ public sealed class DirectDriveDuelEnvironment
         TrackChoice choice,
         ref StableRandom random,
         Span<float> observation,
+        Span<float> opponentObservation,
         float? egoStartS = null,
         float? forwardGapMeters = null,
         float? startSpeedMetersPerSecond = null
     )
     {
         EnsureObservationSize(observation);
+        if (!opponentObservation.IsEmpty)
+            EnsureObservationSize(opponentObservation);
         SpinEventsThisStep = 0;
         TrackData track = choice.Track.Value;
         TrackFamily = choice.Name;
@@ -828,6 +932,61 @@ public sealed class DirectDriveDuelEnvironment
         );
         _simulation.AddCar(_ego);
         _opponent = null;
+        _opponentDriver = null;
+        OpponentStrategy = CarStrategy.Default;
+        OpponentCurriculum = new(1f, 0f);
+
+        // The sparring partner, built after every draw a solo episode makes
+        // and from draws of its own, so that turning the opponent on moves
+        // nothing in a solo reset. It starts ahead by the forward gap, on
+        // the centreline at the same estimated speed, with its own fitment
+        // and its own pit-wall instruction: a second car, not a mirror.
+        if (!_solo)
+        {
+            CarStrategy opponentDrawn = new(
+                (TireUsageMode)(random.NextInt(5) + 1),
+                (PowerOutputMode)(random.NextInt(5) + 1)
+            );
+            HiddenCurriculum.Draw opponentDraw = HiddenCurriculum.FromUniforms(
+                random.NextSingle(0f, 1f),
+                random.NextSingle(0f, 1f),
+                random.NextSingle(0f, 1f),
+                random.NextSingle(0f, 1f)
+            );
+            float opponentStress = HiddenCurriculum.TireStressFromUniforms(
+                random.NextSingle(0f, 1f), random.NextSingle(0f, 1f));
+            OpponentStrategy = opponentDrawn;
+            OpponentCurriculum = _hiddenCurriculum
+                ? opponentDraw with { TireStressScale = opponentStress }
+                : new(1f, 0f);
+            // Its own noise stream, so neither car's perception disturbs
+            // the other's and a seed still reproduces both.
+            _opponentNoiseState = random.NextSeed();
+
+            float opponentS = track.WrapS(EgoStartS + InitialForwardGapMeters);
+            CarConfig opponentConfig = new()
+            {
+                CombinedGripLimiterStrength = OpponentCurriculum.LimiterStrength
+            };
+            TireConfig opponentTires = TiresFor(
+                egoStart, OpponentCurriculum.TireStressScale
+            );
+            _opponentDriver = new DirectDriveController(
+                opponentConfig, opponentTires
+            );
+            _opponent = CreateCar(
+                "training-opponent",
+                track,
+                opponentS,
+                startSpeed,
+                new Driver(OpponentProfile, _opponentDriver),
+                opponentConfig,
+                opponentTires,
+                OpponentStrategy,
+                egoStart
+            );
+            _simulation.AddCar(_opponent);
+        }
 
         // A hair of simulated time, only so that the telemetry an
         // observation reads is the car's own rather than a default. It used
@@ -838,7 +997,9 @@ public sealed class DirectDriveDuelEnvironment
         _egoDistanceOrigin = _ego.Progress.TotalDistance;
         AnchorBudget();
         _opponentDistanceOrigin = _opponent?.Progress.TotalDistance ?? 0f;
+        AnchorOpponentBudget();
         SampleObservation(observation);
+        SampleOpponentObservation(opponentObservation);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
         _elapsedSeconds = 0f;
         _passHoldSeconds = 0f;
@@ -905,6 +1066,64 @@ public sealed class DirectDriveDuelEnvironment
     }
 
     /// <summary>
+    /// The sparring partner's own view of the same instant, through the
+    /// same builder from its own seat: the ego is simply an opponent in it.
+    /// Nothing here is a mirror of the block above — its geometry, its
+    /// tyres and its instruction are its own — and the ego's observation is
+    /// untouched by it.
+    /// </summary>
+    private void SampleOpponentObservation(Span<float> observation)
+    {
+        if (observation.IsEmpty)
+            return;
+        if (_opponentDriver is null || _opponent is null)
+        {
+            throw new InvalidOperationException(
+                "A solo environment has no opponent to observe from."
+            );
+        }
+        _opponentDriver.BudgetDeviation = OpponentBudgetDeviation;
+        DriverContext context = _simulation!.CaptureFrameContext(_opponent);
+        _opponentDriver.Observe(in context);
+        _opponentDriver.LastObservation.CopyTo(observation);
+        if (OpponentCurriculum.NoiseScale > 0f)
+        {
+            foreach ((int channel, float sigmaMax) in HiddenCurriculum.NoisyChannels)
+            {
+                observation[channel] +=
+                    NextOpponentGaussian() * sigmaMax * OpponentCurriculum.NoiseScale;
+            }
+        }
+    }
+
+    /// <summary>How far through the race the sparring partner is.</summary>
+    public float OpponentRaceProgress => _opponent is null
+        ? 0f
+        : _opponentRaceProgressAtStart +
+          (_opponent.Progress.TotalDistance - _opponentDistanceOrigin) / _raceMeters;
+
+    /// <summary>The sparring partner's charge against its own rung's line.</summary>
+    public float OpponentBudgetDeviation => _opponent is null
+        ? 0f
+        : EnergyBudget.Deviation(
+            _opponentBudgetAnchor,
+            OpponentRaceProgress,
+            _opponent.State.Energy.Primary,
+            OpponentStrategy.PowerRung);
+
+    private void AnchorOpponentBudget()
+    {
+        if (_opponent is null)
+            return;
+        _opponentRaceProgressAtStart = EnergyBudget.ProgressOnNormalRace(
+            _opponent.State.Energy.Primary
+        );
+        _opponentBudgetAnchor = new EnergyBudget.Anchor(
+            OpponentRaceProgress, _opponent.State.Energy.Primary
+        );
+    }
+
+    /// <summary>
     /// Zero-mean Gaussian noise on the perception channels, at this
     /// episode's scale of each channel's maximum. Drawn from a stream of its
     /// own, seeded at reset, so the noise never moves the episode's other
@@ -922,6 +1141,23 @@ public sealed class DirectDriveDuelEnvironment
         float u1 = 1f - NextNoiseUniform();
         float u2 = NextNoiseUniform();
         return MathF.Sqrt(-2f * MathF.Log(u1)) * MathF.Cos(2f * MathF.PI * u2);
+    }
+
+    private float NextOpponentGaussian()
+    {
+        float u1 = 1f - NextOpponentUniform();
+        float u2 = NextOpponentUniform();
+        return MathF.Sqrt(-2f * MathF.Log(u1)) * MathF.Cos(2f * MathF.PI * u2);
+    }
+
+    private float NextOpponentUniform()
+    {
+        _opponentNoiseState += 0x9E3779B97F4A7C15UL;
+        ulong value = _opponentNoiseState;
+        value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9UL;
+        value = (value ^ (value >> 27)) * 0x94D049BB133111EBUL;
+        value ^= value >> 31;
+        return (float)((value >> 40) * (1.0 / (1UL << 24)));
     }
 
     private float NextNoiseUniform()
