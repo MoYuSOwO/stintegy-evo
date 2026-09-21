@@ -5,17 +5,55 @@ using System.Numerics;
 
 namespace StintegyEVO.Core.Track;
 
+/// <summary>
+/// The four things about a starting grid that belong to the circuit, and
+/// nothing else.
+/// </summary>
+/// <remarks>
+/// Where the line is, how many boxes are painted, which side pole sits on and
+/// how far out the columns stand are facts a circuit's author knows and no
+/// geometry can recover: a road does not say where somebody chose to paint a
+/// line, counting how many boxes would fit is not the same question as how
+/// many are there, and how far apart two columns of cars stand depends on how
+/// wide the road is where they stand — ten and a half metres at Monaco
+/// against seventeen at Sepang.
+///
+/// Everything below those — the spacing along the road, the setback, the size
+/// of a box — is the same on every circuit in the world, so it is written
+/// once here rather than copied into eleven places where the copies can drift.
+/// Nothing in this file checks that an authored value is sensible: a circuit
+/// that wants its grid in the middle of a corner is entitled to one.
+/// </remarks>
 public struct TrackGridConfig
 {
+    /// <summary>Which centreline node the start/finish line crosses.</summary>
     public int StartingLineIdx;
+
+    /// <summary>How many boxes this circuit paints. A fact, not a capacity.</summary>
     public int GridCount;
-    public float GridOffset;
-    public int FirstGridIdx;
+
+    /// <summary>Whether pole is on the left of the centreline.</summary>
     public bool IsFirstGridLeft;
-    public int GridStepDist;
+
+    /// <summary>
+    /// Half the lateral stagger: pole stands this far one side of the
+    /// centreline and second this far the other. How wide the road is at the
+    /// grid sets the ceiling, which is why it is authored and not a constant.
+    /// </summary>
+    public float GridOffset;
 
     public const float GridLength = 4.5f;
     public const float GridWidth = 2.4f;
+
+    /// <summary>
+    /// Box to box along the road. Consecutive boxes alternate sides, so the
+    /// gap between two cars in the same column is sixteen metres, which is
+    /// the Grand Prix figure.
+    /// </summary>
+    public const int GridStepMeters = 8;
+
+    /// <summary>How far behind the line pole sits.</summary>
+    public const int PoleSetbackMeters = 10;
 }
 
 public readonly struct Grid
@@ -158,7 +196,11 @@ public sealed class StartingGridAccessor
     public float GetS(int gridPos)
     {
         var config = _data.GridConfig;
-        float s = (config.FirstGridIdx - (gridPos - 1) * config.GridStepDist) * TrackData.StepLength;
+        float s = (
+            config.StartingLineIdx
+            - TrackGridConfig.PoleSetbackMeters
+            - (gridPos - 1) * TrackGridConfig.GridStepMeters
+        ) * TrackData.StepLength;
         return _data.WrapS(s);
     }
 }

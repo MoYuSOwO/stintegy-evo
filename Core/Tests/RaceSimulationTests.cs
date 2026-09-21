@@ -693,10 +693,8 @@ public sealed class RaceSimulationTests
             {
                 StartingLineIdx = 0,
                 GridCount = 8,
-                GridOffset = 2f,
-                FirstGridIdx = 12,
                 IsFirstGridLeft = true,
-                GridStepDist = 8
+                GridOffset = 2f
             });
     }
 
