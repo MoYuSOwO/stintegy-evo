@@ -8,10 +8,23 @@ namespace StintegyEVO.GodotApp.Scenery;
 /// <summary>
 /// Puts a plan's props on the ground.
 ///
-/// The library is a directory of Godot scenes and models: drop
-/// <c>oak.glb</c> into <see cref="LibraryPath"/> and a plan may stand an
-/// "oak" beside any corner. Nothing is registered, compiled in or listed
-/// anywhere else — a prop exists because its file does.
+/// A plan names a prop in one of three ways, and the three are the point
+/// of this class:
+///
+/// <list type="bullet">
+/// <item><b>By catalogue number.</b> <c>"prop": 2</c> is whatever
+/// <see cref="CataloguePath"/> says number two is. The numbers are the
+/// stable handle on the props that ship with the game: rename the file,
+/// re-model the tree, and every plan that asked for a 2 still gets a
+/// grandstand.</item>
+/// <item><b>By name.</b> <c>"prop": "pine"</c> is <c>pine.glb</c> or
+/// <c>pine.tscn</c> in <see cref="LibraryPath"/>. Nothing registers it —
+/// a prop exists because its file does.</item>
+/// <item><b>By its own path.</b> <c>"prop": "res://Assets/MyTrack/oak.glb"</c>
+/// or a <c>user://</c> path is loaded as given, which is how a circuit
+/// brings scenery nobody else has. Nothing needs to be added to the
+/// library, and nothing needs a number.</item>
+/// </list>
 ///
 /// A prop the library does not have is reported once and skipped. A
 /// circuit missing a tree is a circuit missing a tree; a circuit that
@@ -31,12 +44,21 @@ public sealed partial class SceneryLoader : Node3D
     public const string LibraryPath = "res://Assets/Scenery";
 
     /// <summary>
+    /// The numbered props: which file each of the game's own prop numbers
+    /// means. A plan that asks for a number gets whatever this says, so
+    /// the default scenery can be re-cut without rewriting the circuits
+    /// that use it.
+    /// </summary>
+    public const string CataloguePath = "res://Assets/Scenery/catalogue.json";
+
+    /// <summary>
     /// How many of the same single-mesh prop it takes before they are
     /// drawn as one batch instead of separate nodes.
     /// </summary>
     private const int BatchFrom = 8;
 
     private readonly Dictionary<string, PackedScene?> _library = [];
+    private Dictionary<string, string>? _catalogue;
 
     /// <summary>
     /// Builds a plan's scenery under this node. The surface is what puts
@@ -152,28 +174,83 @@ public sealed partial class SceneryLoader : Node3D
     }
 
     /// <summary>
-    /// The prop's file, if the library has one: a Godot scene or a model,
-    /// by that name. Looked up once and remembered, including the misses.
+    /// The prop's file: a catalogue number, a name in the library, or a
+    /// path of its own. Looked up once and remembered, including the
+    /// misses, so a plan with fifty of the same tree reads one file.
     /// </summary>
     private PackedScene? Resolve(string prop)
     {
         if (_library.TryGetValue(prop, out PackedScene? found))
             return found;
 
-        PackedScene? scene = null;
-        foreach (string extension in new[] { ".tscn", ".scn", ".glb", ".gltf" })
-        {
-            string path = $"{LibraryPath}/{prop}{extension}";
-            if (!ResourceLoader.Exists(path))
-                continue;
-            scene = ResourceLoader.Load<PackedScene>(path);
-            if (scene is not null)
-                break;
-        }
+        PackedScene? scene = Load(prop);
         if (scene is null)
-            GD.PushWarning($"scenery: no prop named '{prop}' in {LibraryPath}");
+        {
+            GD.PushWarning(
+                $"scenery: nothing to load for prop '{prop}' -- not a " +
+                $"catalogue number, not in {LibraryPath}, not a path"
+            );
+        }
         _library[prop] = scene;
         return scene;
+    }
+
+    private PackedScene? Load(string prop)
+    {
+        // A number is the game's own prop, through the catalogue, so that
+        // the number outlives the file it currently points at.
+        if (int.TryParse(prop, out _))
+        {
+            string? named = Catalogue().GetValueOrDefault(prop);
+            return named is null ? null : ByName(named);
+        }
+        // A path is somebody's own asset, loaded exactly as written.
+        if (prop.Contains("://", StringComparison.Ordinal) ||
+            prop.Contains('/', StringComparison.Ordinal))
+        {
+            return ResourceLoader.Exists(prop)
+                ? ResourceLoader.Load<PackedScene>(prop)
+                : null;
+        }
+        return ByName(prop);
+    }
+
+    private static PackedScene? ByName(string name)
+    {
+        foreach (string extension in new[] { ".tscn", ".scn", ".glb", ".gltf" })
+        {
+            string path = $"{LibraryPath}/{name}{extension}";
+            if (ResourceLoader.Exists(path))
+                return ResourceLoader.Load<PackedScene>(path);
+        }
+        return null;
+    }
+
+    private Dictionary<string, string> Catalogue()
+    {
+        if (_catalogue is not null)
+            return _catalogue;
+        _catalogue = [];
+        if (!Godot.FileAccess.FileExists(CataloguePath))
+            return _catalogue;
+        try
+        {
+            using var file = Godot.FileAccess.Open(
+                CataloguePath, Godot.FileAccess.ModeFlags.Read
+            );
+            foreach ((string number, string name) in
+                     SceneryCatalogue.Parse(file.GetAsText()))
+            {
+                _catalogue[number] = name;
+            }
+        }
+        catch (Exception error)
+        {
+            GD.PushWarning(
+                $"scenery: {CataloguePath} could not be read -- {error.Message}"
+            );
+        }
+        return _catalogue;
     }
 
     /// <summary>

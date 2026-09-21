@@ -108,9 +108,7 @@ public sealed class SceneryPlan
             );
         }
         return new SceneryPlacement(
-            Prop: prop.TryGetProperty("prop", out JsonElement name)
-                ? name.GetString() ?? string.Empty
-                : string.Empty,
+            Prop: PropName(prop),
             S: Number(prop, "s", 0f),
             D: Number(prop, "d", 0f),
             Yaw: Number(prop, "yaw", 0f),
@@ -122,6 +120,24 @@ public sealed class SceneryPlan
             ),
             Repeat: repeat
         );
+    }
+
+    /// <summary>
+    /// How the plan named its prop, as written: a number stays a number
+    /// ("2"), a name stays a name ("pine"), a path stays a path. JSON has
+    /// two ways to write a number and a person will use both, so
+    /// <c>"prop": 2</c> and <c>"prop": "2"</c> are the same prop.
+    /// </summary>
+    private static string PropName(JsonElement prop)
+    {
+        if (!prop.TryGetProperty("prop", out JsonElement name))
+            return string.Empty;
+        return name.ValueKind switch
+        {
+            JsonValueKind.Number => name.GetRawText(),
+            JsonValueKind.String => name.GetString() ?? string.Empty,
+            _ => string.Empty
+        };
     }
 
     private static float Number(JsonElement owner, string name, float fallback) =>
@@ -144,7 +160,11 @@ public sealed class SceneryPlan
         for (int i = 0; i < Props.Count; i++)
         {
             SceneryPlacement prop = Props[i];
-            text.Append("    { \"prop\": \"").Append(prop.Prop).Append("\", ");
+            // A number goes back out as a number, which is how a person
+            // writes one and how the catalogue reads.
+            bool numbered = int.TryParse(prop.Prop, out _);
+            text.Append("    { \"prop\": ");
+            text.Append(numbered ? prop.Prop : $"\"{prop.Prop}\"").Append(", ");
             text.Append("\"s\": ").Append(Round(prop.S)).Append(", ");
             text.Append("\"d\": ").Append(Round(prop.D)).Append(", ");
             text.Append("\"yaw\": ").Append(Round(prop.Yaw, 3)).Append(", ");
@@ -189,6 +209,11 @@ public sealed class SceneryPlan
 /// One prop, standing at a station: which prop, where along and across the
 /// circuit, which way it faces, how big, and whether its facing is
 /// measured from the road or from the world.
+///
+/// <see cref="Prop"/> is whichever of the three ways the plan named it —
+/// a catalogue number, a name in the library, or a path to somebody's own
+/// asset. It is carried as written and resolved when it is loaded, so a
+/// plan that names a file this build has never seen still reads.
 /// </summary>
 public readonly record struct SceneryPlacement(
     string Prop,

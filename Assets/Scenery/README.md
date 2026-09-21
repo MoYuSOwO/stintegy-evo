@@ -5,6 +5,18 @@ beside the road. A prop exists because its file does: nothing registers it,
 nothing lists it, nothing compiles it in. Drop `oak.glb` in here and any
 plan may ask for `"prop": "oak"`.
 
+`catalogue.json` gives the props that ship with the game their numbers:
+
+```json
+{ "props": { "1": "pine", "2": "grandstand" } }
+```
+
+A plan that asks for `"prop": 1` gets whatever the catalogue says 1 is, so
+the default scenery can be re-modelled or renamed without rewriting a
+single circuit. Numbering is for the shared props only — a circuit with
+scenery of its own names the file instead, from anywhere in the project,
+and never appears here.
+
 Accepted: `.tscn`, `.scn`, `.glb`, `.gltf`, looked up in that order by name.
 
 Two kinds, and the difference is only about how they are drawn:

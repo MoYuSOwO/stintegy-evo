@@ -68,18 +68,10 @@ public partial class CircuitView3D : Node3D
     {
         if (string.IsNullOrWhiteSpace(planPath))
             return;
-        var scenery = new Scenery.SceneryLoader { Name = "Scenery" };
-        AddChild(scenery);
-        // The author's own seat, always available: F2 in the running game
-        // turns the viewer into the scenery editor, because the viewer is
-        // the only place the circuit actually exists (see SceneryEditMode).
-        var editing = new Scenery.SceneryEditMode { Name = "SceneryEditMode" };
-        AddChild(editing);
-        editing.Initialize(
-            Surface, scenery, Scenery.SceneryPlan.TrackOf(planPath), planPath
-        );
         if (!Godot.FileAccess.FileExists(planPath))
             return;
+        var scenery = new Scenery.SceneryLoader { Name = "Scenery" };
+        AddChild(scenery);
         try
         {
             using var file = Godot.FileAccess.Open(planPath, Godot.FileAccess.ModeFlags.Read);

@@ -19,10 +19,11 @@ public sealed class SceneryPlanTests
         {
           "track": "silverstone",
           "props": [
-            { "prop": "grandstand", "s": 120.0, "d": -46.0, "yaw": 3.142, "scale": 1.0 },
+            { "prop": 2, "s": 120.0, "d": -46.0, "yaw": 3.142, "scale": 1.0 },
             { "prop": "pine", "s": 300.0, "d": 68.0, "scale": 1.15,
               "repeat": { "count": 3, "step_s": 26.0, "step_d": 2.5 } },
-            { "prop": "post", "s": 10.0, "d": 5.0, "align": "world", "height": 1.5 }
+            { "prop": "res://Assets/TrackScenery/monza/tower.glb",
+              "s": 10.0, "d": 5.0, "align": "world", "height": 1.5 }
           ]
         }
         """;
@@ -34,7 +35,13 @@ public sealed class SceneryPlanTests
 
         Assert.Equal("silverstone", plan.Track);
         Assert.Equal(3, plan.Props.Count);
-        Assert.Equal("grandstand", plan.Props[0].Prop);
+        // The three ways a plan may name a prop, carried as written: a
+        // catalogue number, a name in the library, a path of its own.
+        Assert.Equal("2", plan.Props[0].Prop);
+        Assert.Equal("pine", plan.Props[1].Prop);
+        Assert.Equal(
+            "res://Assets/TrackScenery/monza/tower.glb", plan.Props[2].Prop
+        );
         Assert.Equal(-46f, plan.Props[0].D);
         Assert.Equal(1.15f, plan.Props[1].Scale, 3);
         Assert.True(plan.Props[0].AlignToTrack);
@@ -103,6 +110,36 @@ public sealed class SceneryPlanTests
         SceneryPlacement only = Assert.Single(plan.Props);
         Assert.Equal("pine", only.Prop);
         Assert.Equal(5f, only.S);
+    }
+
+    [Fact]
+    public void ANumberedPropIsWrittenBackAsANumber()
+    {
+        // Not as a string: a person writing the file writes 2, and a file
+        // the editor rewrote should still look like the one they wrote.
+        string written = SceneryPlan.Parse(Sample).ToJson();
+
+        Assert.Contains("\"prop\": 2,", written);
+        Assert.Contains("\"prop\": \"pine\",", written);
+        Assert.Contains("\"prop\": \"res://", written);
+    }
+
+    /// <summary>
+    /// The catalogue is what a number means. Its whole purpose is the
+    /// indirection: the file a number points at can change without any
+    /// circuit's plan changing.
+    /// </summary>
+    [Fact]
+    public void TheCatalogueAnswersANumberWithAName()
+    {
+        var numbered = SceneryCatalogue.Parse("""
+            { "props": { "1": "pine", "2": "grandstand", "7": "" } }
+            """).ToDictionary(entry => entry.Key, entry => entry.Value);
+
+        Assert.Equal("pine", numbered["1"]);
+        Assert.Equal("grandstand", numbered["2"]);
+        // An entry with no file named is no entry at all.
+        Assert.False(numbered.ContainsKey("7"));
     }
 
     [Fact]
