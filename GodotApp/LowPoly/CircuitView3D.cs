@@ -31,20 +31,73 @@ public partial class CircuitView3D : Node3D
                     float ea = side * sa.HalfWidth, eb = side * sb.HalfWidth;
                     float wa = sa.HalfWidth + (side == 1 ? sa.LeftBufferWidth : sa.RightBufferWidth);
                     float wb = sb.HalfWidth + (side == 1 ? sb.LeftBufferWidth : sb.RightBufferWidth);
-                    Strip(mesh, a, b, ea, side * wa, eb, side * wb, Runoff, 0f);
-                    Strip(mesh, a, b, ea, ea + side * 0.14f, eb, eb + side * 0.14f, LowPolyMesh.Ivory, 0.045f);
-                    // Kerbs appear only where there is room and the road actually turns.
-                    if (MathF.Abs(sa.Curvature) > 0.0012f)
-                        Strip(mesh, a, b, ea + side * 0.18f, ea + side * 1.1f, eb + side * 0.18f, eb + side * 1.1f,
-                            i % 2 == 0 ? LowPolyMesh.Vermilion : LowPolyMesh.Ivory, 0.065f);
+                    // Run-off begins where the kerb ends, because the kerb is
+                    // the first 0.6 m of the buffer and not a thing beside it
+                    // (SurfaceGrip: racing surface to the line, kerb for
+                    // KerbWidthMeters past it, then the buffer's own grip).
+                    // The narrowest buffer there is equals the kerb, so a
+                    // street circuit renders as kerb and then wall, with no
+                    // run-off in between, which is what the grammar says.
+                    float kerbA = ea + side * SurfaceGrip.KerbWidthMeters;
+                    float kerbB = eb + side * SurfaceGrip.KerbWidthMeters;
+                    if (wa - sa.HalfWidth > SurfaceGrip.KerbWidthMeters + 1e-3f)
+                        Strip(mesh, a, b, kerbA, side * wa, kerbB, side * wb, Runoff, 0f);
+                    // The white line is the last of the racing surface, not
+                    // the first of the run-off: painted inside its own edge.
+                    Strip(mesh, a, b, ea - side * 0.12f, ea, eb - side * 0.12f, eb, LowPolyMesh.Ivory, 0.03f);
                     Wall(mesh, a, b, side * wa, side * wb);
                     Verge(mesh, a, b, side * wa, side * wb, side);
                 }
             }
             AddChild(mesh.Instance($"Road_{begin}"));
         }
+        BuildKerbs();
         BuildMarkings();
-        var scenery = new CircuitScenery(); AddChild(scenery); scenery.Build(Surface);
+    }
+
+    /// <summary>
+    /// The kerb, everywhere, on both sides.
+    ///
+    /// The domain has one grammar for every edge of every circuit: racing
+    /// surface up to the white line, then <see cref="SurfaceGrip.KerbWidthMeters"/>
+    /// of kerb, then the buffer — and the narrowest buffer permitted is the
+    /// kerb itself, so there is no case anywhere of a line with no kerb
+    /// behind it. The renderer used to paint one only where the road turned
+    /// hard enough, in a width it chose for itself, which drew a circuit
+    /// that the physics does not agree exists.
+    ///
+    /// The stripes are a metre each, which is what makes it read as a kerb
+    /// rather than a red line, and they are drawn in their own pass because
+    /// the road's own segments are three metres long. The strip is flat:
+    /// the grip ramp across it is real and priced in the physics, but a
+    /// profile is not something a car here ever drives over.
+    /// </summary>
+    private void BuildKerbs()
+    {
+        TrackData track = Surface.Track;
+        const float stripe = 1f;
+        int stripes = (int)MathF.Ceiling(track.LengthMeters / stripe);
+        float step = track.LengthMeters / stripes;
+        for (int begin = 0; begin < stripes; begin += 240)
+        {
+            var mesh = new LowPolyMesh();
+            for (int i = begin; i < Math.Min(begin + 240, stripes); i++)
+            {
+                float a = i * step, b = (i + 1) * step;
+                float halfA = track.Sample(a).HalfWidth, halfB = track.Sample(b).HalfWidth;
+                Color color = i % 2 == 0 ? LowPolyMesh.Vermilion : LowPolyMesh.Ivory;
+                foreach (int side in new[] { -1, 1 })
+                {
+                    Strip(
+                        mesh, a, b,
+                        side * halfA, side * (halfA + SurfaceGrip.KerbWidthMeters),
+                        side * halfB, side * (halfB + SurfaceGrip.KerbWidthMeters),
+                        color, 0.035f
+                    );
+                }
+            }
+            AddChild(mesh.Instance($"Kerb_{begin}"));
+        }
     }
     public Vector3 Point(float s, float d, float lift = 0f) => LowPolyMesh.V(Surface.Point(s, d)) + Vector3.Up * lift;
     private void Strip(LowPolyMesh mesh, float a, float b, float a0, float a1, float b0, float b1, Color color, float lift)
@@ -58,11 +111,23 @@ public partial class CircuitView3D : Node3D
         if (side > 0) { mesh.Quad(p, q, q + up, p + up, col); mesh.Quad(r, s, s + up, r + up, col); }
         else { mesh.Quad(q, p, p + up, q + up, col); mesh.Quad(s, r, r + up, s + up, col); }
     }
+    /// <summary>
+    /// The ground from the barrier out to where the meadow takes over.
+    ///
+    /// Its outer rim is put at exactly the height the meadow has at that
+    /// point, rather than at a constant drop below the road: the two
+    /// surfaces then meet instead of one hanging over the other, which is
+    /// what a strip of sky under the grass at the edge of a climbing
+    /// section was. The meadow itself runs unbroken beneath all of this —
+    /// under the road as well — so nothing here can leave a hole.
+    /// </summary>
     private void Verge(LowPolyMesh mesh, float a, float b, float da, float db, int side)
     {
         Vector3 p = Point(a, da), q = Point(b, db);
-        Vector3 r = Point(b, db + side * 18f), t = Point(a, da + side * 18f);
-        r.Y = Surface.Height(b, 0f) - 2.6f; t.Y = Surface.Height(a, 0f) - 2.6f;
+        Vector3 r = Point(b, db + side * TrackSurfaceGeometry.VergeMeters);
+        Vector3 t = Point(a, da + side * TrackSurfaceGeometry.VergeMeters);
+        r.Y = Surface.MeadowHeight(r.X, r.Z);
+        t.Y = Surface.MeadowHeight(t.X, t.Z);
         mesh.GroundQuad(p, q, r, t, Grass);
     }
     private void BuildMarkings()
