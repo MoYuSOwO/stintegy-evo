@@ -47,7 +47,8 @@ public sealed class BatchedTrainingHost
         bool hiddenCurriculum = false,
         float raceKilometres = EnergyBudget.DefaultRaceKilometres,
         float budgetLambda = EnergyBudget.DefaultLambda,
-        float budgetGamma = EnergyBudget.DefaultGamma
+        float budgetGamma = EnergyBudget.DefaultGamma,
+        bool deltaActions = false
     )
     {
         if (batchSize <= 0)
@@ -127,7 +128,8 @@ public sealed class BatchedTrainingHost
                 hiddenCurriculum,
                 raceKilometres,
                 budgetLambda,
-                budgetGamma
+                budgetGamma,
+                deltaActions
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

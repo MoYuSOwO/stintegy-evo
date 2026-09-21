@@ -74,6 +74,7 @@ class HostEnv:
         episode_seconds: float | None = None,
         randomise_episode_start: bool = False,
         hidden_curriculum: bool = False,
+        delta_actions: bool = False,
         budget_gamma: float | None = None,
         race_km: float | None = None,
         host_project: str = DEFAULT_HOST_PROJECT,
@@ -127,6 +128,11 @@ class HostEnv:
             # strength and perception noise, never shown to the policy.
             # Training only; evaluation stays nominal.
             command += ["--hidden-curriculum"]
+        if delta_actions:
+            # The pilot: action[0] moves the steering command instead of
+            # being it. The host carries the integrator and shows it back
+            # in the observation; nothing else changes.
+            command.append("--delta-actions")
         if budget_gamma is not None:
             # The host shapes with phi' - phi by default; see
             # EnergyBudget.DefaultGamma for why not the learner's gamma.
@@ -143,6 +149,7 @@ class HostEnv:
             command += ["--decision-hz", str(decision_hz)]
         self.duel = duel
         self.step_seconds = 1.0 / (decision_hz or DEFAULT_DECISION_HZ)
+        self.delta_actions = delta_actions
         self.ego_modes = ego_modes
         self.four_wheels_off = np.zeros(batch, dtype=np.float64)
         # Who is in front, in metres, positive while the sparring partner
