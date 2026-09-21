@@ -55,6 +55,13 @@ def main() -> int:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--action-size", type=int, default=2)
+    # What the first action means. A network cannot say this about itself,
+    # and a viewer that guesses wrong drives a different car: absolute is
+    # every generation up to the fourth, delta is the pilot.
+    parser.add_argument(
+        "--action-semantics", choices=["absolute", "delta"], default=None,
+        help="defaults to what the checkpoint recorded, or absolute",
+    )
     args = parser.parse_args()
 
     checkpoint = Path(args.checkpoint).resolve()
@@ -84,13 +91,28 @@ def main() -> int:
     # What the game is running, written beside it: a network with no
     # provenance is a driver nobody can trace back to a bake.
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    # Read off the file rather than off the load: SacAgent.load reports
+    # what it restored -- step, optimizers, random state -- and knows
+    # nothing about fields it does not consume.
+    recorded = torch.load(
+        str(checkpoint), map_location="cpu", weights_only=False
+    ).get("action_semantics")
+    semantics = args.action_semantics or str(recorded or "absolute")
     card = {
+        "action_semantics": semantics,
         "checkpoint": checkpoint.name,
         "checkpoint_sha256": digest,
         "checkpoint_step": int(restored["step"]),
         "observation_size": OBSERVATION_SIZE,
         "action_size": args.action_size,
         "head": "tanh(mean), deterministic",
+        # The increment cap is the car's own number, so the viewer works it
+        # out from the CarConfig it is driving rather than taking it from
+        # here; this is a note, not a setting.
+        "delta_cap_note": (
+            "2 / (MaxSteerAngleRadians / SteerRateLimitRadiansPerSecond"
+            " * decision Hz), computed by the seat"
+        ),
         "onnx_sha256": hashlib.sha256(out.read_bytes()).hexdigest(),
     }
     out.with_suffix(".json").write_text(json.dumps(card, indent=2))
@@ -108,7 +130,7 @@ def main() -> int:
     got = session.run(["action"], {"observation": sample})[0]
     largest = float(np.max(np.abs(expected - got)))
     print(
-        f"{out}  step {card['checkpoint_step']}  "
+        f"{out}  step {card['checkpoint_step']}  {semantics} actions  "
         f"largest disagreement with torch {largest:.2e}"
     )
     if largest > 1e-5:

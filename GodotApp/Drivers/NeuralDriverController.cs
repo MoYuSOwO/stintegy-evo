@@ -57,6 +57,15 @@ public sealed class NeuralDriverController : IDriverController, IDisposable
     private float _progressAtStart;
     private float _distanceOrigin;
 
+    /// <summary>
+    /// Whether this driver's first action moves the steering command
+    /// rather than being it. Read from the network's card, never guessed:
+    /// driving an incremental policy as an absolute one, or the other way
+    /// round, produces a car that looks broken rather than one that looks
+    /// wrong.
+    /// </summary>
+    public bool DeltaActions { get; }
+
     /// <summary>How many decisions this driver has taken.</summary>
     public long Decisions { get; private set; }
 
@@ -79,7 +88,15 @@ public sealed class NeuralDriverController : IDriverController, IDisposable
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
-        _seat = new DirectDriveController(config, tires);
+        // What the first action means is a property of the bake, not of
+        // the network file, so it travels beside it: the exporter writes
+        // the checkpoint's own record of it into a card next to the
+        // network. A missing or unreadable card means the contract every
+        // generation up to the fourth was baked on.
+        DeltaActions = ReadsAsDelta(modelPath);
+        _seat = new DirectDriveController(
+            config, tires, DeltaActions, DecisionHz
+        );
         SessionOptions options = new()
         {
             // One car, one row, on the frame's own thread: the work is a
@@ -183,6 +200,40 @@ public sealed class NeuralDriverController : IDriverController, IDisposable
 
     private static float Charge(in RaceCarSnapshot car) =>
         car.Resources.IsDefaultOrEmpty ? 0f : car.Resources[0].Fraction;
+
+    /// <summary>
+    /// The card beside the network: same name, .json. Read for one field,
+    /// with a plain string search rather than a parser, because the file
+    /// is written by our own exporter and a missing card has to be an
+    /// absolute policy rather than an exception.
+    /// </summary>
+    private static bool ReadsAsDelta(string modelPath)
+    {
+        // Qualified: System.IO is deliberately absent from this project's
+        // global usings, because it makes FileAccess ambiguous with Godot's.
+        string card = System.IO.Path.ChangeExtension(modelPath, ".json");
+        if (!System.IO.File.Exists(card))
+            return false;
+        try
+        {
+            string text = System.IO.File.ReadAllText(card);
+            int at = text.IndexOf("\"action_semantics\"", StringComparison.Ordinal);
+            if (at < 0)
+                return false;
+            int colon = text.IndexOf(':', at);
+            int quote = colon < 0 ? -1 : text.IndexOf('"', colon + 1);
+            int end = quote < 0 ? -1 : text.IndexOf('"', quote + 1);
+            if (end < 0)
+                return false;
+            return text[(quote + 1)..end].Trim() == "delta";
+        }
+        catch (Exception error) when (
+            error is System.IO.IOException or UnauthorizedAccessException
+        )
+        {
+            return false;
+        }
+    }
 
     private static string FirstName(
         IReadOnlyDictionary<string, NodeMetadata> metadata, string preferred

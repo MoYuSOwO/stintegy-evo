@@ -1,0 +1,11 @@
+{
+  "action_semantics": "absolute",
+  "checkpoint": "evalparent4e-3950000.pt",
+  "checkpoint_sha256": "e414c8d6e1b4a165338f5e2f900ea4ef2cffad2408ac760231f48d88f6b98e09",
+  "checkpoint_step": 3950000,
+  "observation_size": 457,
+  "action_size": 2,
+  "head": "tanh(mean), deterministic",
+  "delta_cap_note": "2 / (MaxSteerAngleRadians / SteerRateLimitRadiansPerSecond * decision Hz), computed by the seat",
+  "onnx_sha256": "2d134d39b336fd81cbae0eca2676450c05c394a013c84fb355399c00d1277ad4"
+}

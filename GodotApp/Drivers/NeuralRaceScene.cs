@@ -30,7 +30,7 @@ public partial class NeuralRaceScene : Node3D
     /// build carries it; swap it to drive a different bake.
     /// </summary>
     [Export] public string ModelPath { get; set; } =
-        "res://Assets/Drivers/parent3l.onnx";
+        "res://Assets/Drivers/parent4e.onnx";
 
     /// <summary>
     /// Where the car starts, in metres along the centreline, and how fast.
@@ -77,11 +77,21 @@ public partial class NeuralRaceScene : Node3D
             return;
         loading.QueueFree();
 
-        string model = ProjectSettings.GlobalizePath(ModelPath);
-        if (!Godot.FileAccess.FileExists(ModelPath) && !System.IO.File.Exists(model))
+        // STINTEGY_MODEL points the scene at any exported network without
+        // editing it, which is how a pilot checkpoint gets watched the
+        // afternoon it is baked.
+        string requested =
+            System.Environment.GetEnvironmentVariable("STINTEGY_MODEL") is string named
+            && named.Length > 0
+                ? named
+                : ModelPath;
+        string model = requested.StartsWith("res://", StringComparison.Ordinal)
+            ? ProjectSettings.GlobalizePath(requested)
+            : requested;
+        if (!System.IO.File.Exists(model))
         {
             GD.PushError(
-                $"No driver network at {ModelPath}. Export one with " +
+                $"No driver network at {requested}. Export one with " +
                 "Training/python/export_onnx.py."
             );
             return;
@@ -131,6 +141,7 @@ public partial class NeuralRaceScene : Node3D
         ArrangeShots();
         GD.Print(
             $"NEURAL: {System.IO.Path.GetFileName(model)} at the wheel; " +
+            $"{(_controller.DeltaActions ? "incremental" : "absolute")} actions; " +
             $"{NeuralDriverController.DecisionHz:0} Hz decisions; " +
             $"rolling start {speed:0.0} m/s at {s:0} m; " +
             "tyre Normal / power Normal; limiter 1.0; pack full"
