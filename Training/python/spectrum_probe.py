@@ -1,13 +1,13 @@
 """Where in the frequency band a driver's steering lives.
 
-The reversal cost bites hardest at the top of the band: a wheel sawn at
-twelve hertz changes direction every decision and pays every decision. A
-policy that cannot afford that has a cheaper way out than driving properly
-— move the same oscillation down to two or three hertz, where the second
-difference per decision is a fraction of what it was and the physics'
-own damping is no help either. That is a slower weave, and it looks worse
-rather than better: a car visibly snaking down a straight instead of
-shimmering.
+The detour cost is measured over two decisions, so it bites hardest at the
+top of the band: a wheel sawn at twelve hertz opposes itself every decision
+and pays every decision. An oscillation slower than the window slips
+between its teeth — turn one way for three decisions, back for three, and
+no two neighbouring moves ever oppose. That is a slower weave, and it looks
+worse rather than better: a car visibly snaking down a straight instead of
+shimmering. The travel tax is the floor under it; this probe is how we find
+out whether the floor held.
 
 So the frequency is watched as well as the rate. Two spectra are taken,
 because they answer different questions:
@@ -52,8 +52,8 @@ def trace(
     batch: int,
     seed: int,
     delta_actions: bool,
-    reversal: float | None,
-    change: float | None,
+    detour: float | None,
+    travel: float | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """The steering command and the acted steering, per lane, per decision."""
     torch.manual_seed(seed)
@@ -66,8 +66,8 @@ def trace(
         episode_seconds=seconds + 60.0,
         ego_modes=EVALUATION_MODES,
         delta_actions=delta_actions,
-        steering_reversal_cost=reversal,
-        steering_change_cost=change,
+        steering_detour_cost=detour,
+        steering_travel_cost=travel,
     ) as env:
         agent = SacAgent(env.obs_size, env.action_size, SacConfig(device="cpu"))
         agent.load(checkpoint)
@@ -122,8 +122,8 @@ def main() -> int:
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--seconds", type=float, default=180.0)
     parser.add_argument("--seed", type=int, default=900_000)
-    parser.add_argument("--reversal", type=float, default=None)
-    parser.add_argument("--change", type=float, default=None)
+    parser.add_argument("--detour", type=float, default=None)
+    parser.add_argument("--travel", type=float, default=None)
     parser.add_argument("--absolute-actions", action="store_true")
     args = parser.parse_args()
 
@@ -135,7 +135,7 @@ def main() -> int:
     for label, path in runs:
         commands, acted = trace(
             path, args.seconds, args.track, args.batch, args.seed,
-            not args.absolute_actions, args.reversal, args.change,
+            not args.absolute_actions, args.detour, args.travel,
         )
         print(f"{label}: {path.split('/')[-1]}")
         measured[label] = {}

@@ -1,4 +1,3 @@
-using StintegyEVO.Core.Cars;
 using StintegyEVO.TrainingHost.Adapter;
 using StintegyEVO.TrainingHost.Environment;
 using Xunit;
@@ -8,104 +7,119 @@ namespace StintegyEVO.TrainingHost.Tests;
 /// <summary>
 /// What the wheel costs, and — more to the point — what it does not.
 ///
-/// The charge is the second difference of the steering command: how much
-/// the movement changed, not how much there was. That shape is the whole
-/// design, because the three things a driver does with a wheel have to
-/// price differently. Winding it on through a corner is driving. Holding
-/// it there is driving. Sawing at it is the fault, and a single catch is
-/// a save rather than a fault, so it pays once rather than continuously.
+/// The charge is the detour the front wheels took: over two decisions they
+/// travelled <c>|Δ₁| + |Δ₂|</c> and got <c>|Δ₁ + Δ₂|</c> of the way, and the
+/// difference between those is what is billed. That shape is the whole
+/// design, because the three things a driver does with a wheel have to price
+/// differently. Winding it on through a corner is driving. Holding it there
+/// is driving. Sawing at it is the fault, and a single catch is a save rather
+/// than a fault, so it pays once rather than continuously.
 ///
-/// Sophy charges the same quantity (arXiv 2511.02094, appendix F) and
-/// publishes no coefficient; these tests pin the shape, and the manifest
-/// records the three measurements the coefficients were fitted to.
+/// The quantity is read at the front wheels, not at the command, which is
+/// what makes it independent of how the policy asked — and what makes a slow
+/// weave pay, where the command's second difference this replaces let one
+/// through for free.
+///
+/// Sophy names a cost over the acted steering history (arXiv 2511.02094,
+/// appendix F) and publishes neither formula nor coefficient. The shape here
+/// is inferred from that name rather than copied from it; the manifest records
+/// the readings the coefficients were fitted to.
 /// </summary>
 public sealed class SteeringCostTests
 {
-    private const float Reversal = 0.8f;
-    private const float Change = 0.05f;
-    private const int ReversalComponent = 12;
-    private const int ChangeComponent = 13;
+    private const float Detour = 1f;
+    private const float Travel = 1f;
+    private const int DetourComponent = 12;
+    private const int TravelComponent = 13;
 
     private static DirectDriveDuelEnvironment Environment(
-        float reversal = Reversal, float change = Change
+        float detour = Detour, float travel = Travel, bool deltaActions = true
     ) => new(
         solo: true,
-        deltaActions: true,
-        steeringReversalPenaltyPerSecond: reversal,
-        steeringChangePenaltyPerSecond: change
+        deltaActions: deltaActions,
+        steeringDetourPenalty: detour,
+        steeringTravelPenalty: travel
     );
 
     private static float[] Frame() =>
         new float[DirectDriveObservation.ObservationSize];
 
     /// <summary>
-    /// Winding the wheel on at a steady rate is free of the reversal
-    /// charge. It is what turning in is, and a corner that costs a driver
-    /// to enter is a corner they will enter slowly.
+    /// Winding the wheel on is free of the detour charge, however hard it is
+    /// asked for. Turning in is what a corner is, and a corner that costs a
+    /// driver to enter is a corner they will enter slowly.
     /// </summary>
     [Fact]
-    public void WindingTheWheelOnAtASteadyRateCostsNothingButTheTax()
+    public void WindingTheWheelOnCostsNothingButTheTravelTax()
     {
         DirectDriveDuelEnvironment environment = Environment();
         float[] observation = Frame();
         environment.ResetTrack("silverstone", 3, observation);
 
-        // The first decision sets the rate; from the second on, the rate
-        // is unchanged and the second difference is zero.
-        environment.Step([0.5f, 0f], observation);
+        bool moved = false;
         for (int i = 0; i < 8; i++)
         {
-            TrainingStepResult result = environment.Step([0.5f, 0f], observation);
-            Assert.Equal(0f, result.GetComponent(ReversalComponent), 6);
-            Assert.True(
-                result.GetComponent(ChangeComponent) < 0f,
-                "the movement itself should still be taxed"
-            );
+            TrainingStepResult result = environment.Step([1f, 0f], observation);
+            Assert.Equal(0f, result.GetComponent(DetourComponent), 6);
+            moved |= result.GetComponent(TravelComponent) < 0f;
         }
+        Assert.True(moved, "the wheels never moved, so nothing was tested");
     }
 
     /// <summary>
-    /// Holding a corner is free of both. A policy that has found its line
-    /// and is asking for nothing should pay nothing for the wheel.
+    /// A car running straight and settled pays practically nothing: three
+    /// orders of magnitude under what the rack costs at its rate limit.
+    ///
+    /// This is deliberately not the stronger claim that holding a corner is
+    /// free. Billing the wheels rather than the command means the charge sees
+    /// what the wheels actually do, and holding a line through a corner is
+    /// not a still wheel: the lock a corner wants moves with speed, load and
+    /// the slip the tyres take up, so the rack works the whole way round. The
+    /// detour is what stays zero there, because that work is monotone — which
+    /// is the point of charging the detour and not the movement.
     /// </summary>
     [Fact]
-    public void HoldingTheWheelStillCostsNothingAtAll()
+    public void ACarRunningStraightAndSettledPaysPracticallyNothing()
     {
         DirectDriveDuelEnvironment environment = Environment();
         float[] observation = Frame();
         environment.ResetTrack("silverstone", 5, observation);
 
-        for (int i = 0; i < 4; i++)
-            environment.Step([0.6f, 0f], observation);
-        // Asking for no further movement: under the incremental contract
-        // this is the wheel held where it is.
-        environment.Step([0f, 0f], observation);
-        for (int i = 0; i < 8; i++)
+        // Long enough for the start transient to settle out.
+        for (int i = 0; i < 46; i++)
+            environment.Step([0f, 0f], observation);
+
+        // The rack at its rate limit charges 0.0698 a decision; anything at
+        // this scale is the road breathing, not a driver moving the wheel.
+        const float Nothing = 5e-4f;
+        for (int i = 0; i < 12; i++)
         {
             TrainingStepResult result = environment.Step([0f, 0f], observation);
-            Assert.Equal(0f, result.GetComponent(ReversalComponent), 6);
-            Assert.Equal(0f, result.GetComponent(ChangeComponent), 6);
+            Assert.InRange(result.GetComponent(DetourComponent), -Nothing, 0f);
+            Assert.InRange(result.GetComponent(TravelComponent), -Nothing, 0f);
         }
     }
 
     /// <summary>
     /// Sawing pays every decision, which is the behaviour this exists to
-    /// price, and pays far more than the same amount of steering spent
-    /// going one way.
+    /// price, and pays far more than the same wheel spent going one way.
     /// </summary>
     [Fact]
     public void SawingPaysEveryDecisionAndWindingOnDoesNot()
     {
-        DirectDriveDuelEnvironment environment = Environment();
+        DirectDriveDuelEnvironment sawing = Environment();
         float[] observation = Frame();
-        environment.ResetTrack("silverstone", 7, observation);
+        sawing.ResetTrack("silverstone", 7, observation);
         float sawn = 0f;
+        int decisionsCharged = 0;
         for (int i = 0; i < 12; i++)
         {
-            TrainingStepResult result = environment.Step(
-                [i % 2 == 0 ? 0.5f : -0.5f, 0f], observation
+            TrainingStepResult result = sawing.Step(
+                [i % 2 == 0 ? 1f : -1f, 0f], observation
             );
-            sawn += result.GetComponent(ReversalComponent);
+            sawn += result.GetComponent(DetourComponent);
+            if (i >= 2 && result.GetComponent(DetourComponent) < 0f)
+                decisionsCharged++;
         }
 
         DirectDriveDuelEnvironment steady = Environment();
@@ -113,20 +127,56 @@ public sealed class SteeringCostTests
         steady.ResetTrack("silverstone", 7, other);
         float wound = 0f;
         for (int i = 0; i < 12; i++)
-        {
-            TrainingStepResult result = steady.Step([0.5f, 0f], other);
-            wound += result.GetComponent(ReversalComponent);
-        }
+            wound += steady.Step([1f, 0f], other).GetComponent(DetourComponent);
 
-        Assert.True(sawn < wound * 5f, $"sawing {sawn:0.0000} vs winding {wound:0.0000}");
-        Assert.True(sawn < -0.01f, "sawing at the wheel cost almost nothing");
+        Assert.Equal(0f, wound, 6);
+        Assert.True(sawn < -0.01f, $"sawing cost almost nothing: {sawn:0.000000}");
+        Assert.True(
+            decisionsCharged >= 9,
+            $"sawing was charged on {decisionsCharged} of 10 decisions"
+        );
     }
 
     /// <summary>
-    /// A catch pays for the decision the hand turns in, and not for the
-    /// ones after it. Catching a car is what a driver is for, and a charge
-    /// that went on being levied while the correction was held would be a
-    /// charge for saving the car.
+    /// A weave too slow for the two-decision window pays nothing in detour —
+    /// that is the known reach of the main blade — and the travel tax is what
+    /// stands under it. This is the escape the command's second difference
+    /// let through for free, and the reason the tax is still here.
+    /// </summary>
+    [Fact]
+    public void ASlowWeaveEscapesTheDetourAndPaysTheTravelTax()
+    {
+        DirectDriveDuelEnvironment environment = Environment();
+        float[] observation = Frame();
+        environment.ResetTrack("silverstone", 23, observation);
+
+        float detour = 0f, travel = 0f;
+        for (int i = 0; i < 24; i++)
+        {
+            // Four decisions one way, four the other: no two neighbouring
+            // moves ever oppose except at the turn.
+            TrainingStepResult result = environment.Step(
+                [i % 8 < 4 ? 1f : -1f, 0f], observation
+            );
+            detour += result.GetComponent(DetourComponent);
+            travel += result.GetComponent(TravelComponent);
+        }
+
+        Assert.True(
+            travel < -0.05f,
+            $"the weave travelled far and paid {travel:0.000000}"
+        );
+        Assert.True(
+            detour > travel,
+            "a weave this slow should pay the detour less often than it travels"
+        );
+    }
+
+    /// <summary>
+    /// A catch pays for the decision the hand turns in, and not for the ones
+    /// after it. Catching a car is what a driver is for, and a charge that
+    /// went on being levied while the correction was held would be a charge
+    /// for saving the car.
     /// </summary>
     [Fact]
     public void ASingleCatchPaysForOneDecision()
@@ -135,22 +185,24 @@ public sealed class SteeringCostTests
         float[] observation = Frame();
         environment.ResetTrack("silverstone", 11, observation);
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 6; i++)
             environment.Step([0.4f, 0f], observation);
-        // The catch: the hand goes the other way, once, and is then held
-        // there at the same rate.
-        TrainingStepResult caught = environment.Step([-0.9f, 0f], observation);
-        TrainingStepResult after = environment.Step([-0.9f, 0f], observation);
-        TrainingStepResult later = environment.Step([-0.9f, 0f], observation);
+        // The catch: the hand goes the other way and stays there.
+        TrainingStepResult caught = environment.Step([-1f, 0f], observation);
+        TrainingStepResult after = environment.Step([-1f, 0f], observation);
+        TrainingStepResult later = environment.Step([-1f, 0f], observation);
 
-        Assert.True(caught.GetComponent(ReversalComponent) < -0.001f);
-        Assert.Equal(0f, after.GetComponent(ReversalComponent), 6);
-        Assert.Equal(0f, later.GetComponent(ReversalComponent), 6);
+        Assert.True(
+            caught.GetComponent(DetourComponent) < -0.0001f,
+            "the turn of the hand was not charged"
+        );
+        Assert.Equal(0f, after.GetComponent(DetourComponent), 6);
+        Assert.Equal(0f, later.GetComponent(DetourComponent), 6);
     }
 
     /// <summary>
-    /// Both at zero is the world as it was: the components are present and
-    /// exactly nothing, which is what <see cref="SoloFingerprintTests"/>
+    /// Both prices at zero is the world as it was: the components are present
+    /// and exactly nothing, which is what <see cref="SoloFingerprintTests"/>
     /// relies on.
     /// </summary>
     [Fact]
@@ -165,56 +217,49 @@ public sealed class SteeringCostTests
             TrainingStepResult result = environment.Step(
                 [i % 2 == 0 ? 1f : -1f, 0f], observation
             );
-            Assert.Equal(0f, result.GetComponent(ReversalComponent));
-            Assert.Equal(0f, result.GetComponent(ChangeComponent));
+            Assert.Equal(0f, result.GetComponent(DetourComponent));
+            Assert.Equal(0f, result.GetComponent(TravelComponent));
         }
     }
 
     /// <summary>
-    /// The charge is on the wheel, not on the contract: the same movement
-    /// of the command costs the same under either way of asking for it.
+    /// The charge does not know which contract asked for the movement,
+    /// because it never reads the action: it reads the angle the wheels
+    /// reached. Two environments given the same wheel by different means are
+    /// billed identically, to the bit.
     /// </summary>
     [Fact]
-    public void TheChargeIsTheSameUnderEitherActionContract()
+    public void TheChargeReadsTheWheelAndNotTheContract()
     {
-        DirectDriveDuelEnvironment incremental = new(
-            solo: true,
-            deltaActions: true,
-            steeringReversalPenaltyPerSecond: Reversal,
-            steeringChangePenaltyPerSecond: Change
-        );
-        DirectDriveDuelEnvironment absolute = new(
-            solo: true,
-            deltaActions: false,
-            steeringReversalPenaltyPerSecond: Reversal,
-            steeringChangePenaltyPerSecond: Change
-        );
+        DirectDriveDuelEnvironment incremental = Environment(deltaActions: true);
+        DirectDriveDuelEnvironment absolute = Environment(deltaActions: false);
         float[] one = Frame();
         float[] two = Frame();
         incremental.ResetTrack("silverstone", 17, one);
         absolute.ResetTrack("silverstone", 17, two);
 
         float cap = DirectDriveController.CurvatureDeltaCap(
-            new CarConfig(), DirectDriveController.DefaultDecisionHz
+            new StintegyEVO.Core.Cars.CarConfig(),
+            DirectDriveController.DefaultDecisionHz
         );
         // The incremental car asks for a full increment each decision; the
         // absolute car names the commands that produces. Same wheel, same
         // bill.
         float command = 0f;
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 8; i++)
         {
             TrainingStepResult a = incremental.Step([1f, 0f], one);
             command = MathF.Min(1f, command + cap);
             TrainingStepResult b = absolute.Step([command, 0f], two);
             Assert.Equal(
-                a.GetComponent(ReversalComponent),
-                b.GetComponent(ReversalComponent),
-                5
+                a.GetComponent(DetourComponent),
+                b.GetComponent(DetourComponent),
+                6
             );
             Assert.Equal(
-                a.GetComponent(ChangeComponent),
-                b.GetComponent(ChangeComponent),
-                5
+                a.GetComponent(TravelComponent),
+                b.GetComponent(TravelComponent),
+                6
             );
         }
     }

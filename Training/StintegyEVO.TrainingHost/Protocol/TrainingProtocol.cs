@@ -61,8 +61,16 @@ public static class TrainingProtocol
     /// a client and a host that disagree about it disagree about where
     /// every field after the components begins: the version is what stops
     /// that being discovered as a plausible-looking number.
+    ///
+    /// Version 8 keeps the count and changes what the two of them mean. The
+    /// signal moves from the steering command to the angle the front wheels
+    /// reached, and the formula from the command's second difference to the
+    /// detour the wheels took; the components are renamed to match. Nothing
+    /// about the layout moves, which is exactly why it needs a version: two
+    /// sides that agreed on the length would otherwise go on agreeing while
+    /// one of them logged the old name against the new number.
     /// </summary>
-    public const int Version = 7;
+    public const int Version = 8;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

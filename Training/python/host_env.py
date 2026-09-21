@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 7
+VERSION = 8
 
 # The decision rate the host defaults to, mirrored from
 # DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
@@ -55,10 +55,11 @@ COMPONENT_NAMES = (
     "own_progress", "relative_progress", "pass", "contact", "wall",
     "off_course", "tyre_slip", "time", "timeout_outcome",
     "mode_excess", "retirement", "budget",
-    # The wheel (protocol 7): the turn of the hand, and a small tax on how
-    # far it moved. Sophy's acted_steering_history_cost and
-    # steering_change_cost, with coefficients of our own.
-    "steering_reversal", "steering_change",
+    # The wheel (protocol 8): the detour the front wheels took over the
+    # last two decisions, and a small tax on how far they travelled. Sophy
+    # names a cost over the acted steering history and publishes neither
+    # formula nor coefficient; both the shape and the numbers are ours.
+    "steering_detour", "steering_travel",
 )
 
 DEFAULT_HOST_PROJECT = str(
@@ -79,8 +80,8 @@ class HostEnv:
         randomise_episode_start: bool = False,
         hidden_curriculum: bool = False,
         delta_actions: bool = False,
-        steering_reversal_cost: float | None = None,
-        steering_change_cost: float | None = None,
+        steering_detour_cost: float | None = None,
+        steering_travel_cost: float | None = None,
         budget_gamma: float | None = None,
         race_km: float | None = None,
         host_project: str = DEFAULT_HOST_PROJECT,
@@ -141,10 +142,10 @@ class HostEnv:
             command.append("--delta-actions")
         # The two steering costs, per second; None leaves the host's own
         # numbers alone and zero switches one off.
-        if steering_reversal_cost is not None:
-            command += ["--steering-reversal-cost", str(steering_reversal_cost)]
-        if steering_change_cost is not None:
-            command += ["--steering-change-cost", str(steering_change_cost)]
+        if steering_detour_cost is not None:
+            command += ["--steering-detour-cost", str(steering_detour_cost)]
+        if steering_travel_cost is not None:
+            command += ["--steering-travel-cost", str(steering_travel_cost)]
         if budget_gamma is not None:
             # The host shapes with phi' - phi by default; see
             # EnergyBudget.DefaultGamma for why not the learner's gamma.

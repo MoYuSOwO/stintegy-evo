@@ -24,8 +24,8 @@ public readonly record struct TrainingStepResult(
     float ModeExcessPenalty,
     float RetirementPenalty,
     float BudgetShaping = 0f,
-    float SteeringReversalPenalty = 0f,
-    float SteeringChangePenalty = 0f
+    float SteeringDetourPenalty = 0f,
+    float SteeringTravelPenalty = 0f
 )
 {
     public const int ComponentCount = 14;
@@ -45,8 +45,8 @@ public readonly record struct TrainingStepResult(
         ModeExcessPenalty +
         RetirementPenalty +
         BudgetShaping +
-        SteeringReversalPenalty +
-        SteeringChangePenalty;
+        SteeringDetourPenalty +
+        SteeringTravelPenalty;
 
     public float GetComponent(int index) => index switch
     {
@@ -62,8 +62,8 @@ public readonly record struct TrainingStepResult(
         9 => ModeExcessPenalty,
         10 => RetirementPenalty,
         11 => BudgetShaping,
-        12 => SteeringReversalPenalty,
-        13 => SteeringChangePenalty,
+        12 => SteeringDetourPenalty,
+        13 => SteeringTravelPenalty,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 }

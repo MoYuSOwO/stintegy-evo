@@ -37,8 +37,8 @@ internal static class Program
                 float budgetLambda,
                 float budgetGamma,
                 bool deltaActions,
-                float steeringReversalCost,
-                float steeringChangeCost
+                float steeringDetourCost,
+                float steeringTravelCost
             ) =
                 ParseOptions(args);
             BatchedTrainingHost host = new(
@@ -60,8 +60,8 @@ internal static class Program
                 budgetLambda,
                 budgetGamma,
                 deltaActions,
-                steeringReversalCost,
-                steeringChangeCost
+                steeringDetourCost,
+                steeringTravelCost
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -92,8 +92,8 @@ internal static class Program
         float BudgetLambda,
         float BudgetGamma,
         bool DeltaActions,
-        float SteeringReversalCost,
-        float SteeringChangeCost
+        float SteeringDetourCost,
+        float SteeringTravelCost
     ) ParseOptions(string[] args)
     {
         int batchSize = 1;
@@ -127,10 +127,10 @@ internal static class Program
         // The two steering costs, per second. Zero on either is that cost
         // switched off; zero on both is the world as it was before they
         // existed, to the bit.
-        float steeringReversalCost =
-            DirectDriveDuelEnvironment.DefaultSteeringReversalPenaltyPerSecond;
-        float steeringChangeCost =
-            DirectDriveDuelEnvironment.DefaultSteeringChangePenaltyPerSecond;
+        float steeringDetourCost =
+            DirectDriveDuelEnvironment.DefaultSteeringDetourPenalty;
+        float steeringTravelCost =
+            DirectDriveDuelEnvironment.DefaultSteeringTravelPenalty;
         EpisodeStartDistribution episodeStarts = new();
         for (int i = 0; i < args.Length; i++)
         {
@@ -185,11 +185,11 @@ internal static class Program
                         );
                     }
                     break;
-                case "--steering-reversal-cost":
-                    steeringReversalCost = ParseRate(value, option);
+                case "--steering-detour-cost":
+                    steeringDetourCost = ParseRate(value, option);
                     break;
-                case "--steering-change-cost":
-                    steeringChangeCost = ParseRate(value, option);
+                case "--steering-travel-cost":
+                    steeringTravelCost = ParseRate(value, option);
                     break;
                 case "--seed-base":
                     if (!long.TryParse(
@@ -326,8 +326,8 @@ internal static class Program
             budgetLambda,
             budgetGamma,
             deltaActions,
-            steeringReversalCost,
-            steeringChangeCost
+            steeringDetourCost,
+            steeringTravelCost
         );
     }
 

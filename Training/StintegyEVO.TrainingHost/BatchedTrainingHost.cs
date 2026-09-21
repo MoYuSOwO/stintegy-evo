@@ -49,10 +49,10 @@ public sealed class BatchedTrainingHost
         float budgetLambda = EnergyBudget.DefaultLambda,
         float budgetGamma = EnergyBudget.DefaultGamma,
         bool deltaActions = false,
-        float steeringReversalPenaltyPerSecond =
-            DirectDriveDuelEnvironment.DefaultSteeringReversalPenaltyPerSecond,
-        float steeringChangePenaltyPerSecond =
-            DirectDriveDuelEnvironment.DefaultSteeringChangePenaltyPerSecond
+        float steeringDetourPenalty =
+            DirectDriveDuelEnvironment.DefaultSteeringDetourPenalty,
+        float steeringTravelPenalty =
+            DirectDriveDuelEnvironment.DefaultSteeringTravelPenalty
     )
     {
         if (batchSize <= 0)
@@ -136,8 +136,8 @@ public sealed class BatchedTrainingHost
                 budgetLambda,
                 budgetGamma,
                 deltaActions,
-                steeringReversalPenaltyPerSecond,
-                steeringChangePenaltyPerSecond
+                steeringDetourPenalty,
+                steeringTravelPenalty
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }

@@ -98,8 +98,8 @@ public sealed class SoloFingerprintTests
                     // as it stood before they existed, and the point of
                     // keeping it is that switching them off gets that world
                     // back to the bit rather than to the eye.
-                    steeringReversalPenaltyPerSecond: 0f,
-                    steeringChangePenaltyPerSecond: 0f
+                    steeringDetourPenalty: 0f,
+                    steeringTravelPenalty: 0f
                 );
                 environment.ResetTrack(circuit, 20260920, observation);
                 Absorb(hash, observation);

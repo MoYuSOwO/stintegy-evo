@@ -405,11 +405,28 @@ class SacAgent:
                 target_parameter.mul_(1.0 - config.tau)
                 target_parameter.add_(config.tau * parameter)
 
+        # How wide the policy still is, and how much of that width is the
+        # steering channel. A reward that charges the wheel charges the
+        # exploration noise on the wheel too, every step, whether or not the
+        # noise was a mistake -- so a price list can quietly close the policy
+        # down, and the way that shows is here before it shows in lap times.
+        # Reported per channel as well as in the round because it is the
+        # steering channel these costs bite, and an average over both would
+        # hide a collapse in one behind the other.
+        with torch.no_grad():
+            _, raw_log_std = self.actor.net(obs).chunk(2, dim=-1)
+            sigma = raw_log_std.clamp(LOG_STD_MIN, LOG_STD_MAX).exp()
+
         return {
             "critic_loss": float(critic_loss.detach()),
             "actor_loss": float(actor_loss.detach()),
             "alpha": float(self.alpha.detach()),
             "q_mean": float(q1.mean().detach()),
+            # The sampled entropy of the squashed policy, which is what the
+            # entropy coefficient is paid against.
+            "entropy": float(-log_prob.mean().detach()),
+            "sigma": float(sigma.mean()),
+            "sigma_steer": float(sigma[..., 0].mean()),
         }
 
     def _quantile_huber(

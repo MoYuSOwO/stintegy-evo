@@ -720,8 +720,8 @@ def main() -> int:
     )
     # The two steering costs, per second, for a controlled comparison or a
     # recalibration. Left alone they are the host's own numbers.
-    parser.add_argument("--steering-reversal-cost", type=float, default=None)
-    parser.add_argument("--steering-change-cost", type=float, default=None)
+    parser.add_argument("--steering-detour-cost", type=float, default=None)
+    parser.add_argument("--steering-travel-cost", type=float, default=None)
     parser.add_argument("--log-every", type=int, default=1_000)
     parser.add_argument(
         "--checkpoint-dir",
@@ -824,8 +824,8 @@ def main() -> int:
         randomise_episode_start=not args.fixed_episode_start,
         hidden_curriculum=not args.no_hidden_curriculum,
         delta_actions=args.delta_actions,
-        steering_reversal_cost=args.steering_reversal_cost,
-        steering_change_cost=args.steering_change_cost,
+        steering_detour_cost=args.steering_detour_cost,
+        steering_travel_cost=args.steering_travel_cost,
         quiet=True,
     ) as env:
         print(
@@ -977,6 +977,14 @@ def main() -> int:
                     f"reward {window_reward / args.log_every:+.4f} "
                     f"alpha {stats.get('alpha', float('nan')):.3f} "
                     f"q {stats.get('q_mean', float('nan')):+.2f} "
+                    # Exploration health, which the steering costs are in a
+                    # position to suppress: the policy's entropy and the
+                    # spread it still has on the wheel. A leg that stops
+                    # weaving because it stopped exploring has not learned
+                    # anything, and these two are how that is told apart from
+                    # a leg that learned to hold a line.
+                    f"H {stats.get('entropy', float('nan')):+.2f} "
+                    f"σ {stats.get('sigma_steer', float('nan')):.3f} "
                     # The critic's own fit, which is the first thing to look
                     # at before blaming capacity: a network too small to
                     # represent its target shows up here as a loss that
