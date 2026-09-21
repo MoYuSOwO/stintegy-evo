@@ -9,7 +9,15 @@ public partial class CircuitView3D : Node3D
 {
     public TrackSurfaceGeometry Surface { get; private set; } = null!;
     private static readonly Color Road = Color.FromHtml("#535b5d"), Runoff = Color.FromHtml("#b4ab8e"), Grass = Color.FromHtml("#89976c");
-    public void Initialize(TrackData track)
+    public void Initialize(TrackData track) => Initialize(track, null);
+
+    /// <summary>
+    /// Builds the circuit, and its scenery when a plan is named: the road
+    /// comes from the domain, the trees and grandstands from a file
+    /// somebody wrote. A plan that is not there is not an error — a
+    /// circuit with no scenery is a circuit with no scenery.
+    /// </summary>
+    public void Initialize(TrackData track, string? sceneryPlanPath)
     {
         Surface = new(track);
         BuildTerrain();
@@ -53,6 +61,37 @@ public partial class CircuitView3D : Node3D
         }
         BuildKerbs();
         BuildMarkings();
+        BuildScenery(sceneryPlanPath);
+    }
+
+    private void BuildScenery(string? planPath)
+    {
+        if (string.IsNullOrWhiteSpace(planPath))
+            return;
+        var scenery = new Scenery.SceneryLoader { Name = "Scenery" };
+        AddChild(scenery);
+        // The author's own seat, always available: F2 in the running game
+        // turns the viewer into the scenery editor, because the viewer is
+        // the only place the circuit actually exists (see SceneryEditMode).
+        var editing = new Scenery.SceneryEditMode { Name = "SceneryEditMode" };
+        AddChild(editing);
+        editing.Initialize(
+            Surface, scenery, Scenery.SceneryPlan.TrackOf(planPath), planPath
+        );
+        if (!Godot.FileAccess.FileExists(planPath))
+            return;
+        try
+        {
+            using var file = Godot.FileAccess.Open(planPath, Godot.FileAccess.ModeFlags.Read);
+            var plan = Scenery.SceneryPlan.Parse(file.GetAsText());
+            scenery.Build(plan, Surface);
+        }
+        catch (Exception error)
+        {
+            // A malformed plan costs the circuit its scenery and nothing
+            // else: the road is the domain's, and it is already built.
+            GD.PushWarning($"scenery: {planPath} could not be read -- {error.Message}");
+        }
     }
 
     /// <summary>

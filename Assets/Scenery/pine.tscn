@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3 uid="uid://cscn0pine001"]
+
+; A prop that is nothing but a mesh, so a row of them is drawn as one
+; instanced batch. Low poly on purpose: eight sides is a tree at a hundred
+; metres, which is the only distance anybody sees one from here.
+
+[sub_resource type="StandardMaterial3D" id="Material_pine"]
+albedo_color = Color(0.32, 0.43, 0.32, 1)
+roughness = 0.95
+specular_mode = 1
+
+[sub_resource type="CylinderMesh" id="Mesh_pine"]
+material = SubResource("Material_pine")
+top_radius = 0.0
+bottom_radius = 2.0
+height = 6.5
+radial_segments = 8
+rings = 1
+
+[node name="pine" type="MeshInstance3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.25, 0)
+mesh = SubResource("Mesh_pine")

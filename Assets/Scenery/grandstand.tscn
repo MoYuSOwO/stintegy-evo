@@ -1,0 +1,58 @@
+[gd_scene load_steps=6 format=3 uid="uid://cscn0stand01"]
+
+; A prop with parts: tiered seating, a roof and its posts. Instanced as a
+; scene rather than batched, which is what a scene is for.
+
+[sub_resource type="StandardMaterial3D" id="Material_seats"]
+albedo_color = Color(0.49, 0.53, 0.53, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Material_roof"]
+albedo_color = Color(0.93, 0.9, 0.82, 1)
+roughness = 0.85
+
+[sub_resource type="BoxMesh" id="Mesh_tier"]
+material = SubResource("Material_seats")
+size = Vector3(40, 0.8, 1.6)
+
+[sub_resource type="BoxMesh" id="Mesh_roof"]
+material = SubResource("Material_roof")
+size = Vector3(43, 0.4, 11)
+
+[sub_resource type="BoxMesh" id="Mesh_post"]
+material = SubResource("Material_seats")
+size = Vector3(0.5, 7.4, 0.5)
+
+[node name="grandstand" type="Node3D"]
+
+[node name="Tier0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("Mesh_tier")
+
+[node name="Tier1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 1.5)
+mesh = SubResource("Mesh_tier")
+
+[node name="Tier2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 3.0)
+mesh = SubResource("Mesh_tier")
+
+[node name="Tier3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.45, 4.5)
+mesh = SubResource("Mesh_tier")
+
+[node name="Tier4" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.1, 6.0)
+mesh = SubResource("Mesh_tier")
+
+[node name="Roof" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.4, 4.0)
+mesh = SubResource("Mesh_roof")
+
+[node name="PostLeft" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 3.7, 9)
+mesh = SubResource("Mesh_post")
+
+[node name="PostRight" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 3.7, 9)
+mesh = SubResource("Mesh_post")
