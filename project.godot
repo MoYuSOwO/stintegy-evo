@@ -12,7 +12,7 @@ config_version=5
 
 config/name="StintegyEVO"
 run/main_scene="res://Levels/neural.tscn"
-config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
+config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://logo.svg"
 
 [display]

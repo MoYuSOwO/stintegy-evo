@@ -142,7 +142,9 @@ public partial class RaceView3D : Node3D
         RaceSeconds = Simulation.RaceTimeSeconds;
 
         AddChild(_circuit);
-        _circuit.Initialize(track);
+        // The circuit is Silverstone here, so its plan is Silverstone's; a
+        // scene that builds another one names that one's.
+        _circuit.Initialize(track, "res://Levels/scenery/silverstone.json");
         CreateLighting();
         CreateCarViews();
         if (_cars.Count == 0)
