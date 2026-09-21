@@ -112,6 +112,16 @@ public sealed class DirectDriveController : IDriverController
     public float BudgetDeviation { get; set; }
     public ReadOnlySpan<float> LastAction => _action;
 
+    /// <summary>
+    /// The steering command the car is holding, in the action's own units:
+    /// the last action under the absolute contract, the integrator under
+    /// the incremental one. Read around a commit, its change is how far
+    /// the wheel was asked to move by that decision — which is the same
+    /// question under either contract, and is what the steering costs are
+    /// charged on.
+    /// </summary>
+    public float CommandedCurvatureNorm => _action[0];
+
     public void Initialize(in DriverContext context)
     {
         _observationBuilder.Reset();

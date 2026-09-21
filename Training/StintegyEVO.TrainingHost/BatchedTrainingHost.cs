@@ -48,7 +48,11 @@ public sealed class BatchedTrainingHost
         float raceKilometres = EnergyBudget.DefaultRaceKilometres,
         float budgetLambda = EnergyBudget.DefaultLambda,
         float budgetGamma = EnergyBudget.DefaultGamma,
-        bool deltaActions = false
+        bool deltaActions = false,
+        float steeringReversalPenaltyPerSecond =
+            DirectDriveDuelEnvironment.DefaultSteeringReversalPenaltyPerSecond,
+        float steeringChangePenaltyPerSecond =
+            DirectDriveDuelEnvironment.DefaultSteeringChangePenaltyPerSecond
     )
     {
         if (batchSize <= 0)
@@ -84,6 +88,8 @@ public sealed class BatchedTrainingHost
             // And the spin events begun this step, for the scoreboard.
             batchSize * sizeof(byte) +
             // And the seconds all four wheels spent over the white line.
+            batchSize * sizeof(float) +
+            // And where the front wheels actually are, for the spectrum.
             batchSize * sizeof(float) +
             // And, in a duel, the signed lead in metres: who is in front.
             (solo ? 0 : batchSize * sizeof(float))
@@ -129,7 +135,9 @@ public sealed class BatchedTrainingHost
                 raceKilometres,
                 budgetLambda,
                 budgetGamma,
-                deltaActions
+                deltaActions,
+                steeringReversalPenaltyPerSecond,
+                steeringChangePenaltyPerSecond
             );
             ResetEnvironment(i, unchecked(seedBase + i));
         }
@@ -333,6 +341,22 @@ public sealed class BatchedTrainingHost
                 _responseBuffer,
                 offset,
                 _environments[i].FourWheelsOffSecondsThisStep
+            );
+        }
+
+        // Where the front wheels ended the step, in radians. The policy is
+        // told what it asked for, never what the rack did with it, so the
+        // only way to watch the steering a viewer actually sees -- the
+        // command through the rate limit -- is to report it here, beside
+        // the other scoreboard readings. Never an observation, never a
+        // reward: the acceptance for the steering costs asks for the
+        // spectrum of the acted steering, and this is the acted steering.
+        for (int i = 0; i < _batchSize; i++)
+        {
+            offset = WriteFloat(
+                _responseBuffer,
+                offset,
+                _environments[i].Ego.State.SteerAngleRadians
             );
         }
 

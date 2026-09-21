@@ -718,6 +718,10 @@ def main() -> int:
         action="store_true",
         help="train with the limiter at full strength and clean perception",
     )
+    # The two steering costs, per second, for a controlled comparison or a
+    # recalibration. Left alone they are the host's own numbers.
+    parser.add_argument("--steering-reversal-cost", type=float, default=None)
+    parser.add_argument("--steering-change-cost", type=float, default=None)
     parser.add_argument("--log-every", type=int, default=1_000)
     parser.add_argument(
         "--checkpoint-dir",
@@ -820,6 +824,8 @@ def main() -> int:
         randomise_episode_start=not args.fixed_episode_start,
         hidden_curriculum=not args.no_hidden_curriculum,
         delta_actions=args.delta_actions,
+        steering_reversal_cost=args.steering_reversal_cost,
+        steering_change_cost=args.steering_change_cost,
         quiet=True,
     ) as env:
         print(

@@ -123,6 +123,7 @@ public sealed class TrainingProtocolTests
             batchSize * sizeof(float) +          // race distance
             batchSize * sizeof(byte) +           // spins
             batchSize * sizeof(float) +          // four wheels off
+            batchSize * sizeof(float) +          // front wheel angle
             batchSize * sizeof(float);           // signed lead, duel only
         Assert.Equal(observationBytes + scoreboardBytes, step.Payload.Length);
         // The second seat is a real observation and not zero padding.
@@ -205,6 +206,12 @@ public sealed class TrainingProtocolTests
                         // Seconds with all four wheels over the white line,
                         // added with protocol four for the race's
                         // track-limits ruler; scoreboard only.
+                        batchSize * sizeof(float) +
+                        // Where the front wheels ended the step, added with
+                        // protocol seven: the policy is told what it asked
+                        // for and never what the rack did, and the steering
+                        // costs are accepted on the spectrum of what the
+                        // rack did.
                         batchSize * sizeof(float);
         Assert.Equal(TrainingMessageKind.ResetResponse, reset.Kind);
         Assert.Equal(observationBytes, reset.Payload.Length);

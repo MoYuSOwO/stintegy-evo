@@ -55,7 +55,14 @@ public static class TrainingProtocol
     /// signed lead in metres (positive when the partner is ahead), because
     /// the alternative is asking the policy's own observation who won.
     /// </summary>
-    public const int Version = 6;
+    ///
+    /// Version 7 carries two more reward components, the steering costs.
+    /// A component count is a payload length on both sides of the pipe, so
+    /// a client and a host that disagree about it disagree about where
+    /// every field after the components begins: the version is what stops
+    /// that being discovered as a plausible-looking number.
+    /// </summary>
+    public const int Version = 7;
     public const int HeaderSize = 12;
     public const int MaxPayloadLength = 64 * 1024 * 1024;
 

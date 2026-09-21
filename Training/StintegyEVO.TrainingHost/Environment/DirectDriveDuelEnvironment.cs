@@ -159,6 +159,39 @@ public sealed class DirectDriveDuelEnvironment
     private const float ModeExcessSquaredPenaltyPerSecond = 77f;
 
     /// <summary>
+    /// What shaking the wheel costs, per second, per unit of the
+    /// second difference of the steering command.
+    ///
+    /// The quantity charged is <c>|d_t - d_{t-1}|</c>, where d is how far
+    /// the command moved this decision. That is the amplitude-weighted
+    /// reversal: winding the wheel on at a steady rate has a second
+    /// difference of zero and is free, holding a corner is free, and a
+    /// single catch pays for the one decision in which the hand changes
+    /// direction. Only sawing — moving, then moving back, then moving
+    /// again — pays every decision, which is what it is for.
+    ///
+    /// Sophy charges the same thing (arXiv 2511.02094, appendix F,
+    /// acted_steering_history_cost) and quotes no coefficient, so this
+    /// number is ours and is calibrated rather than borrowed: see the
+    /// experiment manifest for the three readings it was fitted to.
+    /// </summary>
+    public const float DefaultSteeringReversalPenaltyPerSecond = 0.35f;
+
+    /// <summary>
+    /// A small tax on the size of the movement itself,
+    /// <c>|d_t|</c>, per second. Sophy's steering_change_cost.
+    ///
+    /// The second difference alone is blind to one thing: a policy that
+    /// moves the wheel a long way every decision but always in the same
+    /// direction pays nothing for the distance travelled. This is the
+    /// floor under that, and it is deliberately an order of magnitude
+    /// smaller than the reversal price, because the movement a corner
+    /// needs is not a fault and taxing it hard would teach the car to turn
+    /// in slowly.
+    /// </summary>
+    public const float DefaultSteeringChangePenaltyPerSecond = 0.03f;
+
+    /// <summary>
     /// What the car learns on. Gradient from Silverstone's flat airfield to
     /// the simple layout's seven percent, and lean from a road circuit's two
     /// and a half degrees to Zandvoort's eighteen.
@@ -262,6 +295,10 @@ public sealed class DirectDriveDuelEnvironment
 
     private readonly bool _solo;
     private readonly bool _deltaActions;
+    private readonly float _steeringReversalPenalty;
+    private readonly float _steeringChangePenalty;
+    private float _previousCommandMove;
+    private bool _hasCommandMove;
     private readonly float _decisionHz;
     private readonly bool _randomiseEpisodeStart;
     private readonly bool _hiddenCurriculum;
@@ -406,7 +443,11 @@ public sealed class DirectDriveDuelEnvironment
         float raceKilometres = EnergyBudget.DefaultRaceKilometres,
         float budgetLambda = EnergyBudget.DefaultLambda,
         float budgetGamma = EnergyBudget.DefaultGamma,
-        bool deltaActions = false
+        bool deltaActions = false,
+        float steeringReversalPenaltyPerSecond =
+            DefaultSteeringReversalPenaltyPerSecond,
+        float steeringChangePenaltyPerSecond =
+            DefaultSteeringChangePenaltyPerSecond
     )
     {
         if (!float.IsFinite(raceKilometres) || raceKilometres <= 0f)
@@ -450,6 +491,8 @@ public sealed class DirectDriveDuelEnvironment
 
         _fixedEgoStrategy = egoStrategy;
         _deltaActions = deltaActions;
+        _steeringReversalPenalty = MathF.Max(0f, steeringReversalPenaltyPerSecond);
+        _steeringChangePenalty = MathF.Max(0f, steeringChangePenaltyPerSecond);
         _decisionHz = decisionHz;
         _agentStepSeconds = 1f / decisionHz;
         _minimumForwardGapMeters = minimumForwardGapMeters;
@@ -596,7 +639,19 @@ public sealed class DirectDriveDuelEnvironment
         // Committed before anything moves, so it drives every substep of
         // the interval it is credited with, and scaled by the ceilings the
         // observation that produced it reported.
+        //
+        // How far the command moves is read around the commit rather than
+        // from the action, so it means the same thing under either
+        // contract: the number charged is what the wheels were asked to do
+        // this decision, not what the policy typed.
+        float commandBefore = _egoDriver.CommandedCurvatureNorm;
         _egoDriver.CommitAction(action);
+        float commandMove = _egoDriver.CommandedCurvatureNorm - commandBefore;
+        float commandTurn = _hasCommandMove
+            ? commandMove - _previousCommandMove
+            : 0f;
+        _previousCommandMove = commandMove;
+        _hasCommandMove = true;
         if (_opponentDriver is not null)
         {
             if (opponentActionValues.Length != DirectDriveObservation.ActionSize)
@@ -718,7 +773,15 @@ public sealed class DirectDriveDuelEnvironment
             RetirementPenalty: terminalReason == TrainingTerminalReason.Stalled
                 ? -30f
                 : 0f,
-            BudgetShaping: budgetShaping
+            BudgetShaping: budgetShaping,
+            // The wheel, priced per second like everything else here: the
+            // turn of the hand first, then a small tax on the movement.
+            SteeringReversalPenalty:
+                -_steeringReversalPenalty * MathF.Abs(commandTurn) *
+                AgentStepSeconds,
+            SteeringChangePenalty:
+                -_steeringChangePenalty * MathF.Abs(commandMove) *
+                AgentStepSeconds
         );
     }
 
@@ -1008,6 +1071,10 @@ public sealed class DirectDriveDuelEnvironment
         SampleObservation(observation);
         SampleOpponentObservation(opponentObservation);
         MinimumSignedLeadDistanceMeters = InitialForwardGapMeters;
+        // A fresh episode starts with no hand movement behind it, so the
+        // first decision's own move is not read as a turn of the wheel.
+        _previousCommandMove = 0f;
+        _hasCommandMove = false;
         _elapsedSeconds = 0f;
         _passHoldSeconds = 0f;
         _stalledHoldSeconds = 0f;

@@ -38,6 +38,13 @@ public sealed class SoloFingerprintTests
 
     private const int StepsPerEpisode = 240;
 
+    /// <summary>
+    /// How many reward components the recording has in it. Components
+    /// added later are held to zero in this configuration instead (see
+    /// below), which is what keeps one recording usable across them.
+    /// </summary>
+    private const int ComponentsWhenRecorded = 12;
+
     private static string FingerprintPath =>
         Path.Combine(
             AppContext.BaseDirectory,
@@ -86,7 +93,13 @@ public sealed class SoloFingerprintTests
                 DirectDriveDuelEnvironment environment = new(
                     solo: true,
                     randomiseEpisodeStart: curriculum,
-                    hiddenCurriculum: curriculum
+                    hiddenCurriculum: curriculum,
+                    // The steering costs off: this fingerprint is the world
+                    // as it stood before they existed, and the point of
+                    // keeping it is that switching them off gets that world
+                    // back to the bit rather than to the eye.
+                    steeringReversalPenaltyPerSecond: 0f,
+                    steeringChangePenaltyPerSecond: 0f
                 );
                 environment.ResetTrack(circuit, 20260920, observation);
                 Absorb(hash, observation);
@@ -102,8 +115,21 @@ public sealed class SoloFingerprintTests
                         action, observation
                     );
                     Absorb(hash, observation);
-                    for (int i = 0; i < TrainingStepResult.ComponentCount; i++)
+                    for (int i = 0; i < ComponentsWhenRecorded; i++)
                         Absorb(hash, result.GetComponent(i));
+                    // Anything added to the reward since must be exactly
+                    // nothing in the world this fingerprint describes.
+                    // Checked rather than hashed: re-recording the
+                    // fingerprint for a component that is zero would throw
+                    // away the evidence that it is zero, and hashing it
+                    // would make every future addition look like a change
+                    // to the car.
+                    for (int i = ComponentsWhenRecorded;
+                         i < TrainingStepResult.ComponentCount;
+                         i++)
+                    {
+                        Assert.Equal(0f, result.GetComponent(i));
+                    }
                     Absorb(hash, (int)result.TerminalReason);
                     Absorb(hash, environment.SpinEventsThisStep);
                     Absorb(hash, environment.Ego.Progress.RaceDistanceMeters);

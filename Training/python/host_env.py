@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 MAGIC = 0x53544556
-VERSION = 6
+VERSION = 7
 
 # The decision rate the host defaults to, mirrored from
 # DirectDriveRaceDriver.DefaultDecisionHz. It lives here rather than in
@@ -55,6 +55,10 @@ COMPONENT_NAMES = (
     "own_progress", "relative_progress", "pass", "contact", "wall",
     "off_course", "tyre_slip", "time", "timeout_outcome",
     "mode_excess", "retirement", "budget",
+    # The wheel (protocol 7): the turn of the hand, and a small tax on how
+    # far it moved. Sophy's acted_steering_history_cost and
+    # steering_change_cost, with coefficients of our own.
+    "steering_reversal", "steering_change",
 )
 
 DEFAULT_HOST_PROJECT = str(
@@ -75,6 +79,8 @@ class HostEnv:
         randomise_episode_start: bool = False,
         hidden_curriculum: bool = False,
         delta_actions: bool = False,
+        steering_reversal_cost: float | None = None,
+        steering_change_cost: float | None = None,
         budget_gamma: float | None = None,
         race_km: float | None = None,
         host_project: str = DEFAULT_HOST_PROJECT,
@@ -133,6 +139,12 @@ class HostEnv:
             # being it. The host carries the integrator and shows it back
             # in the observation; nothing else changes.
             command.append("--delta-actions")
+        # The two steering costs, per second; None leaves the host's own
+        # numbers alone and zero switches one off.
+        if steering_reversal_cost is not None:
+            command += ["--steering-reversal-cost", str(steering_reversal_cost)]
+        if steering_change_cost is not None:
+            command += ["--steering-change-cost", str(steering_change_cost)]
         if budget_gamma is not None:
             # The host shapes with phi' - phi by default; see
             # EnergyBudget.DefaultGamma for why not the learner's gamma.
@@ -155,6 +167,7 @@ class HostEnv:
         # Who is in front, in metres, positive while the sparring partner
         # leads. Zero in a solo run, where there is nobody to lead.
         self.lead_metres = np.zeros(batch, dtype=np.float64)
+        self.steer_angle = np.zeros(batch, dtype=np.float64)
         self.opponent_obs: np.ndarray | None = None
         self.opponent_final_obs: np.ndarray | None = None
         self.ego_analytic = ego_analytic
@@ -323,6 +336,13 @@ class HostEnv:
         # dozen callers unpack this method's tuple and none of them want it;
         # the ones that do read it straight after the step it belongs to.
         self.four_wheels_off = np.frombuffer(
+            payload, dtype="<f4", count=self.batch, offset=cursor
+        ).astype(np.float64)
+        cursor += self.batch * 4
+        # Where the front wheels ended the step, in radians: the command
+        # through the rack's rate limit, which is the steering a viewer
+        # watches. Scoreboard only, like the three fields above it.
+        self.steer_angle = np.frombuffer(
             payload, dtype="<f4", count=self.batch, offset=cursor
         ).astype(np.float64)
         cursor += self.batch * 4

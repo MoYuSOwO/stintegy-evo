@@ -82,6 +82,7 @@ def main() -> int:
         previous = obs[:, EGO_COMMAND].copy()
         direction = np.zeros(args.batch)
         straight_reversals = 0
+        amplitudes: list[float] = []
         straight_samples = 0
         corner_reversals = 0
         corner_samples = 0
@@ -103,6 +104,14 @@ def main() -> int:
             now = np.sign(delta)
             reversed_ = moved & (direction != 0) & (now != direction)
 
+            if np.any(reversed_ & straight):
+                # The size of the wheel movement a reversal turns around:
+                # a reversal of a thousandth is a policy holding a line,
+                # and counting it beside one of a fiftieth was the reason
+                # the rate alone was never a verdict.
+                amplitudes.extend(
+                    np.abs(delta[reversed_ & straight]).tolist()
+                )
             straight_reversals += int(np.count_nonzero(reversed_ & straight))
             corner_reversals += int(np.count_nonzero(reversed_ & ~straight))
             straight_samples += int(np.count_nonzero(straight))
@@ -129,15 +138,33 @@ def main() -> int:
         f"  mean command move per decision {swing / max(straight_samples + corner_samples, 1):.4f}\n"
         f"  spins {spins}"
     )
-    # The pre-registered screen: under three a second on the straights
-    # passes to the viewer, five to ten is the family's own figure and
-    # fails, and the band between them asks for a longer look.
-    verdict = (
-        "PASS to the viewer" if straight_rate < 3.0
-        else "FAIL — this is the family's own weave" if straight_rate >= 5.0
-        else "INCONCLUSIVE — watch it longer"
-    )
+    # Two conditions, because either alone can be passed by a car nobody
+    # wants to watch. A rate under three a second with a swing of a
+    # fiftieth of full lock is a car visibly snaking; a rate of ten with a
+    # swing of a thousandth is a car holding its line and dithering in the
+    # last digit. What the eye objects to is the two together, so both are
+    # named and the stricter one decides.
+    #
+    # The amplitude gate is the median movement a reversal turns around,
+    # against 0.02 of the normalised command. The family's weaving form
+    # sits at 0.0124 and climbing, which is why the gate is where it is.
+    swing = float(np.median(amplitudes)) if amplitudes else 0.0
+    print(f"  median swing at a reversal {swing:.5f} (gate 0.02)")
+    calm_enough = straight_rate < 3.0
+    small_enough = swing < 0.02
+    if calm_enough and small_enough:
+        verdict = "PASS to the viewer"
+    elif straight_rate >= 5.0 and not small_enough:
+        verdict = "FAIL — this is the family's own weave"
+    elif not small_enough:
+        verdict = "FAIL — the swing is what the eye objects to"
+    else:
+        verdict = "INCONCLUSIVE — watch it longer"
     print(f"  screen: {verdict}")
+    print(
+        "  (a rate this probe likes can still be a slow weave: run "
+        "spectrum_probe.py against a baseline before the viewer)"
+    )
     return 0
 
 
