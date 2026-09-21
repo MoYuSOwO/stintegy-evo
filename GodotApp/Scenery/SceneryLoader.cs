@@ -65,7 +65,15 @@ public sealed partial class SceneryLoader : Node3D
     /// each prop on the ground: a plan says where along and across the
     /// circuit a thing stands, never how high.
     /// </summary>
-    public void Build(SceneryPlan plan, TrackSurfaceGeometry surface)
+    public void Build(SceneryPlan plan, TrackSurfaceGeometry surface) =>
+        Build(plan, surface, null);
+
+    /// <summary>
+    /// The same, for a plan that came from a mod folder: its prop paths
+    /// are relative to that folder, so the mod can be moved or renamed
+    /// without rewriting a line of it.
+    /// </summary>
+    public void Build(SceneryPlan plan, TrackSurfaceGeometry surface, string? folder)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(surface);
@@ -74,7 +82,7 @@ public sealed partial class SceneryLoader : Node3D
         int placed = 0, missing = 0;
         foreach (SceneryPlacement prop in plan.Placements())
         {
-            Prop? found = Resolve(prop.Prop);
+            Prop? found = Resolve(prop.Prop, folder);
             if (found is null)
             {
                 missing++;
@@ -99,7 +107,7 @@ public sealed partial class SceneryLoader : Node3D
 
         foreach ((string prop, List<Transform3D> group) in batched)
         {
-            Mesh mesh = Resolve(prop)!.Value.Mesh!;
+            Mesh mesh = Resolve(prop, folder)!.Value.Mesh!;
             if (group.Count < BatchFrom)
             {
                 for (int i = 0; i < group.Count; i++)
@@ -166,12 +174,13 @@ public sealed partial class SceneryLoader : Node3D
     /// path of its own. Looked up once and remembered, including the
     /// misses, so a plan with fifty of the same tree reads one file.
     /// </summary>
-    private Prop? Resolve(string prop)
+    private Prop? Resolve(string prop, string? folder)
     {
-        if (_library.TryGetValue(prop, out Prop? found))
+        string key = folder is null ? prop : $"{folder}\u0000{prop}";
+        if (_library.TryGetValue(key, out Prop? found))
             return found;
 
-        Prop? scene = Load(prop);
+        Prop? scene = Load(prop, folder);
         if (scene is null)
         {
             GD.PushWarning(
@@ -179,12 +188,33 @@ public sealed partial class SceneryLoader : Node3D
                 $"catalogue number, not in {LibraryPath}, not a path"
             );
         }
-        _library[prop] = scene;
+        _library[key] = scene;
         return scene;
     }
 
-    private Prop? Load(string prop)
+    private Prop? Load(string prop, string? folder)
     {
+        // A mod's plan names files inside its own folder, and those files
+        // were never imported -- there is no editor in a shipped game --
+        // so they are read from disk by the runtime reader instead. A mod
+        // that asks for a catalogue number or a library name is asking for
+        // the game's own prop and falls through to it: a mod may put a
+        // tree where the circuit has none without shipping a tree.
+        if (folder is not null && (
+                prop.Contains('/', StringComparison.Ordinal) ||
+                prop.Contains('.', StringComparison.Ordinal)))
+        {
+            string path = prop.Contains("://", StringComparison.Ordinal)
+                ? prop
+                : $"{folder}/{prop}";
+            PackedScene? model = SceneryMods.LoadModel(path);
+            if (model is null)
+                return null;
+            return SingleMesh(model) is Mesh only
+                ? new Prop(null, only)
+                : new Prop(model, null);
+        }
+
         // A number is the game's own prop, through the catalogue, so that
         // the number outlives the file it currently points at.
         if (int.TryParse(prop, out _))

@@ -52,6 +52,15 @@ circuit whose geometry is re-cut keeps its scenery beside the same corners
 instead of scattering it across the county. Height is not authored: the
 ground is where the terrain says it is.
 
+## Mods
+
+A player adding scenery does not edit these files: they drop a folder into
+the game's `mods` directory, and it is read at startup and drawn after the
+circuit's own. See `MODDING.md`. The one difference that matters is the
+model format — a mod's models are read at runtime and must be glTF,
+because the importer that handles everything else is part of the editor
+and is not in a shipped game.
+
 ## Writing one
 
 By hand: the format is seven keys, and F5 shows the result. A prop that is
