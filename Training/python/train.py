@@ -250,6 +250,7 @@ def evaluate(
     seconds: float,
     modes: tuple[int, int] = EVALUATION_MODES,
     opponent: "FrozenOpponent | None" = None,
+    delta_actions: bool = False,
 ) -> dict[str, float]:
     """What the policy did on this circuit, and whether it was allowed to.
 
@@ -315,6 +316,10 @@ def evaluate(
         track=track,
         episode_seconds=seconds + 60.0,
         ego_modes=modes,
+        # A policy trained on increments has to be measured on them; the
+        # same numbers under the other contract would be a different
+        # driver's.
+        delta_actions=delta_actions,
     ) as env:
         # A budget in seconds, spent at whatever the rate is. Steps used
         # to be the budget, which meant every change of rate silently
@@ -605,6 +610,7 @@ def report(
         out[name] = evaluate(
             agent, args.eval_batch, seed_base, args.solo, name,
             args.eval_seconds, opponent=opponent,
+            delta_actions=args.delta_actions,
         )
     return out
 
@@ -651,6 +657,16 @@ def main() -> int:
     # the same objective the evaluation scores.
     parser.add_argument("--fixed-alpha", type=float, default=None)
     parser.add_argument("--solo", action="store_true")
+    # The delta-action pilot. The first action stops being the curvature to
+    # hold and becomes how far to move it this decision; the host carries
+    # the command between decisions and reports it back in the ego block,
+    # so the policy can see the wheel it is holding. Nothing else moves --
+    # not the physics, not the reward, not the curriculum, not the 457
+    # channels -- and with the flag off the run is the old one to the bit.
+    parser.add_argument(
+        "--delta-actions", action="store_true",
+        help="action[0] is an increment to the steering command, not the command",
+    )
     # Wheel-to-wheel. The partner is a frozen checkpoint driving the second
     # car through the same interface, and only the ego learns: the reward,
     # the terminals and the replay buffer are the ego's alone.
@@ -803,11 +819,13 @@ def main() -> int:
         episode_seconds=args.episode_seconds,
         randomise_episode_start=not args.fixed_episode_start,
         hidden_curriculum=not args.no_hidden_curriculum,
+        delta_actions=args.delta_actions,
         quiet=True,
     ) as env:
         print(
             f"env: obs={env.obs_size} action={env.action_size} "
-            f"lanes={env.batch} solo={args.solo}"
+            f"lanes={env.batch} solo={args.solo} "
+            f"actions={'delta' if args.delta_actions else 'absolute'}"
         )
         agent = SacAgent(env.obs_size, env.action_size, config)
         sparring = None
@@ -837,6 +855,11 @@ def main() -> int:
                 f"replay no)"
             )
 
+
+        # Travels with every checkpoint this run writes, so that whatever
+        # loads one later -- the exporter, the viewer, a duel's frozen
+        # partner -- reads the contract off the file instead of being told.
+        action_semantics = "delta" if args.delta_actions else "absolute"
 
         obs = env.reset()
         batcher = NStepBatcher(env.batch, config.n_step, config.gamma)
@@ -1092,7 +1115,9 @@ def main() -> int:
                     f"  均速 {lap_string(-key[2])}"
                 )
                 agent.save(
-                    str(checkpoint_dir / f"latest{args.tag}.pt"), step
+                    str(checkpoint_dir / f"latest{args.tag}.pt"),
+                    step,
+                    action_semantics=action_semantics,
                 )
                 # And one that nothing overwrites. A checkpoint is twenty
                 # eight megabytes and an evaluation is twenty minutes of
@@ -1104,7 +1129,9 @@ def main() -> int:
                 # by one that was a hundredth of a second quicker on the
                 # criterion that only counts two of them.
                 agent.save(
-                    str(checkpoint_dir / f"eval{args.tag}-{step}.pt"), step
+                    str(checkpoint_dir / f"eval{args.tag}-{step}.pt"),
+                    step,
+                    action_semantics=action_semantics,
                 )
                 # A checkpoint that completes nothing is not a best
                 # checkpoint, however flattering its mean happens to be.
@@ -1120,7 +1147,9 @@ def main() -> int:
                 if improved_criterion:
                     best_key = key
                     agent.save(
-                        str(checkpoint_dir / f"best{args.tag}.pt"), step
+                        str(checkpoint_dir / f"best{args.tag}.pt"),
+                        step,
+                        action_semantics=action_semantics,
                     )
                     print(
                         f"    saved best (旋转 {spins_total:.0f}, 干净档 "

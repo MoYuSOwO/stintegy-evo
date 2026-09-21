@@ -261,6 +261,8 @@ public sealed class DirectDriveDuelEnvironment
     );
 
     private readonly bool _solo;
+    private readonly bool _deltaActions;
+    private readonly float _decisionHz;
     private readonly bool _randomiseEpisodeStart;
     private readonly bool _hiddenCurriculum;
     private ulong _noiseState;
@@ -403,7 +405,8 @@ public sealed class DirectDriveDuelEnvironment
         bool hiddenCurriculum = false,
         float raceKilometres = EnergyBudget.DefaultRaceKilometres,
         float budgetLambda = EnergyBudget.DefaultLambda,
-        float budgetGamma = EnergyBudget.DefaultGamma
+        float budgetGamma = EnergyBudget.DefaultGamma,
+        bool deltaActions = false
     )
     {
         if (!float.IsFinite(raceKilometres) || raceKilometres <= 0f)
@@ -446,6 +449,8 @@ public sealed class DirectDriveDuelEnvironment
         }
 
         _fixedEgoStrategy = egoStrategy;
+        _deltaActions = deltaActions;
+        _decisionHz = decisionHz;
         _agentStepSeconds = 1f / decisionHz;
         _minimumForwardGapMeters = minimumForwardGapMeters;
         _maximumForwardGapMeters = maximumForwardGapMeters;
@@ -918,7 +923,9 @@ public sealed class DirectDriveDuelEnvironment
         TireConfig egoTires = TiresFor(egoStart, Curriculum.TireStressScale);
         // Clocked from here: the agent step and the decision period are
         // the same interval, so the controller keeps no clock of its own.
-        _egoDriver = new DirectDriveController(egoConfig, egoTires);
+        _egoDriver = new DirectDriveController(
+            egoConfig, egoTires, _deltaActions, _decisionHz
+        );
         _ego = CreateCar(
             "training-ego",
             track,
@@ -972,7 +979,7 @@ public sealed class DirectDriveDuelEnvironment
                 egoStart, OpponentCurriculum.TireStressScale
             );
             _opponentDriver = new DirectDriveController(
-                opponentConfig, opponentTires
+                opponentConfig, opponentTires, _deltaActions, _decisionHz
             );
             _opponent = CreateCar(
                 "training-opponent",

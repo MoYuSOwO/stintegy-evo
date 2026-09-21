@@ -436,7 +436,7 @@ class SacAgent:
 
     CHECKPOINT_FORMAT = 2
 
-    def save(self, path: str, step: int = 0) -> None:
+    def save(self, path: str, step: int = 0, **extra: object) -> None:
         """Everything needed to carry on, not just everything needed to drive.
 
         The first format stored three tensors: the actor, the critic and the
@@ -456,6 +456,12 @@ class SacAgent:
         """
         torch.save(
             {
+                # Anything the caller needs to travel with the weights --
+                # the action contract, for one, which a network cannot say
+                # about itself and a viewer that guesses wrong drives a
+                # different car. Written first so it cannot shadow the
+                # fields below.
+                **extra,
                 "format": self.CHECKPOINT_FORMAT,
                 "step": int(step),
                 "actor": self.actor.state_dict(),
