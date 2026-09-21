@@ -32,12 +32,14 @@ public sealed class DirectDriveController : IDriverController
 
     private readonly CarConfig _config;
     private readonly TireConfig _tires;
+    private readonly float _curvatureDeltaCap;
     private readonly DirectDriveObservationBuilder _observationBuilder;
     private readonly float[] _observation =
         new float[DirectDriveObservation.ObservationSize];
     private readonly float[] _action =
         new float[DirectDriveObservation.ActionSize];
     private DriverInput _heldInput;
+    private float _commandedCurvatureNorm;
     private float _lastCurvatureNorm;
     private float _lastAccelerationNorm;
     private float _sampledDriveLimit;
@@ -45,11 +47,57 @@ public sealed class DirectDriveController : IDriverController
     private float _sampledMaxCurvature;
     private bool _hasSample;
 
-    public DirectDriveController(CarConfig config, TireConfig tires)
+    /// <summary>
+    /// A seat on the absolute contract, or — for the delta-action pilot —
+    /// on the incremental one.
+    ///
+    /// <paramref name="deltaActions"/> changes what the first action means
+    /// and nothing else. Absolute: the number is the curvature the car is
+    /// to hold. Incremental: it is how far to move the command this
+    /// decision, and the seat carries the command between decisions.
+    /// </summary>
+    public DirectDriveController(
+        CarConfig config,
+        TireConfig tires,
+        bool deltaActions = false,
+        float decisionHz = DefaultDecisionHz
+    )
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _tires = tires ?? throw new ArgumentNullException(nameof(tires));
         _observationBuilder = new DirectDriveObservationBuilder(config);
+        DeltaActions = deltaActions;
+        _curvatureDeltaCap = deltaActions
+            ? CurvatureDeltaCap(config, decisionHz)
+            : 0f;
+    }
+
+    /// <summary>Whether the first action is an increment rather than a command.</summary>
+    public bool DeltaActions { get; }
+
+    /// <summary>
+    /// The most the steering command may move in one decision, in units of
+    /// the normalised command, so that the pilot cannot reach anywhere the
+    /// absolute contract could not.
+    ///
+    /// Calibrated against the car, not chosen: the wheels themselves take
+    /// <c>MaxSteerAngleRadians / SteerRateLimitRadiansPerSecond</c> to go
+    /// from straight to full lock — 0.76 s on this car — and the command's
+    /// whole range is two units wide, so a cap of two units over that many
+    /// decisions lets the command cross its range exactly as fast as the
+    /// wheels cross half of theirs. The rack is therefore still the
+    /// binding constraint everywhere the rack was binding before, which is
+    /// what makes this a change of what an action means rather than a
+    /// change to what the car can do.
+    ///
+    /// On the default car at fifteen hertz that is 0.1745 a decision.
+    /// </summary>
+    public static float CurvatureDeltaCap(CarConfig config, float decisionHz)
+    {
+        float lockSeconds = MathF.Max(config.MaxSteerAngleRadians, 1e-3f) /
+                            MathF.Max(config.SteerRateLimitRadiansPerSecond, 1e-3f);
+        float decisions = MathF.Max(lockSeconds * decisionHz, 1f);
+        return 2f / decisions;
     }
 
     public ReadOnlySpan<float> LastObservation => _observation;
@@ -69,6 +117,7 @@ public sealed class DirectDriveController : IDriverController
         _observationBuilder.Reset();
         _hasSample = false;
         _heldInput = default;
+        _commandedCurvatureNorm = 0f;
         _lastCurvatureNorm = 0f;
         _lastAccelerationNorm = 0f;
         Array.Clear(_observation);
@@ -143,7 +192,27 @@ public sealed class DirectDriveController : IDriverController
             );
         }
 
-        float curvatureNorm = SanitizeUnit(action[0]);
+        // Absolute: the action is the command. Incremental: the action
+        // moves the command, and what the car is given -- and what the
+        // observation reports back as the command in hand -- is the
+        // integrator, never the increment. A driver has to see the wheel
+        // it is holding, the same way it has to see the charge it is
+        // being billed for.
+        float curvatureNorm;
+        if (DeltaActions)
+        {
+            _commandedCurvatureNorm = Math.Clamp(
+                _commandedCurvatureNorm +
+                SanitizeUnit(action[0]) * _curvatureDeltaCap,
+                -1f,
+                1f
+            );
+            curvatureNorm = _commandedCurvatureNorm;
+        }
+        else
+        {
+            curvatureNorm = SanitizeUnit(action[0]);
+        }
         float accelerationNorm = SanitizeUnit(action[1]);
         _lastCurvatureNorm = curvatureNorm;
         _lastAccelerationNorm = accelerationNorm;

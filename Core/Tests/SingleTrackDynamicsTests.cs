@@ -347,7 +347,12 @@ public sealed class SingleTrackDynamicsTests
             $"the rate limit allows"
         );
 
-        for (int i = 0; i < 120; i++)
+        // A quarter of a second, which is what the rate limit is about and
+        // is over before the car's attitude has gone anywhere. Held at full
+        // lock for two full seconds the car eventually spins, and the
+        // choreography that takes over then owns the steering: that is a
+        // statement about spinning, not about how fast the wheels turn.
+        for (int i = 0; i < 14; i++)
             CarPhysics.Step(state, car, tires, PhysicsInput(hard), Dt);
         Assert.True(
             state.SteerAngleRadians > afterOne,

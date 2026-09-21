@@ -13,8 +13,6 @@ public static class CarPhysics
     private const float MinimumTemperatureGripFactor = 0.55f;
     private const float MaximumTemperatureGripFactor = 1.08f;
     private const float MinimumWearGripFactor = 0.45f;
-    private const float RearSlipOnsetCombinedUse = 0.82f;
-    private const float RearSlipDominanceRange = 0.2f;
     /// <summary>
     /// Below this speed the lateral model is kinematic: sideslip is not
     /// carried and the body follows its path. Contact resolvers read it to
@@ -22,7 +20,6 @@ public static class CarPhysics
     /// </summary>
     internal const float DynamicYawMinimumSpeed = 5f;
     private const float DynamicYawBlendRange = 5f;
-    private const float SideslipEnergyLossScale = 1f;
 
     /// <summary>
     /// Speed below which a slip angle stops meaning anything, because the
@@ -168,13 +165,13 @@ public static class CarPhysics
                 frontBrakeShare
             )
         );
-        float lateralUse = Math.Abs(lateralAcceleration) / Math.Max(frontGrip + rearGrip, Epsilon);
         float loss = CalculateLossAccel(
             config,
             speed,
-            lateralUse,
             state.AirVelocityDeficit,
             state.DragReduction
+        ) + SteadyInducedDragAccel(
+            config, speed, frontLateral, rearLateral, frontGrip, rearGrip
         );
 
         return new CarPerformanceLimits(
@@ -478,17 +475,20 @@ public static class CarPhysics
             lateral.RearSlipAngle
         );
 
-        float sideslipLossAccel = CalculateSideslipLossAccel(
-            actualLateralAccel,
-            state.SideslipAngleRadians
+        // What the corner costs, read off the axles that are paying it.
+        float inducedDragAccel = InducedDragAccel(
+            front.LateralAccel,
+            lateral.FrontSlipAngle,
+            rear.LateralAccel,
+            lateral.RearSlipAngle,
+            dynamicYawBlend
         );
         float lossAccel = CalculateLossAccel(
             config,
             state.Speed,
-            lateralUse,
             state.AirVelocityDeficit,
             state.DragReduction
-        ) + sideslipLossAccel;
+        ) + inducedDragAccel;
         float actualLongitudinalAccel =
             (axleLongitudinalAccel - lossAccel) * longitudinalDemandScale +
             roadAlongGravity;
@@ -684,7 +684,7 @@ public static class CarPhysics
             drivePowerWatts,
             regenPowerWatts,
             lateral.Front.LimiterCut + lateral.Rear.LimiterCut,
-            sideslipLossAccel,
+            inducedDragAccel,
             state.SideslipAngleRadians,
             rearSlideSeverity,
             referenceYawRate,
@@ -1804,12 +1804,13 @@ public static class CarPhysics
     /// worth so much more at a car length than at ten.
     ///
     /// Only that part is reduced. Rolling resistance does not care what is in
-    /// front, and the tyre scrub of cornering is not an air loss at all.
+    /// front. What cornering costs is not here at all: see
+    /// <see cref="InducedDragAccel"/>, which is the tyres' business and not
+    /// the air's.
     /// </summary>
     private static float CalculateLossAccel(
         CarConfig config,
         float speed,
-        float lateralUse,
         float airVelocityDeficit,
         float dragReduction
     )
@@ -1823,18 +1824,85 @@ public static class CarPhysics
             config.RollingDragAccel +
             config.AeroDragAccelPerSpeedSquared * speed * speed *
             metAir * metAir *
-            (1f - config.DragReductionDragShare * assist) +
-            config.CorneringScrubAccel * lateralUse * lateralUse;
+            (1f - config.DragReductionDragShare * assist);
     }
 
-    private static float CalculateSideslipLossAccel(
-        float lateralAcceleration,
-        float sideslipAngle
+    /// <summary>
+    /// What cornering costs in speed, from where it actually comes from.
+    ///
+    /// A tyre at a slip angle makes its force perpendicular to the wheel,
+    /// not to the car's travel. The component of that force pointing back
+    /// down the road is drag, and it is the whole of the cornering loss:
+    /// <c>sum over axles of |F_lat| * sin(|alpha|)</c>, with nothing to
+    /// calibrate — no coefficient, no scale, no rate. Turning is slow
+    /// because the rubber is pointing slightly the wrong way, and how
+    /// wrong is a number the model already carries.
+    ///
+    /// This replaces two approximations that used to be charged side by
+    /// side. One was a rate times the square of lateral utilisation, which
+    /// is the steady-state answer written as a curve fit; the other was the
+    /// body's own sideslip against the lateral acceleration, which is the
+    /// same mechanism seen from the chassis. They overlapped in the middle
+    /// and, more to the point, they were both blind to the same thing: a
+    /// front axle sawn back and forth at a large slip angle while the body
+    /// stays pointed straight. Utilisation averages out over the sawing and
+    /// the body angle never appears, so shaking the wheel cost a car
+    /// nothing. It costs it plenty here, because the angle is read per axle
+    /// at the moment it is held.
+    /// </summary>
+    private static float InducedDragAccel(
+        float frontLateralAccel,
+        float frontSlipAngle,
+        float rearLateralAccel,
+        float rearSlipAngle,
+        float dynamicYawBlend
     )
     {
-        return Math.Abs(
-            lateralAcceleration * MathF.Sin(sideslipAngle)
-        ) * SideslipEnergyLossScale;
+        // Faded out with the rest of the slip-angle model. Below
+        // DynamicYawMinimumSpeed the car does not carry a sideslip at all:
+        // it follows its wheels, so there is no angle between where the
+        // rubber points and where it is going, and nothing for this to
+        // charge. Reading the angles there anyway charges a crawling car
+        // the whole of its grip as drag -- a car nosed into a barrier at
+        // walking pace could not pull away from it, which is the deadlock
+        // this model has been dug out of twice.
+        return dynamicYawBlend * (
+            Math.Abs(frontLateralAccel) * MathF.Sin(Math.Abs(frontSlipAngle)) +
+            Math.Abs(rearLateralAccel) * MathF.Sin(Math.Abs(rearSlipAngle))
+        );
+    }
+
+    /// <summary>
+    /// The same cost, for a car that is not being simulated: what the
+    /// induced drag would settle at if this corner were held.
+    ///
+    /// The angles are not known to a planner, so they are solved from the
+    /// force each axle is being asked for: the slip curve read backwards
+    /// gives the angle that delivers that share, and the drag follows. It
+    /// is the steady-state reading of the same mechanism the step charges,
+    /// so a plan and the physics quote one price list rather than two.
+    /// </summary>
+    private static float SteadyInducedDragAccel(
+        CarConfig config,
+        float speed,
+        float frontLateralAccel,
+        float rearLateralAccel,
+        float frontGrip,
+        float rearGrip
+    )
+    {
+        float frontShare = Math.Abs(frontLateralAccel) /
+                           Math.Max(frontGrip, Epsilon);
+        float rearShare = Math.Abs(rearLateralAccel) /
+                          Math.Max(rearGrip, Epsilon);
+        float frontAngle = TireSlipCurve.InverseEvaluate(
+            frontShare, config.FrontPeakSlipAngleRatio
+        );
+        float rearAngle = TireSlipCurve.InverseEvaluate(rearShare);
+        return InducedDragAccel(
+            frontLateralAccel, frontAngle, rearLateralAccel, rearAngle,
+            CalculateDynamicYawBlend(speed)
+        );
     }
 
     /// <summary>

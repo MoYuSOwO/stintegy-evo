@@ -35,7 +35,8 @@ internal static class Program
                 bool hiddenCurriculum,
                 float raceKilometres,
                 float budgetLambda,
-                float budgetGamma
+                float budgetGamma,
+                bool deltaActions
             ) =
                 ParseOptions(args);
             BatchedTrainingHost host = new(
@@ -55,7 +56,8 @@ internal static class Program
                 hiddenCurriculum,
                 raceKilometres,
                 budgetLambda,
-                budgetGamma
+                budgetGamma,
+                deltaActions
             );
             host.Run(protocolInput, protocolOutput, diagnostics);
             return 0;
@@ -84,7 +86,8 @@ internal static class Program
         bool HiddenCurriculum,
         float RaceKilometres,
         float BudgetLambda,
-        float BudgetGamma
+        float BudgetGamma,
+        bool DeltaActions
     ) ParseOptions(string[] args)
     {
         int batchSize = 1;
@@ -111,6 +114,10 @@ internal static class Program
         float raceKilometres = EnergyBudget.DefaultRaceKilometres;
         float budgetLambda = EnergyBudget.DefaultLambda;
         float budgetGamma = EnergyBudget.DefaultGamma;
+        // The delta-action pilot: the first action becomes an increment to
+        // the steering command rather than the command itself. Off is the
+        // world as it stands, bit for bit.
+        bool deltaActions = false;
         EpisodeStartDistribution episodeStarts = new();
         for (int i = 0; i < args.Length; i++)
         {
@@ -140,6 +147,11 @@ internal static class Program
             if (option == "--hidden-curriculum")
             {
                 hiddenCurriculum = true;
+                continue;
+            }
+            if (option == "--delta-actions")
+            {
+                deltaActions = true;
                 continue;
             }
             if (i + 1 >= args.Length)
@@ -293,7 +305,8 @@ internal static class Program
             hiddenCurriculum,
             raceKilometres,
             budgetLambda,
-            budgetGamma
+            budgetGamma,
+            deltaActions
         );
     }
 
