@@ -10,6 +10,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The scenery plan's file format: presentation data with no Godot in
+         it, tested here because this is the solution's only test project.
+         The rest of the scenery pipeline needs an engine and is watched by
+         eye instead. -->
+    <Compile Include="../../GodotApp/Scenery/SceneryPlan.cs" />
+    <Compile Include="../../GodotApp/Scenery/SceneryCatalogue.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Core.csproj" />
     <Compile Include="../../GodotApp/LowPoly/PresentationTiming.cs" Link="Presentation/PresentationTiming.cs" />
     <Compile Include="../../GodotApp/LowPoly/TrackSurfaceGeometry.cs" Link="Presentation/TrackSurfaceGeometry.cs" />

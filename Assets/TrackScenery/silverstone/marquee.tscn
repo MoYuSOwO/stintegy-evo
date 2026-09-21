@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3 uid="uid://cscn0marq001"]
+
+; A circuit's own prop, kept with the circuit rather than in the shared
+; library: a plan names it by path and nothing else has to know it exists.
+
+[sub_resource type="StandardMaterial3D" id="Material_canvas"]
+albedo_color = Color(0.9, 0.88, 0.8, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_body"]
+material = SubResource("Material_canvas")
+size = Vector3(12, 3.2, 8)
+
+[sub_resource type="PrismMesh" id="Mesh_roof"]
+material = SubResource("Material_canvas")
+size = Vector3(12.6, 1.8, 8.4)
+
+[node name="marquee" type="Node3D"]
+
+[node name="Body" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+mesh = SubResource("Mesh_body")
+
+[node name="Roof" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.1, 0)
+mesh = SubResource("Mesh_roof")
