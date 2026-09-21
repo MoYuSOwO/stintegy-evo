@@ -57,7 +57,7 @@ public sealed partial class SceneryLoader : Node3D
     /// </summary>
     private const int BatchFrom = 8;
 
-    private readonly Dictionary<string, PackedScene?> _library = [];
+    private readonly Dictionary<string, Prop?> _library = [];
     private Dictionary<string, string>? _catalogue;
 
     /// <summary>
@@ -74,14 +74,14 @@ public sealed partial class SceneryLoader : Node3D
         int placed = 0, missing = 0;
         foreach (SceneryPlacement prop in plan.Placements())
         {
-            PackedScene? scene = Resolve(prop.Prop);
-            if (scene is null)
+            Prop? found = Resolve(prop.Prop);
+            if (found is null)
             {
                 missing++;
                 continue;
             }
             Transform3D where = Stand(prop, surface);
-            if (SingleMesh(scene) is not null)
+            if (found.Value.Mesh is not null)
             {
                 if (!batched.TryGetValue(prop.Prop, out List<Transform3D>? group))
                     batched[prop.Prop] = group = [];
@@ -89,7 +89,7 @@ public sealed partial class SceneryLoader : Node3D
             }
             else
             {
-                Node3D node = scene.Instantiate<Node3D>();
+                Node3D node = found.Value.Scene!.Instantiate<Node3D>();
                 node.Transform = where;
                 node.Name = $"{prop.Prop}_{placed}";
                 AddChild(node);
@@ -99,7 +99,7 @@ public sealed partial class SceneryLoader : Node3D
 
         foreach ((string prop, List<Transform3D> group) in batched)
         {
-            Mesh mesh = SingleMesh(Resolve(prop)!)!;
+            Mesh mesh = Resolve(prop)!.Value.Mesh!;
             if (group.Count < BatchFrom)
             {
                 for (int i = 0; i < group.Count; i++)
@@ -135,18 +135,6 @@ public sealed partial class SceneryLoader : Node3D
     /// One prop, under a node of the caller's choosing: what the edit mode
     /// uses to show what it has just placed, without rebuilding a plan.
     /// </summary>
-    public void Show(
-        SceneryPlacement prop, TrackSurfaceGeometry surface, Node3D under
-    )
-    {
-        PackedScene? scene = Resolve(prop.Prop);
-        if (scene is null)
-            return;
-        Node3D node = scene.Instantiate<Node3D>();
-        node.Transform = Stand(prop, surface);
-        under.AddChild(node);
-    }
-
     /// <summary>
     /// Where a prop stands: along the centreline to its station, out to
     /// the side by its offset, on the ground the surface describes, turned
@@ -178,12 +166,12 @@ public sealed partial class SceneryLoader : Node3D
     /// path of its own. Looked up once and remembered, including the
     /// misses, so a plan with fifty of the same tree reads one file.
     /// </summary>
-    private PackedScene? Resolve(string prop)
+    private Prop? Resolve(string prop)
     {
-        if (_library.TryGetValue(prop, out PackedScene? found))
+        if (_library.TryGetValue(prop, out Prop? found))
             return found;
 
-        PackedScene? scene = Load(prop);
+        Prop? scene = Load(prop);
         if (scene is null)
         {
             GD.PushWarning(
@@ -195,7 +183,7 @@ public sealed partial class SceneryLoader : Node3D
         return scene;
     }
 
-    private PackedScene? Load(string prop)
+    private Prop? Load(string prop)
     {
         // A number is the game's own prop, through the catalogue, so that
         // the number outlives the file it currently points at.
@@ -208,23 +196,56 @@ public sealed partial class SceneryLoader : Node3D
         if (prop.Contains("://", StringComparison.Ordinal) ||
             prop.Contains('/', StringComparison.Ordinal))
         {
-            return ResourceLoader.Exists(prop)
-                ? ResourceLoader.Load<PackedScene>(prop)
-                : null;
+            return At(prop);
         }
         return ByName(prop);
     }
 
-    private static PackedScene? ByName(string name)
+    /// <summary>
+    /// Every format the library takes, in the order they are tried.
+    /// Godot's own scene formats load as they are; everything else — glTF,
+    /// Wavefront, COLLADA, FBX — is whatever the editor imported it as,
+    /// which is a scene for some and a bare mesh for others. Both are
+    /// accepted, so the answer to "can it load my model" does not depend
+    /// on which of the two the importer chose.
+    /// </summary>
+    private static readonly string[] Extensions =
+        [".tscn", ".scn", ".glb", ".gltf", ".obj", ".dae", ".fbx", ".blend", ".res"];
+
+    private static Prop? ByName(string name)
     {
-        foreach (string extension in new[] { ".tscn", ".scn", ".glb", ".gltf" })
+        foreach (string extension in Extensions)
         {
-            string path = $"{LibraryPath}/{name}{extension}";
-            if (ResourceLoader.Exists(path))
-                return ResourceLoader.Load<PackedScene>(path);
+            if (At($"{LibraryPath}/{name}{extension}") is Prop prop)
+                return prop;
         }
         return null;
     }
+
+    /// <summary>
+    /// A prop at a path, however the importer left it: a scene, or a mesh
+    /// with nothing around it.
+    /// </summary>
+    private static Prop? At(string path)
+    {
+        if (!ResourceLoader.Exists(path))
+            return null;
+        Resource? resource = ResourceLoader.Load(path);
+        return resource switch
+        {
+            PackedScene scene => SingleMesh(scene) is Mesh only
+                ? new Prop(null, only)   // batch it: it is one mesh anyway
+                : new Prop(scene, null),
+            Mesh mesh => new Prop(null, mesh),
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// A loaded prop: a scene to instance, or a mesh to batch. Never both,
+    /// and a mesh is preferred wherever a scene turns out to be one.
+    /// </summary>
+    private readonly record struct Prop(PackedScene? Scene, Mesh? Mesh);
 
     private Dictionary<string, string> Catalogue()
     {

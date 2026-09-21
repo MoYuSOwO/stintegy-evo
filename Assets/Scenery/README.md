@@ -17,7 +17,25 @@ single circuit. Numbering is for the shared props only — a circuit with
 scenery of its own names the file instead, from anywhere in the project,
 and never appears here.
 
-Accepted: `.tscn`, `.scn`, `.glb`, `.gltf`, looked up in that order by name.
+## Formats
+
+Accepted, tried in this order by name: `.tscn`, `.scn`, `.glb`, `.gltf`,
+`.obj`, `.dae`, `.fbx`, `.blend`, `.res`. Two of them are here as working
+examples of the two kinds: `crate.glb` imports as a scene, `barrel.obj` as
+a bare mesh, and the loader takes either.
+
+**Anything that is not Godot's own format has to be imported once.** A
+`.glb` dropped in here and run straight away is invisible — the game only
+sees resources the editor has imported, and importing is what writes the
+`.import` file beside the model. Opening the project in Godot does it, or,
+without opening anything:
+
+```sh
+/Applications/Godot_mono.app/Contents/MacOS/Godot --headless --path . --import
+```
+
+After that it loads like anything else. `.tscn` and `.scn` need none of
+this, which is why the props that ship here are written in them.
 
 Two kinds, and the difference is only about how they are drawn:
 

@@ -24,8 +24,12 @@ Three ways, and a plan may use all three at once.
 | written | means |
 |---|---|
 | `"prop": 2` | the game's own prop number two, through `Assets/Scenery/catalogue.json` |
-| `"prop": "pine"` | `pine.glb` or `pine.tscn` in `Assets/Scenery` |
+| `"prop": "pine"` | `pine.tscn`, `pine.glb`, `pine.obj` … in `Assets/Scenery`, by name |
 | `"prop": "res://Assets/TrackScenery/silverstone/marquee.tscn"` | that file, wherever it is — a circuit bringing scenery of its own |
+
+Models in a format Godot has to import — glTF, Wavefront, COLLADA, FBX —
+work anywhere a name or a path does, but must be imported once first (see
+`Assets/Scenery/README.md`). Godot's own `.tscn` needs nothing.
 
 The numbers are the stable handle on the props that ship with the game:
 re-model the tree or rename its file, and every circuit that asked for a 1
