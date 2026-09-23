@@ -66,6 +66,13 @@ BUDGET_DEVIATION = RESOURCE_BLOCK + 4
 EGO_SPEED = 237
 EGO_HEADING_SIN = EGO_SPEED + 5
 EGO_HEADING_COS = EGO_SPEED + 6
+# Ego block after speed: long, lat, yaw, sideslip, sin, cos, offset,
+# two edge distances, last steering command. Same indices jitter_probe
+# uses, so the eval screen and the standalone probe count one wheel.
+EGO_LATERAL_ACCEL = EGO_SPEED + 2
+EGO_COMMAND = EGO_SPEED + 10
+STEER_ACCEL_SCALE = 20.0
+STRAIGHT_LATERAL = 2.0
 TIMEOUT_REASON = TERMINAL_NAMES.index("timeout")
 
 
@@ -364,6 +371,13 @@ def evaluate(
         spin_events = 0
         previous: list[float | None] = [None] * batch
         crossed: list[float | None] = [None] * batch
+        prev_command = None
+        command_dir = np.zeros(batch)
+        straight_reversals = 0
+        straight_samples = 0
+        reversal_amplitudes: list[float] = []
+        command_moves = 0.0
+        command_samples = 0
         for step in range(steps):
             action = agent.act(obs, deterministic=True)
             if opponent is None:
@@ -414,6 +428,26 @@ def evaluate(
             ).astype(np.float64)
             now = (step + 1) * STEP_SECONDS
             spin_events += int(spins.sum())
+            command = obs[:, EGO_COMMAND]
+            if prev_command is None:
+                prev_command = command.copy()
+            else:
+                delta = command - prev_command
+                lateral = np.abs(obs[:, EGO_LATERAL_ACCEL]) * STEER_ACCEL_SCALE
+                straight = lateral < STRAIGHT_LATERAL
+                moved = np.abs(delta) > 1e-4
+                now_dir = np.sign(delta)
+                reversed_ = moved & (command_dir != 0) & (now_dir != command_dir)
+                reversal_amplitudes.extend(
+                    np.abs(delta[reversed_ & straight]).tolist()
+                )
+                straight_reversals += int(np.count_nonzero(reversed_ & straight))
+                straight_samples += int(np.count_nonzero(straight))
+                command_moves += float(np.abs(delta).mean())
+                command_samples += 1
+                command_dir = np.where(moved, now_dir, command_dir)
+                command_dir = np.where(done, 0, command_dir)
+                prev_command = np.where(done, command, command)
             step_off = components[COMPONENT_NAMES.index("off_course")]
             step_wall = components[COMPONENT_NAMES.index("wall")]
             step_excess = components[COMPONENT_NAMES.index("mode_excess")]
@@ -528,6 +562,17 @@ def evaluate(
         "stalls": float(stalls),
         "spins": float(spin_events),
         "spins_per_lap": spin_events / completed if completed else 0.0,
+        # Same two numbers jitter_probe prints: reversals a second on the
+        # straights, and the median wheel move a reversal turns around.
+        "straight_reversals_per_s": (
+            straight_reversals / max(straight_samples * STEP_SECONDS, 1e-6)
+        ),
+        "reversal_swing": (
+            float(np.median(reversal_amplitudes)) if reversal_amplitudes else 0.0
+        ),
+        "mean_command_move": (
+            command_moves / max(command_samples, 1)
+        ),
         # The duel's own three, zero in a solo evaluation.
         "duel_episodes": float(duel_episodes),
         "duel_wins": float(duel_wins),
@@ -558,41 +603,34 @@ def per_lap(events: float, laps: float) -> str:
     return f"≈1/{per:.0f} 圈" if per >= 1.0 else f"≈{events / laps:.1f}/圈"
 
 
-def clean_criterion_key(
+def progress_lines(
     laps: dict[str, dict[str, float]], names: list[str]
-) -> tuple[int, int, float]:
-    """How good a checkpoint is under the criterion graduation actually
-    uses, as a tuple that sorts larger-is-better.
+) -> tuple[float, float, float, float, float] | None:
+    """Clean-lap mean, spins, off-course, straight reversal rate, swing.
 
-    Lexicographic, and the order is the argument. A checkpoint that never
-    loses the car beats one that is quicker and does; among those, one that
-    laps cleanly most of the time beats one that manages it occasionally,
-    which beats one that never does; and only inside a tier does pace
-    decide. The charged lap - the ranking this project has used since
-    clean laps stopped being reliably available - survives as the tiebreak
-    inside the tier where there is no clean lap to compare, which is the
-    one place it was ever the only defined answer.
-
-    The alternative is what the slip-angle batch's own gate 2 did: rank on
-    charged lap alone, and watch a checkpoint with a clean lap, no spins
-    and a time inside the band get overwritten by one two hundredths of a
-    second quicker that had none of those things.
+    Lower is better on every line. Any one beating its record is progress.
+    Charged (dirty) mean is not a line. None if a trained circuit
+    completed no lap.
     """
+    if not names or any(laps[n]["laps"] <= 0 for n in names):
+        return None
     spins = sum(laps[n]["spins"] for n in names)
-    completed = sum(laps[n]["laps"] for n in names)
-    clean = sum(laps[n]["clean_laps"] for n in names)
-    share = clean / completed if completed else 0.0
-    tier = 2 if share > 0.5 else (1 if clean > 0 else 0)
-
-    def circuit_pace(name: str) -> float:
+    off = sum(laps[n]["off_per_lap"] for n in names) / len(names)
+    paces: list[float] = []
+    rates: list[float] = []
+    swings: list[float] = []
+    for name in names:
         times = laps[name].get("clean_lap_times") or []
-        if tier > 0 and times:
-            return float(np.mean(times))
-        charged = laps[name]["charged_lap"]
-        return charged if math.isfinite(charged) else 240.0
-
-    pace = sum(circuit_pace(n) for n in names) / len(names)
-    return (1 if spins == 0 else 0, tier, -pace)
+        paces.append(float(np.mean(times)) if times else math.inf)
+        rates.append(float(laps[name].get("straight_reversals_per_s", math.inf)))
+        swings.append(float(laps[name].get("reversal_swing", math.inf)))
+    return (
+        sum(paces) / len(paces),
+        spins,
+        off,
+        sum(rates) / len(rates),
+        sum(swings) / len(swings),
+    )
 
 
 def report(
@@ -756,7 +794,7 @@ def main() -> int:
         help="freeze alpha at its floor after this many steps regardless",
     )
     parser.add_argument(
-        "--stop-after-stale", type=int, default=3,
+        "--stop-after-stale", type=int, default=6,
         help="stop once this many evaluations improve neither line",
     )
     args = parser.parse_args()
@@ -880,12 +918,13 @@ def main() -> int:
         previous_race = None
         window_lap_metres, _unused_trained = TRACKS[args.track] \
             if args.track else (TRACKS["silverstone"][0], None)
-        # C3's key, and the charged mean beside it. Both are tracked
-        # because the stopping rule is deliberately the looser of the two:
-        # a run is only stagnant when neither the criterion that decides
-        # graduation nor the one that decides pace has moved.
-        best_key: tuple[int, int, float] | None = None
-        best_charged = math.inf
+        # Three records, each lower-is-better. A new best is any evaluation
+        # that beats at least one of them; stale is when none of them move.
+        best_clean_pace = math.inf
+        best_spins = math.inf
+        best_off = math.inf
+        best_reversal_rate = math.inf
+        best_swing = math.inf
         stale_evaluations = 0
         # The alpha valley detector. The tuner is allowed to discover what
         # this problem's entropy is worth; when it starts climbing back out
@@ -1110,7 +1149,7 @@ def main() -> int:
                 mean_lap = mean_lap_of(trained)
                 held_lap = mean_lap_of(held)
                 left, right = ("专家", "哨兵") if args.track else ("训练", "保留")
-                key = clean_criterion_key(laps, trained)
+                lines = progress_lines(laps, trained)
                 spins_total = sum(laps[n]["spins"] for n in trained)
                 completed = sum(laps[n]["laps"] for n in trained)
                 clean_total = sum(laps[n]["clean_laps"] for n in trained)
@@ -1119,14 +1158,22 @@ def main() -> int:
                     f"   {right} {lap_string(held_lap)}"
                 )
                 stalls_total = sum(laps[n]["stalls"] for n in trained)
+                if lines is not None:
+                    clean_pace, _, off_mean, reversal_rate, reversal_swing = lines
+                else:
+                    clean_pace = off_mean = reversal_rate = reversal_swing = math.inf
                 print(
                     f"    干净口径    旋转 {spins_total:.0f} "
                     f"({per_lap(spins_total, completed)})"
                     f"  退赛 {stalls_total:.0f} "
                     f"({per_lap(stalls_total, completed)})"
                     f"  干净 {clean_total:.0f}/{completed:.0f}"
-                    f"  档位 {('无', '有', '过半')[key[1]]}"
-                    f"  均速 {lap_string(-key[2])}"
+                    f"  出界 {off_mean:.1f}s/圈"
+                    f"  干净均速 {lap_string(clean_pace)}"
+                )
+                print(
+                    f"    手          直道翻转 {reversal_rate:.2f}/秒"
+                    f"  摆幅 {reversal_swing:.5f} (门 0.015)"
                 )
                 agent.save(
                     str(checkpoint_dir / f"latest{args.tag}.pt"),
@@ -1147,38 +1194,38 @@ def main() -> int:
                     step,
                     action_semantics=action_semantics,
                 )
-                # A checkpoint that completes nothing is not a best
-                # checkpoint, however flattering its mean happens to be.
-                laps_everywhere = all(laps[n]["laps"] > 0 for n in trained)
-                improved_criterion = (
-                    laps_everywhere and (best_key is None or key > best_key)
-                )
-                improved_pace = (
-                    laps_everywhere
-                    and math.isfinite(mean_lap)
-                    and mean_lap < best_charged
-                )
-                if improved_criterion:
-                    best_key = key
+                records: list[str] = []
+                if lines is not None:
+                    clean_pace, spins_line, off_line, reversal_rate, reversal_swing = (
+                        lines
+                    )
+                    if clean_pace < best_clean_pace:
+                        records.append("干净圈")
+                        best_clean_pace = clean_pace
+                    if spins_line < best_spins:
+                        records.append("旋转")
+                        best_spins = spins_line
+                    if off_line < best_off:
+                        records.append("出界")
+                        best_off = off_line
+                    if reversal_rate < best_reversal_rate:
+                        records.append("翻转")
+                        best_reversal_rate = reversal_rate
+                    if reversal_swing < best_swing:
+                        records.append("摆幅")
+                        best_swing = reversal_swing
+                if records:
                     agent.save(
                         str(checkpoint_dir / f"best{args.tag}.pt"),
                         step,
                         action_semantics=action_semantics,
                     )
                     print(
-                        f"    saved best (旋转 {spins_total:.0f}, 干净档 "
-                        f"{('无', '有', '过半')[key[1]]}, 均速 "
-                        f"{lap_string(-key[2])})"
+                        f"    saved best (旋转 {spins_total:.0f}, 出界 "
+                        f"{off_mean:.1f}s/圈, 干净均速 {lap_string(clean_pace)}, "
+                        f"翻转 {reversal_rate:.2f}/秒, 摆幅 {reversal_swing:.5f}"
+                        f")  新纪录: {'、'.join(records)}"
                     )
-                if improved_pace:
-                    best_charged = mean_lap
-
-                # Stagnant only when neither line has moved. The strict
-                # criterion can sit still for a long time while the car is
-                # still finding pace, and pace can plateau while the car is
-                # still learning to keep it clean; stopping on either alone
-                # throws away the half of the run that was still working.
-                if improved_criterion or improved_pace:
                     stale_evaluations = 0
                 else:
                     stale_evaluations += 1
@@ -1188,9 +1235,10 @@ def main() -> int:
                     )
                     if stale_evaluations >= args.stop_after_stale:
                         print(
-                            f"training stopped at step {step}: neither the "
-                            f"clean criterion nor the charged mean improved "
-                            f"for {stale_evaluations} evaluations"
+                            f"training stopped at step {step}: none of "
+                            f"clean-lap pace, spins, off-course, reversal "
+                            f"rate, or swing improved for "
+                            f"{stale_evaluations} evaluations"
                         )
                         break
 
