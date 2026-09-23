@@ -134,3 +134,15 @@ parent6a 的判词是"买到了延迟，没买到治愈"（见 [2026-09-21 手�
 1. **振幅成长曲线**（本实验的正文）：6a 是 0.00034 爬到 0.01881 没停。这一腿要从零画同一条曲线，看它停不停。
 2. **探索健康**：`H` 和 `σ` 与 6a 同形则正常；σ 若塌缩而摆幅同时变小，那是"不探索了"不是"学会了"，两者必须分开判——这正是上一腿判不了的那件事。
 3. 400–500k：先 `jitter_probe`（双条件）初筛，再 `spectrum_probe` 对照基线，两关都过才上人眼终审。
+
+## 7f 起的闸门与续棒
+
+7c–7e 经过与闸门改写见同目录 `parent7a-verdict.md` 文末。7f 从 `latestparent7d.pt` @550k 空池续，种子 3，`--stop-after-stale 6`。评估把直道翻转频率和摆幅算进 best（摆幅门 0.015）。
+
+    cd /Users/jayhuang/Code/stintegy-evo/.worktrees/steering-detour/Training/python && \
+    /Users/jayhuang/Code/stintegy-evo/Training/.venv/bin/python -u train.py \
+        --solo --delta-actions --track silverstone --batch 64 --seed 3 \
+        --tag parent7f --steps 10000000 --eval-every 25000 --eval-batch 6 \
+        --stop-after-stale 6 --fixed-alpha 0.0011 \
+        --resume checkpoints/latestparent7d.pt
+
