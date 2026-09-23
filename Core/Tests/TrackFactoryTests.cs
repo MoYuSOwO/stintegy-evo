@@ -65,8 +65,12 @@ public sealed class TrackFactoryTests
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
 
         Assert.Equal(5_891f, track.LengthMeters);
-        Assert.Equal(0f, track.StartingLineS);
-        Assert.Equal(5_881f, track.Grids[1].S);
+        // The line is authored 98 m along the source centreline, not at its
+        // first row: from there the straight behind it holds the 23 boxes
+        // this circuit paints. Pole sits the standard ten metres back.
+        Assert.Equal(98f, track.StartingLineS);
+        Assert.Equal(88f, track.Grids[1].S);
+        Assert.Equal(23, track.StartingGridCount);
         Assert.InRange(MinimumWidth(track), 11.2f, 11.4f);
         Assert.InRange(MaximumWidth(track), 17.7f, 18.0f);
         Assert.Equal(0, CountCoarseCenterlineIntersections(track, 10f));
@@ -129,18 +133,21 @@ public sealed class TrackFactoryTests
         Assert.InRange(shanghai.LengthMeters, 5410f, 5500f);
         Assert.InRange(sepang.LengthMeters, 5500f, 5580f);
 
-        AssertClosedAndGridded(silverstone);
-        AssertClosedAndGridded(monaco);
-        AssertClosedAndGridded(shanghai);
-        AssertClosedAndGridded(sepang);
+        // How many boxes a circuit paints is authored, not derived, so the
+        // expected count is passed in rather than assumed: Silverstone's
+        // straight only holds 23.
+        AssertClosedAndGridded(silverstone, 23);
+        AssertClosedAndGridded(monaco, 30);
+        AssertClosedAndGridded(shanghai, 30);
+        AssertClosedAndGridded(sepang, 30);
     }
 
-    private static void AssertClosedAndGridded(TrackData track)
+    private static void AssertClosedAndGridded(TrackData track, int gridCount)
     {
         Vector2 start = track.Sample(0f).Center;
         Vector2 end = track.Sample(track.LengthMeters - TrackData.StepLength).Center;
         Assert.InRange(Vector2.Distance(start, end), 0f, 2.5f);
-        Assert.Equal(30, track.StartingGridCount);
+        Assert.Equal(gridCount, track.StartingGridCount);
     }
 
     private static float MinimumWidth(TrackData track)

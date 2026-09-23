@@ -1187,27 +1187,6 @@ public static class TrackFactory
 {
     private const float GrandPrixTestBufferMeters = 5f;
     private const float GrandPrixTestTrackWidthMeters = 15f;
-    private const int GrandPrixTestStartingLineIndex = 120;
-    private const int GrandPrixTestFirstGridIndex = 110;
-    private const int GrandPrixTestGridCount = 30;
-    private const int GrandPrixTestGridStepMeters = 8;
-
-    private static TrackGridConfig GrandPrixTestGrid(
-        float gridOffsetMeters = 5f,
-        int startingLineIndex = GrandPrixTestStartingLineIndex,
-        int firstGridIndex = GrandPrixTestFirstGridIndex
-    )
-    {
-        return new TrackGridConfig
-        {
-            StartingLineIdx = startingLineIndex,
-            GridCount = GrandPrixTestGridCount,
-            GridOffset = gridOffsetMeters,
-            FirstGridIdx = firstGridIndex,
-            IsFirstGridLeft = true,
-            GridStepDist = GrandPrixTestGridStepMeters
-        };
-    }
 
     public static TrackData SimpleOvalTrack(float width, float height, float trackWidth) {
         TrackBuilder builder = new(new(), trackWidth, 5, 5);
@@ -1261,10 +1240,8 @@ public static class TrackFactory
             {
                 StartingLineIdx = 300,
                 GridCount = 30,
-                GridOffset = 5,
-                FirstGridIdx = 290,
                 IsFirstGridLeft = true,
-                GridStepDist = 8
+                GridOffset = 5f
             }
         );
     }
@@ -1300,10 +1277,8 @@ public static class TrackFactory
             {
                 StartingLineIdx = 100,
                 GridCount = 20,
-                GridOffset = 5,
-                FirstGridIdx = 90,
                 IsFirstGridLeft = true,
-                GridStepDist = 9
+                GridOffset = 5f
             }
         );
     }
@@ -1407,9 +1382,18 @@ public static class TrackFactory
             TrackElevation.SilverstoneHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        // The line sits 98 m along the source centreline rather than at its
+        // start, because the file's first row is only where the data begins.
+        // Behind that point the Hamilton straight runs 186 m to the exit of
+        // Club, which is 23 boxes and no more; a full 30 would need 242 m and
+        // put the back of the grid in the corner. Ahead of it, 279 m to Abbey.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 98,
+            GridCount = 23,
+            IsFirstGridLeft = true,
+            GridOffset = 4.75f
+        });
     }
 
     // FIA Monaco Grand Prix layout. The public GeoJSON centreline is projected
@@ -1426,13 +1410,17 @@ public static class TrackFactory
             TrackElevation.MonacoHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(
-                gridOffsetMeters: 3.5f,
-                startingLineIndex: 0,
-                firstGridIndex: -10
-            )
-        );
+        // Ten and a half metres of road, the narrowest on the calendar, which is
+        // what the 3.5 m stagger has always been for. The back of the grid does
+        // run into Sainte Devote's approach: the straight behind the line is only
+        // 198 m and 30 boxes want 242 m. That is Monaco, and it is authored.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 3.5f
+        });
     }
 
     // Circuit Zandvoort, the one modern Grand Prix venue that is actually
@@ -1753,9 +1741,13 @@ public static class TrackFactory
             TrackElevation.BakuHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 5f
+        });
     }
 
     /// <summary>
@@ -1777,9 +1769,13 @@ public static class TrackFactory
             TrackElevation.SpaHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 5f
+        });
     }
 
     /// <summary>
@@ -1800,9 +1796,14 @@ public static class TrackFactory
             TrackElevation.MonzaHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        // Twelve metres of road at the grid: the columns come in to suit it.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 4.5f
+        });
     }
 
     /// <summary>
@@ -1822,9 +1823,14 @@ public static class TrackFactory
             TrackElevation.InterlagosHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        // Twelve metres of road at the grid, as at Monza.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 4.5f
+        });
     }
 
     /// <summary>
@@ -1847,9 +1853,18 @@ public static class TrackFactory
             TrackElevation.SingaporeHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        // The line moves 136 m along for the same reason as Silverstone's:
+        // the source file's first row left only 121 m behind it, and boxes 16
+        // and back were lying in a 33 m corner. From here the straight runs
+        // 257 m behind the line, which holds all 30. Eleven metres of road, so
+        // the columns stand closer together than anywhere but Monaco.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 136,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 4.0f
+        });
     }
 
     /// <summary>
@@ -1874,9 +1889,13 @@ public static class TrackFactory
             TrackElevation.PortimaoHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 5f
+        });
     }
 
     public static TrackData ZandvoortStyleTestTrack()
@@ -1892,9 +1911,14 @@ public static class TrackFactory
             TrackElevation.ZandvoortHeights,
             ZandvoortSurface
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        // Twelve metres of road at the grid.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 4.5f
+        });
     }
 
     /// <summary>
@@ -1950,9 +1974,14 @@ public static class TrackFactory
             TrackElevation.ShanghaiHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        // Eleven and a half metres of road at the grid.
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 4.25f
+        });
     }
 
     // Sepang Grand Prix layout: a non-overlapping high-speed direction-change
@@ -1970,8 +1999,12 @@ public static class TrackFactory
             TrackElevation.SepangHeights,
             TrackSurfaces.RoadCircuit
         ));
-        return builder.Build(
-            GrandPrixTestGrid(startingLineIndex: 0, firstGridIndex: -10)
-        );
+        return builder.Build(new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 5f
+        });
     }
 }
