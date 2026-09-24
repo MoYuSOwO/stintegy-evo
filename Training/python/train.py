@@ -794,8 +794,8 @@ def main() -> int:
         help="freeze alpha at its floor after this many steps regardless",
     )
     parser.add_argument(
-        "--stop-after-stale", type=int, default=6,
-        help="stop once this many evaluations improve neither line",
+        "--stop-after-stale", type=int, default=0,
+        help="unused: legs stop at --steps, not on a quiet evaluation",
     )
     args = parser.parse_args()
 
@@ -918,14 +918,13 @@ def main() -> int:
         previous_race = None
         window_lap_metres, _unused_trained = TRACKS[args.track] \
             if args.track else (TRACKS["silverstone"][0], None)
-        # Three records, each lower-is-better. A new best is any evaluation
-        # that beats at least one of them; stale is when none of them move.
+        # Five records, each lower-is-better. A new best is any evaluation
+        # that beats at least one of them. The leg itself stops at --steps.
         best_clean_pace = math.inf
         best_spins = math.inf
         best_off = math.inf
         best_reversal_rate = math.inf
         best_swing = math.inf
-        stale_evaluations = 0
         # The alpha valley detector. The tuner is allowed to discover what
         # this problem's entropy is worth; when it starts climbing back out
         # of the floor it found, the floor is what gets kept. Every part of
@@ -1226,21 +1225,6 @@ def main() -> int:
                         f"翻转 {reversal_rate:.2f}/秒, 摆幅 {reversal_swing:.5f}"
                         f")  新纪录: {'、'.join(records)}"
                     )
-                    stale_evaluations = 0
-                else:
-                    stale_evaluations += 1
-                    print(
-                        f"    无进步 {stale_evaluations}/"
-                        f"{args.stop_after_stale} 评"
-                    )
-                    if stale_evaluations >= args.stop_after_stale:
-                        print(
-                            f"training stopped at step {step}: none of "
-                            f"clean-lap pace, spins, off-course, reversal "
-                            f"rate, or swing improved for "
-                            f"{stale_evaluations} evaluations"
-                        )
-                        break
 
     print("training finished")
     return 0

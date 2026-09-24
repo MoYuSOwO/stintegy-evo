@@ -220,15 +220,17 @@ resume `latestparent7d.pt` @550k，空池，种子 3。2026-09-24 点，675k 宽
 4. 直道翻转频率（与 `jitter_probe` 同一套：`|a_lat|·20 < 2` 为直道）
 5. 直道翻转摆幅（中位数）
 
-计罚均速不再算进度。评估日志加一行 `手  直道翻转 …/秒  摆幅 … (门 0.015)`。宽停改为 **6 评**（150k）。`train.py` 缺省 `--stop-after-stale` 改为 6。
+计罚均速不再算进度。评估日志加一行 `手  直道翻转 …/秒  摆幅 … (门 0.015)`。宽停曾改为 6 评，**7g 起取消宽停**，腿在 `--steps` 用尽时结束。`--stop-after-stale` 缺省 0，不再收工。
 
 ---
 
-# parent7f：从 550k 再烧，新闸门
+# parent7f：半截炉
 
-用户裁定从 550k 开、不要 675k。resume `latestparent7d.pt` @550k，空池，种子 3，tag `parent7f`，`--stop-after-stale 6`。PID 23503，PPID=1。2026-09-24 05:51 点火。不覆盖 7e 检查点。
+用户裁定从 550k 开。resume `latestparent7d.pt` @550k，空池，种子 3，tag `parent7f`，当时仍是 `--stop-after-stale 6`。PID 23503。烧到约 657k 被停，改固定步数。575–650k 四张卷与 7g 同源（同一 RNG）。检查点保留，不覆盖。
 
-同一检查点恢复了 RNG，551k 第一千步与 7e 开头逐字相同。第一评 575k 圈速/干净与 7e 相同（1:41.370，18/30，0 旋），新尺第一次印手：**翻转 12.44/秒，摆幅 0.01958（门 0.015）**。五根线对 inf 全破，照例写成 `bestparent7f`。此后 6 评才允许宽停。
+---
 
-本腿未收。
+# parent7g：固定 600k 步，收工
+
+完整判词见 [parent7g-verdict.md](parent7g-verdict.md)。resume 550k，空池，跑到 1.15M。收官计罚 1:40.602、16/30、摆幅 0.044。`bestparent7g` 钉在 725k 塌车（翻转被脏卷占用）。7h 从 1.15M latest 再续 600k。
 
