@@ -234,3 +234,9 @@ resume `latestparent7d.pt` @550k，空池，种子 3。2026-09-24 点，675k 宽
 
 完整判词见 [parent7g-verdict.md](parent7g-verdict.md)。resume 550k，空池，跑到 1.15M。收官计罚 1:40.602、16/30、摆幅 0.044。`bestparent7g` 钉在 725k 塌车（翻转被脏卷占用）。7h 从 1.15M latest 再续 600k。
 
+---
+
+# parent7h：1.15M 再续 600k，收工
+
+完整判词见 [parent7h-verdict.md](parent7h-verdict.md)。到 1.75M。收官 1:41.986、25/28、摆幅 0.060。本腿最好看的评估是 1375k（1:41.394、26/28）。手和 σ 继续散。7 系列同配方空池续到此结束。
+
