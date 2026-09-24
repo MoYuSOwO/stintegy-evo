@@ -694,6 +694,8 @@ def main() -> int:
     # that makes the entropy term a third of the objective, which is not
     # the same objective the evaluation scores.
     parser.add_argument("--fixed-alpha", type=float, default=None)
+    parser.add_argument("--actor-lr", type=float, default=None)
+    parser.add_argument("--critic-lr", type=float, default=None)
     parser.add_argument("--solo", action="store_true")
     # The delta-action pilot. The first action stops being the curvature to
     # hold and becomes how far to move it this decision; the host carries
@@ -813,6 +815,10 @@ def main() -> int:
         overrides["critic_layer_norm"] = False
     if args.fixed_alpha is not None:
         overrides["fixed_alpha"] = args.fixed_alpha
+    if args.actor_lr is not None:
+        overrides["actor_lr"] = args.actor_lr
+    if args.critic_lr is not None:
+        overrides["critic_lr"] = args.critic_lr
     if args.hidden:
         overrides["hidden"] = tuple(
             int(part) for part in args.hidden.split(",")
@@ -872,6 +878,10 @@ def main() -> int:
             f"actions={'delta' if args.delta_actions else 'absolute'}"
         )
         agent = SacAgent(env.obs_size, env.action_size, config)
+        print(
+            f"lr actor={agent.actor_optimizer.param_groups[0]['lr']} "
+            f"critic={agent.critic_optimizer.param_groups[0]['lr']}"
+        )
         sparring = None
         if args.duel:
             sparring = FrozenOpponent(

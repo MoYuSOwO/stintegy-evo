@@ -235,6 +235,29 @@ class ReplayBuffer:
         )
 
 
+def actor_q_value(
+    q1_pi: torch.Tensor,
+    q2_pi: torch.Tensor,
+    *,
+    distributional: bool,
+    drop_top: int,
+) -> torch.Tensor:
+    """What the actor maximises when it asks the two critics.
+
+    QR-SAC (drop_top == 0): min of each head's mean, matching Sophy's
+    formula (3). TQC (drop_top > 0): mean of the two means, because
+    pessimism already lives in the truncated target. Scalar SAC: min of
+    the two numbers.
+    """
+    if not distributional:
+        return torch.minimum(q1_pi, q2_pi)
+    q1_mean = q1_pi.mean(dim=-1, keepdim=True)
+    q2_mean = q2_pi.mean(dim=-1, keepdim=True)
+    if drop_top > 0:
+        return 0.5 * (q1_mean + q2_mean)
+    return torch.minimum(q1_mean, q2_mean)
+
+
 class SacAgent:
     def __init__(self, obs_size: int, action_size: int, config: SacConfig):
         self.config = config
@@ -375,14 +398,12 @@ class SacAgent:
             parameter.requires_grad_(False)
         new_action, log_prob = self.actor(obs)
         q1_pi, q2_pi = self.critic(obs, new_action)
-        if self.distributional:
-            # The actor maximizes the mean of the whole predicted
-            # distribution; pessimism already lives in the truncated target.
-            value = torch.cat([q1_pi, q2_pi], dim=-1).mean(
-                dim=-1, keepdim=True
-            )
-        else:
-            value = torch.min(q1_pi, q2_pi)
+        value = actor_q_value(
+            q1_pi,
+            q2_pi,
+            distributional=self.distributional,
+            drop_top=self.config.top_quantiles_to_drop_per_critic,
+        )
         actor_loss = (self.alpha.detach() * log_prob - value).mean()
         self.actor_optimizer.zero_grad(set_to_none=True)
         actor_loss.backward()
