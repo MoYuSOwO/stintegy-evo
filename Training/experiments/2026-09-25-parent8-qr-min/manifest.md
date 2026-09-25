@@ -15,4 +15,6 @@ alpha **自动**，谷底冻结（不传 `--fixed-alpha`）。其余与 7 系列
         --tag parent8a --steps 1000000 --eval-every 25000 --eval-batch 6 \
         --actor-lr 0.0001 --critic-lr 0.0001
 
-7 系列检查点全部保留。对照至少包含 7d@550k。本腿未收。
+7 系列检查点全部保留。对照至少包含 7d@550k。
+
+收工见 [parent8a-verdict.md](parent8a-verdict.md)。1M 步跑满。300k：1:38.506、28/30；750k：1:38.389（`bestparent8a`）；收官变慢。摆幅全程低于 0.015。
