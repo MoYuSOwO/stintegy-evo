@@ -13,6 +13,12 @@ gdunit4_testadapter_v5/
 
 # Python virtual environments.
 .venv/
+__pycache__/
+*.pyc
+
+# TUM 3D line-bake scratch (raw exports, CasADi work).
+Drivers/Bake/work/
+Drivers/Bake/raw/
 
 # The historical training tree remains available in Git history, but is not
 # part of the master product boundary and must not be re-added accidentally.
