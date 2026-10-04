@@ -6,6 +6,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO.Core", "Core\St
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO.Core.Tests", "Core\Tests\StintegyEVO.Core.Tests.csproj", "{8F3D166E-01B1-4823-A6A8-B5F7E5413BBA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO.Drivers", "Drivers\StintegyEVO.Drivers.csproj", "{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StintegyEVO.Drivers.Tests", "Drivers\Tests\StintegyEVO.Drivers.Tests.csproj", "{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Repository Files", "Repository Files", "{3E3A1EE2-9A35-4FD3-A77A-47B27D8166D6}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
@@ -61,5 +65,17 @@ Global
 		{8F3D166E-01B1-4823-A6A8-B5F7E5413BBA}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
 		{8F3D166E-01B1-4823-A6A8-B5F7E5413BBA}.ExportRelease|Any CPU.ActiveCfg = Release|Any CPU
 		{8F3D166E-01B1-4823-A6A8-B5F7E5413BBA}.ExportRelease|Any CPU.Build.0 = Release|Any CPU
+		{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}.ExportDebug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
+		{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}.ExportRelease|Any CPU.ActiveCfg = Release|Any CPU
+		{7C3A9E21-4F18-4B6A-9D01-8E2F3A4B5C6D}.ExportRelease|Any CPU.Build.0 = Release|Any CPU
+		{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}.ExportDebug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
+		{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}.ExportRelease|Any CPU.ActiveCfg = Release|Any CPU
+		{8D4B0F32-5A29-4C7B-AE12-9F3A4B5C6D7E}.ExportRelease|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
