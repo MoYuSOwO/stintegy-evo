@@ -17,6 +17,7 @@
     <Compile Remove=".godot/**/*.cs" />
     <Compile Remove="Core/**/*.cs" />
     <Compile Remove="Training/**/*.cs" />
+    <Compile Remove="Drivers/**/*.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->
     <Compile Remove="Tools/Tests/**/*.cs" />
     <Compile Include="Tools/Tests/**/*.cs" Condition="'$(PresentationSmoke)' == 'true'" />

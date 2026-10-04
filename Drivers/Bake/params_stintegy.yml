@@ -1,0 +1,18 @@
+vehicle_params:
+  m: 820.0
+  rho: 1.225
+  C_D_A: 0.90
+  C_Lf_A: 0.45
+  C_Lr_A: 0.90
+  h: 0.32
+  w: 3.1
+  a: 1.643
+  b: 1.457
+  T: 1.65
+  epsilon: 0.5
+  gamma: 1
+  P_max: 350000
+  delta_max: 0.8
+  v_max: 90
+  total_width: 1.9
+  total_length: 5.2
