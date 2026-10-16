@@ -199,26 +199,24 @@ public sealed class CombinedGripLimiterTests
     }
 
     /// <summary>
-    /// Attack allots the whole circle, so below the peak the ceiling is the
-    /// whole pedal. Shutting it past the peak would be a drop from all of
-    /// it to none at one slip angle -- exactly the step the other rungs
-    /// avoid by reaching zero before the peak -- so Attack is left to the
-    /// physics on both sides, as it always was.
+    /// An allowance of the whole circle leaves the pedals to the physics on
+    /// both sides of the peak. Shutting them past the peak would be a drop
+    /// from all of it to none at one slip angle -- exactly the step a smaller
+    /// allowance avoids by reaching zero before the peak.
     /// </summary>
     [Theory]
     [InlineData(0.5f)]
     [InlineData(1.8f)]
     [InlineData(4.0f)]
-    public void AttackIsLeftToThePhysicsOnBothSidesOfThePeak(
+    public void TheWholeCircleIsLeftToThePhysicsOnBothSidesOfThePeak(
         float multipleOfPeak
     )
     {
         float slipAngle = TireSlipCurve.PeakSlipAngleRadians * multipleOfPeak;
-        float attack = new TireConfig().GetAccelerationUsage(TireUsageMode.Attack);
 
         Assert.Equal(
             Grip,
-            Limit(Grip, Grip, slipAngle, 1f, attack, speed: 35f)
+            Limit(Grip, Grip, slipAngle, 1f, 1f, speed: 35f)
         );
     }
 }

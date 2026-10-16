@@ -124,10 +124,10 @@ public sealed class PhysicsBoundaryTests
 
     /// <summary>
     /// Strength zero is bit-for-bit the car without the device. The
-    /// reference is the fitted car on the Attack rung, which authorises the
-    /// whole circle and so leaves the device nothing to do; an unfitted car
-    /// on any rung has to match it digit for digit through a sweep of
-    /// cornering, full drive and full braking.
+    /// reference is the fitted car on tyres that allow the whole circle,
+    /// which leaves the device nothing to do; an unfitted car on any rung
+    /// has to match it digit for digit through a sweep of cornering, full
+    /// drive and full braking.
     /// </summary>
     [Theory]
     [InlineData(TireUsageMode.Protect)]
@@ -138,7 +138,8 @@ public sealed class PhysicsBoundaryTests
         CarConfig fitted = new();
         CarConfig unfitted = new() { CombinedGripLimiterStrength = 0f };
         TireConfig tires = WarmTires();
-        CarState idle = NewState(45f, tires);
+        TireConfig wholeCircle = new() { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f, AccelerationUsage = 1f };
+        CarState idle = NewState(45f, wholeCircle);
         CarState absent = NewState(45f, tires);
         CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Normal);
         CarStrategy rung = new(mode, PowerOutputMode.Normal);
@@ -147,7 +148,7 @@ public sealed class PhysicsBoundaryTests
         {
             float pedal = i % 80 < 40 ? 12f : -30f;
             DriverInput command = new(0.008f * MathF.Sin(i * 0.05f), pedal);
-            CarPhysics.Step(idle, fitted, tires, StepInput(command, attack), 1f / 60f);
+            CarPhysics.Step(idle, fitted, wholeCircle, StepInput(command, attack), 1f / 60f);
             CarPhysics.Step(absent, unfitted, tires, StepInput(command, rung), 1f / 60f);
 
             Assert.Equal(idle.Speed, absent.Speed);
