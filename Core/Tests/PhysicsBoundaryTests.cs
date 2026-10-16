@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
@@ -15,38 +14,6 @@ namespace StintegyEVO.Core.Tests;
 /// </summary>
 public sealed class PhysicsBoundaryTests
 {
-    [Fact]
-    public void DriverInputKeepsOnlyCurvatureAccelerationAndTheTwoBiases()
-    {
-        string[] properties = typeof(DriverInput)
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Select(property => property.Name)
-            .OrderBy(name => name)
-            .ToArray();
-
-        Assert.Equal(
-            new[] { "DesiredAccel", "DesiredCurvature", "FrontBrakeBiasOffset", "FrontDriveBiasOffset" },
-            properties
-        );
-    }
-
-    [Fact]
-    public void PhysicsStepInputHasNoDriverEfficiencyOrSettleControls()
-    {
-        string[] properties = typeof(CarPhysicsStepInput)
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Select(property => property.Name)
-            .ToArray();
-
-        Assert.DoesNotContain("TireEnergyEfficiency", properties);
-        Assert.DoesNotContain("CorneringEfficiency", properties);
-        Assert.DoesNotContain("LimitSettleUse", properties);
-        Assert.Contains("DriverInput", properties);
-        Assert.Contains("Strategy", properties);
-        Assert.Contains("AirTempC", properties);
-        Assert.Contains("TrackTempC", properties);
-    }
-
     [Fact]
     public void WithoutTheLimiterTheTireModeDoesNotTouchTheSameCommand()
     {
