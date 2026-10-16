@@ -11,18 +11,12 @@ public partial class RaceHud3D : CanvasLayer
     private readonly Button[] _cameras = new Button[3];
     private readonly Button[] _rows = new Button[8];
     private readonly int[] _rowCars = new int[8];
-    private readonly float[] _lastLapByCar = new float[8];
     private readonly CircuitMap _map = new();
     private readonly TelemetryStrip _strip = new();
     private readonly CarDashboard _dashboard = new();
     private Button _pause = null!;
     private RaceView3D _race = null!;
-    private int _lapCar = -1;
-    private int _completedLap;
-    private float _lapStartedAt;
-    private float _lastLap;
-    private float _bestLap;
-    private bool _timing;
+    private LapTimer[] _timers = [];
     private static readonly Color Paper = Color.FromHtml("#eeeadef5"), Ink = Color.FromHtml("#25312f"), Muted = Color.FromHtml("#647269");
 
     public void Initialize(RaceView3D race)
@@ -131,7 +125,7 @@ public partial class RaceHud3D : CanvasLayer
         var sim = _race.Simulation;
         var car = sim.Cars[_race.SelectedCarIndex];
         _strip.Push(sim.RaceTimeSeconds, car);
-        UpdateLaps(car, sim.RaceTimeSeconds);
+        SampleLaps();
     }
 
     private static string PushText(StintegyEVO.Core.Racing.RaceCar car)
@@ -160,8 +154,13 @@ public partial class RaceHud3D : CanvasLayer
         var powerMode = _dashboard.Modes[1];
         string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
         _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung}\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung}\n{stores}\nTYRE LIFE  {(1 - wear) * 100:0}%\n{PushText(car)}";
-        UpdateLaps(car, sim.RaceTimeSeconds);
-        _laps.Text = $"LAP  {car.Progress.Lap + 1:00}    THIS  {LapString(CurrentLap(sim.RaceTimeSeconds))}\nLAST {LapString(_lastLap)}     BEST {LapString(_bestLap)}";
+        SampleLaps();
+        LapTimer timer = _timers[_race.SelectedCarIndex];
+        float now = sim.RaceTimeSeconds;
+        float? delta = timer.Delta(now, car.Progress.RaceDistanceMeters);
+        string gap = delta is { } d ? $"    {(d <= 0f ? "−" : "+")}{MathF.Abs(d):0.00}" : "";
+        string current = timer.Current(now) > 0f ? LapString(timer.Current(now)) : "OUT LAP";
+        _laps.Text = $"LAP  {timer.Completed + 1:00}    THIS  {current}{gap}\nLAST {LapString(timer.LastLap)}     BEST {LapString(timer.BestLap)}";
         var ordered = sim.Cars.Select((c, i) => (Car: c, Index: i)).OrderByDescending(x => x.Car.Progress.RaceDistanceMeters).ToArray();
         for (int i = 0; i < _rows.Length; i++)
         {
@@ -170,7 +169,7 @@ public partial class RaceHud3D : CanvasLayer
                 continue;
             int index = ordered[i].Index;
             _rowCars[i] = index;
-            _rows[i].Text = $"{i + 1:00}      CAR {index + 1:00}        {LapString(_lastLapByCar[index])}";
+            _rows[i].Text = $"{i + 1:00}      CAR {index + 1:00}        {LapString(_timers[index].LastLap)}";
             _rows[i].AddThemeColorOverride("font_color", index == _race.SelectedCarIndex ? LowPolyMesh.Vermilion : Ink);
         }
         RefreshControls();
@@ -189,34 +188,18 @@ public partial class RaceHud3D : CanvasLayer
         _pause.Text = _race.IsPaused ? "▶ RUN" : "Ⅱ PAUSE";
     }
 
-    private float CurrentLap(float raceTime) => _timing ? MathF.Max(0f, raceTime - _lapStartedAt) : 0f;
-
-    private void UpdateLaps(StintegyEVO.Core.Racing.RaceCar car, float raceTime)
+    /// <summary>Every car's lap timer, fed its race distance at the race clock.</summary>
+    private void SampleLaps()
     {
-        int selected = _race.SelectedCarIndex;
-        if (selected != _lapCar)
+        var sim = _race.Simulation;
+        if (_timers.Length != sim.Cars.Count)
         {
-            _lapCar = selected;
-            _completedLap = car.Progress.Lap;
-            _timing = false;
-            _lastLap = _lastLapByCar[selected];
+            _timers = new LapTimer[sim.Cars.Count];
+            for (int i = 0; i < _timers.Length; i++)
+                _timers[i] = new LapTimer(sim.Track.LengthMeters);
         }
-        if (!_timing && car.Progress.RaceDistanceMeters >= 0f)
-        {
-            _timing = true;
-            _lapStartedAt = raceTime;
-            _completedLap = car.Progress.Lap;
-        }
-        if (_timing && car.Progress.Lap > _completedLap)
-        {
-            _lastLap = raceTime - _lapStartedAt;
-            if (_lastLap > 1f && (_bestLap <= 0f || _lastLap < _bestLap))
-                _bestLap = _lastLap;
-            if ((uint)selected < (uint)_lastLapByCar.Length)
-                _lastLapByCar[selected] = _lastLap;
-            _lapStartedAt = raceTime;
-            _completedLap = car.Progress.Lap;
-        }
+        for (int i = 0; i < _timers.Length; i++)
+            _timers[i].Sample(sim.RaceTimeSeconds, sim.Cars[i].Progress.RaceDistanceMeters);
     }
 
     private static string LapString(float seconds)
