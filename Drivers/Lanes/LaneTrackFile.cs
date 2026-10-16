@@ -139,6 +139,8 @@ public sealed class LaneTrackFile
         var copy = new LaneTrackFile(_lanes, Copy(_corner), Copy(_brake), _bake);
         if (_steer.Length == 3)
             copy._steer = _steer.Select(lane => (float[])lane.Clone()).ToArray();
+        copy.Energy = Energy;
+        copy.LearnedFor = LearnedFor;
         return copy;
     }
 
@@ -221,13 +223,68 @@ public sealed class LaneTrackFile
     }
 
     /// <summary>
-    /// The circuit's shipped tuning file, <c>Tracks/{id}.lanes.csv</c>, or a
-    /// fresh one baked on first use when the circuit has none.
+    /// The energy rungs as this circuit's lift seconds, Save to Attack, or
+    /// null where the circuit has none set and the driver's general table
+    /// stands in.
     /// </summary>
-    public static LaneTrackFile ForCircuit(string id, TrackData track)
+    public LaneEnergyRungs? Energy { get; set; }
+
+    /// <summary>What the car was when this was learned; null for a file that never said.</summary>
+    public LaneLearnedFor? LearnedFor { get; set; }
+
+    /// <summary>
+    /// Whether this was learned on the car as it is now: the stock car on
+    /// the stock tyre, as far as their numbers tell. A file from before a
+    /// change to the physics still drives, on notes about another car.
+    /// </summary>
+    public bool IsCurrent => LearnedFor is not null && LearnedFor.Physics == PhysicsFingerprint.Stock;
+
+    /// <summary>Stamps the file as learned today on the car as it is now.</summary>
+    public void MarkLearnedNow() =>
+        LearnedFor = new LaneLearnedFor
+        {
+            Physics = PhysicsFingerprint.Stock,
+            Date = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+        };
+
+    /// <summary>
+    /// This car's shipped folder for the circuit, <c>Cars/{car}/{id}/</c>,
+    /// or a fresh file baked on first use when it has none.
+    /// </summary>
+    public static LaneTrackFile ForCircuit(string id, TrackData track, string car = RuleLineAssets.StockCar)
     {
-        string? path = RuleLineAssets.FindFile($"{id}.lanes.csv");
-        return path is null ? Fresh() : Load(path, track);
+        string? manifestPath = RuleLineAssets.FindFile($"{car}/{id}/{LaneCircuitManifest.FileName}");
+        if (manifestPath is null)
+            return Fresh();
+        LaneCircuitManifest manifest = LaneCircuitManifest.Read(manifestPath);
+        string lanesPath = RuleLineAssets.FindFile($"{car}/{id}/{manifest.Lanes}")
+                           ?? throw new FileNotFoundException($"{car}/{id}/{LaneCircuitManifest.FileName} names {manifest.Lanes}, which is not there.");
+        return WithManifest(Load(lanesPath, track), manifest);
+    }
+
+    /// <summary>Reads a circuit folder from disk: its <c>driver.json</c> and what it names.</summary>
+    public static LaneTrackFile LoadCircuit(string folder, TrackData track)
+    {
+        LaneCircuitManifest manifest = LaneCircuitManifest.Read(Path.Combine(folder, LaneCircuitManifest.FileName));
+        return WithManifest(Load(Path.Combine(folder, manifest.Lanes), track), manifest);
+    }
+
+    private static LaneTrackFile WithManifest(LaneTrackFile file, LaneCircuitManifest manifest)
+    {
+        if (manifest.Format > LaneCircuitManifest.CurrentFormat)
+            throw new InvalidDataException($"{manifest.Circuit}: format {manifest.Format} is newer than this driver reads.");
+        file.Energy = manifest.Energy;
+        file.LearnedFor = manifest.LearnedFor;
+        return file;
+    }
+
+    /// <summary>Writes the circuit folder: <c>driver.json</c> and the lanes table beside it.</summary>
+    public void SaveCircuit(string folder, string id)
+    {
+        Directory.CreateDirectory(folder);
+        var manifest = new LaneCircuitManifest { Circuit = id, LearnedFor = LearnedFor, Energy = Energy };
+        Save(Path.Combine(folder, manifest.Lanes));
+        manifest.Write(Path.Combine(folder, LaneCircuitManifest.FileName));
     }
 
     public static LaneTrackFile Load(string path, TrackData track) =>

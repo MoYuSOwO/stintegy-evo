@@ -18,6 +18,8 @@ public partial class LaneDriverDemo : Node
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
+        if (!file.IsCurrent)
+            GD.PushWarning($"silverstone was learned on another car ({file.LearnedFor?.Date ?? "unstamped"}); it drives on old notes until relearned");
         LaneSet lanes = file.LanesFor(track);
 
         int station = (int)System.MathF.Round(lanes.StationOf(track.StartingLineS));

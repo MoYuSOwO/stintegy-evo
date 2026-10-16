@@ -52,10 +52,35 @@ public sealed class LaneDriverTests
     }
 
     [Fact]
+    public void TheShippedSilverstoneFolderWasLearnedOnTodaysCar()
+    {
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        LaneTrackFile file = Silverstone(track);
+        Assert.True(file.IsCurrent,
+            $"learned on {file.LearnedFor?.Physics ?? "an unstamped car"} ({file.LearnedFor?.Date}), the car is now {PhysicsFingerprint.Stock}: relearn it");
+    }
+
+    [Fact]
+    public void ACircuitFolderReadsBackAsWritten()
+    {
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        LaneTrackFile file = Silverstone(track);
+        file.MarkLearnedNow();
+        file.Energy = LaneEnergyRungs.From([1f, 0.6f, 0.4f, 0.3f, 0f], raceLaps: 52);
+        string folder = Path.Combine(Path.GetTempPath(), "stintegy-circuit-roundtrip", Guid.NewGuid().ToString("N"));
+        file.SaveCircuit(folder, "silverstone");
+        LaneTrackFile back = LaneTrackFile.LoadCircuit(folder, track);
+        Assert.True(back.IsCurrent);
+        Assert.Equal(file.Energy, back.Energy);
+        Assert.Equal(file.Factors(LaneId.Free), back.Factors(LaneId.Free));
+        Directory.Delete(folder, recursive: true);
+    }
+
+    [Fact]
     public void TheShippedSilverstoneFileLapsUnder142()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        Assert.NotNull(RuleLineAssets.FindFile("silverstone.lanes.csv"));
+        Assert.NotNull(RuleLineAssets.FindFile("f1e/silverstone/driver.json"));
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track));
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());
@@ -1505,8 +1530,10 @@ public sealed class LaneLearnF1E
                 file = best;
             }
         }
-        string path = Path.Combine(LaneProbes.Dir, "silverstone-f1e.lanes.csv");
-        file.Save(path);
+        file.MarkLearnedNow();
+        file.Energy = LaneTrackFile.ForCircuit("silverstone", track).Energy;
+        string path = Path.Combine(LaneProbes.Dir, "silverstone");
+        file.SaveCircuit(path, "silverstone");
         _output.WriteLine($"saved {path}");
         var attack = new StintegyEVO.Core.Cars.CarStrategy(StintegyEVO.Core.Cars.TireUsageMode.Attack, StintegyEVO.Core.Cars.PowerOutputMode.Normal);
         _output.WriteLine($"hot      {LaneLapRunner.Run(track, file, gains, flyingLaps: 3)}");
