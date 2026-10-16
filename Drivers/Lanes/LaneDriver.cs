@@ -59,14 +59,19 @@ public sealed record LaneDriverGains
     /// </summary>
     public bool TyreRungStyles { get; init; } = true;
 
-    /// <summary>Protect, Light, Normal, Push, Attack.</summary>
+    /// <summary>
+    /// Protect, Light, Normal, Push, Attack: one line from the plan as
+    /// learned down to Protect, spaced so each rung is about 0.3 s a lap from
+    /// the next on Silverstone (Attack to Protect 1.17 s, Protect wearing a
+    /// fifth less), with the car's limiter the same at every rung.
+    /// </summary>
     public TyreStyle[] TyreStyleTable { get; init; } =
     [
-        new(Corner: 0.99250f, Brake: 0.99475f, Traction: 0.882f, Cap: 0.99825f),
-        new(Corner: 0.99175f, Brake: 0.99450f, Traction: 0.881f, Cap: 0.99800f),
-        new(Corner: 0.99150f, Brake: 0.99400f, Traction: 0.880f, Cap: 0.99750f),
-        new(Corner: 0.99350f, Brake: 0.99550f, Traction: 0.885f, Cap: 0.99850f),
-        new(Corner: 1.00000f, Brake: 1.00000f, Traction: 0.900f, Cap: 1.00000f),
+        new(Corner: 0.9731f, Brake: 0.9812f, Traction: 0.8355f, Cap: 0.9937f),
+        new(Corner: 0.9786f, Brake: 0.9850f, Traction: 0.8485f, Cap: 0.9950f),
+        new(Corner: 0.9848f, Brake: 0.9893f, Traction: 0.8634f, Cap: 0.9964f),
+        new(Corner: 0.9918f, Brake: 0.9943f, Traction: 0.8803f, Cap: 0.9981f),
+        new(Corner: 1.0000f, Brake: 1.0000f, Traction: 0.9000f, Cap: 1.0000f),
     ];
 
     /// <summary>Share of the axles' live grip the command may ask for: what a tyre holds, not its peak.</summary>
