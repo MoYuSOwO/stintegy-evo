@@ -52,6 +52,108 @@ circuit whose geometry is re-cut keeps its scenery beside the same corners
 instead of scattering it across the county. Height is not authored: the
 ground is where the terrain says it is.
 
+## Many props at once
+
+A circuit needs thousands of things standing round it, and nobody places a
+wood one tree at a time. Three ways to place many:
+
+**Along the circuit** — a prop every so many metres between two stations,
+on one side, the other, or both, each nudged a little so a row looks
+planted rather than ruled:
+
+```json
+{ "prop": "hedge", "d": 40, "along": { "from": 200, "to": 900, "every": 10,
+  "side": "both", "d_jitter": 0.6, "s_jitter": 2, "scale_jitter": 0.1, "yaw_jitter": 0.2 } }
+```
+
+**An area** — so many per hundred square metres anywhere in a band beside
+the circuit, between two stations and two offsets. A wood is an area of
+trees; a car park is an area of cars (`"yaw": "track"` lines them up with
+the road instead of turning each at random):
+
+```json
+{ "prop": 1, "area": { "s": [1200, 1600], "d": [75, 175], "per_100m2": 0.55, "scale": [0.8, 1.5] } }
+```
+
+**Farmland** — one block per circuit: a patchwork of fields from `from` to
+`to` metres off the circuit, in parcels of about `field` metres on a grid
+turned by `angle`, each a colour from the palette or, a `meadow` share of
+the time, left as grass; with `hedge` along the parcel edges and now and
+then a `tree`. Fields are laid in the world, not along the road, because
+they were there first:
+
+```json
+"farmland": { "from": 190, "to": 1100, "field": 150, "angle": 0.42, "meadow": 0.22,
+  "palette": ["#cdb866", "#a9bd70", "#9c8461"], "hedge": 4, "tree": 3 }
+```
+
+Plain ground colour — a car park's tarmac, a campsite's mown grass — is a
+patch, between two stations and two offsets:
+
+```json
+"patches": [ { "color": "#6f7577", "s": [60, 420], "d": [72, 150] } ]
+```
+
+All of these are seeded by the plan itself, so the same file grows the
+same wood every time, and none of them can put anything on the circuit:
+whatever would stand inside the barrier of *any* part of the lap — not only
+the part it was placed beside — is left out and counted in the log
+(`… kept off the circuit`).
+
+## How the circuit looks
+
+`name` is the circuit as the screen shows it. `environment` is its sky,
+sun, haze and ground; every key is optional and one left out keeps the
+default, so a plan names only what makes its circuit different:
+
+```json
+"name": "Monaco",
+"environment": {
+  "sky_top": "#5d93cf", "sky_horizon": "#e3e6dd", "sun_pitch": 55, "sun_yaw": 20,
+  "sun_color": "#fff2d6", "sun_energy": 1.3, "fog_density": 0.0002,
+  "grass": "#7f9a5e", "mown": ["#93ad68", "#86a05f"],
+  "barrier": ["#e8e4d6", "#dcd7c8"], "tyre_wall": ["#4a5254", "#565e60"],
+  "hills_near": "#7f9566", "hills_far": "#8ea2a8", "clouds": 12
+}
+```
+
+| key | meaning |
+|---|---|
+| `sky_top`, `sky_horizon`, `sky_ground` | sky colours overhead, at the horizon, and below it |
+| `sun_pitch`, `sun_yaw` | degrees the sun shines down from, and the direction it comes from |
+| `sun_color`, `sun_energy`, `ambient_energy` | the sun's colour and strength, and the sky's fill light |
+| `fog_color`, `fog_density` | the haze the distance fades into (the overview thins it) |
+| `road`, `grass`, `plain` | asphalt, the meadow, and the plain beyond it |
+| `mown` | run-off bands, alternating |
+| `barrier`, `tyre_wall` | barrier faces on straights, and round the outside of tight corners |
+| `hills_near`, `hills_far`, `clouds` | horizon colours and how many clouds |
+
+## Circuit furniture
+
+The fence, marshal posts, distance boards, start gantry and start-straight
+flags are placed from the circuit's own shape, so a plan need say nothing
+about them. `furniture` switches any of them off (`false`), changes how
+often they come, or names where they stand; sides are `"left"` / `"right"`
+of the direction of travel:
+
+```json
+"furniture": {
+  "fence": { "on": true, "spacing": 6 },
+  "marshals": { "spacing": 250, "at": [ { "s": 1200, "side": "left" } ] },
+  "boards": { "auto": true, "at": [ { "s": 3150, "side": "right" } ] },
+  "gantry": { "s": 5884 },
+  "flags": false
+}
+```
+
+| key | meaning |
+|---|---|
+| `fence` | catch fencing behind the barrier; `spacing` between posts |
+| `marshals` | a post every `spacing` metres, sides alternating; `at` places them instead |
+| `boards` | 150/100/50 boards before braking zones found from the geometry (`auto`), plus any corner in `at` (the station the braking ends) |
+| `gantry` | the start gantry; `s` moves it (default: a few metres before the line) |
+| `flags` | flags either side of the start line, `range` metres each way, every `spacing` |
+
 ## Mods
 
 A player adding scenery does not edit these files: they drop a folder into

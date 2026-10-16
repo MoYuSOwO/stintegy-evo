@@ -30,6 +30,18 @@ public partial class RaceView3D : Node3D
 {
     public RaceSimulation Simulation { get; private set; } = null!;
     public TrackSurfaceGeometry Surface => _circuit.Surface;
+
+    /// <summary>
+    /// Which circuit this is, for everything the view needs to look up by
+    /// name: its scenery plan is <c>Levels/scenery/&lt;id&gt;.json</c>. Set it
+    /// before the view enters the tree; the default is the practice circuit.
+    /// </summary>
+    public string CircuitId { get; set; } = "silverstone";
+
+    /// <summary>The circuit's name for the screen: the plan's, or the id if the plan gives none.</summary>
+    public string CircuitName => _circuit.Plan?.Name is { Length: > 0 } name
+        ? name
+        : CircuitId.Length > 0 ? char.ToUpperInvariant(CircuitId[0]) + CircuitId[1..] : "Circuit";
     public int SelectedCarIndex { get; private set; }
     public bool IsPaused { get; private set; }
     public int CameraMode => _camera.Mode;
@@ -45,7 +57,7 @@ public partial class RaceView3D : Node3D
     private double _hudElapsed, _coreMs, _renderTime, _warmup = 0.1;
     private long _completedTicks;
     private readonly FixedStepBudget _budget = new();
-    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float SteerAngle);
+    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float SteerAngle, float Slide, float Speed, bool OffTrack);
     private sealed record StepBatch(double CoreMs, CarPose[][] Frames);
     private Task<StepBatch>? _step;
     private readonly Queue<(int Car, int Tire, int Power)> _commands = [];
@@ -109,7 +121,7 @@ public partial class RaceView3D : Node3D
         }
 
         var loading = new CanvasLayer();
-        var label = new Label { Text = "STINTEGY\n\nPreparing Silverstone…", Position = new Vector2(44, 44) };
+        var label = new Label { Text = "STINTEGY\n\nPreparing the circuit…", Position = new Vector2(44, 44) };
         label.AddThemeFontSizeOverride("font_size", 24);
         loading.AddChild(label);
         AddChild(loading);
@@ -142,9 +154,8 @@ public partial class RaceView3D : Node3D
         RaceSeconds = Simulation.RaceTimeSeconds;
 
         AddChild(_circuit);
-        // The circuit is Silverstone here, so its plan is Silverstone's; a
-        // scene that builds another one names that one's.
-        _circuit.Initialize(track, "res://Levels/scenery/silverstone.json");
+        // The plan is the circuit's own, found by its id.
+        _circuit.Initialize(track, $"res://Levels/scenery/{CircuitId}.json");
         CreateLighting();
         CreateCarViews();
         if (_cars.Count == 0)
@@ -240,7 +251,10 @@ public partial class RaceView3D : Node3D
                 {
                     double time = ++_completedTicks * FixedStepBudget.StepSeconds;
                     for (int i = 0; i < frame.Length; i++)
+                    {
                         _cars[i].Capture(time, frame[i].Position, frame[i].Heading, frame[i].SteerAngle);
+                        _cars[i].Effects(frame[i].Slide, frame[i].Speed, frame[i].OffTrack);
+                    }
                 }
             }
             catch (Exception error)
@@ -290,7 +304,10 @@ public partial class RaceView3D : Node3D
                         for (int i = 0; i < frame.Length; i++)
                         {
                             var car = simulation.Cars[i];
-                            frame[i] = new CarPose(car.State.Position, car.State.Heading, car.State.SteerAngleRadians);
+                            frame[i] = new CarPose(
+                                car.State.Position, car.State.Heading, car.State.SteerAngleRadians,
+                                MathF.Abs(car.State.SideslipAngleRadians), car.State.Speed,
+                                car.Progress.Region != TrackRegion.RacingSurface);
                         }
                         frames[tick] = frame;
                     }
@@ -316,6 +333,7 @@ public partial class RaceView3D : Node3D
     public void SetCameraMode(int mode)
     {
         _camera.SetMode(mode);
+        ApplyAtmosphere();
         _hudDirty = true;
         _hud.RefreshControls();
     }
@@ -381,28 +399,78 @@ public partial class RaceView3D : Node3D
         _hudDirty = true;
     }
 
+    private Godot.Environment? _environment;
+    private const float OverviewFogShare = 0.12f;
+
+    /// <summary>
+    /// The overview looks down from kilometres up, through the clouds and
+    /// through more haze than a trackside camera ever sees across: there the
+    /// clouds stand aside and the haze thins, so the circuit is the picture.
+    /// </summary>
+    private void ApplyAtmosphere()
+    {
+        bool overview = _camera.Mode == 3;
+        if (_environment is not null)
+            _environment.FogDensity = _circuit.Look.FogDensity * (overview ? OverviewFogShare : 1f);
+        _circuit.GetNodeOrNull<Landscape3D>("Landscape")?.ShowClouds(!overview);
+    }
+
     private void CreateLighting()
     {
+        var look = _circuit.Look;
+        // A pale afternoon: blue overhead fading to a hazy horizon, the far
+        // country folded into it by distance. The sky lights the ground a
+        // little as well as filling the background, so shade has some blue
+        // in it and the sunlit side some warmth against it.
+        var sky = new ProceduralSkyMaterial
+        {
+            SkyTopColor = look.SkyTop,
+            SkyHorizonColor = look.SkyHorizon,
+            SkyCurve = 0.11f,
+            GroundBottomColor = look.SkyGround,
+            GroundHorizonColor = look.SkyHorizon,
+            SunAngleMax = 28f,
+            SunCurve = 0.12f,
+        };
         AddChild(new WorldEnvironment
         {
-            Environment = new Godot.Environment
+            Environment = _environment = new Godot.Environment
             {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = Color.FromHtml("#c5ccba"),
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
+                BackgroundMode = Godot.Environment.BGMode.Sky,
+                Sky = new Sky { SkyMaterial = sky },
+                AmbientLightSource = Godot.Environment.AmbientSource.Sky,
+                AmbientLightSkyContribution = 0.55f,
                 AmbientLightColor = Color.FromHtml("#c7d5db"),
-                AmbientLightEnergy = 0.42f,
+                AmbientLightEnergy = look.AmbientEnergy,
                 ReflectedLightSource = Godot.Environment.ReflectionSource.Disabled,
                 TonemapMode = Godot.Environment.ToneMapper.Filmic,
-                TonemapExposure = 0.85f,
+                TonemapExposure = 0.95f,
+                FogEnabled = true,
+                FogLightColor = look.FogColor,
+                FogDensity = look.FogDensity,
+                FogAerialPerspective = 0.35f,
+                FogSkyAffect = 0.12f,
+                AdjustmentEnabled = true,
+                AdjustmentSaturation = 1.12f,
+                AdjustmentContrast = 1.06f,
+                // A soft bloom on the brightest faces — sunlit roofs, the white
+                // lines, the clouds — which is most of what makes flat colour
+                // read as sunlight. Glow is one of the effects the mobile
+                // renderer has; SSAO, SSIL and SDFGI are Forward+ only.
+                GlowEnabled = true,
+                GlowIntensity = 0.55f,
+                GlowStrength = 0.9f,
+                GlowBloom = 0.06f,
+                GlowHdrThreshold = 0.95f,
+                GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Softlight,
             }
         });
         AddChild(new DirectionalLight3D
         {
             Name = "AfternoonSun",
-            RotationDegrees = new Vector3(-48, -35, 0),
-            LightColor = Color.FromHtml("#fff0ce"),
-            LightEnergy = 0.9f,
+            RotationDegrees = new Vector3(-look.SunPitch, look.SunYaw, 0),
+            LightColor = look.SunColor,
+            LightEnergy = look.SunEnergy,
             ShadowEnabled = true,
             DirectionalShadowMaxDistance = 700f,
             ShadowBias = 0.06f,
@@ -410,4 +478,5 @@ public partial class RaceView3D : Node3D
             DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits
         });
     }
+
 }

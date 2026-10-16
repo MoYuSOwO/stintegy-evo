@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace StintegyEVO.GodotApp.LowPoly;
@@ -80,5 +81,69 @@ public sealed class LowPolyMesh
         mesh.SurfaceSetMaterial(0, Material); return mesh;
     }
     public MeshInstance3D Instance(string name) => new() { Name = name, Mesh = Build() };
+
+    /// <summary>
+    /// Any mesh, re-cut to this style: every triangle its own three vertices
+    /// with its own face normal, so it shades in facets instead of smoothly.
+    /// Godot's primitive meshes — a cylinder for a trunk, a sphere for a
+    /// crown — share their vertices and average the normals, which reads as
+    /// a smooth plastic toy beside the rest of the circuit. Surfaces and
+    /// their materials are kept; texture coordinates are not, nothing here
+    /// is textured.
+    /// </summary>
+    public static ArrayMesh Faceted(Mesh source)
+    {
+        var faceted = new ArrayMesh();
+        for (int surface = 0; surface < source.GetSurfaceCount(); surface++)
+        {
+            Godot.Collections.Array arrays = source.SurfaceGetArrays(surface);
+            Vector3[] vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            Vector3[] normals = arrays[(int)Mesh.ArrayType.Normal].VariantType == Variant.Type.Nil
+                ? new Vector3[vertices.Length]
+                : arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+            Color[]? colors = arrays[(int)Mesh.ArrayType.Color].VariantType == Variant.Type.Nil
+                ? null
+                : arrays[(int)Mesh.ArrayType.Color].AsColorArray();
+            int[] index = arrays[(int)Mesh.ArrayType.Index].VariantType == Variant.Type.Nil
+                ? Enumerable.Range(0, vertices.Length).ToArray()
+                : arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+
+            var outVertices = new List<Vector3>(index.Length);
+            var outNormals = new List<Vector3>(index.Length);
+            var outColors = colors is null ? null : new List<Color>(index.Length);
+            for (int t = 0; t + 2 < index.Length; t += 3)
+            {
+                int i0 = index[t], i1 = index[t + 1], i2 = index[t + 2];
+                Vector3 a = vertices[i0], b = vertices[i1], c = vertices[i2];
+                Vector3 normal = (c - a).Cross(b - a);
+                if (normal.LengthSquared() < 1e-12f)
+                    continue;
+                normal = normal.Normalized();
+                // Whichever way round the source wound it, the facet faces
+                // the way its own smooth normals said it did.
+                if (normal.Dot(normals[i0] + normals[i1] + normals[i2]) < 0f)
+                    normal = -normal;
+                foreach (int i in new[] { i0, i1, i2 })
+                {
+                    outVertices.Add(vertices[i]);
+                    outNormals.Add(normal);
+                    outColors?.Add(colors![i]);
+                }
+            }
+            if (outVertices.Count == 0)
+                continue;
+            var cut = new Godot.Collections.Array();
+            cut.Resize((int)Mesh.ArrayType.Max);
+            cut[(int)Mesh.ArrayType.Vertex] = outVertices.ToArray();
+            cut[(int)Mesh.ArrayType.Normal] = outNormals.ToArray();
+            if (outColors is not null)
+                cut[(int)Mesh.ArrayType.Color] = outColors.ToArray();
+            faceted.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, cut);
+            Material? material = source.SurfaceGetMaterial(surface) ?? (source as PrimitiveMesh)?.Material;
+            if (material is not null)
+                faceted.SurfaceSetMaterial(faceted.GetSurfaceCount() - 1, material);
+        }
+        return faceted;
+    }
     public static Vector3 V(System.Numerics.Vector3 v) => new(v.X, v.Y, v.Z);
 }

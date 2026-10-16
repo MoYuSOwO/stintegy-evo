@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://cscn0hedge01"]
+
+; A ten-metre length of hedgerow, for the edges of fields. One mesh, so a
+; field's worth is a single batch.
+
+[sub_resource type="StandardMaterial3D" id="Material_hedge"]
+albedo_color = Color(0.3, 0.42, 0.25, 1)
+roughness = 1.0
+
+[sub_resource type="BoxMesh" id="Mesh_hedge"]
+material = SubResource("Material_hedge")
+size = Vector3(10, 1.8, 1.4)
+
+[node name="hedge" type="MeshInstance3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("Mesh_hedge")
