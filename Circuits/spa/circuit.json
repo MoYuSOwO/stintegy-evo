@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "spa",
+  "name": "Circuit de Spa-Francorchamps",
+  "track": "track.csv",
+  "lengthMeters": 7004,
+  "startLineMeters": 0,
+  "grid": {
+    "count": 30,
+    "firstLeft": true,
+    "offsetMeters": 5
+  },
+  "source": {
+    "centreline": "bacinger/f1-circuits (be-1925)",
+    "license": "MIT",
+    "licenseFile": "LICENSE.bacinger-MIT",
+    "notes": "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. Elevation is authored in the style of the venue, not surveyed."
+  }
+}

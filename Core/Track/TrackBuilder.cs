@@ -76,6 +76,15 @@ public class TrackBuilder
         );
     }
 
+    /// <summary>A road already laid out a metre at a time, as a circuit's track file stores it.</summary>
+    internal static TrackBuilder FromRows(IReadOnlyList<CircuitTrackFile.Row> rows)
+    {
+        TrackBuilder builder = new(rows[0].Center, rows[0].Width, rows[0].RunoffLeft, rows[0].RunoffRight);
+        for (int i = 1; i < rows.Count; i++)
+            builder.nodes.Add(new BuilderNode(rows[i].Center, rows[i].Width, rows[i].RunoffLeft, rows[i].RunoffRight));
+        return builder;
+    }
+
     internal static TrackBuilder FromClosedCenterline(
         IReadOnlyList<TrackCenterlinePoint> sourcePoints,
         float targetLengthMeters,

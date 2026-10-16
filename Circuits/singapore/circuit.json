@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "singapore",
+  "name": "Marina Bay Street Circuit",
+  "track": "track.csv",
+  "lengthMeters": 4928,
+  "startLineMeters": 136,
+  "grid": {
+    "count": 30,
+    "firstLeft": true,
+    "offsetMeters": 4
+  },
+  "source": {
+    "centreline": "bacinger/f1-circuits (sg-2008)",
+    "license": "MIT",
+    "licenseFile": "LICENSE.bacinger-MIT",
+    "notes": "Projected, rotated to start on a straight, 11 m wide, scaled to 4,928 m. Elevation is authored in the style of the venue, not surveyed."
+  }
+}

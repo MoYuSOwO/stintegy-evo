@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "interlagos",
+  "name": "Autodromo Jose Carlos Pace",
+  "track": "track.csv",
+  "lengthMeters": 4309,
+  "startLineMeters": 0,
+  "grid": {
+    "count": 30,
+    "firstLeft": true,
+    "offsetMeters": 4.5
+  },
+  "source": {
+    "centreline": "bacinger/f1-circuits (br-1940)",
+    "license": "MIT",
+    "licenseFile": "LICENSE.bacinger-MIT",
+    "notes": "Projected, 12 m wide, scaled to 4,309 m. Elevation is authored in the style of the venue, not surveyed."
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "sepang",
+  "name": "Sepang International Circuit",
+  "track": "track.csv",
+  "lengthMeters": 5543,
+  "startLineMeters": 0,
+  "grid": {
+    "count": 30,
+    "firstLeft": true,
+    "offsetMeters": 5
+  },
+  "source": {
+    "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",
+    "license": "LGPL-3.0",
+    "licenseFile": "LICENSE.LGPL-3.0",
+    "notes": "TUM centreline scaled to 5,543 m; widths normalised to the operator\u0027s 16-22 m. Elevation is authored in the style of the venue, not surveyed."
+  }
+}
