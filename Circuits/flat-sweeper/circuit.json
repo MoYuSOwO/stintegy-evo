@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "flat-sweeper",
+  "name": "Flat sweeper",
+  "track": "track.csv",
+  "lengthMeters": 4946,
+  "startLineMeters": 0,
+  "grid": {
+    "count": 0,
+    "firstLeft": false,
+    "offsetMeters": 0
+  },
+  "source": {
+    "centreline": "Built from straights and arcs by Tools/Circuits",
+    "license": "Project content, see CONTENT_LICENSE.md",
+    "licenseFile": "",
+    "notes": "The banked sweeper\u0027s layout with only drainage crossfall."
+  }
+}

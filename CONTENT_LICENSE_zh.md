@@ -21,7 +21,7 @@ _本文是中文正式说明。维护者会尽合理努力保证中英文版本�
 
 第三方材料不会因为进入本仓库而改变原有许可证。其作者、来源、许可证文本及必要署名应当在相应文件、目录说明或发行版法律声明中保留。
 
-例如，`Core/Track/Data/` 中的部分赛道中心线数据分别来自 TUMFTM/racetrack-database 和 bacinger/f1-circuits，并继续适用该目录中注明的 LGPL-3.0 或 MIT 许可。详细来源和处理方式见 [`Core/Track/Data/README.md`](Core/Track/Data/README.md)。
+例如，`Tools/Circuits/Sources/` 及由它生成的 `Circuits/` 赛道文件夹中的部分赛道中心线数据分别来自 TUMFTM/racetrack-database 和 bacinger/f1-circuits，并继续适用该目录中注明的 LGPL-3.0 或 MIT 许可。详细来源和处理方式见 [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md)。
 
 贡献者不得提交来源不明、无权再许可，或者许可证与项目发行方式不兼容的音乐、美术、赛道数据及其他材料。
 

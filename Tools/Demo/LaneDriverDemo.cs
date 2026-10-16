@@ -4,22 +4,26 @@ using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Drivers.Lanes;
+using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.LowPoly;
 
 namespace StintegyEVO.Presentation.Demo;
 
 /// <summary>
-/// Local viewer: the three-lane driver on Silverstone with its tuning file,
-/// from a standing start on the line, in the low-poly 3D view.
+/// Local viewer: the three-lane driver on a circuit with its tuning file,
+/// from a standing start on the line, in the low-poly 3D view. The circuit
+/// is STINTEGY_CIRCUIT (a folder under Circuits/), Silverstone by default.
 /// </summary>
 public partial class LaneDriverDemo : Node
 {
     public override void _Ready()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
+        string id = System.Environment.GetEnvironmentVariable("STINTEGY_CIRCUIT") is { Length: > 0 } named ? named : "silverstone";
+        GodotCircuits.Use();
+        TrackData track = CircuitLibrary.Load(id);
+        LaneTrackFile file = LaneTrackFile.ForCircuit(id, track);
         if (!file.IsCurrent)
-            GD.PushWarning($"silverstone was learned on another car ({file.LearnedFor?.Date ?? "unstamped"}); it drives on old notes until relearned");
+            GD.PushWarning($"{id} was learned on another car ({file.LearnedFor?.Date ?? "unstamped"}); it drives on old notes until relearned");
         LaneSet lanes = file.LanesFor(track);
 
         int station = (int)System.MathF.Round(lanes.StationOf(track.StartingLineS));
@@ -43,7 +47,7 @@ public partial class LaneDriverDemo : Node
 
         var simulation = new RaceSimulation(track);
         simulation.AddCar(car);
-        var view = new RaceView3D();
+        var view = new RaceView3D { CircuitId = id };
         view.BindSimulation(simulation);
         AddChild(view);
     }

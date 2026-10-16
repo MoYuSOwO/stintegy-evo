@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "daytona",
+  "name": "Superspeedway (Daytona-style)",
+  "track": "track.csv",
+  "lengthMeters": 4016,
+  "startLineMeters": 0,
+  "grid": {
+    "count": 0,
+    "firstLeft": false,
+    "offsetMeters": 0
+  },
+  "source": {
+    "centreline": "Built from straights and arcs by Tools/Circuits",
+    "license": "Project content, see CONTENT_LICENSE.md",
+    "licenseFile": "",
+    "notes": "Two 1,050 m straights and two 305 m turns, 31 degrees in the turns and 3 on the straights."
+  }
+}

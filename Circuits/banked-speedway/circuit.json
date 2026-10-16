@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "banked-speedway",
+  "name": "Banked short track",
+  "track": "track.csv",
+  "lengthMeters": 1264,
+  "startLineMeters": 100,
+  "grid": {
+    "count": 20,
+    "firstLeft": true,
+    "offsetMeters": 5
+  },
+  "source": {
+    "centreline": "Built from straights and arcs by Tools/Circuits",
+    "license": "Project content, see CONTENT_LICENSE.md",
+    "licenseFile": "",
+    "notes": "Ninety-metre turns banked from about 18 degrees at the apron to 31 at the wall."
+  }
+}
