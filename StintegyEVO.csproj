@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.6.3">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="Core/StintegyEVO.Core.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
+    <ProjectReference Include="Drivers/StintegyEVO.Drivers.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
   </ItemGroup>
 
   <ItemGroup>

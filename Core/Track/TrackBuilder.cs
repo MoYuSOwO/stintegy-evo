@@ -1188,6 +1188,53 @@ public static class TrackFactory
     private const float GrandPrixTestBufferMeters = 5f;
     private const float GrandPrixTestTrackWidthMeters = 15f;
 
+    /// <summary>
+    /// A closed circuit from a centreline the caller supplies, for track data
+    /// that does not live in Core: a separately licensed track pack, or a
+    /// circuit still being made. Points are x and y with the road's right and
+    /// left widths, in metres and in driving order, the first one on the
+    /// start line. They are smoothed, resampled and scaled to
+    /// <paramref name="lengthMeters"/> exactly as the bundled circuits are,
+    /// and <paramref name="surface"/> lays the road over them; without one
+    /// the road is an ordinary road circuit.
+    /// </summary>
+    public static TrackData FromCenterline(
+        IReadOnlyList<Vector2> centre,
+        IReadOnlyList<float> rightWidth,
+        IReadOnlyList<float> leftWidth,
+        float lengthMeters,
+        Func<TrackSurfaceContext, TrackSurface>? surface = null,
+        TrackGridConfig? grid = null,
+        float bufferMeters = GrandPrixTestBufferMeters,
+        float controlSpacingMeters = 8f
+    )
+    {
+        ArgumentNullException.ThrowIfNull(centre);
+        ArgumentNullException.ThrowIfNull(rightWidth);
+        ArgumentNullException.ThrowIfNull(leftWidth);
+        if (rightWidth.Count != centre.Count || leftWidth.Count != centre.Count)
+            throw new ArgumentException("Every centreline point needs a right and a left width.");
+
+        var points = new TrackCenterlinePoint[centre.Count];
+        for (int i = 0; i < points.Length; i++)
+            points[i] = new TrackCenterlinePoint(centre[i], rightWidth[i], leftWidth[i]);
+        TrackBuilder builder = TrackBuilder.FromClosedCenterline(
+            points,
+            lengthMeters,
+            bufferMeters,
+            bufferMeters,
+            controlSpacingMeters
+        );
+        builder.WithSurface(surface ?? TrackSurfaces.RoadCircuit);
+        return builder.Build(grid ?? new TrackGridConfig
+        {
+            StartingLineIdx = 0,
+            GridCount = 30,
+            IsFirstGridLeft = true,
+            GridOffset = 5f
+        });
+    }
+
     public static TrackData SimpleOvalTrack(float width, float height, float trackWidth) {
         TrackBuilder builder = new(new(), trackWidth, 5, 5);
         builder.AddStraight(width * 2, trackWidth)

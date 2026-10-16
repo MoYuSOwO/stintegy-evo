@@ -52,6 +52,12 @@ with open(vehicle_params_path, 'r') as stream:
 from track3D import Track3D
 from ggManager import GGManager
 
+# Largest bound or constraint violation an unconverged solve may end with and
+# still be kept: in the units of the problem, metres of track position and
+# metres per second squared of grip.
+ACCEPT_UNCONVERGED_VIOLATION = 0.25
+
+
 def calc_global_raceline(
         track_name: str,
         vehicle_params: dict,
@@ -286,9 +292,26 @@ def calc_global_raceline(
     sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
     stats = solver.stats()
     if not stats.get('success', False):
-        raise RuntimeError(
-            f"IPOPT failed to bake a racing line: {stats.get('return_status')}"
+        # Stopped by its iteration or time budget rather than converged. A
+        # line whose every bound and constraint holds to within a hair is a
+        # line, even if the last digits of optimality were never reached:
+        # diagnosed on Daytona's right lane and Monaco, where the lap time had
+        # stopped moving and the solver was circling a nearly feasible point.
+        # Keep it when the worst violation is small; refuse it otherwise.
+        x = np.array(sol['x']).flatten()
+        g_val = np.array(sol['g']).flatten()
+        lbx_a, ubx_a = np.array(lbw).flatten(), np.array(ubw).flatten()
+        lbg_a, ubg_a = np.array(lbg).flatten(), np.array(ubg).flatten()
+        worst = max(
+            float(np.max(np.maximum(lbx_a - x, 0.0) + np.maximum(x - ubx_a, 0.0), initial=0.0)),
+            float(np.max(np.maximum(lbg_a - g_val, 0.0) + np.maximum(g_val - ubg_a, 0.0), initial=0.0)),
         )
+        status = stats.get('return_status')
+        if worst > ACCEPT_UNCONVERGED_VIOLATION:
+            raise RuntimeError(
+                f"IPOPT failed to bake a racing line: {status} (worst violation {worst:.3g})"
+            )
+        print(f"WARNING: {status}; keeping the last iterate, worst violation {worst:.3g}")
 
     # Extract lap time.
     laptime = ca.Function('f_laptime', [w], [J_t])
