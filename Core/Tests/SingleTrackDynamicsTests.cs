@@ -47,9 +47,12 @@ public sealed class SingleTrackDynamicsTests
         float bestCurvature = 0f;
         float grip = 0f;
 
-        for (int i = 1; i <= 30; i++)
+        // A fine scan: at 60 m/s a step of 0.0001 in curvature is 0.36 m/s^2,
+        // about one per cent of the grip. A coarse one moved the answer by a
+        // whole step whenever the limit fell between two of them.
+        for (int i = 5; i <= 150; i++)
         {
-            float curvature = 0.0005f * i;
+            float curvature = 0.0001f * i;
             (float lateral, bool spun, float axleGrip) =
                 SteadyCircle(car, tires, 60f, curvature);
             if (!spun && lateral > best)
@@ -109,10 +112,11 @@ public sealed class SingleTrackDynamicsTests
 
         float measured = 0f;
         float grip = 0f;
-        for (int i = 1; i <= 30; i++)
+        // The same fine scan as the steady-cornering test.
+        for (int i = 5; i <= 150; i++)
         {
             (float lateral, bool spun, float axleGrip) =
-                SteadyCircle(car, tires, Speed, 0.0005f * i);
+                SteadyCircle(car, tires, Speed, 0.0001f * i);
             if (!spun && lateral > measured)
             {
                 measured = lateral;

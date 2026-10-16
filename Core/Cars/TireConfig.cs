@@ -38,7 +38,12 @@ public sealed class TireConfig
     // term stands in for the micro-slip caused by working a tyre in aerodynamically
     // unsteady air, and vanishes unless the tyre is doing lateral work.
     public const float WakeCorneringHeatRate = 4f;
-    public const float RollingSurfaceHeatRate = 0.7f;
+    // Rolling heat in the tread. 0.8 since downforce became a force: before,
+    // fuel aboard bought downforce, a full car pressed its tyres a tenth
+    // harder, and the warm-up was tuned against that. Without it the tyres
+    // ran three degrees cooler and a cold car at 80 per cent use never
+    // reached its window; 0.8 puts both back where they were measured.
+    public const float RollingSurfaceHeatRate = 0.8f;
     public const float RollingCoreHeatRate = 0.3f;
     // A small share of the work done by the brakes reaches the tyre through
     // the disc, wheel and enclosed air. It enters the slow carcass mass, not
