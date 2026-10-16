@@ -29,16 +29,18 @@ public partial class TrackDressing3D : Node3D
 
     private CircuitView3D _circuit = null!;
     private TrackData _track = null!;
+    private Scenery.SceneryFurniture _plan = new();
 
-    public void Initialize(CircuitView3D circuit)
+    public void Initialize(CircuitView3D circuit, Scenery.SceneryFurniture plan)
     {
         _circuit = circuit;
         _track = circuit.Surface.Track;
-        BuildFence();
-        BuildMarshalPosts();
-        BuildDistanceBoards();
-        BuildStartGantry();
-        BuildFlags();
+        _plan = plan;
+        if (plan.Fence) BuildFence();
+        if (plan.Marshals) BuildMarshalPosts();
+        if (plan.Boards) BuildDistanceBoards();
+        if (plan.Gantry) BuildStartGantry();
+        if (plan.Flags) BuildFlags();
     }
 
     private readonly List<(Node3D Flag, float Phase)> _flags = [];
@@ -61,7 +63,8 @@ public partial class TrackDressing3D : Node3D
         ];
         var poles = new LowPolyMesh();
         int k = 0;
-        for (float offset = -140f; offset <= 140f; offset += 20f)
+        float spacing = MathF.Max(_plan.FlagSpacing, 2f);
+        for (float offset = -_plan.FlagRange; offset <= _plan.FlagRange; offset += spacing)
         {
             float s = _track.WrapS(_track.StartingLineS + offset);
             foreach (int side in new[] { -1, 1 })
@@ -98,7 +101,8 @@ public partial class TrackDressing3D : Node3D
     /// </summary>
     private void BuildFence()
     {
-        const float spacing = 6f, height = 3.2f;
+        float spacing = MathF.Max(_plan.FenceSpacing, 1f);
+        const float height = 3.2f;
         int posts = (int)MathF.Ceiling(_track.LengthMeters / spacing);
         float step = _track.LengthMeters / posts;
         for (int begin = 0; begin < posts; begin += 120)
@@ -125,12 +129,16 @@ public partial class TrackDressing3D : Node3D
     private void BuildMarshalPosts()
     {
         var mesh = new LowPolyMesh();
-        const float spacing = 310f;
-        int count = Math.Max(1, (int)(_track.LengthMeters / spacing));
-        for (int k = 0; k < count; k++)
+        // Named posts replace the even spacing; otherwise one every so often, sides alternating.
+        var posts = new List<(float S, int Side)>(_plan.MarshalsAt);
+        if (posts.Count == 0)
         {
-            float s = (k + 0.5f) * _track.LengthMeters / count;
-            int side = k % 2 == 0 ? -1 : 1;
+            int count = Math.Max(1, (int)(_track.LengthMeters / MathF.Max(_plan.MarshalSpacing, 20f)));
+            for (int k = 0; k < count; k++)
+                posts.Add(((k + 0.5f) * _track.LengthMeters / count, k % 2 == 0 ? -1 : 1));
+        }
+        foreach ((float s, int side) in posts)
+        {
             Vector3 at = Behind(s, side, 4.5f);
             mesh.Box(at + Vector3.Up * 1.2f, new Vector3(2.2f, 2.4f, 2.2f), Hut);
             mesh.Box(at + Vector3.Up * 2.5f, new Vector3(2.6f, 0.25f, 2.6f), MarshalOrange);
@@ -150,7 +158,10 @@ public partial class TrackDressing3D : Node3D
     private void BuildDistanceBoards()
     {
         var mesh = new LowPolyMesh();
-        foreach ((float corner, int side) in BrakingZones())
+        var zones = new List<(float Corner, int Side)>(_plan.BoardsAt);
+        if (_plan.BoardsAuto)
+            zones.AddRange(BrakingZones());
+        foreach ((float corner, int side) in zones)
         {
             for (int bars = 3; bars >= 1; bars--)
             {
@@ -202,7 +213,7 @@ public partial class TrackDressing3D : Node3D
     private void BuildStartGantry()
     {
         var mesh = new LowPolyMesh();
-        float s = _track.StartingLineS - 6f;
+        float s = _plan.GantryS ?? _track.StartingLineS - 6f;
         Vector3 left = Behind(s, 1, 1.4f), right = Behind(s, -1, 1.4f);
         const float height = 7.5f;
         foreach (Vector3 foot in new[] { left, right })

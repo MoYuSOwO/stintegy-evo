@@ -36,6 +36,9 @@ public sealed class SceneryPlan
 
     /// <summary>The circuit's sky, sun, haze and ground colours; defaults where the plan is silent.</summary>
     public SceneryEnvironment Environment { get; init; } = new();
+
+    /// <summary>Which of the circuit furniture to place, how often, and where; defaults where the plan is silent.</summary>
+    public SceneryFurniture Furniture { get; init; } = new();
     public IReadOnlyList<SceneryPlacement> Props { get; init; } = [];
 
     /// <summary>Flat colour laid on the ground: fields, car parks, a paddock.</summary>
@@ -218,7 +221,10 @@ public sealed class SceneryPlan
             Name = root.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? string.Empty : string.Empty,
             Environment = root.TryGetProperty("environment", out JsonElement look)
                 ? SceneryEnvironment.Read(look)
-                : new SceneryEnvironment()
+                : new SceneryEnvironment(),
+            Furniture = root.TryGetProperty("furniture", out JsonElement furniture)
+                ? SceneryFurniture.Read(furniture)
+                : new SceneryFurniture()
         };
     }
 

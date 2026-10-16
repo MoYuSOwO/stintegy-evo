@@ -128,6 +128,32 @@ default, so a plan names only what makes its circuit different:
 | `barrier`, `tyre_wall` | barrier faces on straights, and round the outside of tight corners |
 | `hills_near`, `hills_far`, `clouds` | horizon colours and how many clouds |
 
+## Circuit furniture
+
+The fence, marshal posts, distance boards, start gantry and start-straight
+flags are placed from the circuit's own shape, so a plan need say nothing
+about them. `furniture` switches any of them off (`false`), changes how
+often they come, or names where they stand; sides are `"left"` / `"right"`
+of the direction of travel:
+
+```json
+"furniture": {
+  "fence": { "on": true, "spacing": 6 },
+  "marshals": { "spacing": 250, "at": [ { "s": 1200, "side": "left" } ] },
+  "boards": { "auto": true, "at": [ { "s": 3150, "side": "right" } ] },
+  "gantry": { "s": 5884 },
+  "flags": false
+}
+```
+
+| key | meaning |
+|---|---|
+| `fence` | catch fencing behind the barrier; `spacing` between posts |
+| `marshals` | a post every `spacing` metres, sides alternating; `at` places them instead |
+| `boards` | 150/100/50 boards before braking zones found from the geometry (`auto`), plus any corner in `at` (the station the braking ends) |
+| `gantry` | the start gantry; `s` moves it (default: a few metres before the line) |
+| `flags` | flags either side of the start line, `range` metres each way, every `spacing` |
+
 ## Mods
 
 A player adding scenery does not edit these files: they drop a folder into

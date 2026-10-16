@@ -79,7 +79,7 @@ public partial class CircuitView3D : Node3D
         BuildMarkings();
         var dressing = new TrackDressing3D { Name = "Dressing" };
         AddChild(dressing);
-        dressing.Initialize(this);
+        dressing.Initialize(this, Plan?.Furniture ?? new Scenery.SceneryFurniture());
         BuildScenery(sceneryPlanPath);
     }
 
