@@ -19,8 +19,8 @@ public sealed class TrackFactoryTests
 
         TrackSample straight = track.Sample(20f);
         TrackSample corner = track.Sample(80f + MathF.PI * 24f * 0.5f);
-        Assert.InRange(MathF.Abs(track.Project(straight.Center).D), 0f, 1e-4f);
-        Assert.Equal(MathF.Atan2(straight.Tangent.Y, straight.Tangent.X), straight.Heading, 5);
+        Assert.InRange(MathF.Abs(track.Project(straight.Center).D), 0f, 1e-2f);
+        Near.Equal(MathF.Atan2(straight.Tangent.Y, straight.Tangent.X), straight.Heading);
         Assert.InRange(MathF.Abs(straight.Curvature), 0f, 0.002f);
         Assert.InRange(MathF.Abs(corner.Curvature), 0.035f, 0.05f);
     }

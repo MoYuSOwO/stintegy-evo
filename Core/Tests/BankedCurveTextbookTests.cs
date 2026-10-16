@@ -44,22 +44,18 @@ public sealed class BankedCurveTextbookTests
         float speed = MathF.Sqrt(G * radius * MathF.Tan(phi) * 1.4f);
         float speedSquared = speed * speed;
 
-        Assert.Equal(
+        Near.Equal(
             G * MathF.Cos(phi) + speedSquared * curvature * MathF.Sin(phi),
-            road.NormalGravity(G, speed, curvature),
-            3
-        );
+            road.NormalGravity(G, speed, curvature));
 
         // What the tyres are left holding, in the sense curvature is written
         // in: the corner's own demand scaled onto the surface, less what the
         // bank carries for free.
         float tyre = road.CurvatureDemandScale * speedSquared * curvature +
                      road.LateralGravityDemand(G, speed);
-        Assert.Equal(
+        Near.Equal(
             speedSquared * curvature * MathF.Cos(phi) - G * MathF.Sin(phi),
-            tyre,
-            3
-        );
+            tyre);
     }
 
     [Theory]
@@ -79,7 +75,7 @@ public sealed class BankedCurveTextbookTests
 
         float tyre = road.CurvatureDemandScale * speed * speed * curvature +
                      road.LateralGravityDemand(G, speed);
-        Assert.Equal(0f, tyre, 3);
+        Near.Equal(0f, tyre);
     }
 
     [Theory]
@@ -92,11 +88,9 @@ public sealed class BankedCurveTextbookTests
         // pull along the slope: g sin(theta) cos(theta).
         RoadAttitude road = new(grade, 0f);
         float theta = MathF.Atan(grade);
-        Assert.Equal(
+        Near.Equal(
             -G * MathF.Sin(theta) * MathF.Cos(theta),
-            road.AlongTrackGravity(G, speedMetersPerSecond: 50f),
-            4
-        );
+            road.AlongTrackGravity(G, speedMetersPerSecond: 50f));
     }
 
     [Fact]
@@ -106,20 +100,18 @@ public sealed class BankedCurveTextbookTests
         RoadAttitude crest = new(0f, 0f, -1f / radius);
         RoadAttitude compression = new(0f, 0f, 1f / radius);
 
-        Assert.Equal(G - 3600f / radius, crest.NormalGravity(G, 60f, 0f), 3);
-        Assert.Equal(G + 3600f / radius, compression.NormalGravity(G, 60f, 0f), 3);
-        Assert.Equal(G, crest.NormalGravity(G, 0f, 0f), 4);
+        Near.Equal(G - 3600f / radius, crest.NormalGravity(G, 60f, 0f));
+        Near.Equal(G + 3600f / radius, compression.NormalGravity(G, 60f, 0f));
+        Near.Equal(G, crest.NormalGravity(G, 0f, 0f));
     }
 
     [Fact]
     public void TheCarIsNeverAllowedToBeLiftedCleanOff()
     {
         RoadAttitude brow = new(0f, 0f, -1f / 40f);
-        Assert.Equal(
+        Near.Equal(
             G * RoadAttitude.MinimumNormalShare,
-            brow.NormalGravity(G, 60f, 0f),
-            4
-        );
+            brow.NormalGravity(G, 60f, 0f));
     }
 
     [Theory]
@@ -172,45 +164,37 @@ public sealed class BankedCurveTextbookTests
         RoadAttitude road = new(grade, bank, rate);
 
         // The load, before the model's floor for a car that has left the road.
-        Assert.Equal(
+        Near.Equal(
             normalForce,
             (G + speed * speed * (curvature * bank + rate)) /
-            MathF.Sqrt(1f + grade * grade + bank * bank),
-            3
-        );
+            MathF.Sqrt(1f + grade * grade + bank * bank));
         // Reported with the model's floor applied, which is what a case
         // like an adverse forty-five degrees is for: the projection comes
         // out negative, meaning the car has been thrown off the surface,
         // and a surface-bound model holds the last thing it can say.
-        Assert.Equal(
+        Near.Equal(
             MathF.Max(normalForce, G * RoadAttitude.MinimumNormalShare),
-            road.NormalGravity(G, speed, curvature),
-            3
-        );
+            road.NormalGravity(G, speed, curvature));
 
         // What the tyres are left holding across the road...
-        Assert.Equal(
+        Near.Equal(
             -Vector3.Dot(friction, crossUnit),
             road.CurvatureDemandScale * speed * speed * curvature +
-            road.LateralGravityDemand(G, speed),
-            3
-        );
+            road.LateralGravityDemand(G, speed));
 
         // ...and along it.
-        Assert.Equal(
+        Near.Equal(
             Vector3.Dot(friction, alongUnit),
             (alongTrackAcceleration - road.AlongTrackGravity(G, speed)) /
-            road.LongitudinalDemandScale,
-            3
-        );
+            road.LongitudinalDemandScale);
     }
 
     [Fact]
     public void AFlatRoadAsksForNothingAndChangesNothing()
     {
-        Assert.Equal(1f, RoadAttitude.Flat.CurvatureDemandScale, 6);
-        Assert.Equal(0f, RoadAttitude.Flat.LateralGravityDemand(G, 60f), 6);
-        Assert.Equal(0f, RoadAttitude.Flat.AlongTrackGravity(G, 60f), 6);
-        Assert.Equal(G, RoadAttitude.Flat.NormalGravity(G, 60f, 0.01f), 6);
+        Near.Equal(1f, RoadAttitude.Flat.CurvatureDemandScale);
+        Near.Equal(0f, RoadAttitude.Flat.LateralGravityDemand(G, 60f));
+        Near.Equal(0f, RoadAttitude.Flat.AlongTrackGravity(G, 60f));
+        Near.Equal(G, RoadAttitude.Flat.NormalGravity(G, 60f, 0.01f));
     }
 }

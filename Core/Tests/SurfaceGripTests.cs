@@ -51,18 +51,14 @@ public sealed class SurfaceGripTests
             previous = grip;
         }
 
-        Assert.Equal(SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, 0f), 3);
-        Assert.Equal(
+        Near.Equal(SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, 0f));
+        Near.Equal(
             SurfaceGrip.Buffer,
-            SurfaceGrip.StaticAt(sample, half + 2f),
-            3
-        );
+            SurfaceGrip.StaticAt(sample, half + 2f));
         // Symmetric: which side of the centre line has never mattered.
-        Assert.Equal(
+        Near.Equal(
             SurfaceGrip.StaticAt(sample, half * 0.9f),
-            SurfaceGrip.StaticAt(sample, -half * 0.9f),
-            5
-        );
+            SurfaceGrip.StaticAt(sample, -half * 0.9f));
     }
 
     /// <summary>
@@ -272,30 +268,24 @@ public sealed class SurfaceGripTests
 
         // Racing surface right up to the line: a hand's width inside it is
         // still worth a hundred per cent.
-        Assert.Equal(
-            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half - 0.1f), 3
-        );
+        Near.Equal(
+            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half - 0.1f));
         // At the line itself the road has not been charged for yet.
-        Assert.Equal(
-            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half), 3
-        );
+        Near.Equal(
+            SurfaceGrip.RacingSurface, SurfaceGrip.StaticAt(sample, half));
         // At the kerb's outer edge it is worth the quoted kerb value, and
         // that is where the strip ends rather than where it settles.
-        Assert.Equal(
+        Near.Equal(
             SurfaceGrip.Kerb,
-            SurfaceGrip.StaticAt(sample, half + SurfaceGrip.KerbWidthMeters),
-            3
-        );
+            SurfaceGrip.StaticAt(sample, half + SurfaceGrip.KerbWidthMeters));
         // Past the kerb, through the one remaining transition, grass.
-        Assert.Equal(
+        Near.Equal(
             SurfaceGrip.Buffer,
             SurfaceGrip.StaticAt(
                 sample,
                 half + SurfaceGrip.KerbWidthMeters
                     + SurfaceGrip.TransitionMeters + 0.05f
-            ),
-            3
-        );
+            ));
     }
 
     /// <summary>
@@ -330,11 +320,9 @@ public sealed class SurfaceGripTests
 
         // And the ramp spans the whole quoted drop, so the kerb's outer
         // edge is not secretly most of the way to grass.
-        Assert.Equal(
+        Near.Equal(
             SurfaceGrip.Kerb,
-            SurfaceGrip.StaticAt(sample, half + SurfaceGrip.KerbWidthMeters),
-            4
-        );
+            SurfaceGrip.StaticAt(sample, half + SurfaceGrip.KerbWidthMeters));
     }
 
     /// <summary>

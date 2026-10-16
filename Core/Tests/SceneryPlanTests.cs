@@ -43,7 +43,7 @@ public sealed class SceneryPlanTests
             "res://Assets/TrackScenery/monza/tower.glb", plan.Props[2].Prop
         );
         Assert.Equal(-46f, plan.Props[0].D);
-        Assert.Equal(1.15f, plan.Props[1].Scale, 3);
+        Near.Equal(1.15f, plan.Props[1].Scale);
         Assert.True(plan.Props[0].AlignToTrack);
         Assert.False(plan.Props[2].AlignToTrack);
         Assert.Equal(1.5f, plan.Props[2].Height);
@@ -84,8 +84,8 @@ public sealed class SceneryPlanTests
             Assert.Equal(before.Prop, after.Prop);
             Assert.Equal(before.S, after.S, 2);
             Assert.Equal(before.D, after.D, 2);
-            Assert.Equal(before.Yaw, after.Yaw, 3);
-            Assert.Equal(before.Scale, after.Scale, 3);
+            Near.Equal(before.Yaw, after.Yaw);
+            Near.Equal(before.Scale, after.Scale);
             Assert.Equal(before.Height, after.Height, 2);
             Assert.Equal(before.AlignToTrack, after.AlignToTrack);
             Assert.Equal(before.Repeat?.Count, after.Repeat?.Count);
@@ -164,7 +164,7 @@ public sealed class SceneryPlanTests
         Assert.Equal("Monaco", plan.Name);
         Assert.Equal(new SceneryColour(1f, 0xcc / 255f, 0x80 / 255f), plan.Environment.SunColor);
         Assert.Equal(new[] { SceneryColour.FromHtml("#aabbcc"), new SceneryColour(0x10 / 255f, 0x20 / 255f, 0x30 / 255f) }, plan.Environment.Mown);
-        Assert.Equal(0.001f, plan.Environment.FogDensity, 6);
+        Near.Equal(0.001f, plan.Environment.FogDensity);
         Assert.Equal(defaults.SkyTop, plan.Environment.SkyTop);
         Assert.False(plan.Furniture.Marshals);
         Assert.Equal(9f, plan.Furniture.FenceSpacing);
