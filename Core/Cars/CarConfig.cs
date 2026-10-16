@@ -173,8 +173,8 @@ public sealed class CarConfig
     /// which this class of racing permits. It trims each axle's longitudinal
     /// force -- drive and brakes alike -- so that the tyre's combined use,
     /// slip angle and pedals together, ends the step inside the share of the
-    /// friction circle the team's tyre rung authorises
-    /// (<see cref="TireConfig.GetAccelerationUsage(CarStrategy)"/>). It does
+    /// friction circle the tyre allows, which is all of it unless the host
+    /// asks for less (<see cref="TireConfig.GetAccelerationUsage(CarStrategy)"/>). It does
     /// not steer, so it never takes a correction away.
     ///
     /// On an axle that spends a share s of its circle on its slip angle, a

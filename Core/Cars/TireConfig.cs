@@ -86,108 +86,32 @@ public sealed class TireConfig
     public float StartingCoreTempC { get; init; } = 25f;
 
     /// <summary>
-    /// How much of the grip it has, this compound is asked to give at each
-    /// rung of the tyre ladder.
+    /// The share of the tyre's friction circle the combined-grip limiter lets
+    /// the pedals take it to, the same whatever the tyre rung: the device's
+    /// own margin, short of the peak where a tyre stops answering, at the
+    /// figure the Normal rung always had, so a car on Normal drives exactly
+    /// as before.
     ///
-    /// On the tyre because it is the tyre's number. It used to live on the
-    /// speed planner's configuration, which quietly made it a property of one
-    /// particular driver: every car in the field shared one set of figures, a
-    /// compound that punished over-driving had no way to say so, and the
-    /// learned driver had to carry a copy of the analytic planner's settings
-    /// just to find out what its own pit wall had asked it for.
-    ///
-    /// What the rungs are called stays the game's business - every car that
-    /// races has tyres, and Protect means the same thing on all of them. What
-    /// each rung costs is the rubber's.
+    /// It used to be a ladder, a smaller share at each rung down from Attack,
+    /// so that Protect was a car held to 95 per cent of its tyres by the
+    /// physics. The rungs are ways of driving now, and the driver carries
+    /// them out (how much of each corner, of the brakes, of the throttle it
+    /// spends); a second ladder underneath, in the car, doubled every gap
+    /// and made the rung a property of the hardware rather than of the
+    /// person driving it. A host that wants the limiter tighter still says
+    /// so with <see cref="CarStrategy.WithTireGripUsage"/>.
     /// </summary>
-    public float ProtectAccelerationUsage { get; init; } = 0.955f;
-    public float LightAccelerationUsage { get; init; } = 0.966f;
-    public float NormalAccelerationUsage { get; init; } = 0.977f;
-    public float PushAccelerationUsage { get; init; } = 0.9885f;
-    public float AttackAccelerationUsage { get; init; } = 1f;
+    public float AccelerationUsage { get; init; } = 0.977f;
 
-    /// <summary>
-    /// Checks the ladder is a ladder: five settings that ask for more grip as
-    /// they climb, each of them a share of what the tyre has.
-    ///
-    /// Worth checking now that compounds carry their own figures. A ladder
-    /// whose Push asked for less than its Normal would make the strategy
-    /// table lie to whoever read it - the pit wall would call for more and
-    /// the car would give less - and nothing downstream would notice, because
-    /// every number involved is a plausible fraction.
-    /// </summary>
-    public void ValidateAccelerationLadder()
-    {
-        ValidateAccelerationUsage(ProtectAccelerationUsage);
-        ValidateAccelerationUsage(LightAccelerationUsage);
-        ValidateAccelerationUsage(NormalAccelerationUsage);
-        ValidateAccelerationUsage(PushAccelerationUsage);
-        ValidateAccelerationUsage(AttackAccelerationUsage);
-
-        if (!(ProtectAccelerationUsage < LightAccelerationUsage &&
-              LightAccelerationUsage < NormalAccelerationUsage &&
-              NormalAccelerationUsage < PushAccelerationUsage &&
-              PushAccelerationUsage < AttackAccelerationUsage))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(ProtectAccelerationUsage),
-                "Tire-mode acceleration usages must increase from Protect to Attack."
-            );
-        }
-    }
-
-    private static void ValidateAccelerationUsage(float usage)
-    {
-        if (!float.IsFinite(usage) || usage <= 0f || usage > 1f)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(usage),
-                "Acceleration usage must be finite and in (0, 1]."
-            );
-        }
-    }
-
-    public float GetAccelerationUsage(TireUsageMode mode)
-    {
-        return mode switch
-        {
-            TireUsageMode.Protect => ProtectAccelerationUsage,
-            TireUsageMode.Light => LightAccelerationUsage,
-            TireUsageMode.Normal => NormalAccelerationUsage,
-            TireUsageMode.Push => PushAccelerationUsage,
-            TireUsageMode.Attack => AttackAccelerationUsage,
-            _ => NormalAccelerationUsage
-        };
-    }
+    /// <summary>The limiter's share at this rung: the same at every rung.</summary>
+    public float GetAccelerationUsage(TireUsageMode mode) => AccelerationUsage;
 
     public float GetAccelerationUsage(CarStrategy strategy)
     {
         if (!strategy.TireGripUsageOverride.HasValue)
-            return GetAccelerationUsage(strategy.TireMode);
-
-        return Math.Clamp(
-            strategy.TireGripUsageOverride.Value,
-            ProtectAccelerationUsage,
-            AttackAccelerationUsage
-        );
+            return AccelerationUsage;
+        return Math.Clamp(strategy.TireGripUsageOverride.Value, 0.05f, AccelerationUsage);
     }
-
-    public float GetAccelerationUsage(float sliderPosition)
-    {
-        float scaled = Math.Clamp(sliderPosition, 0f, 1f) * 4f;
-        int segment = Math.Min((int)scaled, 3);
-        float t = scaled - segment;
-        return segment switch
-        {
-            0 => Lerp(ProtectAccelerationUsage, LightAccelerationUsage, t),
-            1 => Lerp(LightAccelerationUsage, NormalAccelerationUsage, t),
-            2 => Lerp(NormalAccelerationUsage, PushAccelerationUsage, t),
-            _ => Lerp(PushAccelerationUsage, AttackAccelerationUsage, t)
-        };
-    }
-
-    private static float Lerp(float from, float to, float t) =>
-        from + (to - from) * t;
 
     public float BaseMu { get; init; } = 1.72f;
     public float IdealSurfaceTempLowC { get; init; } = 85f;
