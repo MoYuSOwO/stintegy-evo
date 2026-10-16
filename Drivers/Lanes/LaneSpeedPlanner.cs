@@ -304,6 +304,30 @@ internal static class LaneSpeedPlanner
             speed[k] = MathF.Min(speed[k], BrakeFrom(envelope, speed[k + 1], curvature[k], stepLength[k], factor[k], brakeFactor[k], Road(road, k), shares));
     }
 
+    /// <summary>
+    /// The stretch just ahead of the car, replanned on fresher grip: braking
+    /// back from a speed it must meet at the far end, driving on from the
+    /// speed it already had planned at the near one.
+    /// </summary>
+    public static void PlanAhead(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> stepLength,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<float> brakeFactor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        float startSpeed,
+        float terminalSpeed,
+        Span<float> speed
+    )
+    {
+        PlanWindow(envelope, curvature, stepLength, factor, brakeFactor, road, shares, terminalSpeed, speed);
+        speed[0] = MathF.Min(speed[0], startSpeed);
+        for (int k = 0; k < speed.Length - 1; k++)
+            speed[k + 1] = MathF.Min(speed[k + 1], DriveFrom(envelope, speed[k], curvature[k], stepLength[k], factor[k], Road(road, k), shares));
+    }
+
     private static LaneRoad Road(ReadOnlySpan<LaneRoad> road, int i) => road.IsEmpty ? default : road[i];
 
     /// <summary>The tyres' share of the corner at this speed, and how hard the road presses on them.</summary>

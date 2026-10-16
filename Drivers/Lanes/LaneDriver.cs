@@ -139,6 +139,15 @@ public sealed class LaneDriver : IDriverController
     private const float RefreshSeconds = 0.5f;
     private const float WindowMeters = 450f;
 
+    // The whole lap is replanned every half second; the stretch ahead, on
+    // the grip the tyres have this instant, five times as often. A tread
+    // heats and cools within a corner, and a plan half a second old had the
+    // car arrive at the next one on grip it no longer had. Five hundred
+    // metres covers the longest braking the car does (about 150 m from top
+    // speed at Silverstone) with room to spare; beyond it the lap plan holds.
+    private const float AheadRefreshSeconds = 0.1f;
+    private const float AheadMeters = 500f;
+
     private readonly LaneTrackFile _file;
     private float[]? _energyTable;
     private readonly CarConfig _car;
@@ -156,6 +165,13 @@ public sealed class LaneDriver : IDriverController
     private readonly float[][] _corner = new float[3][];
     private readonly float[][] _brake = new float[3][];
     private float _sinceRefresh = float.PositiveInfinity;
+    private float _sinceAhead = float.PositiveInfinity;
+    private float[] _aheadCurvature = [];
+    private float[] _aheadStep = [];
+    private float[] _aheadFactor = [];
+    private float[] _aheadBrake = [];
+    private LaneRoad[] _aheadRoad = [];
+    private float[] _aheadSpeed = [];
 
     private float[] _windowSpeed = [];
     private float[] _windowCurvature = [];
@@ -254,9 +270,17 @@ public sealed class LaneDriver : IDriverController
         _windowStep = new float[window];
         _windowFactor = new float[window];
         _windowBrake = new float[window];
+        int ahead = (int)MathF.Ceiling(AheadMeters / _lanes.Spacing);
+        _aheadCurvature = new float[ahead];
+        _aheadStep = new float[ahead];
+        _aheadFactor = new float[ahead];
+        _aheadBrake = new float[ahead];
+        _aheadRoad = new LaneRoad[ahead];
+        _aheadSpeed = new float[ahead];
         Range = TargetRange;
         Side = TargetSide;
         _sinceRefresh = float.PositiveInfinity;
+        _sinceAhead = float.PositiveInfinity;
         _referenceLateral = ReferenceLateral();
         _performance = UseAbilities ? new LanePerformance(context.Profile) : null;
         _performance?.Update(0, context.Car.TrackS, 0f);
@@ -291,6 +315,7 @@ public sealed class LaneDriver : IDriverController
     {
         RaceCarSnapshot car = context.Car;
         _sinceRefresh += dt;
+        _sinceAhead += dt;
         ManageEnergy(car);
         if (_performance is not null)
         {
@@ -299,6 +324,8 @@ public sealed class LaneDriver : IDriverController
         }
         if (_sinceRefresh >= RefreshSeconds)
             Refresh(car, context.Environment.SurfaceGripScalar);
+        else if (_sinceAhead >= AheadRefreshSeconds)
+            RefreshAhead(car, context.Environment.SurfaceGripScalar);
         MoveBlend(dt);
 
         float speed = car.SpeedMetersPerSecond;
@@ -577,6 +604,58 @@ public sealed class LaneDriver : IDriverController
 
     private void Refresh(RaceCarSnapshot car, float roadGrip)
     {
+        ReadGrip(car, roadGrip, _sinceRefresh);
+        for (int lane = 0; lane < 3; lane++)
+        {
+            LaneSpeedPlanner.PlanClosed(
+                _envelope,
+                _curvature[lane],
+                _stepLength[lane],
+                _corner[lane],
+                _brake[lane],
+                _road[lane],
+                _planShares,
+                _speed[lane]
+            );
+        }
+        _sinceRefresh = 0f;
+        _sinceAhead = 0f;
+        _windowStart = -1;
+    }
+
+    /// <summary>The stretch ahead of the car on every lane, on the grip it has now.</summary>
+    private void RefreshAhead(RaceCarSnapshot car, float roadGrip)
+    {
+        ReadGrip(car, roadGrip, _sinceAhead);
+        int start = (int)MathF.Floor(_lanes.StationOf(car.TrackS));
+        int n = _aheadSpeed.Length;
+        for (int lane = 0; lane < 3; lane++)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                int i = _lanes.Wrap(start + k);
+                _aheadCurvature[k] = _curvature[lane][i];
+                _aheadStep[k] = _stepLength[lane][i];
+                _aheadFactor[k] = _corner[lane][i];
+                _aheadBrake[k] = _brake[lane][i];
+                _aheadRoad[k] = _road[lane][i];
+            }
+            float[] speed = _speed[lane];
+            LaneSpeedPlanner.PlanAhead(
+                _envelope, _aheadCurvature, _aheadStep, _aheadFactor, _aheadBrake, _aheadRoad, _planShares,
+                startSpeed: speed[_lanes.Wrap(start)],
+                terminalSpeed: speed[_lanes.Wrap(start + n - 1)],
+                _aheadSpeed);
+            for (int k = 0; k < n; k++)
+                speed[_lanes.Wrap(start + k)] = _aheadSpeed[k];
+        }
+        _sinceAhead = 0f;
+        _windowStart = -1;
+    }
+
+    /// <summary>The live envelope and the learned factors at the grip the driver believes in.</summary>
+    private void ReadGrip(RaceCarSnapshot car, float roadGrip, float sinceLastRead)
+    {
         PlanState.Hydrate(_plan, car);
         _tyreAuthority = Gains.TyreRungAuthority
             ? _tires.GetAccelerationUsage(car.Strategy) / MathF.Max(_tires.AccelerationUsage, 0.5f)
@@ -591,7 +670,7 @@ public sealed class LaneDriver : IDriverController
         ActualGrip = truth.Lateral(40f) / _referenceLateral;
         // Adaptability: the plan is made on the grip the driver believes in.
         // The hands still feel the axles as they are; only the plan is late.
-        Grip = _performance?.PerceiveGrip(ActualGrip, _sinceRefresh) ?? ActualGrip;
+        Grip = _performance?.PerceiveGrip(ActualGrip, sinceLastRead) ?? ActualGrip;
         float belief = Math.Clamp(Grip / MathF.Max(ActualGrip, 1e-3f), 0.9f, 1.1f);
         _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(roadGrip * belief);
         for (int lane = 0; lane < 3; lane++)
@@ -607,19 +686,7 @@ public sealed class LaneDriver : IDriverController
                     _brake[lane][i] *= pace;
                 }
             }
-            LaneSpeedPlanner.PlanClosed(
-                _envelope,
-                _curvature[lane],
-                _stepLength[lane],
-                _corner[lane],
-                _brake[lane],
-                _road[lane],
-                _planShares,
-                _speed[lane]
-            );
         }
-        _sinceRefresh = 0f;
-        _windowStart = -1;
     }
 
     private float SpeedAt(float station)
