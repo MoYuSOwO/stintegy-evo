@@ -87,8 +87,14 @@ public sealed class TireConfig
     public const float MaximumSpeedCoolingMultiplier = 2.4f;
 
     public string CompoundId { get; init; } = "default";
-    public float StartingSurfaceTempC { get; init; } = 25f;
-    public float StartingCoreTempC { get; init; } = 25f;
+    /// <summary>
+    /// Where the tyre starts: off the blankets. The series heats its tyres
+    /// before they go on the car, to about 70 C, so a car leaving the grid
+    /// or the pit lane is a few degrees short of its window, not a whole
+    /// ambient day short of it. A host running without blankets says 25.
+    /// </summary>
+    public float StartingSurfaceTempC { get; init; } = 70f;
+    public float StartingCoreTempC { get; init; } = 70f;
 
     /// <summary>
     /// The share of the tyre's friction circle the combined-grip limiter lets
@@ -125,13 +131,25 @@ public sealed class TireConfig
     // squared distance from its nearest edge. There is no second overheat
     // threshold: progressively hotter or colder tread simply moves farther
     // along the same curve.
-    public float ColdGripLossPerCSquared { get; init; } = 0.00060f;
+    //
+    // The cold side is measured against what cold slicks are known to cost:
+    // with blankets an out lap gives away next to nothing, and the worst
+    // case on record without them, a cold night at Le Mans, is about seven
+    // per cent of a lap. At 0.0006 a 25 C start lost a quarter of its lap
+    // at Silverstone; at 0.0001 it loses three per cent, and a 70 C start
+    // off the blankets a tenth of a second.
+    public float ColdGripLossPerCSquared { get; init; } = 0.00010f;
     public float HotGripLossPerCSquared { get; init; } = 0.00025f;
     public float CoreOverheatTempC { get; init; } = 115f;
     public float CoreOverheatGripLossPerC { get; init; } = 0f;
-    public float WearLinearGripLoss { get; init; } = 0.10f;
+    // A set run to the cliff is worth about two seconds at Silverstone, the
+    // size of the gap between new and old tyres in the series this car
+    // stands in for; at 0.10 it was four and a half. Past the cliff the
+    // tyre still falls away, a little more gently than it did: about three
+    // seconds over the next tenth of the tread rather than four.
+    public float WearLinearGripLoss { get; init; } = 0.04f;
     public float WearCliffStart { get; init; } = 0.70f;
-    public float WearCliffGripLoss { get; init; } = 0.15f;
+    public float WearCliffGripLoss { get; init; } = 0.12f;
 
     public float LateralHeatRate { get; init; } = 4.0f;
     public float LongitudinalHeatRate { get; init; } = 0.55f;
