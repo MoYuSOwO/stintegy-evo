@@ -14,6 +14,6 @@
     "centreline": "bacinger/f1-circuits (it-1922)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected, 12 m wide, scaled to 5,793 m. Elevation is authored in the style of the venue, not surveyed."
+    "notes": "Projected, 12 m wide, scaled to 5,793 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along it-1922 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
   }
 }

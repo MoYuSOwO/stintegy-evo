@@ -14,6 +14,6 @@
     "centreline": "bacinger/f1-circuits (be-1925)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. Elevation is authored in the style of the venue, not surveyed."
+    "notes": "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along be-1925 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m, scaled to the published 102.2 m highest to lowest."
   }
 }

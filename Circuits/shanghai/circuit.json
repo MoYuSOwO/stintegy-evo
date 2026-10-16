@@ -14,6 +14,6 @@
     "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",
     "license": "LGPL-3.0",
     "licenseFile": "LICENSE.LGPL-3.0",
-    "notes": "TUM centreline and satellite widths, scaled from 5,445.25 m to the FIA 5,451 m. Elevation is authored in the style of the venue, not surveyed."
+    "notes": "TUM centreline and satellite widths, scaled from 5,445.25 m to the FIA 5,451 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along cn-2004 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
   }
 }

@@ -64,9 +64,9 @@ public sealed class ZandvoortTests
             highest = MathF.Max(highest, height);
         }
 
-        // Something over fifteen metres across a four kilometre lap, and
-        // back to where it started, like every other closed circuit here.
-        Assert.InRange(highest - lowest, 10f, 25f);
+        // The survey puts some metres of dune under the lap, and the lap
+        // comes back to where it started, like every other closed circuit.
+        Assert.InRange(highest - lowest, 3f, 25f);
         Assert.InRange(height, -0.05f, 0.05f);
     }
 

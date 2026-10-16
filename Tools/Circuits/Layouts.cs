@@ -193,10 +193,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.SilverstoneHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         // The line sits 98 m along the source centreline rather than at its
         // start, because the file's first row is only where the data begins.
         // Behind that point the Hamilton straight runs 186 m to the exit of
@@ -221,10 +219,8 @@ internal static class Layouts
             3f,
             3f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.MonacoHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         // Ten and a half metres of road, the narrowest on the calendar, which is
         // what the 3.5 m stagger has always been for. The back of the grid does
         // run into Sainte Devote's approach: the straight behind the line is only
@@ -246,7 +242,10 @@ internal static class Layouts
     // That is why it is here — every other road circuit teaches the car
     // that a corner is flat.
     private const float ZandvoortLengthMeters = 4_259f;
-    private const float ZandvoortBankTangent = 0.325f;   // eighteen degrees
+    // The circuit's own figures: Hugenholtz 35 per cent (about 19 degrees),
+    // Arie Luyendyk 32 per cent (about 18).
+    private const float ZandvoortHugenholtzBankTangent = 0.35f;
+    private const float ZandvoortLuyendykBankTangent = 0.32f;
 
     // Where the two banked corners are, in metres from the start line. The
     // source centreline carries a point every thirty-six metres, which over
@@ -552,10 +551,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.BakuHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         return builder.Build(new TrackGridConfig
         {
             StartingLineIdx = 0,
@@ -580,10 +577,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.SpaHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         return builder.Build(new TrackGridConfig
         {
             StartingLineIdx = 0,
@@ -607,10 +602,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.MonzaHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         // Twelve metres of road at the grid: the columns come in to suit it.
         return builder.Build(new TrackGridConfig
         {
@@ -634,10 +627,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.InterlagosHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         // Twelve metres of road at the grid, as at Monza.
         return builder.Build(new TrackGridConfig
         {
@@ -700,10 +691,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.PortimaoHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         return builder.Build(new TrackGridConfig
         {
             StartingLineIdx = 0,
@@ -722,10 +711,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.ZandvoortHeights,
-            ZandvoortSurface
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(ZandvoortSurface);
         // Twelve metres of road at the grid.
         return builder.Build(new TrackGridConfig
         {
@@ -746,15 +733,15 @@ internal static class Layouts
     private static TrackSurface ZandvoortSurface(TrackSurfaceContext context)
     {
         TrackSurface section = CrossSections.RoadCircuit(context);
-        float extra = ZandvoortBankTangent * MathF.Max(
-            TrackSurfaces.SectionWeight(
+        float extra = MathF.Max(
+            ZandvoortHugenholtzBankTangent * TrackSurfaces.SectionWeight(
                 context.DistanceMeters,
                 ZandvoortHugenholtzStart,
                 ZandvoortHugenholtzEnd,
                 35f,
                 context.LapLengthMeters
             ),
-            TrackSurfaces.SectionWeight(
+            ZandvoortLuyendykBankTangent * TrackSurfaces.SectionWeight(
                 context.DistanceMeters,
                 ZandvoortLuyendijkStart,
                 ZandvoortLuyendijkEnd,
@@ -785,10 +772,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             controlSpacingMeters: 12f
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.ShanghaiHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         // Eleven and a half metres of road at the grid.
         return builder.Build(new TrackGridConfig
         {
@@ -810,10 +795,8 @@ internal static class Layouts
             GrandPrixTestBufferMeters,
             GrandPrixTestBufferMeters
         );
-        builder.WithSurface(TrackElevation.Profile(
-            ElevationTables.SepangHeights,
-            CrossSections.RoadCircuit
-        ));
+        // Heights come from the survey (Elevation); the layout gives the cross-section.
+        builder.WithSurface(CrossSections.RoadCircuit);
         return builder.Build(new TrackGridConfig
         {
             StartingLineIdx = 0,

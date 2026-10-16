@@ -14,6 +14,6 @@
     "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",
     "license": "LGPL-3.0",
     "licenseFile": "LICENSE.LGPL-3.0",
-    "notes": "TUM smoothed OpenStreetMap centreline with surveyed widths, scaled to the FIA 5,891 m. Elevation is authored in the style of the venue, not surveyed."
+    "notes": "TUM smoothed OpenStreetMap centreline with surveyed widths, scaled to the FIA 5,891 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along gb-1948 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
   }
 }

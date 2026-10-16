@@ -9,11 +9,12 @@ using StintegyEVO.Core.Track;
 //
 //   dotnet run --project Tools/Circuits -- export [root]
 //   dotnet run --project Tools/Circuits -- check  [root]
+//   dotnet run --project Tools/Circuits -- fetch-elevation [id ...]   (needs the network)
 
 string repo = FindRepository();
 Sources.Folder = Path.Combine(repo, "Tools", "Circuits", "Sources");
 string command = args.Length > 0 ? args[0] : "export";
-string outRoot = args.Length > 1 ? args[1] : Path.Combine(repo, CircuitLibrary.FolderName);
+string outRoot = args.Length > 1 && command != "fetch-elevation" ? args[1] : Path.Combine(repo, CircuitLibrary.FolderName);
 
 switch (command)
 {
@@ -22,12 +23,29 @@ switch (command)
             Export(spec, outRoot, repo);
         break;
     case "check":
-        CircuitLibrary.Roots.Clear();
-        CircuitLibrary.Roots.Add(outRoot);
-        int failed = 0;
+    {
+        // The folders are what the tool writes now, to the byte.
+        string fresh = Path.Combine(Path.GetTempPath(), "stintegy-circuits-check");
+        if (Directory.Exists(fresh))
+            Directory.Delete(fresh, recursive: true);
         foreach (CircuitSpec spec in CircuitSpecs.All)
-            failed += Check(spec) ? 0 : 1;
-        Environment.Exit(failed);
+            Export(spec, fresh, repo);
+        int failed = 0;
+        foreach (string file in Directory.GetFiles(fresh, "*", SearchOption.AllDirectories))
+        {
+            string shipped = Path.Combine(outRoot, Path.GetRelativePath(fresh, file));
+            if (!File.Exists(shipped) || !File.ReadAllBytes(shipped).SequenceEqual(File.ReadAllBytes(file)))
+            {
+                Console.WriteLine($"out of date: {Path.GetRelativePath(fresh, file)}");
+                failed++;
+            }
+        }
+        Console.WriteLine(failed == 0 ? "all circuits up to date" : $"{failed} files out of date; run export");
+        Environment.Exit(failed == 0 ? 0 : 1);
+        break;
+    }
+    case "fetch-elevation":
+        await Elevation.Fetch(args.Length > 1 ? args[1..] : Elevation.Codes.Keys);
         break;
     default:
         Console.Error.WriteLine($"unknown command '{command}'; use export or check");
@@ -50,8 +68,9 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
             sample.BankSlope, sample.BankCurvature);
     }
 
-    // Height from the gradient, closed so the lap comes back to where it left.
-    float[] z = Heights(grades);
+    // Height from survey where the circuit has one; otherwise from the
+    // layout's own gradient, closed so the lap comes back to where it left.
+    float[] z = Elevation.ForTrack(spec.Id, rows.Select(r => r.Center).ToArray(), out string survey) ?? Heights(grades);
     for (int i = 0; i < count; i++)
         rows[i] = rows[i] with { Z = z[i] };
 
@@ -81,7 +100,9 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
             FirstLeft = grid.IsFirstGridLeft,
             OffsetMeters = grid.GridOffset
         },
-        Source = spec.Source
+        Source = survey.Length > 0
+            ? spec.Source with { Notes = spec.Source.Notes.Replace(" Elevation is authored in the style of the venue, not surveyed.", "") + " " + Elevation.Notes(spec.Id) }
+            : spec.Source
     };
     File.WriteAllText(Path.Combine(folder, CircuitManifest.FileName), manifest.ToJson() + "\n");
     File.WriteAllText(
@@ -93,6 +114,8 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
         File.Copy(Path.Combine(repo, license), Path.Combine(folder, spec.Source.LicenseFile), overwrite: true);
 
     Console.WriteLine($"{spec.Id,-16} {count,6} m  rows {shortest:F4}..{longest:F4} m apart  climb {z.Max() - z.Min():F1} m{respaced}");
+    if (survey.Length > 0)
+        Console.WriteLine($"{"",-16} {survey}");
 }
 
 static (float Shortest, float Longest) Spacing(CircuitTrackFile.Row[] rows)
@@ -152,28 +175,6 @@ static float[] Heights(float[] grades)
     return z;
 }
 
-static bool Check(CircuitSpec spec)
-{
-    TrackData built = spec.Build();
-    TrackData loaded = CircuitLibrary.Load(spec.Id);
-    float position = 0f, width = 0f, runoff = 0f, curvature = 0f, grade = 0f, bank = 0f, crown = 0f, bend = 0f;
-    for (int i = 0; i < (int)built.LengthMeters; i++)
-    {
-        TrackSample a = built.Sample(i), b = loaded.Sample(i);
-        position = MathF.Max(position, Vector2.Distance(a.Center, b.Center));
-        width = MathF.Max(width, MathF.Abs(a.Width - b.Width));
-        runoff = MathF.Max(runoff, MathF.Max(MathF.Abs(a.LeftBufferWidth - b.LeftBufferWidth), MathF.Abs(a.RightBufferWidth - b.RightBufferWidth)));
-        curvature = MathF.Max(curvature, MathF.Abs(a.Curvature - b.Curvature));
-        grade = MathF.Max(grade, MathF.Abs(a.Grade - b.Grade));
-        bank = MathF.Max(bank, MathF.Abs(a.BankSlope - b.BankSlope));
-        crown = MathF.Max(crown, MathF.Abs(a.BankCurvature - b.BankCurvature));
-        bend = MathF.Max(bend, MathF.Abs(a.VerticalRate - b.VerticalRate));
-    }
-    bool same = built.LengthMeters == loaded.LengthMeters && built.StartingLineS == loaded.StartingLineS &&
-                built.StartingGridCount == loaded.StartingGridCount;
-    Console.WriteLine($"{spec.Id,-16} {(same ? "ok " : "LEN/GRID DIFFER")} pos {position:E1} width {width:E1} runoff {runoff:E1} curv {curvature:E1} grade {grade:E1} bank {bank:E1} crown {crown:E1} bend {bend:E1}");
-    return same;
-}
 
 static string FindRepository()
 {
@@ -223,7 +224,8 @@ static class CircuitSpecs
         new("interlagos", "Autodromo Jose Carlos Pace", Layouts.InterlagosStyleTestTrack,
             FromBacinger("br-1940", "Projected, 12 m wide, scaled to 4,309 m. " + Authored), BacingerLicense),
         new("singapore", "Marina Bay Street Circuit", Layouts.SingaporeStyleTestTrack,
-            FromBacinger("sg-2008", "Projected, rotated to start on a straight, 11 m wide, scaled to 4,928 m. " + Authored), BacingerLicense),
+            FromBacinger("sg-2008", "Projected, rotated to start on a straight, 11 m wide, scaled to 4,928 m. " + Authored +
+                " (SRTM reads the tower blocks along it; the published figure is 5 m, which the authored profile keeps.)"), BacingerLicense),
         new("portimao", "Autodromo Internacional do Algarve", Layouts.PortimaoStyleTestTrack,
             FromBacinger("pt-2008", "Projected, 14 m wide, scaled to 4,653 m. " + Authored), BacingerLicense),
         new("simple", "Simple test layout", () => Layouts.SimpleTestTrack(),
