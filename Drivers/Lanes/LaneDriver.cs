@@ -53,18 +53,20 @@ public sealed record LaneDriverGains
     /// The tyre rung as a way of driving, set by the player and carried out
     /// by the driver: how much of the corner, the throttle, the brakes and
     /// the wheel each rung spends. Off, the rung only scales the tyre's
-    /// allowance, which moves almost nothing.
+    /// allowance, which moves almost nothing. On by default: the top row of
+    /// the table is the plan as it is learned, so every other rung drives
+    /// inside what the learning proved.
     /// </summary>
-    public bool TyreRungStyles { get; init; } = false;
+    public bool TyreRungStyles { get; init; } = true;
 
     /// <summary>Protect, Light, Normal, Push, Attack.</summary>
     public TyreStyle[] TyreStyleTable { get; init; } =
     [
-        new(Corner: 0.9850f, Brake: 0.9895f, Traction: 0.864f, Cap: 0.9965f),
-        new(Corner: 0.9835f, Brake: 0.9890f, Traction: 0.862f, Cap: 0.996f),
-        new(Corner: 0.9830f, Brake: 0.9880f, Traction: 0.860f, Cap: 0.995f),
-        new(Corner: 0.9870f, Brake: 0.9910f, Traction: 0.870f, Cap: 0.997f),
-        new(Corner: 1.0000f, Brake: 1.0000f, Traction: 0.900f, Cap: 1.000f),
+        new(Corner: 0.99250f, Brake: 0.99475f, Traction: 0.882f, Cap: 0.99825f),
+        new(Corner: 0.99175f, Brake: 0.99450f, Traction: 0.881f, Cap: 0.99800f),
+        new(Corner: 0.99150f, Brake: 0.99400f, Traction: 0.880f, Cap: 0.99750f),
+        new(Corner: 0.99350f, Brake: 0.99550f, Traction: 0.885f, Cap: 0.99850f),
+        new(Corner: 1.00000f, Brake: 1.00000f, Traction: 0.900f, Cap: 1.00000f),
     ];
 
     /// <summary>Share of the axles' live grip the command may ask for: what a tyre holds, not its peak.</summary>
@@ -87,12 +89,14 @@ public sealed record LaneDriverGains
     public float BrakeFeelBand { get; init; } = 0.06f;
     public float BrakeFeelFloor { get; init; } = 0.5f;
 
-    /// <summary>Body sideslip where the driver starts handing the slide back.</summary>
-    /// <summary>Seconds of lift per unit of charge behind the target slope (one per cent behind: two seconds).</summary>
-    public float EnergyProportionalGain { get; init; } = 200f;
-
-    /// <summary>Seconds of lift gained per second spent per unit behind.</summary>
-    public float EnergyIntegralGain { get; init; } = 5f;
+    /// <summary>
+    /// The energy rungs as ways of driving, Save to Attack: seconds of lift
+    /// before each braking zone. The player picks the rung and watches the
+    /// pack; the driver only lifts as the rung says. Measured on Silverstone
+    /// with the 320 kW generator: Attack spends 0.73 kWh a lap net, Normal
+    /// 0.36 for 0.35 s, Save puts 0.34 back for just under a second a lap.
+    /// </summary>
+    public float[] EnergyRungLiftSeconds { get; init; } = [1.25f, 0.8f, 0.6f, 0.4f, 0f];
 
     /// <summary>Whether the tyre rung scales how much of the tyre the driver uses.</summary>
     public bool TyreRungAuthority { get; init; } = true;
@@ -112,6 +116,7 @@ public sealed record LaneDriverGains
     /// <summary>Whether the command's lateral cap reads the bank (the plan always does when UseBank).</summary>
     public bool BankInCommand { get; init; } = true;
 
+    /// <summary>Body sideslip where the driver starts handing the slide back.</summary>
     public float SlideOnsetRadians { get; init; } = 0.10f;
     public float SlideFullRadians { get; init; } = 0.20f;
 }
@@ -170,73 +175,21 @@ public sealed class LaneDriver : IDriverController
 
     public LanePerformance? Performance => _performance;
 
-    /// <summary>How long before each braking zone the driver lifts, seconds. Set by energy management.</summary>
-    public float CoastSeconds { get; set; }
+    /// <summary>How long before each braking zone the driver lifts, seconds: the energy rung's.</summary>
+    public float CoastSeconds { get; private set; }
 
-    /// <summary>Most the driver will lift early to save energy: past it the car looks like it is cruising.</summary>
+    /// <summary>Holds the lift at this instead of the rung's, for probes that sweep it.</summary>
+    public float? CoastOverride { get; set; }
+
+    /// <summary>Most the driver will lift early: past it the car looks like it is cruising.</summary>
     public float MaximumCoastSeconds { get; init; } = 1.5f;
 
-    private float _raceDistance;
-    private float? _finishCharge;
-    private bool _anchorPending;
-    private float _anchorDistance, _anchorCharge;
-    private float _coastIntegral;
-
-    /// <summary>The remaining charge the plan expects here, or null with no target.</summary>
-    public float? TargetCharge { get; private set; }
-
-    /// <summary>
-    /// The pit wall's energy instruction: finish a race this long with this
-    /// share of the usable pack left, or with no target at all. The target
-    /// is a slope from where the car is when the instruction arrives to the
-    /// flag; changing it starts a new slope from there and does not chase
-    /// the old one's debt. The driver meets it by lifting before braking zones.
-    /// </summary>
-    public void SetEnergyTarget(float raceDistanceMeters, float? finishCharge)
+    private void ManageEnergy(RaceCarSnapshot car)
     {
-        _raceDistance = raceDistanceMeters;
-        _finishCharge = finishCharge;
-        _anchorPending = true;
-        _coastIntegral = 0f;
-    }
-
-    /// <summary>The energy rungs as targets: what is left at the flag.</summary>
-    public static float? FinishChargeFor(PowerOutputMode rung) => rung switch
-    {
-        PowerOutputMode.Save => 0.10f,
-        PowerOutputMode.Eco => 0.05f,
-        PowerOutputMode.Normal => 0.02f,
-        PowerOutputMode.Push => 0.0f,
-        _ => null
-    };
-
-    /// <summary>
-    /// Keeps the charge on the target slope: behind it, lift earlier; ahead,
-    /// later. Proportional on how far behind, plus an integral for the steady
-    /// share a target needs, both in seconds of lift and held inside the cap.
-    /// </summary>
-    private void ManageEnergy(RaceCarSnapshot car, float dt)
-    {
-        if (_finishCharge is null || _raceDistance <= 0f || car.Resources.IsDefaultOrEmpty)
-        {
-            TargetCharge = null;
-            return;
-        }
-        float charge = car.Resources[0].Fraction;
-        float travelled = car.RaceDistanceMeters;
-        if (_anchorPending)
-        {
-            _anchorDistance = travelled;
-            _anchorCharge = charge;
-            _anchorPending = false;
-        }
-        float span = MathF.Max(_raceDistance - _anchorDistance, 1f);
-        float done = Math.Clamp((travelled - _anchorDistance) / span, 0f, 1f);
-        float target = _anchorCharge + (_finishCharge.Value - _anchorCharge) * done;
-        TargetCharge = target;
-        float behind = target - charge;
-        _coastIntegral = Math.Clamp(_coastIntegral + Gains.EnergyIntegralGain * behind * dt, 0f, MaximumCoastSeconds);
-        CoastSeconds = Math.Clamp(Gains.EnergyProportionalGain * behind + _coastIntegral, 0f, MaximumCoastSeconds);
+        float[] table = Gains.EnergyRungLiftSeconds;
+        float lift = CoastOverride ??
+                     (table.Length == 0 ? 0f : table[Math.Clamp(car.Strategy.PowerRung - 1, 0, table.Length - 1)]);
+        CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);
     }
 
     /// <summary>
@@ -332,7 +285,7 @@ public sealed class LaneDriver : IDriverController
     {
         RaceCarSnapshot car = context.Car;
         _sinceRefresh += dt;
-        ManageEnergy(car, dt);
+        ManageEnergy(car);
         if (_performance is not null)
         {
             int lap = (int)MathF.Floor(car.RaceDistanceMeters / MathF.Max(car.TrackLengthMeters, 1f));
