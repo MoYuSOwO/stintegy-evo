@@ -256,7 +256,7 @@ public class RuleLineController : IDriverController
         _plan.AirVelocityDeficit = car.AirVelocityDeficit;
         _plan.DownforceVelocityDeficit = car.DownforceVelocityDeficit;
         _plan.WakeDownforceLoss = car.WakeDownforceLoss;
-        _plan.DragReduction = car.DragReduction;
+        _plan.ActiveAero = car.ActiveAero;
         if (car.Resources.Length > 0)
             _plan.Energy = PowertrainState.Filled(car.Resources[0].Fraction);
         CopyTire(_plan.FrontLeft, car.FrontLeft);
