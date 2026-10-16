@@ -75,13 +75,11 @@ public sealed class CombinedGripLimiterTests
         float slip = TireSlipCurve.PeakSlipAngleRadians * 0.5f;
         float full = Limit(Grip, Grip, slip, 1f, Normal, 35f);
 
-        Assert.Equal(
+        Near.Equal(
             (Grip + full) * 0.5f,
             CarPhysics.CombinedGripLimitedLongitudinal(
                 half, Grip, Grip, slip, 1f, Normal, 35f
-            ),
-            4
-        );
+            ));
     }
 
     [Theory]
@@ -120,11 +118,9 @@ public sealed class CombinedGripLimiterTests
             MathF.Max(0f, (Normal * Normal - share * share) / (1f - share * share))
         ) * Grip;
 
-        Assert.Equal(
+        Near.Equal(
             expected,
-            Limit(-Grip, Grip, slipAngle, 1f, Normal, speed: 35f),
-            4
-        );
+            Limit(-Grip, Grip, slipAngle, 1f, Normal, speed: 35f));
     }
 
     /// <summary>
@@ -141,11 +137,9 @@ public sealed class CombinedGripLimiterTests
             (Normal * Normal - share * share) / (1f - share * share)
         ) * Grip;
 
-        Assert.Equal(
+        Near.Equal(
             expected,
-            Limit(Grip, Grip, slipAngle, 1f, Normal, speed: 6f),
-            4
-        );
+            Limit(Grip, Grip, slipAngle, 1f, Normal, speed: 6f));
     }
 
     [Fact]
@@ -161,7 +155,7 @@ public sealed class CombinedGripLimiterTests
 
         float ceiling = Limit(Grip, Grip, slipAngle, 1f, Normal, speed: 35f);
 
-        Assert.Equal(expected, ceiling, 4);
+        Near.Equal(expected, ceiling);
         Assert.InRange(ceiling / Grip, 0.5f, 1f);
     }
 

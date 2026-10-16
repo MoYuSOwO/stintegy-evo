@@ -22,14 +22,12 @@ public sealed class RoadAttitudeTests
     public void FlatRoadChangesNothing()
     {
         RoadAttitude flat = RoadAttitude.Flat;
-        Assert.Equal(1f, flat.NormalCosine, 6);
-        Assert.Equal(0f, flat.AlongTrackGravity(Gravity, 60f), 6);
-        Assert.Equal(0f, flat.LateralGravityDemand(Gravity, 60f), 6);
-        Assert.Equal(
+        Near.Equal(1f, flat.NormalCosine);
+        Near.Equal(0f, flat.AlongTrackGravity(Gravity, 60f));
+        Near.Equal(0f, flat.LateralGravityDemand(Gravity, 60f));
+        Near.Equal(
             Gravity,
-            flat.NormalGravity(Gravity, speedMetersPerSecond: 60f, curvature: 0.01f),
-            4
-        );
+            flat.NormalGravity(Gravity, speedMetersPerSecond: 60f, curvature: 0.01f));
     }
 
     [Theory]
@@ -234,17 +232,17 @@ public sealed class RoadAttitudeTests
             TrackSurfaces.SectionWeight(s, 960f, 1080f, blend, lap);
 
         // Full weight right across the line, and matching either side of it.
-        Assert.Equal(1f, Weight(0f), 3);
-        Assert.Equal(1f, Weight(20f), 3);
-        Assert.Equal(1f, Weight(980f), 3);
+        Near.Equal(1f, Weight(0f));
+        Near.Equal(1f, Weight(20f));
+        Near.Equal(1f, Weight(980f));
 
         // Easing in over the forty metres before it and out over the forty
         // after, both of which cross the line, and nothing beyond either.
         Assert.InRange(Weight(940f), 0.4f, 0.6f);
         Assert.InRange(Weight(100f), 0.4f, 0.6f);
-        Assert.Equal(0f, Weight(920f), 3);
-        Assert.Equal(0f, Weight(120f), 3);
-        Assert.Equal(0f, Weight(500f), 3);
+        Near.Equal(0f, Weight(920f));
+        Near.Equal(0f, Weight(120f));
+        Near.Equal(0f, Weight(500f));
 
         // And no step anywhere round the lap, the seam included.
         float previous = Weight(lap - 1f);
@@ -415,17 +413,15 @@ public sealed class RoadAttitudeTests
 
         // Standing still the road's shape is worth nothing at all: this is
         // a speed-squared effect or it is nothing.
-        Assert.Equal(gravity, crest.NormalGravity(gravity, 0f, 0f), 4);
+        Near.Equal(gravity, crest.NormalGravity(gravity, 0f, 0f));
 
         // And the car is never allowed to be lifted clean off, because a
         // model that keeps the car on the surface has nothing to say about
         // what happens when it is not.
         RoadAttitude brow = new(0f, 0f, -1f / 40f);
-        Assert.Equal(
+        Near.Equal(
             gravity * RoadAttitude.MinimumNormalShare,
-            brow.NormalGravity(gravity, 60f, 0f),
-            4
-        );
+            brow.NormalGravity(gravity, 60f, 0f));
     }
 
     [Fact]

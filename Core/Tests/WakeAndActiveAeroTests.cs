@@ -85,7 +85,7 @@ public sealed class WakeAndActiveAeroTests
 
         Assert.True(wake < wakeAssisted);
         Assert.True(wakeAssisted < clean);
-        Assert.Equal(clean, cleanAssisted, precision: 6);
+        Near.Equal(clean, cleanAssisted);
     }
 
     /// <summary>
@@ -96,7 +96,7 @@ public sealed class WakeAndActiveAeroTests
     [Fact]
     public void ActiveAeroIsNotADragReduction()
     {
-        Assert.Equal(SoloDistance(push: false), SoloDistance(push: true), 3);
+        Near.Equal(SoloDistance(push: false), SoloDistance(push: true));
     }
 
     [Fact]

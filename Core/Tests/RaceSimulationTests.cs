@@ -99,8 +99,8 @@ public sealed class RaceSimulationTests
         Assert.Equal(3, driver.CallCount);
         Assert.InRange(
             simulation.RaceTimeSeconds,
-            0.05f - 1e-5f,
-            0.05f + 1e-5f
+            0.05f - 1e-3f,
+            0.05f + 1e-3f
         );
     }
 

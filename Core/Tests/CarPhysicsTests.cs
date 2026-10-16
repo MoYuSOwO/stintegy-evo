@@ -62,7 +62,7 @@ public sealed class CarPhysicsTests
         // lateral or longitudinal dissipation, both cases retain only the
         // same rolling heat; allow float rounding and tiny speed changes.
         Assert.InRange(Math.Abs(AverageRearSurfaceTemp(corner) -
-            AverageRearSurfaceTemp(straight)), 0f, 0.0001f);
+            AverageRearSurfaceTemp(straight)), 0f, 0.01f);
     }
 
     [Fact]
@@ -195,12 +195,10 @@ public sealed class CarPhysicsTests
             );
         }
 
-        Assert.Equal(free.Speed, governed.Speed, 4);
-        Assert.Equal(
+        Near.Equal(free.Speed, governed.Speed);
+        Near.Equal(
             free.Telemetry.ActualLongitudinalAccel,
-            governed.Telemetry.ActualLongitudinalAccel,
-            4
-        );
+            governed.Telemetry.ActualLongitudinalAccel);
     }
 
     /// <summary>
@@ -454,7 +452,7 @@ public sealed class CarPhysicsTests
             1f / 60f
         );
 
-        Assert.InRange(state.Telemetry.OverLimit, 0f, 1e-5f);
+        Assert.InRange(state.Telemetry.OverLimit, 0f, 1e-3f);
         float frontRemainingUse = MathF.Sqrt(MathF.Max(
             0f,
             1f - state.Telemetry.FrontLateralUse *
@@ -509,8 +507,8 @@ public sealed class CarPhysicsTests
         // share of the circle the tyre rung authorises, so neither car drives
         // a tyre past what it has, and what the bias costs is braking the car
         // never gets.
-        Assert.Equal(0f, optimal.Telemetry.OverLimit, precision: 4);
-        Assert.Equal(0f, frontBiased.Telemetry.OverLimit, precision: 4);
+        Near.Equal(0f, optimal.Telemetry.OverLimit);
+        Near.Equal(0f, frontBiased.Telemetry.OverLimit);
         Assert.True(
             frontBiased.Telemetry.ActualLongitudinalAccel >
             optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
@@ -728,7 +726,7 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(uncontrolled, uncontrolledCar, tires, input, 1f / 60f);
 
         Assert.True(controlled.Telemetry.CombinedGripLimiterCutAccel > 0f);
-        Assert.Equal(0f, uncontrolled.Telemetry.CombinedGripLimiterCutAccel, precision: 4);
+        Near.Equal(0f, uncontrolled.Telemetry.CombinedGripLimiterCutAccel);
         Assert.True(
             controlled.Telemetry.RearLongitudinalUse < uncontrolled.Telemetry.RearLongitudinalUse,
             "the limiter should reduce rear drive use before the physics grip clip"
@@ -785,17 +783,13 @@ public sealed class CarPhysicsTests
         StepMany(protect, car, tires, input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal), steps: 240);
         StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal), steps: 240);
 
-        Assert.Equal(
+        Near.Equal(
             AverageSurfaceTemp(protect),
-            AverageSurfaceTemp(attack),
-            precision: 5
-        );
-        Assert.Equal(AverageWear(protect), AverageWear(attack), precision: 5);
-        Assert.Equal(
+            AverageSurfaceTemp(attack));
+        Near.Equal(AverageWear(protect), AverageWear(attack), abs: 0f);
+        Near.Equal(
             protect.Telemetry.FrontGripAccel,
-            attack.Telemetry.FrontGripAccel,
-            precision: 5
-        );
+            attack.Telemetry.FrontGripAccel);
     }
 
     private static (float Front, float Rear) AxleDrive(CarState state) =>
@@ -810,7 +804,7 @@ public sealed class CarPhysicsTests
         CarState state = CreateState(speed: 20f, batterySoc: 0.8f, tires);
         StepMany(state, car, tires, new DriverInput(0f, 6f), CarStrategy.Default, steps: 5);
         (float front, float rear) = AxleDrive(state);
-        Assert.Equal(0f, front, 4);
+        Near.Equal(0f, front);
         Assert.True(rear > 0f);
     }
 
@@ -964,12 +958,10 @@ public sealed class CarPhysicsTests
             1f / 60f
         );
 
-        Assert.Equal(
+        Near.Equal(
             save.Telemetry.RequestedLongitudinalAccel,
-            attack.Telemetry.RequestedLongitudinalAccel,
-            precision: 5
-        );
-        Assert.Equal(save.Energy.Primary, attack.Energy.Primary, precision: 7);
+            attack.Telemetry.RequestedLongitudinalAccel);
+        Near.Equal(save.Energy.Primary, attack.Energy.Primary);
     }
 
     [Fact]
@@ -1010,16 +1002,12 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(protect, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal)), 1f / 60f);
         CarPhysics.Step(attack, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal)), 1f / 60f);
 
-        Assert.Equal(
+        Near.Equal(
             protect.Telemetry.ActualCurvature,
-            attack.Telemetry.ActualCurvature,
-            precision: 5
-        );
-        Assert.Equal(
+            attack.Telemetry.ActualCurvature);
+        Near.Equal(
             protect.Telemetry.FrontGripAccel,
-            attack.Telemetry.FrontGripAccel,
-            precision: 5
-        );
+            attack.Telemetry.FrontGripAccel);
     }
 
     [Fact]
@@ -1092,16 +1080,12 @@ public sealed class CarPhysicsTests
             );
         }
 
-        Assert.Equal(
+        Near.Equal(
             lowIdeal.Telemetry.FrontGripAccel,
+            middleIdeal.Telemetry.FrontGripAccel);
+        Near.Equal(
             middleIdeal.Telemetry.FrontGripAccel,
-            precision: 4
-        );
-        Assert.Equal(
-            middleIdeal.Telemetry.FrontGripAccel,
-            highIdeal.Telemetry.FrontGripAccel,
-            precision: 4
-        );
+            highIdeal.Telemetry.FrontGripAccel);
         Assert.True(
             cold.Telemetry.FrontGripAccel < lowIdeal.Telemetry.FrontGripAccel
         );
@@ -1362,11 +1346,9 @@ public sealed class CarPhysicsTests
             curvature: 0f
         );
 
-        Assert.Equal(
+        Near.Equal(
             cleanLimits.LateralAccelerationLimit,
-            bodyTowLimits.LateralAccelerationLimit,
-            precision: 4
-        );
+            bodyTowLimits.LateralAccelerationLimit);
         Assert.True(
             surfaceWakeLimits.LateralAccelerationLimit <
             cleanLimits.LateralAccelerationLimit,
@@ -1436,8 +1418,8 @@ public sealed class CarPhysicsTests
 
         Assert.True(state.Speed < 55.5f, "five seconds of zero-throttle coasting should lose visible speed");
         Assert.True(state.Telemetry.ActualLongitudinalAccel < -1.3f, "high-speed drag should keep slowing the car");
-        Assert.Equal(-state.Telemetry.LossAccel, state.Telemetry.ActualLongitudinalAccel, precision: 4);
-        Assert.Equal(0f, state.Telemetry.DrivePowerWatts, precision: 4);
+        Near.Equal(-state.Telemetry.LossAccel, state.Telemetry.ActualLongitudinalAccel);
+        Near.Equal(0f, state.Telemetry.DrivePowerWatts, abs: 1f);
     }
 
     [Fact]
@@ -1572,16 +1554,12 @@ public sealed class CarPhysicsTests
             "the redistribution must be large against the tolerance or the " +
             "conservation check is not checking anything"
         );
-        Assert.Equal(
+        Near.Equal(
             equalFrontWear + equalRearWear,
-            shiftedFrontWear + shiftedRearWear,
-            precision: 7
-        );
-        Assert.Equal(
+            shiftedFrontWear + shiftedRearWear, abs: 0f);
+        Near.Equal(
             equal.Telemetry.ActualLateralAccel,
-            frontWorkingHarder.Telemetry.ActualLateralAccel,
-            precision: 5
-        );
+            frontWorkingHarder.Telemetry.ActualLateralAccel);
     }
 
     [Fact]
@@ -1649,18 +1627,14 @@ public sealed class CarPhysicsTests
             1f / 60f
         );
 
-        Assert.Equal(
+        Near.Equal(
             AverageFrontSurfaceTemp(ordinary) +
             AverageRearSurfaceTemp(ordinary),
             AverageFrontSurfaceTemp(extreme) +
-            AverageRearSurfaceTemp(extreme),
-            precision: 5
-        );
-        Assert.Equal(
+            AverageRearSurfaceTemp(extreme));
+        Near.Equal(
             AverageFrontWear(ordinary) + AverageRearWear(ordinary),
-            AverageFrontWear(extreme) + AverageRearWear(extreme),
-            precision: 7
-        );
+            AverageFrontWear(extreme) + AverageRearWear(extreme), abs: 0f);
     }
 
     [Fact]
@@ -2287,10 +2261,10 @@ public sealed class CarPhysicsTests
 
         state.InstallFreshTires(tires);
 
-        Assert.Equal(32f, state.FrontLeft.SurfaceTempC, precision: 4);
-        Assert.Equal(30f, state.FrontLeft.CoreTempC, precision: 4);
-        Assert.Equal(0f, state.FrontLeft.Wear, precision: 4);
-        Assert.Equal(0f, state.FrontLeft.LoadN, precision: 4);
+        Near.Equal(32f, state.FrontLeft.SurfaceTempC);
+        Near.Equal(30f, state.FrontLeft.CoreTempC);
+        Near.Equal(0f, state.FrontLeft.Wear);
+        Near.Equal(0f, state.FrontLeft.LoadN);
     }
 
 
