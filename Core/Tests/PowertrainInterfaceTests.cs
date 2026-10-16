@@ -34,11 +34,9 @@ public sealed class PowertrainInterfaceTests
         float fullTank = TotalWheelLoadAfterAStep(1f);
         float emptyTank = TotalWheelLoadAfterAStep(0f);
 
-        CarConfig config = FuelCar();
-        float speed = 30f;
-        float downforceAccel =
-            config.DownforceAccelPerSpeedSquared * speed * speed;
-        float expected = FullTankMassKg * (9.80665f + downforceAccel);
+        // Fuel weighs what it weighs and buys no downforce: the air presses
+        // the same on a full car as on an empty one.
+        float expected = FullTankMassKg * 9.80665f;
 
         Assert.Equal(expected, fullTank - emptyTank, 1);
     }
@@ -336,6 +334,28 @@ public sealed class PowertrainInterfaceTests
         }
 
         return state.Speed;
+    }
+
+    /// <summary>
+    /// The air pushes on the car's shape, not on its mass: the drag force at
+    /// a speed is the same on a full tank as on an empty one, so the full car
+    /// slows less for it, by exactly the ratio of the masses.
+    /// </summary>
+    [Fact]
+    public void FuelAboardDoesNotChangeTheAirsForce()
+    {
+        CarConfig config = FuelCar();
+        float Drag(float tankFraction)
+        {
+            TireConfig tires = WarmTires();
+            CarState state = new() { Speed = 70f, Energy = new PowertrainState(tankFraction, 1f) };
+            state.InstallFreshTires(tires);
+            CarPhysics.Step(state, config, tires, new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 28f), Dt);
+            float mass = config.MassKg + FullTankMassKg * tankFraction;
+            return (-state.Telemetry.ActualLongitudinalAccel - config.RollingDragAccel) * mass;
+        }
+        Assert.Equal(Drag(0f), Drag(1f), 0);
+        Assert.True(Drag(0f) > 1000f, "at 70 m/s the air is a few kilonewtons");
     }
 
     private static float TotalWheelLoadAfterAStep(float tankFraction)

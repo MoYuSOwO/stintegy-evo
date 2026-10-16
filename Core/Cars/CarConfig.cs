@@ -201,28 +201,34 @@ public sealed class CarConfig
     public float CombinedGripLimiterStrength { get; init; } = 1f;
     public float CombinedGripLimiterPastPeakMinimumSpeed { get; init; } = 10f;
     public float RollingDragAccel { get; init; } = 0.18f;
-    public float AeroDragAccelPerSpeedSquared { get; init; } = 0.0009f;
 
     /// <summary>
-    /// Downforce, as the acceleration it would add to gravity, per squared
-    /// metre per second.
-    ///
-    /// Written this way because that is how it is used: the wheels are pressed
-    /// down by weight and by air, and only their sum matters to the tyre. It
-    /// also makes the number readable - multiplied by the square of a speed it
-    /// gives an acceleration to set beside 9.81, so a car making its own weight
-    /// in downforce at fifty metres a second is carrying a coefficient of about
-    /// four thousandths.
-    ///
-    /// Zero is a car with no wings at all, which is what the model had before
-    /// this existed: grip that does not care how fast the car is going, so a
-    /// fast corner is worth no more than a slow one of the same radius.
-    ///
-    /// The default is a Formula 2 car, and the drag beside it was raised to
-    /// suit: a lift to drag ratio of about four, which is where real
-    /// single-seaters sit, and 301 km/h down the longest straight.
+    /// Aerodynamic drag, in newtons per squared metre per second: half the
+    /// air's density times the drag area. A force, because the air pushes on
+    /// the car's shape and not on its mass; written as an acceleration it was,
+    /// and a car carrying a full tank met a tenth more air than the same car
+    /// empty. 0.81 is a drag area of about 1.3 m², where a high-downforce
+    /// single-seater sits, and the 0.0009 per kilogram the car had at its
+    /// 900 kg dry weight.
     /// </summary>
-    public float DownforceAccelPerSpeedSquared { get; init; } = 0.0035f;
+    public float AeroDragPerSpeedSquared { get; init; } = 0.81f;
+
+    /// <summary>
+    /// Downforce, in newtons per squared metre per second: half the air's
+    /// density times the lift area.
+    ///
+    /// A force for the same reason as the drag: it is the wings and floor
+    /// against the air, the same whatever the car weighs. Written once as an
+    /// acceleration to set beside gravity, it was multiplied back up by the
+    /// car's whole mass, so fuel aboard bought downforce. 3.15 is a lift area
+    /// of about 5.1 m² and a lift to drag ratio of about 3.9, a high-downforce
+    /// single-seater, and the 0.0035 per kilogram the car had at 900 kg dry.
+    ///
+    /// Zero is a car with no wings at all: grip that does not care how fast
+    /// the car is going, so a fast corner is worth no more than a slow one of
+    /// the same radius.
+    /// </summary>
+    public float DownforcePerSpeedSquared { get; init; } = 3.15f;
 
     /// <summary>
     /// How much of its own speed the air is still carrying directly behind

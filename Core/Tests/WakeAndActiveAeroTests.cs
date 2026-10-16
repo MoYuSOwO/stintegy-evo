@@ -66,19 +66,19 @@ public sealed class WakeAndActiveAeroTests
         };
         CarState cleanAirAssisted = new() { ActiveAero = 1f };
 
-        float clean = CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+        float clean = CarPhysics.EffectiveDownforcePerSpeedSquared(
             cleanAir,
             config
         );
-        float wake = CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+        float wake = CarPhysics.EffectiveDownforcePerSpeedSquared(
             inWake,
             config
         );
-        float wakeAssisted = CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+        float wakeAssisted = CarPhysics.EffectiveDownforcePerSpeedSquared(
             inWakeAssisted,
             config
         );
-        float cleanAssisted = CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
+        float cleanAssisted = CarPhysics.EffectiveDownforcePerSpeedSquared(
             cleanAirAssisted,
             config
         );

@@ -55,12 +55,13 @@ public static class CarPhysics
         return config.MassKg + config.Powertrain.ConsumableMassKg(energy);
     }
 
-    internal static float EffectiveDownforceAccelPerSpeedSquared(
+    /// <summary>Downforce in newtons per squared metre per second, after the wake and the active aero.</summary>
+    internal static float EffectiveDownforcePerSpeedSquared(
         CarState state,
         CarConfig config
     )
     {
-        return EffectiveDownforceAccelPerSpeedSquared(
+        return EffectiveDownforcePerSpeedSquared(
             config,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
@@ -171,7 +172,8 @@ public static class CarPhysics
         float loss = CalculateLossAccel(
             config,
             speed,
-            state.AirVelocityDeficit
+            state.AirVelocityDeficit,
+            massKg
         ) + SteadyInducedDragAccel(
             config, speed, frontLateral, rearLateral, frontGrip, rearGrip
         );
@@ -516,7 +518,8 @@ public static class CarPhysics
         float lossAccel = CalculateLossAccel(
             config,
             state.Speed,
-            state.AirVelocityDeficit
+            state.AirVelocityDeficit,
+            massKg
         ) + inducedDragAccel;
         float actualLongitudinalAccel =
             (axleLongitudinalAccel - lossAccel) * longitudinalDemandScale +
@@ -1904,7 +1907,8 @@ public static class CarPhysics
     private static float CalculateLossAccel(
         CarConfig config,
         float speed,
-        float airVelocityDeficit
+        float airVelocityDeficit,
+        float massKg
     )
     {
         if (speed <= 0.01f)
@@ -1913,8 +1917,8 @@ public static class CarPhysics
         float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
         return
             config.RollingDragAccel +
-            config.AeroDragAccelPerSpeedSquared * speed * speed *
-            metAir * metAir;
+            config.AeroDragPerSpeedSquared * speed * speed *
+            metAir * metAir / Math.Max(massKg, Epsilon);
     }
 
     /// <summary>
@@ -2407,13 +2411,13 @@ public static class CarPhysics
         float normalGravity = Gravity
     )
     {
-        float downforceAcceleration = EffectiveDownforceAccelPerSpeedSquared(
+        float downforce = EffectiveDownforcePerSpeedSquared(
             config,
             downforceVelocityDeficit,
             wakeDownforceLoss,
             activeAero
         ) * speed * speed;
-        float totalLoad = massKg * (normalGravity + downforceAcceleration);
+        float totalLoad = massKg * normalGravity + downforce;
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
         frontLoad -= massKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);
@@ -2455,7 +2459,7 @@ public static class CarPhysics
                 Math.Clamp(state.ActiveAero, 0f, 1f));
     }
 
-    private static float EffectiveDownforceAccelPerSpeedSquared(
+    private static float EffectiveDownforcePerSpeedSquared(
         CarConfig config,
         float downforceVelocityDeficit,
         float wakeDownforceLoss,
@@ -2474,7 +2478,7 @@ public static class CarPhysics
                          (1f - wakeFactor);
         return MathF.Max(
             0f,
-            config.DownforceAccelPerSpeedSquared * restored
+            config.DownforcePerSpeedSquared * restored
         );
     }
 
