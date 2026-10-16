@@ -151,4 +151,23 @@ public sealed class SceneryPlanTests
         );
         Assert.Equal("monaco", SceneryPlan.TrackOf("monaco.json"));
     }
+
+    [Fact]
+    public void ACircuitSaysOnlyWhatMakesItDifferent()
+    {
+        SceneryPlan plan = SceneryPlan.Parse("""
+            { "track": "monaco", "name": "Monaco",
+              "environment": { "sun_color": "#ffcc80", "mown": ["#abc", "#102030"], "fog_density": 0.001 },
+              "furniture": { "marshals": false, "fence": { "spacing": 9 } } }
+            """);
+        var defaults = new SceneryEnvironment();
+        Assert.Equal("Monaco", plan.Name);
+        Assert.Equal(new SceneryColour(1f, 0xcc / 255f, 0x80 / 255f), plan.Environment.SunColor);
+        Assert.Equal(new[] { SceneryColour.FromHtml("#aabbcc"), new SceneryColour(0x10 / 255f, 0x20 / 255f, 0x30 / 255f) }, plan.Environment.Mown);
+        Assert.Equal(0.001f, plan.Environment.FogDensity, 6);
+        Assert.Equal(defaults.SkyTop, plan.Environment.SkyTop);
+        Assert.False(plan.Furniture.Marshals);
+        Assert.Equal(9f, plan.Furniture.FenceSpacing);
+        Assert.True(plan.Furniture.Gantry);
+    }
 }
