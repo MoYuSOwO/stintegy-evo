@@ -79,11 +79,7 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
         {
             Count = grid.GridCount,
             FirstLeft = grid.IsFirstGridLeft,
-            OffsetMeters = grid.GridOffset,
-            BoxLengthMeters = grid.BoxLengthMeters,
-            BoxWidthMeters = grid.BoxWidthMeters,
-            StepMeters = grid.StepMeters,
-            PoleSetbackMeters = grid.PoleSetbackMeters
+            OffsetMeters = grid.GridOffset
         },
         Source = spec.Source
     };

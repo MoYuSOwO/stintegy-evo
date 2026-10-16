@@ -45,17 +45,16 @@ all that is computed.
   "track": "track.csv",
   "lengthMeters": 5891,
   "startLineMeters": 98,
-  "grid": { "count": 23, "firstLeft": true, "offsetMeters": 4.75,
-            "boxLengthMeters": 4.5, "boxWidthMeters": 2.4,
-            "stepMeters": 8, "poleSetbackMeters": 10 },
+  "grid": { "count": 23, "firstLeft": true, "offsetMeters": 4.75 },
   "source": { "centreline": "...", "license": "LGPL-3.0", "licenseFile": "LICENSE.LGPL-3.0", "notes": "..." }
 }
 ```
 
 `lengthMeters` is the number of rows. `startLineMeters` is the row the
-start/finish line crosses; pole stands `poleSetbackMeters` behind it and
-each box `stepMeters` behind the one before, alternating sides
-`offsetMeters` from the middle of the road.
+start/finish line crosses. The grid has `count` boxes, pole on the left
+when `firstLeft`, alternating sides `offsetMeters` from the middle of the
+road. The size of a box and the distance between them are the series'
+rules, the same at every circuit, and are not written here.
 
 ## Making one
 

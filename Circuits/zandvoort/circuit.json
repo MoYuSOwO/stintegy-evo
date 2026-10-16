@@ -8,11 +8,7 @@
   "grid": {
     "count": 30,
     "firstLeft": true,
-    "offsetMeters": 4.5,
-    "boxLengthMeters": 4.5,
-    "boxWidthMeters": 2.4,
-    "stepMeters": 8,
-    "poleSetbackMeters": 10
+    "offsetMeters": 4.5
   },
   "source": {
     "centreline": "bacinger/f1-circuits (nl-1948)",
