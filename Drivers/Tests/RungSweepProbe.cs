@@ -56,7 +56,7 @@ public sealed class LiftSweepProbe
         if (!LaneProbes.Enabled) return;
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
-        foreach (float coast in new[] { 0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f, 1.25f, 1.5f })
+        foreach (float coast in new[] { 0.3f, 0.35f, 0.45f, 0.5f, 0.55f, 0.7f, 0.9f, 1.1f })
         {
             var crossings = new List<(float T, float Soc, float Fuel)>();
             int lastLap = int.MinValue;

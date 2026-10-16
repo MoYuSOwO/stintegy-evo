@@ -92,11 +92,13 @@ public sealed record LaneDriverGains
     /// <summary>
     /// The energy rungs as ways of driving, Save to Attack: seconds of lift
     /// before each braking zone. The player picks the rung and watches the
-    /// pack; the driver only lifts as the rung says. Measured on Silverstone
-    /// with the 320 kW generator: Attack spends 0.73 kWh a lap net, Normal
-    /// 0.36 for 0.35 s, Save puts 0.34 back for just under a second a lap.
+    /// pack; the driver only lifts as the rung says. Set on Silverstone with
+    /// the 320 kW generator so that Normal all race spends the pack, about
+    /// 28 of its 30 kWh over 52 laps: Attack spends 0.73 kWh a lap net and
+    /// runs it flat with laps to go, Save puts back about 0.34 for just
+    /// under a second a lap, and the rungs between spend in steps.
     /// </summary>
-    public float[] EnergyRungLiftSeconds { get; init; } = [1.25f, 0.8f, 0.6f, 0.4f, 0f];
+    public float[] EnergyRungLiftSeconds { get; init; } = [1.25f, 0.7f, 0.47f, 0.35f, 0f];
 
     /// <summary>Whether the tyre rung scales how much of the tyre the driver uses.</summary>
     public bool TyreRungAuthority { get; init; } = true;
