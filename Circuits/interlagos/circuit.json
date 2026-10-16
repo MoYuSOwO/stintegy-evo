@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "interlagos",
+  "name": "Autodromo Jose Carlos Pace",
+  "track": "track.csv",
+  "lengthMeters": 4309,
+  "startLineMeters": 0,
+  "grid": {
+    "count": 30,
+    "firstLeft": true,
+    "offsetMeters": 4.5
+  },
+  "source": {
+    "centreline": "bacinger/f1-circuits (br-1940)",
+    "license": "MIT",
+    "licenseFile": "LICENSE.bacinger-MIT",
+    "notes": "Projected, 12 m wide, scaled to 4,309 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along br-1940 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m, scaled to the published 43.0 m highest to lowest."
+  }
+}

@@ -113,4 +113,4 @@ This runs the source-boundary check, the Core tests, both app builds, the headle
 
 - **Code** is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 - **Content and assets** follow the separate [content licensing notice](CONTENT_LICENSE.md), which covers project assets, third-party material and official distributions.
-- **Third-party track data** under `Core/Track/Data/` keeps its original LGPL-3.0 or MIT terms; see [`Core/Track/Data/README.md`](Core/Track/Data/README.md).
+- **Third-party track data** under `Tools/Circuits/Sources/` (and the circuit folders under `Circuits/` made from it) keeps its original LGPL-3.0 or MIT terms; see [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md).

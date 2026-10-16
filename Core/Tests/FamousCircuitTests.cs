@@ -18,22 +18,13 @@ public sealed class FamousCircuitTests
     public void BakuIsTheNarrowestRoadInTheSet()
     {
         TrackData track = TrackFactory.BakuStyleTestTrack();
-        float narrowest = 999f, steepest = 0f;
+        float narrowest = 999f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
-        {
             narrowest = MathF.Min(narrowest, track.Sample(s).Width);
-            steepest = MathF.Max(steepest, track.Sample(s + 0.5f).Grade);
-        }
-        // The castle squeeze, tighter than Monaco's 10.5.
+        // The castle squeeze, tighter than Monaco's 10.5. (Its climb used
+        // to be held under a training set's maximum; the heights are
+        // surveyed now and there is no training set.)
         Assert.InRange(narrowest, 7.2f, 8.2f);
-        // Bound for the training set, so its climb must stay under the
-        // training maximum of 7.3 percent — Monaco's 8.6 remains a
-        // gradient the policy has never seen.
-        Assert.True(
-            steepest < 0.073f,
-            $"Baku climbs at {steepest * 100f:0.0}% and would spoil " +
-            "Monaco as a gradient exam"
-        );
     }
 
     [Fact]

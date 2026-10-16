@@ -32,7 +32,8 @@ public class TrackSurfaceGeometryTests
             min = MathF.Min(min, surface.Height(s, 0f));
             max = MathF.Max(max, surface.Height(s, 0f));
         }
-        Assert.InRange(max - min, 6f, 10f);
+        // A flat former airfield: some metres, not tens.
+        Assert.InRange(max - min, 3f, 20f);
     }
 
     [Fact]

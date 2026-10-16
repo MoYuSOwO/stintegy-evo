@@ -8,6 +8,7 @@ using Godot;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
+using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.Race;
 
 namespace StintegyEVO.GodotApp.LowPoly;
@@ -33,7 +34,7 @@ public partial class RaceView3D : Node3D
 
     /// <summary>
     /// Which circuit this is, for everything the view needs to look up by
-    /// name: its scenery plan is <c>Levels/scenery/&lt;id&gt;.json</c>. Set it
+    /// name: its folder is <c>Circuits/&lt;id&gt;/</c>, road and scenery both. Set it
     /// before the view enters the tree; the default is the practice circuit.
     /// </summary>
     public string CircuitId { get; set; } = "silverstone";
@@ -129,7 +130,9 @@ public partial class RaceView3D : Node3D
         TrackData track;
         try
         {
-            track = _composedSimulation?.Track ?? await Task.Run(TrackFactory.SilverstoneStyleTestTrack);
+            GodotCircuits.Use();
+            string id = CircuitId;
+            track = _composedSimulation?.Track ?? await Task.Run(() => CircuitLibrary.Load(id));
         }
         catch (Exception error)
         {
@@ -155,7 +158,7 @@ public partial class RaceView3D : Node3D
 
         AddChild(_circuit);
         // The plan is the circuit's own, found by its id.
-        _circuit.Initialize(track, $"res://Levels/scenery/{CircuitId}.json");
+        _circuit.Initialize(track, $"{GodotCircuits.Root}/{CircuitId}/{Scenery.SceneryPlan.FileName}");
         CreateLighting();
         CreateCarViews();
         if (_cars.Count == 0)

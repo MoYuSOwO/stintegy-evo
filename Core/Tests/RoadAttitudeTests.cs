@@ -310,8 +310,9 @@ public sealed class RoadAttitudeTests
     [Fact]
     public void CircuitsCarryTheElevationTheirCharacterCallsFor()
     {
-        // Ranked by how much each circuit actually climbs: Monaco far
-        // beyond the rest, Silverstone the flat airfield it is.
+        // Ranked by how much each circuit actually climbs, by the survey:
+        // Monaco far beyond the rest, Shanghai on reclaimed marsh flatter
+        // even than Silverstone's airfield.
         float monaco = ElevationRange(TrackFactory.MonacoStyleTestTrack());
         float sepang = ElevationRange(TrackFactory.SepangStyleTestTrack());
         float shanghai = ElevationRange(TrackFactory.ShanghaiStyleTestTrack());
@@ -320,13 +321,13 @@ public sealed class RoadAttitudeTests
         );
 
         Assert.True(monaco > sepang, $"monaco {monaco:0.0} vs sepang {sepang:0.0}");
-        Assert.True(sepang > shanghai);
-        Assert.True(shanghai > silverstone);
+        Assert.True(sepang > silverstone);
+        Assert.True(silverstone > shanghai);
         // Monaco's climb out of Sainte Dévote is the steepest thing here
         // and is a real gradient, not a rounding artefact.
         Assert.True(SteepestGrade(TrackFactory.MonacoStyleTestTrack()) > 0.03f);
         Assert.True(
-            SteepestGrade(TrackFactory.SilverstoneStyleTestTrack()) < 0.02f
+            SteepestGrade(TrackFactory.SilverstoneStyleTestTrack()) < 0.03f
         );
     }
 

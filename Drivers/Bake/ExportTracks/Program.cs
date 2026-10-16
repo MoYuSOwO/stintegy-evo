@@ -32,23 +32,8 @@ internal static class Program
         return 0;
     }
 
-    private static TrackData Build(string id) => id switch
-    {
-        "silverstone" => TrackFactory.SilverstoneStyleTestTrack(),
-        "simple" => TrackFactory.SimpleTestTrack(),
-        "monaco" => TrackFactory.MonacoStyleTestTrack(),
-        "baku" => TrackFactory.BakuStyleTestTrack(),
-        "spa" => TrackFactory.SpaStyleTestTrack(),
-        "monza" => TrackFactory.MonzaStyleTestTrack(),
-        "interlagos" => TrackFactory.InterlagosStyleTestTrack(),
-        "singapore" => TrackFactory.SingaporeStyleTestTrack(),
-        "portimao" => TrackFactory.PortimaoStyleTestTrack(),
-        "zandvoort" => TrackFactory.ZandvoortStyleTestTrack(),
-        "shanghai" => TrackFactory.ShanghaiStyleTestTrack(),
-        "sepang" => TrackFactory.SepangStyleTestTrack(),
-        "daytona_road" => StintegyEVO.Drivers.Tracks.TrackPack.Load(PrivateTrack("daytona_road.csv"), 5_729f),
-        _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown circuit.")
-    };
+    // Every circuit, shipped or private (private/circuits), is a folder now.
+    private static TrackData Build(string id) => CircuitLibrary.Load(id);
 
     /// <summary>
     /// Both edges, in the bake's convention: its n is positive to the left of
@@ -143,18 +128,6 @@ internal static class Program
         Console.WriteLine($"gg -> {path} (static lateral {latA:0.0}, static brake {brakeA:0.0} m/s² per g)");
     }
 
-    /// <summary>A circuit kept out of the repository, under <c>private/tracks</c> of the checkout.</summary>
-    private static string PrivateTrack(string file)
-    {
-        string? dir = AppContext.BaseDirectory;
-        for (int i = 0; i < 10 && dir is not null; i++, dir = Path.GetDirectoryName(dir))
-        {
-            string candidate = Path.Combine(dir, "private", "tracks", file);
-            if (File.Exists(candidate))
-                return candidate;
-        }
-        throw new FileNotFoundException($"Private track {file} not found under any parent's private/tracks.");
-    }
 
     private static string F(float value) => value.ToString("0.######", CultureInfo.InvariantCulture);
 }

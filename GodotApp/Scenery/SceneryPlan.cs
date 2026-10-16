@@ -364,18 +364,22 @@ public sealed class SceneryPlan
     }
 
     /// <summary>
-    /// The circuit a plan file belongs to, from its own name: plans live
-    /// beside each other and are named for their track.
+    /// The circuit a plan file belongs to. A circuit's own plan is
+    /// <c>&lt;id&gt;/scenery.json</c> and belongs to its folder; a mod's is
+    /// <c>scenery/&lt;id&gt;.json</c> and is named for its track.
     /// </summary>
     public static string TrackOf(string planPath)
     {
-        string name = planPath;
-        int slash = name.LastIndexOf('/');
-        if (slash >= 0)
-            name = name[(slash + 1)..];
+        string[] parts = planPath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        string name = parts.Length > 0 ? parts[^1] : planPath;
+        if (name == FileName && parts.Length > 1)
+            return parts[^2];
         int dot = name.LastIndexOf('.');
         return dot > 0 ? name[..dot] : name;
     }
+
+    /// <summary>A circuit's own plan, in its folder.</summary>
+    public const string FileName = "scenery.json";
 
     private static string Round(float value, int digits = 2) =>
         MathF.Round(value, digits).ToString(CultureInfo.InvariantCulture);
