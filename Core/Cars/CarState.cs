@@ -94,12 +94,15 @@ public sealed class CarState
     public float DownforceVelocityDeficit { get; set; }
 
     /// <summary>
-    /// How strongly this car's drag reduction device is running, zero to one.
-    /// The external race host supplies activation; Core does not infer eligibility
-    /// from gaps or lap crossings. Physics applies the configured drag trim and
-    /// downforce recovery, capped at clean-air downforce.
+    /// How strongly the active aero is trimmed to a leading car's wake, zero
+    /// to one. Physics sets it from push-to-pass every step; it hands back
+    /// the configured share of the downforce the wake took, capped at
+    /// clean-air downforce, and does nothing in clean air.
     /// </summary>
-    public float DragReduction { get; set; }
+    public float ActiveAero { get; set; }
+
+    /// <summary>The car's push-to-pass: what is used, what is running, what is waiting.</summary>
+    public PushToPassState PushToPass { get; set; }
 
     public TireState FrontLeft { get; } = new();
     public TireState FrontRight { get; } = new();
@@ -125,7 +128,7 @@ public sealed class CarState
         AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
         WakeDownforceLoss = Math.Clamp(WakeDownforceLoss, 0f, 1f);
         DownforceVelocityDeficit = Math.Clamp(DownforceVelocityDeficit, 0f, 1f);
-        DragReduction = Math.Clamp(DragReduction, 0f, 1f);
+        ActiveAero = Math.Clamp(ActiveAero, 0f, 1f);
     }
 
     public TireState GetTire(WheelId wheel)
@@ -168,7 +171,8 @@ public sealed class CarState
             AirVelocityDeficit = AirVelocityDeficit,
             WakeDownforceLoss = WakeDownforceLoss,
             DownforceVelocityDeficit = DownforceVelocityDeficit,
-            DragReduction = DragReduction,
+            ActiveAero = ActiveAero,
+            PushToPass = PushToPass,
             Telemetry = Telemetry
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
@@ -196,7 +200,8 @@ public sealed class CarState
         AirVelocityDeficit = other.AirVelocityDeficit;
         WakeDownforceLoss = other.WakeDownforceLoss;
         DownforceVelocityDeficit = other.DownforceVelocityDeficit;
-        DragReduction = other.DragReduction;
+        ActiveAero = other.ActiveAero;
+        PushToPass = other.PushToPass;
         Telemetry = other.Telemetry;
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);

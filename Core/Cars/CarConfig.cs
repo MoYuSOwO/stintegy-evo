@@ -7,10 +7,10 @@ namespace StintegyEVO.Core.Cars;
 /// </summary>
 /// <remarks>
 /// Device slots are the whole vocabulary. Core carries every vehicle mechanism
-/// it knows -- the combined-grip limiter, drag reduction, a powertrain's
+/// it knows -- the combined-grip limiter, push-to-pass, a powertrain's
 /// resource slots -- and a car without one of them has that mechanism's
 /// parameters at zero rather than a different interface: strength zero is a
-/// limiter not fitted, a drag reduction nobody activates does nothing, and a
+/// limiter not fitted, a push-to-pass nobody presses does nothing, and a
 /// resource slot with nothing in it is <see cref="PowertrainResourceClass.None"/>.
 /// A second car is new values in these boxes, never a new shape.
 /// </remarks>
@@ -61,6 +61,12 @@ public sealed class CarConfig
     /// Two motors can do that at every instant, so a car that has them does.
     /// </summary>
     public bool AdaptiveDriveSplit { get; init; } = true;
+
+    /// <summary>
+    /// When push-to-pass may run. What it does is the powertrain's (more
+    /// power) and the active aero's (<see cref="ActiveAeroWakeDownforceRecovery"/>).
+    /// </summary>
+    public PushToPassRules PushToPass { get; init; } = new();
     /// <summary>
     /// Where the axles sit relative to the centre of mass. The front arm is
     /// the longer one on this car, because the front carries less of the
@@ -294,27 +300,15 @@ public sealed class CarConfig
     public float DirtyAirSensitivity { get; init; } = 1f;
 
     /// <summary>
-    /// Fraction of aerodynamic drag removed while the car's drag reduction
-    /// runs. A drag reduction system is the model: the published worth of one
-    /// is ten to twelve km/h of top speed, and with top speed going as the
-    /// cube root of drag, three metres per second at eighty needs roughly a
-    /// tenth of the drag gone. This is a genuine straight-line gain over the
-    /// car's own clean-air pace, exactly as it is for the real device.
-    /// Eight percent is the measured sweet spot on top of a real tow: in the
-    /// reference duel six percent converts no passes at all, ten converts
-    /// every start at the same second, and eight wins some starts and not
-    /// others - possible, never guaranteed.
+    /// Fraction of the downforce lost to a leading car's wake that the active
+    /// aero hands back while push-to-pass runs: flaps that trim to the
+    /// disturbed air rather than to clean air. It scales what the wake
+    /// removed, so in clean air it does nothing, and at one it would erase
+    /// the cornering penalty of following entirely; half keeps dirty air a
+    /// real cost while letting a committed follower live close enough to
+    /// strike. It does not touch drag: the push is power, not a stalled wing.
     /// </summary>
-    public float DragReductionDragShare { get; init; } = 0.08f;
-
-    /// <summary>
-    /// Fraction of the downforce lost to a leading car's wake that the
-    /// drag reduction device hands back. It scales what the wake removed, so in clean
-    /// air it does nothing, and at one it would erase the cornering penalty
-    /// of following entirely; half keeps dirty air a real cost while letting
-    /// a committed follower live close enough to strike.
-    /// </summary>
-    public float DragReductionWakeDownforceRecovery { get; init; } = 0.5f;
+    public float ActiveAeroWakeDownforceRecovery { get; init; } = 0.5f;
 
     /// <summary>
     /// What is left of an axle's braking or drive once it is being asked

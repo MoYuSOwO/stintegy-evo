@@ -255,7 +255,8 @@ public sealed class ElectricPowertrain : IPowertrain
         in CarStrategy strategy,
         float speed,
         float massKg,
-        float chassisForceCeiling
+        float chassisForceCeiling,
+        bool pushToPass = false
     )
     {
         float powerLimitedAccel =
@@ -272,7 +273,8 @@ public sealed class ElectricPowertrain : IPowertrain
         float brakeAccel,
         float speed,
         float massKg,
-        float dt
+        float dt,
+        bool pushToPass = false
     )
     {
         float drivePower = driveAccel <= 0f

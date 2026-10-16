@@ -137,13 +137,18 @@ public interface IPowertrain
     /// everything the car can do and not only the part of it that was power
     /// limited: a motor cannot make its rated torque on a sagging pack, and
     /// an engine starved of fuel does not make its rated torque either.
+    ///
+    /// <paramref name="pushToPass"/> is whether a push is running this step
+    /// (<see cref="PushToPassState"/>); machinery with nothing extra to give
+    /// ignores it.
     /// </summary>
     float DriveAccelerationLimit(
         in PowertrainState energy,
         in CarStrategy strategy,
         float speed,
         float massKg,
-        float chassisForceCeiling
+        float chassisForceCeiling,
+        bool pushToPass = false
     );
 
     /// <summary>
@@ -156,7 +161,8 @@ public interface IPowertrain
         float brakeAccel,
         float speed,
         float massKg,
-        float dt
+        float dt,
+        bool pushToPass = false
     );
 
     /// <summary>

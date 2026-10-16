@@ -235,6 +235,8 @@ public partial class RaceView : Node2D
                 }
             );
             _simulation!.AddCar(car);
+            // Off the grid: no push until the line.
+            car.LockPushToPassUntilLine();
         }
 
         GD.Print($"Default 2D display: cars={carCount}; No controller; vehicles stationary");

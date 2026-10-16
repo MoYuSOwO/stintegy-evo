@@ -50,11 +50,23 @@ public sealed class RangeExtenderPowertrain : IPowertrain
     public float RegenPowerCapWatts { get; init; } = 600_000f;
     public float MinPowerSpeed { get; init; } = 8f;
 
-    /// <summary>The race's power: every rung, until the rungs become driver behaviour.</summary>
+    /// <summary>The race's power: every rung, which are driver behaviour rather than ceilings.</summary>
     public float RaceDrivePowerLimitWatts { get; init; } = 600_000f;
 
     /// <summary>Electrical output of the generator while it runs.</summary>
-    public float GeneratorPowerWatts { get; init; } = 300_000f;
+    public float GeneratorPowerWatts { get; init; } = 320_000f;
+
+    /// <summary>The race's power while push-to-pass runs: twelve per cent over the race power.</summary>
+    public float PushToPassDrivePowerWatts { get; init; } = 672_000f;
+
+    /// <summary>
+    /// Share of the motors' extra draw during a push that the generator
+    /// makes on top of its own output, burning fuel for it. The rest comes
+    /// out of the pack, so a push always costs more charge than the same
+    /// stretch flat out without one, on any circuit: the generator only ever
+    /// answers power the motors actually used above the race limit.
+    /// </summary>
+    public float PushToPassGeneratorShare { get; init; } = 0.5f;
 
     /// <summary>Fuel to electricity at the generator's terminals.</summary>
     public float GeneratorEfficiency { get; init; } = 0.36f;
@@ -63,7 +75,7 @@ public sealed class RangeExtenderPowertrain : IPowertrain
     public float GeneratorStopCharge { get; init; } = 0.95f;
 
     /// <summary>The event's fuel allowance, which is what the race-long budget is.</summary>
-    public float FuelAllowanceKg { get; init; } = 112f;
+    public float FuelAllowanceKg { get; init; } = 120f;
 
     // Below this the pack's voltage sags, and past empty there is only a limp.
     public float LowVoltageStart { get; init; } = 0.05f;
@@ -90,10 +102,12 @@ public sealed class RangeExtenderPowertrain : IPowertrain
         in CarStrategy strategy,
         float speed,
         float massKg,
-        float chassisForceCeiling
+        float chassisForceCeiling,
+        bool pushToPass = false
     )
     {
-        float power = strategy.DrivePowerLimitWattsOverride ?? RaceDrivePowerLimitWatts;
+        float power = strategy.DrivePowerLimitWattsOverride ??
+                      (pushToPass ? PushToPassDrivePowerWatts : RaceDrivePowerLimitWatts);
         float powerLimitedAccel = power / (massKg * Math.Max(speed, MinPowerSpeed));
         return Math.Min(chassisForceCeiling, powerLimitedAccel) *
                OutputAvailability(energy);
@@ -105,7 +119,8 @@ public sealed class RangeExtenderPowertrain : IPowertrain
         float brakeAccel,
         float speed,
         float massKg,
-        float dt
+        float dt,
+        bool pushToPass = false
     )
     {
         float drivePower = driveAccel <= 0f
@@ -118,6 +133,11 @@ public sealed class RangeExtenderPowertrain : IPowertrain
         float generatorPower = energy.Primary < GeneratorStopCharge && fuelJoules > 0f
             ? GeneratorPowerWatts
             : 0f;
+        if (pushToPass && generatorPower > 0f)
+        {
+            float raceDraw = RaceDrivePowerLimitWatts / Math.Max(BatteryDriveEfficiency, Epsilon);
+            generatorPower += PushToPassGeneratorShare * MathF.Max(0f, drivePower - raceDraw);
+        }
         float fuelBurn = generatorPower / Math.Max(GeneratorEfficiency, Epsilon) * dt;
         if (fuelBurn > fuelJoules)
         {
