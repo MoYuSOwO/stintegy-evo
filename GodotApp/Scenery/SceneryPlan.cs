@@ -30,6 +30,12 @@ namespace StintegyEVO.GodotApp.Scenery;
 public sealed class SceneryPlan
 {
     public string Track { get; init; } = string.Empty;
+
+    /// <summary>The circuit's name as people say it, for the screen: "Silverstone".</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The circuit's sky, sun, haze and ground colours; defaults where the plan is silent.</summary>
+    public SceneryEnvironment Environment { get; init; } = new();
     public IReadOnlyList<SceneryPlacement> Props { get; init; } = [];
 
     /// <summary>Flat colour laid on the ground: fields, car parks, a paddock.</summary>
@@ -208,7 +214,11 @@ public sealed class SceneryPlan
                 : string.Empty,
             Props = props,
             Patches = patches,
-            Farmland = farmland
+            Farmland = farmland,
+            Name = root.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? string.Empty : string.Empty,
+            Environment = root.TryGetProperty("environment", out JsonElement look)
+                ? SceneryEnvironment.Read(look)
+                : new SceneryEnvironment()
         };
     }
 

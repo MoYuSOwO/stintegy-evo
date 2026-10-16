@@ -15,18 +15,21 @@ namespace StintegyEVO.GodotApp.LowPoly;
 /// </summary>
 public partial class Landscape3D : Node3D
 {
-    private static readonly Color Plain = Color.FromHtml("#93a372");
-    private static readonly Color NearHill = Color.FromHtml("#869a64");
-    private static readonly Color FarRidge = Color.FromHtml("#8fa39c");
     private static readonly Color Cloud = Color.FromHtml("#f4f2ea");
+    private Color Plain, NearHill, FarRidge;
+    private int _cloudCount;
 
     private Node3D _clouds = null!;
     private Vector3 _drift = new(1.6f, 0f, 0.7f);
     private float _cloudSpan;
     private Vector3 _center;
 
-    public void Initialize(TrackSurfaceGeometry surface)
+    public void Initialize(TrackSurfaceGeometry surface, Scenery.SceneryEnvironment look)
     {
+        Plain = look.Plain;
+        NearHill = look.NearHills;
+        FarRidge = look.FarHills;
+        _cloudCount = look.Clouds;
         Vector3 min = LowPolyMesh.V(surface.Minimum), max = LowPolyMesh.V(surface.Maximum);
         _center = (min + max) * 0.5f;
         // The meadow reaches this far past the circuit (CircuitView3D's terrain margin).
@@ -128,7 +131,7 @@ public partial class Landscape3D : Node3D
         _clouds = new Node3D { Name = "Clouds" };
         AddChild(_clouds);
         _cloudSpan = spread + 1500f;
-        for (int k = 0; k < 34; k++)
+        for (int k = 0; k < _cloudCount; k++)
         {
             var mesh = new LowPolyMesh();
             int blobs = 3 + random.Next(4);

@@ -25,7 +25,7 @@ public partial class RaceHud3D : CanvasLayer
         root.Theme = new Theme { DefaultFont = font, DefaultFontSize = 14 };
         var header = Panel(root, Control.LayoutPreset.TopWide, new Vector2(20, 18), new Vector2(-20, 78));
         var title = Label(header, "STINTEGY", 21, new(18, 9)); title.AddThemeConstantOverride("outline_size", 0);
-        Label(header, "S I L V E R S T O N E   /   SIMULATION VIEW", 10, new(19, 37), Muted);
+        Label(header, $"{string.Join(' ', race.CircuitName.ToUpperInvariant().ToCharArray())}   /   SIMULATION VIEW", 10, new(19, 37), Muted);
         _clock.Position = new(358, 19); _clock.AddThemeFontSizeOverride("font_size", 17); _clock.AddThemeColorOverride("font_color", Ink); header.AddChild(_clock);
         var controls = new HBoxContainer { Position = new(-529, 12), Size = new(510, 36), AnchorLeft = 1, AnchorRight = 1 };
         controls.AddThemeConstantOverride("separation", 5); header.AddChild(controls);
@@ -49,7 +49,7 @@ public partial class RaceHud3D : CanvasLayer
         // Below the title line, which runs the width of the panel: beside it, the two overlapped.
         _strategy.Position = new(200, 36); _strategy.AddThemeFontSizeOverride("font_size", 12); _strategy.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_strategy);
         var mapPanel = Panel(root, Control.LayoutPreset.BottomRight, new(-237, -231), new(-20, -48));
-        Label(mapPanel, "CIRCUIT     /     5.891 KM", 10, new(14, 10), Muted);
+        Label(mapPanel, $"CIRCUIT     /     {race.Surface.Track.LengthMeters / 1000f:0.000} KM", 10, new(14, 10), Muted);
         _map.Position = new(10, 29); _map.Size = new(195, 144); mapPanel.AddChild(_map); _map.Initialize(race.Surface, race.Simulation.Cars);
         var footer = Label(root, "← →  CAR     SCROLL  ZOOM     RIGHT DRAG  ORBIT     SPACE  PAUSE     H  HIDE UI", 11, new(24, -28), Ink);
         footer.AnchorTop = 1; footer.AnchorBottom = 1;

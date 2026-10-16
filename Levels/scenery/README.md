@@ -100,6 +100,34 @@ whatever would stand inside the barrier of *any* part of the lap — not only
 the part it was placed beside — is left out and counted in the log
 (`… kept off the circuit`).
 
+## How the circuit looks
+
+`name` is the circuit as the screen shows it. `environment` is its sky,
+sun, haze and ground; every key is optional and one left out keeps the
+default, so a plan names only what makes its circuit different:
+
+```json
+"name": "Monaco",
+"environment": {
+  "sky_top": "#5d93cf", "sky_horizon": "#e3e6dd", "sun_pitch": 55, "sun_yaw": 20,
+  "sun_color": "#fff2d6", "sun_energy": 1.3, "fog_density": 0.0002,
+  "grass": "#7f9a5e", "mown": ["#93ad68", "#86a05f"],
+  "barrier": ["#e8e4d6", "#dcd7c8"], "tyre_wall": ["#4a5254", "#565e60"],
+  "hills_near": "#7f9566", "hills_far": "#8ea2a8", "clouds": 12
+}
+```
+
+| key | meaning |
+|---|---|
+| `sky_top`, `sky_horizon`, `sky_ground` | sky colours overhead, at the horizon, and below it |
+| `sun_pitch`, `sun_yaw` | degrees the sun shines down from, and the direction it comes from |
+| `sun_color`, `sun_energy`, `ambient_energy` | the sun's colour and strength, and the sky's fill light |
+| `fog_color`, `fog_density` | the haze the distance fades into (the overview thins it) |
+| `road`, `grass`, `plain` | asphalt, the meadow, and the plain beyond it |
+| `mown` | run-off bands, alternating |
+| `barrier`, `tyre_wall` | barrier faces on straights, and round the outside of tight corners |
+| `hills_near`, `hills_far`, `clouds` | horizon colours and how many clouds |
+
 ## Mods
 
 A player adding scenery does not edit these files: they drop a folder into

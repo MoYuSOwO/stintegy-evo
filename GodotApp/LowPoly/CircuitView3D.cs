@@ -8,18 +8,16 @@ namespace StintegyEVO.GodotApp.LowPoly;
 public partial class CircuitView3D : Node3D
 {
     public TrackSurfaceGeometry Surface { get; private set; } = null!;
-    private static readonly Color Road = Color.FromHtml("#535b5d"), Grass = Color.FromHtml("#89976c");
+    /// <summary>
+    /// The circuit's own look — ground, run-off and barrier colours, and the
+    /// sky and sun the race view lights it by — from its scenery plan's
+    /// environment block, or the defaults where there is none.
+    /// </summary>
+    public Scenery.SceneryEnvironment Look { get; private set; } = new();
 
-    // The buffer is grass to the physics (SurfaceGrip.Buffer), so it is
-    // drawn as grass: mown, in the alternating bands a groundsman leaves.
-    private static readonly Color MownLight = Color.FromHtml("#9cb071"), MownDark = Color.FromHtml("#8ca265");
+    /// <summary>The plan this circuit was built with, if it had one.</summary>
+    public Scenery.SceneryPlan? Plan { get; private set; }
 
-    // Barrier faces, kept quiet: concrete panels in two close tones on the
-    // straights, a darker tyre wall round the outside of a tight corner.
-    // Loud colour blocks along the whole lap fought the low-poly palette;
-    // the kerbs are the only saturated edge a circuit needs.
-    private static readonly Color[] Boards = [Color.FromHtml("#e6e1d1"), Color.FromHtml("#d8d3c2")];
-    private static readonly Color TyreDark = Color.FromHtml("#4a5254"), TyreBelt = Color.FromHtml("#565e60");
     private const float CornerBarrierCurvature = 1f / 160f;
     public void Initialize(TrackData track) => Initialize(track, null);
 
@@ -32,10 +30,13 @@ public partial class CircuitView3D : Node3D
     public void Initialize(TrackData track, string? sceneryPlanPath)
     {
         Surface = new(track);
+        // Read first: the plan says what colour the ground is before any of it is built.
+        Plan = ReadPlan(sceneryPlanPath);
+        Look = Plan?.Environment ?? new Scenery.SceneryEnvironment();
         BuildTerrain();
         var landscape = new Landscape3D { Name = "Landscape" };
         AddChild(landscape);
-        landscape.Initialize(Surface);
+        landscape.Initialize(Surface, Look);
         int segments = (int)MathF.Ceiling(track.LengthMeters / 3f);
         float step = track.LengthMeters / segments;
         // Chunked geometry keeps the long circuit cullable in the follow camera.
@@ -48,7 +49,7 @@ public partial class CircuitView3D : Node3D
                 var sa = track.Sample(a); var sb = track.Sample(b);
                 for (int lane = 0; lane < 6; lane++)
                     Strip(mesh, a, b, Mathf.Lerp(-sa.HalfWidth, sa.HalfWidth, lane / 6f), Mathf.Lerp(-sa.HalfWidth, sa.HalfWidth, (lane + 1) / 6f),
-                        Mathf.Lerp(-sb.HalfWidth, sb.HalfWidth, lane / 6f), Mathf.Lerp(-sb.HalfWidth, sb.HalfWidth, (lane + 1) / 6f), Road, 0.025f);
+                        Mathf.Lerp(-sb.HalfWidth, sb.HalfWidth, lane / 6f), Mathf.Lerp(-sb.HalfWidth, sb.HalfWidth, (lane + 1) / 6f), Look.Road, 0.025f);
                 foreach (int side in new[] { -1, 1 })
                 {
                     float ea = side * sa.HalfWidth, eb = side * sb.HalfWidth;
@@ -64,7 +65,7 @@ public partial class CircuitView3D : Node3D
                     float kerbA = ea + side * SurfaceGrip.KerbWidthMeters;
                     float kerbB = eb + side * SurfaceGrip.KerbWidthMeters;
                     if (wa - sa.HalfWidth > SurfaceGrip.KerbWidthMeters + 1e-3f)
-                        Strip(mesh, a, b, kerbA, side * wa, kerbB, side * wb, (i / 2) % 2 == 0 ? MownLight : MownDark, 0f);
+                        Strip(mesh, a, b, kerbA, side * wa, kerbB, side * wb, Look.Mown[(i / 2) % Look.Mown.Count], 0f);
                     // The white line is the last of the racing surface, not
                     // the first of the run-off: painted inside its own edge.
                     Strip(mesh, a, b, ea - side * 0.12f, ea, eb - side * 0.12f, eb, LowPolyMesh.Ivory, 0.03f);
@@ -82,6 +83,24 @@ public partial class CircuitView3D : Node3D
         BuildScenery(sceneryPlanPath);
     }
 
+    private static Scenery.SceneryPlan? ReadPlan(string? planPath)
+    {
+        if (string.IsNullOrWhiteSpace(planPath) || !Godot.FileAccess.FileExists(planPath))
+            return null;
+        try
+        {
+            using var file = Godot.FileAccess.Open(planPath, Godot.FileAccess.ModeFlags.Read);
+            return Scenery.SceneryPlan.Parse(file.GetAsText());
+        }
+        catch (Exception error)
+        {
+            // A malformed plan costs the circuit its scenery and its look,
+            // and nothing else: the road is the domain's.
+            GD.PushWarning($"scenery: {planPath} could not be read -- {error.Message}");
+            return null;
+        }
+    }
+
     private void BuildScenery(string? planPath)
     {
         if (string.IsNullOrWhiteSpace(planPath))
@@ -91,13 +110,8 @@ public partial class CircuitView3D : Node3D
         AddChild(scenery);
         try
         {
-            if (Godot.FileAccess.FileExists(planPath))
-            {
-                using var file = Godot.FileAccess.Open(
-                    planPath, Godot.FileAccess.ModeFlags.Read
-                );
-                scenery.Build(Scenery.SceneryPlan.Parse(file.GetAsText()), Surface);
-            }
+            if (Plan is not null)
+                scenery.Build(Plan, Surface);
             // Then whatever the player has added. A mod's scenery is drawn
             // after the circuit's own, from the mod's own folder, and can
             // no more touch the simulation than the circuit's own can.
@@ -109,11 +123,10 @@ public partial class CircuitView3D : Node3D
         }
         catch (Exception error)
         {
-            // A malformed plan costs the circuit its scenery and nothing
-            // else: the road is the domain's, and it is already built.
-            GD.PushWarning($"scenery: {planPath} could not be read -- {error.Message}");
+            GD.PushWarning($"scenery: {planPath} could not be built -- {error.Message}");
         }
     }
+
 
     /// <summary>
     /// The kerb, everywhere, on both sides.
@@ -180,8 +193,8 @@ public partial class CircuitView3D : Node3D
     private Color BarrierFace(TrackData track, int segment, float s, int side, float wallOffset)
     {
         if (MathF.Abs(track.Sample(s).Curvature) > CornerBarrierCurvature && IsOutside(s, side, wallOffset))
-            return segment % 2 == 0 ? TyreDark : TyreBelt;
-        return Boards[(segment / 4 + (side > 0 ? 3 : 0)) % Boards.Length];
+            return Look.TyreWall[segment % Look.TyreWall.Count];
+        return Look.Barrier[(segment / 4 + (side > 0 ? 3 : 0)) % Look.Barrier.Count];
     }
 
     /// <summary>
@@ -212,7 +225,7 @@ public partial class CircuitView3D : Node3D
         Vector3 t = Point(a, da + side * TrackSurfaceGeometry.VergeMeters);
         r.Y = Surface.MeadowHeight(r.X, r.Z);
         t.Y = Surface.MeadowHeight(t.X, t.Z);
-        mesh.GroundQuad(p, q, r, t, Grass);
+        mesh.GroundQuad(p, q, r, t, Look.Grass);
     }
     private void BuildMarkings()
     {
@@ -254,7 +267,7 @@ public partial class CircuitView3D : Node3D
             {
                 // Restrained field-sized variation rather than random rainbow triangles.
                 float tint = 0.018f * MathF.Sin(x * 0.35f + z * 0.2f);
-                var color = Grass.Lightened(tint);
+                var color = Look.Grass.Lightened(tint);
                 mesh.GroundQuad(vertices[x, z], vertices[x + 1, z], vertices[x + 1, z + 1], vertices[x, z + 1], color);
             }
             var instance = mesh.Instance($"Meadow_{bx}_{bz}"); instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off; AddChild(instance);

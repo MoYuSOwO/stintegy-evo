@@ -1,5 +1,6 @@
 {
   "track": "silverstone",
+  "name": "Silverstone",
   "farmland": {"from": 190, "to": 1100, "field": 150, "angle": 0.42, "meadow": 0.22, "palette": ["#cdb866", "#a9bd70", "#9c8461", "#8fa868", "#d8c650", "#b7a46c", "#97ad6b"], "hedge": 4, "tree": 3},
   "patches": [
     {"color": "#6f7577", "s": [60, 420], "d": [72, 150]},
