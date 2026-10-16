@@ -97,6 +97,7 @@ public partial class RaceView : Node2D
         }
         else
         {
+            GodotCircuits.Use();
             track = TrackFactory.SilverstoneStyleTestTrack();
             _simulation = new RaceSimulation(
                 track,

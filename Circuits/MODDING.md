@@ -10,7 +10,7 @@ mods/greener-silverstone/
 ```
 
 `scenery/silverstone.json` is the same format the game's own circuits use
-(see `README.md` beside this file):
+(see `SCENERY.md` beside this file):
 
 ```json
 {
