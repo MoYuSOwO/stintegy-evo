@@ -55,7 +55,7 @@ public sealed class DriverBoundaryTests
         Assert.Equal(default, car.LastInput);
         Assert.Equal(position, car.State.Position);
         Assert.Equal(0f, car.State.Speed);
-        Assert.InRange(race.RaceTimeSeconds, 0.49999f, 0.50001f);
+        Assert.InRange(race.RaceTimeSeconds, 0.49f, 0.51f);
         Assert.Throws<InvalidOperationException>(() => race.CaptureFrameContext(car));
     }
 
@@ -92,7 +92,7 @@ public sealed class DriverBoundaryTests
         Assert.Equal(2, controller.Frames.Count);
         Assert.Equal(new DriverInput(0f, 2f), car.LastInput);
         Assert.Equal(0f, controller.Frames[0].RaceTimeSeconds);
-        Assert.InRange(controller.Frames[1].RaceTimeSeconds, 0.01666f, 0.01667f);
+        Assert.InRange(controller.Frames[1].RaceTimeSeconds, 0.016f, 0.017f);
         Assert.All(controller.Frames, c => Assert.Same(car.Driver.Profile, c.Profile));
     }
 

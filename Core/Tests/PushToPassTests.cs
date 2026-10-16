@@ -122,7 +122,7 @@ public sealed class PushToPassTests
         // Fast enough that power, not the chassis, sets the limit.
         float plain = powertrain.DriveAccelerationLimit(energy, CarStrategy.Default, 70f, 950f, 100f);
         float pushed = powertrain.DriveAccelerationLimit(energy, CarStrategy.Default, 70f, 950f, 100f, pushToPass: true);
-        Assert.Equal(1.12f, pushed / plain, 3);
+        Near.Equal(1.12f, pushed / plain);
     }
 
     /// <summary>
@@ -147,8 +147,8 @@ public sealed class PushToPassTests
         float extraDraw = (powertrain.PushToPassDrivePowerWatts - powertrain.RaceDrivePowerLimitWatts) /
                           powertrain.BatteryDriveEfficiency;
         float packJoules = powertrain.BatteryCapacityJoules;
-        Assert.Equal(extraDraw * dt / packJoules, flatOut.Primary - unaided.Primary, 6);
-        Assert.Equal(0.5f * extraDraw * dt / packJoules, flatOut.Primary - pushed.Primary, 6);
+        Near.Equal(extraDraw * dt / packJoules, flatOut.Primary - unaided.Primary, abs: 0f);
+        Near.Equal(0.5f * extraDraw * dt / packJoules, flatOut.Primary - pushed.Primary, abs: 0f);
         Assert.True(pushed.Secondary < flatOut.Secondary, "the generator burns fuel for its share");
 
         // And a push that never reaches the race limit asks nothing extra of the generator.

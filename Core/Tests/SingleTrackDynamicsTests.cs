@@ -448,7 +448,7 @@ public sealed class SingleTrackDynamicsTests
         }
 
         // The evenly gripped car keeps going exactly where it was pointed.
-        Assert.Equal(travelAtStart, evenTravel, precision: 4);
+        Near.Equal(travelAtStart, evenTravel);
 
         // The lopsided one has turned towards its left, which is the side
         // with the road on it.

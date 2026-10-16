@@ -72,7 +72,7 @@ public sealed class WorldBoundaryRegressionTests
 
         Assert.InRange(MathF.Abs(crestSample.Grade), 0f, 0.005f);
         Assert.InRange(MathF.Abs(compressionSample.Grade), 0f, 0.005f);
-        Assert.Equal(0f, levelSample.VerticalRate, 6);
+        Near.Equal(0f, levelSample.VerticalRate);
         Assert.True(crestSample.VerticalRate < -1e-4f);
         Assert.True(compressionSample.VerticalRate > 1e-4f);
 
@@ -149,10 +149,10 @@ public sealed class WorldBoundaryRegressionTests
         Assert.Equal(forward["alpha"].LastInput, reverse["alpha"].LastInput);
         Assert.Equal(forward["beta"].LastInput, reverse["beta"].LastInput);
 
-        Assert.Equal(forward["alpha"].SpeedMetersPerSecond, reverse["alpha"].SpeedMetersPerSecond, 5);
-        Assert.Equal(forward["beta"].SpeedMetersPerSecond, reverse["beta"].SpeedMetersPerSecond, 5);
-        Assert.Equal(forward["alpha"].DistanceMeters, reverse["alpha"].DistanceMeters, 5);
-        Assert.Equal(forward["beta"].DistanceMeters, reverse["beta"].DistanceMeters, 5);
+        Near.Equal(forward["alpha"].SpeedMetersPerSecond, reverse["alpha"].SpeedMetersPerSecond);
+        Near.Equal(forward["beta"].SpeedMetersPerSecond, reverse["beta"].SpeedMetersPerSecond);
+        Near.Equal(forward["alpha"].DistanceMeters, reverse["alpha"].DistanceMeters);
+        Near.Equal(forward["beta"].DistanceMeters, reverse["beta"].DistanceMeters);
     }
 
     private static SteppedRoadResult RunLongStraight(

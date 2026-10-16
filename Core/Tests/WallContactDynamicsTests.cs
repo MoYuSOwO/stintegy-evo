@@ -245,32 +245,6 @@ public sealed class WallContactDynamicsTests
     }
 
     /// <summary>
-    /// A known limit, kept here so it is not forgotten: a car stopped with
-    /// its nose into the wall at more than about half a right angle cannot
-    /// leave. Forward is into the wall, every turn swings a front corner
-    /// into it, and the car model has no reverse gear. This was as true
-    /// before the wall stopped aligning cars with itself as after: the same
-    /// poses were stuck on the old resolver, frame for frame. Getting out
-    /// needs reverse, which is a vehicle capability, not a wall rule.
-    /// </summary>
-    [Fact(Skip = "Known limit: no reverse gear. A car stopped nose-in at 0.9 rad or more stays pinned, on the old wall resolver as on this one.")]
-    public void ACarSquareOnToTheWallCanReverseOut()
-    {
-        (RaceCar car, _) = Run(
-            s: 100f,
-            offsetFromLeftWall: 2.45f,
-            headingIntoWall: MathF.PI / 2f,
-            speed: 0f,
-            command: _ => new DriverInput(-0.2f, 3f),
-            seconds: 10f,
-            out _
-        );
-
-        Assert.True(car.Progress.TotalDistance > 10f, $"covered {car.Progress.TotalDistance:F1} m");
-    }
-
-
-    /// <summary>
     /// Drives one car from a pose relative to the left wall, applying a
     /// command that may change once the car has touched the wall, and
     /// checks at every frame that the state is finite and inside the walls.

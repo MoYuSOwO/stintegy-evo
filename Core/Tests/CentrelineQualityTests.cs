@@ -62,30 +62,6 @@ public sealed class CentrelineQualityTests
         return curvature;
     }
 
-    private static int StraightSignChanges(TrackData track, int window)
-    {
-        float[] fine = Curvature(track, window);
-        float[] coarse = Curvature(track, StraightWindowMetres);
-        int count = fine.Length;
-        int changes = 0;
-        int previousSign = 0;
-        for (int s = 0; s < count; s++)
-        {
-            if (MathF.Abs(coarse[s]) >= StraightCurvature)
-            {
-                previousSign = 0;
-                continue;
-            }
-            int sign = fine[s] > 0f ? 1 : (fine[s] < 0f ? -1 : 0);
-            if (sign == 0)
-                continue;
-            if (previousSign != 0 && sign != previousSign)
-                changes++;
-            previousSign = sign;
-        }
-        return changes;
-    }
-
     /// <summary>How many times the road tips the other way while going
     /// straight. Cross slope is written from the curvature the surface
     /// layer reads, so dither in that curvature becomes a road that leans
@@ -140,54 +116,6 @@ public sealed class CentrelineQualityTests
         return steps[Math.Min(steps.Count - 1, (int)(steps.Count * 0.95f))];
     }
 
-    /// <summary>The apex of every corner, as the peak of the curvature read
-    /// over a window the length of a corner entry. Reported as a table so a
-    /// change to the centreline can be checked against it corner by corner
-    /// rather than in aggregate — a smoothing that rounds one hairpin off
-    /// and leaves everything else alone is invisible in a mean.</summary>
-    private static List<(float Station, float Curvature)> Apexes(
-        TrackData track, int window = 20
-    )
-    {
-        float[] curvature = Curvature(track, window);
-        int count = curvature.Length;
-        const float cornering = 0.004f;
-        List<(float, float)> apexes = [];
-        int start = 0;
-        while (start < count && MathF.Abs(curvature[start]) >= cornering)
-            start++;
-
-        int runStart = -1;
-        for (int offset = 0; offset <= count; offset++)
-        {
-            int i = (start + offset) % count;
-            bool inside =
-                offset < count && MathF.Abs(curvature[i]) >= cornering;
-            if (inside && runStart < 0)
-                runStart = offset;
-            else if (!inside && runStart >= 0)
-            {
-                if ((offset - runStart) >= 30)
-                {
-                    float peak = 0f;
-                    int peakAt = runStart;
-                    for (int k = runStart; k < offset; k++)
-                    {
-                        float value = curvature[(start + k) % count];
-                        if (MathF.Abs(value) > MathF.Abs(peak))
-                        {
-                            peak = value;
-                            peakAt = k;
-                        }
-                    }
-                    apexes.Add(((start + peakAt) % count, peak));
-                }
-                runStart = -1;
-            }
-        }
-        return apexes;
-    }
-
     public static IEnumerable<object[]> Circuits() =>
     [
         ["silverstone"], ["shanghai"], ["monaco"], ["zandvoort"],
@@ -210,28 +138,6 @@ public sealed class CentrelineQualityTests
         "portimao" => TrackFactory.PortimaoStyleTestTrack(),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
-
-    [Theory]
-    [MemberData(nameof(Circuits))]
-    public void ReportCentrelineQuality(string name)
-    {
-        TrackData track = Build(name);
-        List<(float Station, float Curvature)> apexes = Apexes(track);
-        output.WriteLine(
-            $"{name,-12} 长 {track.LengthMeters,6:0} m  " +
-            $"直道倾角变号 {BankSignChanges(track),4}  " +
-            $"曲率变号 16m {StraightSignChanges(track, 16),4}  " +
-            $"倾角台阶 p95 直道 {BankStepP95(track, true),6:0.000} " +
-            $"全场 {BankStepP95(track, false),6:0.000}°/5m  " +
-            $"弯 {apexes.Count,3}"
-        );
-        foreach ((float station, float curvature) in apexes)
-            output.WriteLine(
-                $"    T@{station,6:0} m  κ {curvature,8:0.00000}  " +
-                $"R {(curvature == 0f ? 0f : 1f / MathF.Abs(curvature)),7:0}"
-            );
-        Assert.True(track.LengthMeters > 0f);
-    }
 
     /// <summary>
     /// Every corner still bends as hard as the survey says it does.

@@ -225,7 +225,7 @@ public sealed class CorneringDragTests
             );
         }
 
-        Assert.Equal(0f, state.Telemetry.InducedDragAccel, 4);
+        Near.Equal(0f, state.Telemetry.InducedDragAccel);
         Assert.True(
             state.Speed > 2f,
             $"a car at walking pace on full lock lost speed ({state.Speed:0.00} m/s)"
