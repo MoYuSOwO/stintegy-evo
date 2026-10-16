@@ -49,11 +49,11 @@ public sealed record LaneDriverGains
     /// <summary>Protect, Light, Normal, Push, Attack.</summary>
     public TyreStyle[] TyreStyleTable { get; init; } =
     [
-        new(Corner: 0.955f, Brake: 0.96f, Traction: 0.80f, Cap: 0.97f),
-        new(Corner: 0.978f, Brake: 0.98f, Traction: 0.85f, Cap: 0.985f),
-        new(Corner: 1.000f, Brake: 1.00f, Traction: 0.90f, Cap: 1.00f),
-        new(Corner: 1.020f, Brake: 1.01f, Traction: 0.95f, Cap: 1.02f),
-        new(Corner: 1.040f, Brake: 1.02f, Traction: 0.99f, Cap: 1.04f),
+        new(Corner: 0.9850f, Brake: 0.9895f, Traction: 0.864f, Cap: 0.9965f),
+        new(Corner: 0.9835f, Brake: 0.9890f, Traction: 0.862f, Cap: 0.996f),
+        new(Corner: 0.9830f, Brake: 0.9880f, Traction: 0.860f, Cap: 0.995f),
+        new(Corner: 0.9870f, Brake: 0.9910f, Traction: 0.870f, Cap: 0.997f),
+        new(Corner: 1.0000f, Brake: 1.0000f, Traction: 0.900f, Cap: 1.000f),
     ];
 
     /// <summary>Share of the axles' live grip the command may ask for: what a tyre holds, not its peak.</summary>
@@ -453,38 +453,53 @@ public sealed class LaneDriver : IDriverController
         // already carrying. Hot, that is more than the motor can use; cold,
         // it is less, and the throttle comes in only as fast as it is taken.
         CarTelemetry tyres = car.Telemetry;
-        bool frontDriven = _car.FrontDriveShare >= 0.5f;
-        float drivenGrip = frontDriven ? tyres.FrontGripAccel : tyres.RearGripAccel;
-        // The corner the axle is about to carry counts as much as the one it
-        // is carrying: its share of v²k, by where the mass sits.
-        float axleShare = frontDriven ? _car.FrontStaticLoadShare : 1f - _car.FrontStaticLoadShare;
         float driveLimit = car.Capabilities.AvailableDriveAcceleration;
-        if (drivenGrip > 0.1f)
+        // What the tyres will carry of the coming corner on this road: a bank
+        // takes its share off them, so the throttle is not held back on
+        // banking by load the banking is carrying.
+        float tyreCorner = MathF.Abs(att.CurvatureDemandScale * speed * speed * curvature +
+                                     att.LateralGravityDemand(StandardGravity, speed));
+        float circle = (_style is { } throttleStyle
+                ? throttleStyle.Traction + (_performance?.LimitOveruse ?? 0f)
+                : (Gains.TractionUse + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority)
+            * (1f + 2f * (_performance?.CornerOverstep ?? 0f));
+        // One axle's room for drive: the circle a tyre holds (about nine
+        // tenths of its peak, TireSlipCurve.SustainablePeakShare) with the
+        // corner it is carrying, or about to carry, taken out. Below walking
+        // pace the lateral model is kinematic and its use figure means
+        // nothing; only the corner coming counts.
+        float Room(float grip, float axleShare, float lateralUseNow)
         {
-            // What the tyres will carry of that corner on this road: a bank
-            // takes its share off them, so the throttle is not held back on
-            // banking by load the banking is carrying.
-            float tyreCorner = MathF.Abs(att.CurvatureDemandScale * speed * speed * curvature +
-                                         att.LateralGravityDemand(StandardGravity, speed));
-            float coming = axleShare * tyreCorner / drivenGrip;
-            // Below walking-pace dynamics the lateral model is kinematic and
-            // its use figure means nothing; only the corner coming counts.
-            float carrying = speed > 10f
-                ? (frontDriven ? tyres.FrontLateralUse : tyres.RearLateralUse)
-                : 0f;
-            // A tyre holds about nine tenths of its peak, not the peak itself
-            // (TireSlipCurve.SustainablePeakShare): the circle the throttle
-            // fills is that one, with the corner already taken out of it.
+            if (grip <= 0.1f)
+                return 0f;
+            float coming = axleShare * tyreCorner / grip;
+            float carrying = speed > 10f ? lateralUseNow : 0f;
             float lateralUse = Math.Clamp(MathF.Max(coming, carrying), 0f, 1f);
-            float circle = (_style is { } throttleStyle
-                    ? throttleStyle.Traction + (_performance?.LimitOveruse ?? 0f)
-                    : (Gains.TractionUse + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority)
-                * (1f + 2f * (_performance?.CornerOverstep ?? 0f));
-            float tractionRoom = drivenGrip * MathF.Sqrt(MathF.Max(0f, circle * circle - lateralUse * lateralUse));
-            // The command is what the axle is asked to push; drag comes off
-            // after the tyre, so it does not widen the tyre's circle.
-            driveLimit = MathF.Min(driveLimit, tractionRoom);
+            return grip * MathF.Sqrt(MathF.Max(0f, circle * circle - lateralUse * lateralUse));
         }
+        float motorShare = Math.Clamp(_car.FrontDriveShare, 0f, 1f);
+        float rearRoom = Room(tyres.RearGripAccel, 1f - _car.FrontStaticLoadShare, tyres.RearLateralUse);
+        float frontRoom = Room(tyres.FrontGripAccel, _car.FrontStaticLoadShare, tyres.FrontLateralUse);
+        float tractionRoom;
+        if (_car.AdaptiveDriveSplit)
+        {
+            // The car shares drive between its motors by the grip each axle
+            // has left, so the room is the two together, each held to what
+            // its own motor can give.
+            float drive = car.Capabilities.AvailableDriveAcceleration;
+            tractionRoom = MathF.Min(frontRoom, drive * motorShare) +
+                           MathF.Min(rearRoom, drive * (1f - motorShare));
+        }
+        else
+        {
+            // A fixed split: the drive runs out where the first axle does.
+            tractionRoom = MathF.Min(
+                motorShare > 1e-3f ? frontRoom / motorShare : float.PositiveInfinity,
+                motorShare < 1f - 1e-3f ? rearRoom / (1f - motorShare) : float.PositiveInfinity);
+        }
+        // The command is what the axles are asked to push; drag comes off
+        // after the tyre, so it does not widen the tyre's circle.
+        driveLimit = MathF.Min(driveLimit, tractionRoom);
         accel = Math.Clamp(accel, -_car.MaxBrakeAccel, MathF.Max(0f, driveLimit));
 
         // Brakes: eased the moment either axle is near the edge of its circle,
