@@ -10,8 +10,16 @@ namespace StintegyEVO.Drivers.Lanes;
 /// <summary>Follow gains. Steering is in wheel-angle terms, then turned back into curvature.</summary>
 public sealed record LaneDriverGains
 {
-    /// <summary>How far ahead the curvature feedforward is read, in seconds of travel.</summary>
-    public float CurvaturePreviewSeconds { get; init; } = 0.20f;
+    /// <summary>
+    /// How far ahead the curvature feedforward is read, in seconds of travel.
+    /// 0.15 since the F1E car: lighter and driven at both ends, it answers
+    /// the wheel sooner than the car 0.20 was set on, and at 0.20 it turned
+    /// into Silverstone's fast left-right early enough to sit a metre wide
+    /// on the way out and put a wheel over. Swept on the relearned file:
+    /// 0.15 has the smallest worst error (0.70 m against 1.07); shorter
+    /// lowers the mean but lets the slow hairpin run wide.
+    /// </summary>
+    public float CurvaturePreviewSeconds { get; init; } = 0.15f;
 
     /// <summary>
     /// Feedback is pure pursuit in the path's frame: aim at a point this many
@@ -34,9 +42,12 @@ public sealed record LaneDriverGains
 
     /// <summary>
     /// Plan each corner on the tyres that hold it: the outside pair, at their
-    /// own temperature and wear, rather than the four-tyre average.
+    /// own temperature and wear, rather than the four-tyre average. On by
+    /// default since the F1E relearn, which was learned with it: averaged,
+    /// a hot outside front was planned as if the cool inside one shared the
+    /// load, and the second hot lap went off where the first had not.
     /// </summary>
-    public bool TurnAwareEnvelope { get; init; } = false;
+    public bool TurnAwareEnvelope { get; init; } = true;
 
     /// <summary>
     /// The tyre rung as a way of driving, set by the player and carried out
@@ -834,7 +845,7 @@ internal static class PlanState
         plan.AirVelocityDeficit = car.AirVelocityDeficit;
         plan.DownforceVelocityDeficit = car.DownforceVelocityDeficit;
         plan.WakeDownforceLoss = car.WakeDownforceLoss;
-        plan.DragReduction = car.DragReduction;
+        plan.ActiveAero = car.ActiveAero;
         if (car.Resources.Length > 0)
         {
             float primary = car.Resources[0].Fraction;
