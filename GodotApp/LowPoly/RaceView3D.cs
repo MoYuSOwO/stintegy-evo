@@ -203,6 +203,8 @@ public partial class RaceView3D : Node3D
             }
         );
         Simulation.AddCar(car);
+        // Off the grid: no push until the line.
+        car.LockPushToPassUntilLine();
     }
 
     private void CreateCarViews()

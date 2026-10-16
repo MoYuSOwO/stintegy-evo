@@ -134,6 +134,14 @@ namespace StintegyEVO.Core.Tests;
 /// the pure electric car, because the range extender races on one power
 /// ceiling and on it Attack would only repeat the mixed run.
 ///
+/// Re-recorded later on 2026-10-16 for the range extender's race spec: the
+/// generator up from 300 to 320 kW and the fuel allowance from 112 to 120 kg
+/// to feed it over a full race distance. The mixed and sagging-pack runs
+/// move because they carry fuel (more of it, so more mass) and run the
+/// generator; the empty-pack run has no fuel and the Attack run is on the
+/// pure electric car, and neither moves by a digit, which is the check that
+/// push-to-pass, off in all four, changed nothing else.
+///
 /// What these pins are for, stated once so the next re-record does not
 /// have to argue it from the beginning: they guard refactoring. A change
 /// that is meant to leave the car alone -- moving code, splitting a class,
@@ -210,32 +218,32 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 16.859566\n" +
-            "position 220.96376 145.97528\n" +
-            "heading -1.551475\n" +
-            "sideslip 0.0070686173\n" +
-            "yawrate 0.17618407\n" +
-            "charge 0.8447239\n" +
-            "drivepower 216296.84\n" +
+            "speed 16.855776\n" +
+            "position 223.86832 146.49171\n" +
+            "heading -1.3524214\n" +
+            "sideslip 0.0070723575\n" +
+            "yawrate 0.17622328\n" +
+            "charge 0.84835804\n" +
+            "drivepower 217641.02\n" +
             "regenpower 0\n" +
-            "longaccel 11.523183\n" +
-            "lataccel 2.7676978\n" +
-            "wear 0.008535774 0.012809126 0.003314874 0.008056065\n" +
-            "coretemp 89.389496 91.09053 88.14037 89.09536";
+            "longaccel 11.523333\n" +
+            "lataccel 2.7677097\n" +
+            "wear 0.008646284 0.012921985 0.003395538 0.008195233\n" +
+            "coretemp 89.44355 91.15282 88.17913 89.14036";
 
         public const string SaggingPack =
-            "speed 17.44385\n" +
-            "position 288.25803 166.86389\n" +
-            "heading -1.524405\n" +
-            "sideslip 0.0067390534\n" +
-            "yawrate 0.18322404\n" +
-            "charge 0.07588903\n" +
-            "drivepower 204323.3\n" +
+            "speed 17.443914\n" +
+            "position 288.19595 166.7339\n" +
+            "heading -1.5265541\n" +
+            "sideslip 0.006739195\n" +
+            "yawrate 0.18322821\n" +
+            "charge 0.079587266\n" +
+            "drivepower 204372.52\n" +
             "regenpower 0\n" +
-            "longaccel 11.500067\n" +
-            "lataccel 2.983499\n" +
-            "wear 0.019311484 0.026255459 0.01445176 0.01985164\n" +
-            "coretemp 92.825455 95.00944 90.99691 92.33881";
+            "longaccel 11.500065\n" +
+            "lataccel 2.9835837\n" +
+            "wear 0.019319607 0.026266444 0.014459916 0.019862527\n" +
+            "coretemp 92.82912 95.01375 91.00049 92.3429";
 
         public const string AttackLadder =
             "speed 17.366413\n" +

@@ -41,6 +41,18 @@ public sealed class RaceCar
     /// </summary>
     public DriverInput ExternalInput { get; set; }
     public RaceProgress Progress { get; } = new();
+
+    /// <summary>
+    /// Race control's hold on push-to-pass, for the start and every restart:
+    /// no push until this car next crosses the line, which lifts it. Any push
+    /// running when it is set ends there.
+    /// </summary>
+    public void LockPushToPassUntilLine()
+    {
+        PushToPassState push = State.PushToPass;
+        push.Locked = true;
+        State.PushToPass = push;
+    }
     public CarCollisionConfig Collision { get; }
     public DriverInput LastInput { get; internal set; }
     public TrackBoundaryContact? LastBoundaryContact { get; internal set; }

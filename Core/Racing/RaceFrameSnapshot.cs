@@ -41,7 +41,13 @@ public readonly record struct RaceCarSnapshot(
     public float AirVelocityDeficit { get; init; }
     public float DownforceVelocityDeficit { get; init; }
     public float WakeDownforceLoss { get; init; }
-    public float DragReduction { get; init; }
+    public float ActiveAero { get; init; }
+
+    /// <summary>Push-to-pass as it stands: running, locked, seconds left and the cooldown still to wait.</summary>
+    public bool PushToPassActive { get; init; }
+    public bool PushToPassLocked { get; init; }
+    public float PushToPassRemainingSeconds { get; init; }
+    public float PushToPassCooldownSeconds { get; init; }
     public TireSnapshot FrontLeft { get; init; }
     public TireSnapshot FrontRight { get; init; }
     public TireSnapshot RearLeft { get; init; }
@@ -110,7 +116,11 @@ public readonly record struct RaceCarSnapshot(
             AirVelocityDeficit = state.AirVelocityDeficit,
             DownforceVelocityDeficit = state.DownforceVelocityDeficit,
             WakeDownforceLoss = state.WakeDownforceLoss,
-            DragReduction = state.DragReduction,
+            ActiveAero = state.ActiveAero,
+            PushToPassActive = state.PushToPass.Active,
+            PushToPassLocked = state.PushToPass.Locked,
+            PushToPassRemainingSeconds = state.PushToPass.RemainingSeconds(car.CarConfig.PushToPass),
+            PushToPassCooldownSeconds = state.PushToPass.CooldownSeconds,
             FrontLeft = TireSnapshot.Capture(state.FrontLeft),
             FrontRight = TireSnapshot.Capture(state.FrontRight),
             RearLeft = TireSnapshot.Capture(state.RearLeft),
@@ -119,7 +129,7 @@ public readonly record struct RaceCarSnapshot(
             Capabilities = new(
                 mass, car.CarConfig.MaxCurvatureRequest, car.CarConfig.MaxSteerAngleRadians,
                 car.CarConfig.SteerRateLimitRadiansPerSecond, car.CarConfig.MaxDriveAcceleration,
-                powertrain.DriveAccelerationLimit(state.Energy, car.Strategy, state.Speed, mass, car.CarConfig.MaxDriveAcceleration),
+                powertrain.DriveAccelerationLimit(state.Energy, car.Strategy, state.Speed, mass, car.CarConfig.MaxDriveAcceleration, state.PushToPass.Active),
                 powertrain.OutputAvailability(state.Energy), car.TireConfig.CompoundId),
             Telemetry = state.Telemetry,
             BoundaryContactSeconds = car.BoundaryContactSeconds,

@@ -64,7 +64,7 @@ public static class CarPhysics
             config,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.DragReduction
+            state.ActiveAero
         );
     }
 
@@ -99,7 +99,7 @@ public static class CarPhysics
             speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.DragReduction
+            state.ActiveAero
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
@@ -141,7 +141,8 @@ public static class CarPhysics
             strategy,
             speed,
             massKg,
-            config.MaxDriveAcceleration
+            config.MaxDriveAcceleration,
+            state.PushToPass.Active
         );
         float gripDriveLimit = config.AdaptiveDriveSplit
             ? SharedDriveLimit(frontLongitudinal, rearLongitudinal, powertrainDriveLimit, config.FrontDriveShare)
@@ -170,8 +171,7 @@ public static class CarPhysics
         float loss = CalculateLossAccel(
             config,
             speed,
-            state.AirVelocityDeficit,
-            state.DragReduction
+            state.AirVelocityDeficit
         ) + SteadyInducedDragAccel(
             config, speed, frontLateral, rearLateral, frontGrip, rearGrip
         );
@@ -214,7 +214,7 @@ public static class CarPhysics
             speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.DragReduction
+            state.ActiveAero
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float mass = Math.Max(massKg, Epsilon);
@@ -245,6 +245,17 @@ public static class CarPhysics
             return;
 
         state.Normalize();
+
+        // The button and the clock first, so everything below sees the push
+        // as it stands this step. A car that has been declared lost is not
+        // pressing anything.
+        state.PushToPass = PushToPassState.Advance(
+            state.PushToPass,
+            config.PushToPass,
+            input.Strategy.PushToPass && !state.Spinning,
+            dt
+        );
+        state.ActiveAero = state.PushToPass.Active ? 1f : 0f;
 
         // What each wheel is standing on, before anything asks how much
         // grip there is.
@@ -358,7 +369,8 @@ public static class CarPhysics
                 input.Strategy,
                 state.Speed,
                 massKg,
-                config.MaxDriveAcceleration
+                config.MaxDriveAcceleration,
+                state.PushToPass.Active
             );
             float driveAccel = Math.Min(desiredAccel, available);
             if (config.AdaptiveDriveSplit)
@@ -504,8 +516,7 @@ public static class CarPhysics
         float lossAccel = CalculateLossAccel(
             config,
             state.Speed,
-            state.AirVelocityDeficit,
-            state.DragReduction
+            state.AirVelocityDeficit
         ) + inducedDragAccel;
         float actualLongitudinalAccel =
             (axleLongitudinalAccel - lossAccel) * longitudinalDemandScale +
@@ -556,7 +567,8 @@ public static class CarPhysics
             brakeAccelActual,
             averageSpeed,
             massKg,
-            dt
+            dt,
+            state.PushToPass.Active
         );
         state.Energy = settlement.Energy;
         float drivePowerWatts = settlement.DrawnPowerWatts;
@@ -1892,20 +1904,17 @@ public static class CarPhysics
     private static float CalculateLossAccel(
         CarConfig config,
         float speed,
-        float airVelocityDeficit,
-        float dragReduction
+        float airVelocityDeficit
     )
     {
         if (speed <= 0.01f)
             return 0f;
 
         float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
-        float assist = Math.Clamp(dragReduction, 0f, 1f);
         return
             config.RollingDragAccel +
             config.AeroDragAccelPerSpeedSquared * speed * speed *
-            metAir * metAir *
-            (1f - config.DragReductionDragShare * assist);
+            metAir * metAir;
     }
 
     /// <summary>
@@ -2366,7 +2375,7 @@ public static class CarPhysics
             state.Speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.DragReduction,
+            state.ActiveAero,
             normalGravity
         );
     }
@@ -2394,7 +2403,7 @@ public static class CarPhysics
         float speed,
         float downforceVelocityDeficit,
         float wakeDownforceLoss,
-        float dragReduction,
+        float activeAero,
         float normalGravity = Gravity
     )
     {
@@ -2402,7 +2411,7 @@ public static class CarPhysics
             config,
             downforceVelocityDeficit,
             wakeDownforceLoss,
-            dragReduction
+            activeAero
         ) * speed * speed;
         float totalLoad = massKg * (normalGravity + downforceAcceleration);
         float frontLoad = totalLoad * config.FrontStaticLoadShare;
@@ -2432,9 +2441,9 @@ public static class CarPhysics
 
     /// <summary>
     /// The share of the wake's downforce disruption the tires actually feel.
-    /// Whatever the drag reduction device hands back to the load model must also stop
+    /// Whatever the active aero hands back to the load model must also stop
     /// shaking the car, or an assisted car would corner on recovered grip
-    /// while being charged full dirty-air tire temperature for it.
+    /// while being charged full dirty-air tyre temperature for it.
     /// </summary>
     private static float EffectiveTireWakeDownforceLoss(
         CarState state,
@@ -2442,26 +2451,26 @@ public static class CarPhysics
     )
     {
         return state.WakeDownforceLoss *
-               (1f - config.DragReductionWakeDownforceRecovery *
-                Math.Clamp(state.DragReduction, 0f, 1f));
+               (1f - config.ActiveAeroWakeDownforceRecovery *
+                Math.Clamp(state.ActiveAero, 0f, 1f));
     }
 
     private static float EffectiveDownforceAccelPerSpeedSquared(
         CarConfig config,
         float downforceVelocityDeficit,
         float wakeDownforceLoss,
-        float dragReduction
+        float activeAero
     )
     {
         float metAir = 1f - Math.Clamp(downforceVelocityDeficit, 0f, 1f);
         float usableDownforce = 1f - Math.Clamp(wakeDownforceLoss, 0f, 1f);
         float wakeFactor = metAir * metAir * usableDownforce;
         // Hands back part of what the wake took, and nothing more: in clean air
-        // the factor is already one, so this half of the mode cannot make a car
+        // the factor is already one, so the active aero cannot make a car
         // quicker than itself with nobody in front.
         float restored = wakeFactor +
-                         config.DragReductionWakeDownforceRecovery *
-                         Math.Clamp(dragReduction, 0f, 1f) *
+                         config.ActiveAeroWakeDownforceRecovery *
+                         Math.Clamp(activeAero, 0f, 1f) *
                          (1f - wakeFactor);
         return MathF.Max(
             0f,

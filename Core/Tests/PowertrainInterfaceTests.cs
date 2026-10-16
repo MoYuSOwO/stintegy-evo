@@ -416,7 +416,8 @@ public sealed class PowertrainInterfaceTests
             in CarStrategy strategy,
             float speed,
             float massKg,
-            float chassisForceCeiling
+            float chassisForceCeiling,
+            bool pushToPass = false
         )
         {
             if (energy.Primary <= 0f)
@@ -435,7 +436,8 @@ public sealed class PowertrainInterfaceTests
             float brakeAccel,
             float speed,
             float massKg,
-            float dt
+            float dt,
+            bool pushToPass = false
         )
         {
             float drivePower = driveAccel <= 0f

@@ -2193,14 +2193,20 @@ public sealed class CarPhysicsTests
     /// this steady cycle, most at light use where rolling heat was most of
     /// the total. The tyres still warm from cold in a lap, and on a real lap
     /// the Normal rung sits in the window rather than above it.
+    ///
+    /// Up again the same week, by 0.4 C in the cores and 0.4 C on the front
+    /// treads, for eight more kilograms: the fuel allowance went from 112 kg
+    /// to 120 kg to feed a 320 kW generator over a full race distance, and
+    /// this cycle starts with a full tank. Heavier tyres work harder; nothing
+    /// in the tyre moved.
     /// </summary>
     [Theory]
-    [InlineData(0.600f, 80.09f, 74.18f)]
-    [InlineData(0.700f, 81.69f, 75.24f)]
-    [InlineData(0.800f, 83.52f, 76.46f)]
-    [InlineData(0.850f, 84.54f, 77.14f)]
-    [InlineData(0.900f, 85.68f, 77.91f)]
-    [InlineData(0.955f, 88.09f, 79.50f)]
+    [InlineData(0.600f, 80.49f, 74.55f)]
+    [InlineData(0.700f, 82.11f, 75.61f)]
+    [InlineData(0.800f, 83.95f, 76.84f)]
+    [InlineData(0.850f, 84.98f, 77.53f)]
+    [InlineData(0.900f, 86.12f, 78.30f)]
+    [InlineData(0.955f, 88.56f, 79.90f)]
     public void SlipBasedHeatKeepsTheTemperaturesTheCarWasCalibratedTo(
         float use, float expectedCore, float expectedSurface
     )

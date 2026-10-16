@@ -43,6 +43,13 @@ public readonly record struct CarStrategy
     /// </summary>
     public int PowerRung { get; init; }
 
+    /// <summary>
+    /// The push-to-pass button, held. Whether a push actually runs is the
+    /// car's to say: the allowance, the cooldown and race control's lock
+    /// all have a vote (<see cref="PushToPassState"/>).
+    /// </summary>
+    public bool PushToPass { get; init; }
+
     public float? TireGripUsageOverride { get; init; }
     public float? DrivePowerLimitWattsOverride { get; init; }
 

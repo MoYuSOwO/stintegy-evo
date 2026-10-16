@@ -406,27 +406,20 @@ public sealed class RaceSimulation
                 car.BoundaryContactSeconds += dt;
             TrackPose finalPose = Track.Project(car.State.Position);
             TrackRegion region = TrackBoundaryResolver.Classify(finalPose);
+            float lapsBefore = MathF.Floor(car.Progress.RaceDistanceMeters / Track.LengthMeters);
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
+            // Crossing the line lifts race control's hold on push-to-pass.
+            // Counted on race distance, not the lap number, which reads zero
+            // on both sides of the line for a car starting behind it.
+            if (car.State.PushToPass.Locked &&
+                MathF.Floor(car.Progress.RaceDistanceMeters / Track.LengthMeters) > lapsBefore)
+            {
+                PushToPassState push = car.State.PushToPass;
+                push.Locked = false;
+                car.State.PushToPass = push;
+            }
         }
 
-    }
-
-    /// <summary>
-    /// Distance up the road from one car to another, whole laps removed.
-    /// The wake the mode answers sits on the road, so a backmarker five
-    /// metres ahead counts and a rival a lap up in the standings does not.
-    /// </summary>
-    internal static float OnTrackDistanceAhead(
-        float otherRaceDistanceMeters,
-        float ownRaceDistanceMeters,
-        float trackLengthMeters
-    )
-    {
-        float delta = (otherRaceDistanceMeters - ownRaceDistanceMeters) %
-                      trackLengthMeters;
-        if (delta < 0f)
-            delta += trackLengthMeters;
-        return delta;
     }
 
     private void EnsureStepCapacity(int required)

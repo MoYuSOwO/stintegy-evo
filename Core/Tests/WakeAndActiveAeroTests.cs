@@ -7,7 +7,7 @@ using Xunit;
 
 namespace StintegyEVO.Core.Tests;
 
-public sealed class DragReductionTests
+public sealed class WakeAndActiveAeroTests
 {
     private static readonly Lazy<TrackData> Loop = new(() =>
         new TrackBuilder(
@@ -22,83 +22,30 @@ public sealed class DragReductionTests
             .Build(new TrackGridConfig())
     );
 
+    /// <summary>
+    /// The active aero is push-to-pass's, and nobody else's: it runs while a
+    /// push runs and stops when the push does.
+    /// </summary>
     [Fact]
-    public void NobodyCarriesTheModeOffTheGrid()
+    public void ActiveAeroRunsOnlyWhileAPushRuns()
     {
         TrackData track = Loop.Value;
-        float line = track.StartingLineS;
         RaceSimulation simulation = new(track);
-        RaceCar leader = CreateStationaryCar(track, line + 60f, "lead");
-        RaceCar chaser = CreateStationaryCar(track, line + 40f, "chase");
-        simulation.AddCar(leader);
-        simulation.AddCar(chaser);
-
-        simulation.Step(1f / 120f);
-
-        Assert.Equal(0f, chaser.State.DragReduction);
-        Assert.Equal(0f, leader.State.DragReduction);
-    }
-
-    [Theory]
-    [InlineData(18f)]
-    [InlineData(70f)]
-    public void CrossingTheLineNeverInventsADragReductionGrant(float gapMeters)
-    {
-        TrackData track = Loop.Value;
-        float line = track.StartingLineS;
-        RaceSimulation simulation = new(track);
-        RaceCar leader = CreateStationaryCar(track, line + gapMeters, "lead");
-        RaceCar chaser = CreateStationaryCar(track, line - 0.5f, "chase");
-        simulation.AddCar(leader);
-        simulation.AddCar(chaser);
-        simulation.Step(1f / 120f);
-        float before = chaser.Progress.RaceDistanceMeters;
-        PlaceAt(track, chaser, line + 0.25f, speed: 20f);
-        simulation.Step(1f / 120f);
-        Assert.True(before < 0f && chaser.Progress.RaceDistanceMeters > 0f);
-        Assert.Equal(0f, chaser.State.DragReduction);
-        Assert.Equal(0f, leader.State.DragReduction);
-    }
-
-    [Fact]
-    public void OnlyTheExternalHostChangesDeviceActivation()
-    {
-        TrackData track = Loop.Value;
-        float line = track.StartingLineS;
-        RaceCar car = CreateStationaryCar(track, line - 0.5f, "external");
-        RaceSimulation simulation = new(track);
+        RaceCar car = CreateCar(track, 100f, "solo");
         simulation.AddCar(car);
-        car.State.DragReduction = 0.65f;
-        simulation.Step(1f / 120f);
-        PlaceAt(track, car, line + 0.25f, speed: 20f);
-        simulation.Step(1f / 120f);
-        Assert.Equal(0.65f, car.State.DragReduction);
-        Assert.Equal(0.65f, simulation.CaptureFrame()[0].DragReduction);
-        car.State.DragReduction = 0f;
-        simulation.Step(1f / 120f);
-        Assert.Equal(0f, car.State.DragReduction);
-    }
 
-    [Theory]
-    [InlineData(5005f, 4010f, 1000f, 5f)]
-    [InlineData(4010f, 5005f, 1000f, 995f)]
-    [InlineData(3010f, 5015f, 1000f, 5f)]
-    public void TheCarAheadIsMeasuredOnTheRoadNotInTheStandings(
-        float ownRaceDistance,
-        float otherRaceDistance,
-        float trackLength,
-        float expectedAhead
-    )
-    {
-        Assert.Equal(
-            expectedAhead,
-            RaceSimulation.OnTrackDistanceAhead(
-                otherRaceDistance,
-                ownRaceDistance,
-                trackLength
-            ),
-            precision: 3
-        );
+        simulation.Step(1f / 60f);
+        Assert.Equal(0f, car.State.ActiveAero);
+
+        car.Strategy = car.Strategy with { PushToPass = true };
+        simulation.Step(1f / 60f);
+        Assert.True(car.State.PushToPass.Active);
+        Assert.Equal(1f, car.State.ActiveAero);
+        Assert.Equal(1f, simulation.CaptureFrame()[0].ActiveAero);
+
+        car.Strategy = car.Strategy with { PushToPass = false };
+        simulation.Step(1f / 60f);
+        Assert.Equal(0f, car.State.ActiveAero);
     }
 
     [Fact]
@@ -115,9 +62,9 @@ public sealed class DragReductionTests
         {
             AirVelocityDeficit = 0.08f,
             WakeDownforceLoss = 0.05f,
-            DragReduction = 1f
+            ActiveAero = 1f
         };
-        CarState cleanAirAssisted = new() { DragReduction = 1f };
+        CarState cleanAirAssisted = new() { ActiveAero = 1f };
 
         float clean = CarPhysics.EffectiveDownforceAccelPerSpeedSquared(
             cleanAir,
@@ -141,16 +88,15 @@ public sealed class DragReductionTests
         Assert.Equal(clean, cleanAssisted, precision: 6);
     }
 
+    /// <summary>
+    /// The active aero trims to dirty air and does nothing about drag. On a
+    /// car whose powertrain has nothing extra to give, in clean air, a push
+    /// changes nothing at all: same ground covered to the millimetre.
+    /// </summary>
     [Fact]
-    public void DragTrimMakesTheAssistedCarCoverMoreGround()
+    public void ActiveAeroIsNotADragReduction()
     {
-        float plain = SoloDistance(assist: false);
-        float assisted = SoloDistance(assist: true);
-        Assert.True(
-            assisted > plain + 1f,
-            "trimming a tenth of the aero drag must be worth whole metres " +
-            $"over twenty seconds; got {assisted:0.0} m vs {plain:0.0} m"
-        );
+        Assert.Equal(SoloDistance(push: false), SoloDistance(push: true), 3);
     }
 
     [Fact]
@@ -240,56 +186,17 @@ public sealed class DragReductionTests
         return chaser;
     }
 
-    private static float SoloDistance(bool assist)
+    private static float SoloDistance(bool push)
     {
         TrackData track = Loop.Value;
         RaceSimulation simulation = new(track);
-        RaceCar car = CreateCar(track, 40f, "solo");
+        RaceCar car = CreateCar(track, 40f, "solo", new CarConfig { Powertrain = ElectricPowertrain.Default });
+        car.Strategy = car.Strategy with { PushToPass = push };
         simulation.AddCar(car);
-
-        for (int frame = 0; frame < 20 * 60; frame++)
-        {
+        for (int frame = 0; frame < 12 * 60; frame++)
             simulation.Step(1f / 60f);
-            // Host-controlled activation isolates the device's physical effect.
-            if (assist)
-                car.State.DragReduction = 1f;
-        }
+        Assert.Equal(push, car.State.PushToPass.Active);
         return car.Progress.RaceDistanceMeters;
-    }
-
-    private static RaceCar CreateStationaryCar(
-        TrackData track,
-        float s,
-        string id
-    )
-    {
-        TrackSample sample = track.Sample(s);
-        return TestControlFixtures.ExternalCar(
-            id,
-            new CarState
-            {
-                Position = sample.Center,
-                Heading = sample.Heading,
-                Speed = 0f,
-                Energy = PowertrainState.Filled(0.9f)
-            }
-        );
-    }
-
-    private static void PlaceAt(
-        TrackData track,
-        RaceCar car,
-        float s,
-        float speed
-    )
-    {
-        TrackSample sample = track.Sample(s);
-        car.State.Position = sample.Center;
-        car.State.Heading = sample.Heading;
-        car.State.SideslipAngleRadians = 0f;
-        car.State.YawRateRadiansPerSecond = 0f;
-        car.State.SteerAngleRadians = 0f;
-        car.State.Speed = speed;
     }
 
     private static RaceCar CreateCar(
