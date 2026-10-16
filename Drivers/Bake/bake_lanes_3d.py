@@ -38,6 +38,16 @@ SMOOTHING = {
     "w_c": 1e0, "w_l": 1e0, "w_r": 1e0,
     "w_theta": 1e7, "w_mu": 1e5, "w_phi": 1e4,
     "w_nl": 1e-2, "w_nr": 1e-2,
+    # Ours, on top of TUM's: the heading stiffness eases with the measured
+    # curvature -- a 160 m corner takes half of it, a 9 m hairpin a three
+    # hundredth -- and the result is refused if either smoothed edge leaves
+    # the measured one by more than max_edge_dev. TUM's constant stiffness,
+    # tuned on Las Vegas and Bathurst, moved Monaco's hairpin edges by two
+    # metres; this holds them to 0.2 m with the straights as smooth as before.
+    # The same limit as a hard constraint on the solve (edge_constraint) was
+    # tried and fought the smoothness for over half an hour; it is not needed.
+    "kappa_ref": 1.0 / 160.0, "kappa_window_m": 10.0,
+    "max_edge_dev": 0.25, "edge_constraint": False,
 }
 
 SOLVER = {
