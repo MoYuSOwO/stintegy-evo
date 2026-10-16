@@ -148,15 +148,26 @@ public sealed class TireConfig
     // than the 0.0001 that gave the same three per cent before it.)
     public float ColdGripLossPerCSquared { get; init; } = 0.00008f;
 
-    // Too hot is two things. The tread past its window loses a little and
-    // gets it back as soon as it cools: kept gentle, because it moves within
-    // a corner, faster than anyone driving can feel it, and at 0.00025 a
-    // car at the limit had its grip taken away mid-corner and spun. The
-    // carcass past CoreOverheatTempC is the overheating a driver has to
-    // manage: it comes slowly, over laps, and takes three per cent of the
-    // grip for every degree. A car on Normal at Silverstone holds its
-    // carcass at about 108 C; one held at the limit climbs past 112 in two
-    // or three laps and is no faster than Normal by the fourth.
+    // Too hot is two things. The heat is made in the tread, which spikes in
+    // every corner and cools on the next straight; the carcass (the bulk of
+    // the tyre, which is what grip is generally reckoned to follow best)
+    // takes it in slowly and keeps it.
+    //
+    // The tread past its window costs a little and gives it back as soon as
+    // it cools. Kept gentle because a qualifying lap at the limit is the
+    // fastest lap a tyre does: at 0.00025 a car at the limit gave all of
+    // its pace away to tread spikes on its first lap and was never quicker
+    // than one two per cent short of it.
+    //
+    // The carcass past CoreOverheatTempC is the overheating a driver has to
+    // manage, the kind described as being able to follow for a lap or two
+    // before having to back off: it builds over laps and takes three per
+    // cent of the grip for every degree. A car on Normal at Silverstone
+    // holds its carcass at about 108 C; one held at the limit climbs past
+    // 112 in two or three laps and is no faster than Normal by the fourth,
+    // and a lap of Normal brings it back. How real tyres split the penalty
+    // between tread and bulk is not published; these figures are set by
+    // that behaviour, not by a measured curve.
     public float HotGripLossPerCSquared { get; init; } = 0.0001f;
     public float CoreOverheatTempC { get; init; } = 112f;
     public float CoreOverheatGripLossPerC { get; init; } = 0.03f;
