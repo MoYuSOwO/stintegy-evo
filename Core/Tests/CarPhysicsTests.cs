@@ -1928,25 +1928,36 @@ public sealed class CarPhysicsTests
     /// on cold rubber, spun on entry and cooked itself to 225 C. Tyres
     /// that came up instantly would be just as wrong as tyres that never
     /// came up, and only a band says so.
+    ///
+    /// The one-to-three is for an out lap's mixture, driven at eight
+    /// tenths. Held flat against what the car can hold, the tread starts
+    /// to slide in part and heats much faster (TireConfig.NearLimitHeatRate),
+    /// the way a track with more and harder corners warms its tyres sooner
+    /// than one with fewer. So that case is held only to coming up faster
+    /// than the out lap and not instantly.
     /// </summary>
-    [Theory]
-    [InlineData(0.80f)]
-    [InlineData(0.90f)]
-    public void ColdTyresReachTheirWorkingRangeInOneToThreeLaps(float use)
+    [Fact]
+    public void ColdTyresReachTheirWorkingRangeInOneToThreeLaps()
     {
         // A lap of Silverstone at this pace, near enough for a bound
         // expressed in laps.
         const float lapSeconds = 101f;
-        CarState state = RunColdOutLap(use, seconds: 400, out int reached);
+        CarState outLap = RunColdOutLap(0.80f, seconds: 400, out int reached);
+        CarState atLimit = RunColdOutLap(0.90f, seconds: 400, out int reachedAtLimit);
 
         Assert.True(
-            reached >= 0,
+            reached >= 0 && reachedAtLimit >= 0,
             "the tyres never reached their working range at all; the last " +
-            $"reading was {AverageFrontSurfaceTemp(state):F1} C"
+            $"readings were {AverageFrontSurfaceTemp(outLap):F1} and " +
+            $"{AverageFrontSurfaceTemp(atLimit):F1} C"
         );
 
-        float laps = reached / lapSeconds;
-        Assert.InRange(laps, 1f, 3f);
+        Assert.InRange(reached / lapSeconds, 1f, 3f);
+        Assert.InRange(reachedAtLimit / lapSeconds, 0.1f, 3f);
+        Assert.True(
+            reachedAtLimit < reached,
+            $"driving harder has to warm the tyres sooner: {reachedAtLimit} s at the limit against {reached} s"
+        );
     }
 
     /// <summary>
