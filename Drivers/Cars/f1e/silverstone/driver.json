@@ -2,6 +2,10 @@
   "format": 1,
   "circuit": "silverstone",
   "lanes": "lanes.csv",
+  "learnedFor": {
+    "physics": "9e73d3b41185",
+    "date": "2026-10-17"
+  },
   "energy": {
     "save": 1.25,
     "eco": 0.7,
