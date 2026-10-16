@@ -402,7 +402,7 @@ public readonly record struct SceneryPlacement(
     SceneryRepeat? Repeat = null,
     SceneryAlong? Along = null,
     SceneryArea? Area = null,
-    Godot.Vector3? World = null
+    System.Numerics.Vector3? World = null
 );
 
 /// <summary>Every <c>Every</c> metres from <c>From</c> to <c>To</c>, on the given side, left, right or both.</summary>

@@ -179,8 +179,8 @@ public sealed partial class SceneryLoader : Node3D
         if (prop.Height > 0f)
             return false;
         System.Numerics.Vector2 point;
-        if (prop.World is Vector3 world)
-            point = new System.Numerics.Vector2(world.X, world.Z);
+        if (prop.World is System.Numerics.Vector3 planted)
+            point = new System.Numerics.Vector2(planted.X, planted.Z);
         else
         {
             var own = surface.Track.Sample(surface.Track.WrapS(prop.S));
@@ -268,7 +268,7 @@ public sealed partial class SceneryLoader : Node3D
                             float clear = Clear(p);
                             if (clear < farm.Inner || clear > farm.Outer)
                                 continue;
-                            props.Add(new SceneryPlacement(farm.Hedge, 0f, 0f) with { World = new Vector3(p.X, 0f, p.Y), Yaw = -MathF.Atan2(dir.Y, dir.X) });
+                            props.Add(new SceneryPlacement(farm.Hedge, 0f, 0f) with { World = new System.Numerics.Vector3(p.X, 0f, p.Y), Yaw = -MathF.Atan2(dir.Y, dir.X) });
                         }
                     }
                 }
@@ -276,7 +276,7 @@ public sealed partial class SceneryLoader : Node3D
                 {
                     Vector2 p = origin + u * (w * (float)random.NextDouble()) + v * (h * 0.02f);
                     if (Clear(p) >= farm.Inner)
-                        props.Add(new SceneryPlacement(farm.Tree, 0f, 0f) with { World = new Vector3(p.X, 0f, p.Y), Yaw = (float)random.NextDouble() * MathF.Tau, Scale = 0.8f + 0.5f * (float)random.NextDouble() });
+                        props.Add(new SceneryPlacement(farm.Tree, 0f, 0f) with { World = new System.Numerics.Vector3(p.X, 0f, p.Y), Yaw = (float)random.NextDouble() * MathF.Tau, Scale = 0.8f + 0.5f * (float)random.NextDouble() });
                 }
             }
         }
@@ -335,12 +335,12 @@ public sealed partial class SceneryLoader : Node3D
         SceneryPlacement prop, TrackSurfaceGeometry surface
     )
     {
-        if (prop.World is Vector3 world)
+        if (prop.World is System.Numerics.Vector3 planted)
         {
             // Placed in the world rather than the circuit's frame: generated
             // countryside, which does not care where the road goes.
             Basis turned = new Basis(Vector3.Up, prop.Yaw).Scaled(Vector3.One * MathF.Max(prop.Scale, 0.01f));
-            return new Transform3D(turned, new Vector3(world.X, surface.MeadowHeight(world.X, world.Z) + prop.Height, world.Z));
+            return new Transform3D(turned, new Vector3(planted.X, surface.MeadowHeight(planted.X, planted.Z) + prop.Height, planted.Z));
         }
         float s = surface.Track.WrapS(prop.S);
         var sample = surface.Track.Sample(s);
