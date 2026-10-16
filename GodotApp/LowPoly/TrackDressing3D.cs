@@ -10,9 +10,11 @@ namespace StintegyEVO.GodotApp.LowPoly;
 /// the barrier, marshal posts round the lap, distance boards before the
 /// braking zones and a start gantry over the line.
 ///
-/// All of it stands behind the barrier or above the road, never on the
-/// racing surface or the run-off, so none of it claims anything the
-/// simulation does not know: the barrier is still the only boundary there
+/// Fence and marshal posts stand behind the barrier, the gantry above the
+/// road. The distance boards are the exception, as they are at a real
+/// circuit: on the grass beside the track, inside the barrier, where a
+/// driver at speed can read them. None of it touches the racing surface,
+/// and none of it is a boundary: the barrier is still the only one there
 /// is. It is placed from the circuit's own geometry rather than authored,
 /// because it belongs wherever the shape of the track puts it — a braking
 /// zone is where the corner is.
@@ -96,6 +98,28 @@ public partial class TrackDressing3D : Node3D
         _circuit.Point(s, side * (WallOffset(s, side) + metres), lift);
 
     /// <summary>
+    /// Where a distance board stands: on the grass beside the track, past
+    /// the kerb and short of the barrier. Three metres out from the track's
+    /// edge where the run-off is wide; where it is narrower, halfway between
+    /// the kerb and the barrier. Where there is no room for a board between
+    /// them at all, as on a street circuit, it goes on the barrier: just
+    /// behind it, standing higher, as street circuits mount them. The second
+    /// value is how much higher.
+    /// </summary>
+    private (Vector3 At, float Raise) BoardSpot(float s, int side)
+    {
+        const float boardWidth = 1.8f;
+        TrackSample sample = _track.Sample(s);
+        float kerb = SurfaceGrip.KerbWidthMeters;
+        float buffer = side == 1 ? sample.LeftBufferWidth : sample.RightBufferWidth;
+        float clear = MathF.Max(0f, buffer - kerb);
+        if (clear < boardWidth + 0.4f)
+            return (Behind(s, side, 0.3f), 0.9f);
+        float out_ = clear >= 4.5f ? 3f : kerb + clear * 0.5f;
+        return (_circuit.Point(s, side * (sample.HalfWidth + out_)), 0f);
+    }
+
+    /// <summary>
     /// Posts every six metres a little behind the barrier, with two rails:
     /// the fence that keeps debris out of the crowd, all the way round.
     /// </summary>
@@ -153,7 +177,7 @@ public partial class TrackDressing3D : Node3D
     /// <summary>
     /// 150, 100 and 50 metre boards before every corner a car brakes hard
     /// for: found where a long gentle run meets a tight bend, and put on the
-    /// outside, where a driver looks for them.
+    /// outside, on the grass beside the track where a driver looks for them.
     /// </summary>
     private void BuildDistanceBoards()
     {
@@ -166,7 +190,8 @@ public partial class TrackDressing3D : Node3D
             for (int bars = 3; bars >= 1; bars--)
             {
                 float s = corner - bars * 50f;
-                Vector3 at = Behind(s, side, 1.6f);
+                (Vector3 foot, float raise) = BoardSpot(s, side);
+                Vector3 at = foot + Vector3.Up * raise;
                 Vector3 along = (_circuit.Point(s + 1f, 0) - _circuit.Point(s, 0)).Normalized();
                 Vector3 across = along.Cross(Vector3.Up).Normalized();
                 // A board facing the oncoming car: thin along the road, wide across it.
@@ -176,7 +201,8 @@ public partial class TrackDressing3D : Node3D
                     float offset = (b - (bars - 1) * 0.5f) * 0.45f;
                     Panel(mesh, at + Vector3.Up * 1.6f + across * offset - along * 0.03f, across, 0.22f, 1.0f, along, LowPolyMesh.Ink);
                 }
-                mesh.Box(at + Vector3.Up * 0.45f, new Vector3(0.1f, 0.9f, 0.1f), Post);
+                float pole = 0.9f + raise;
+                mesh.Box(foot + Vector3.Up * pole * 0.5f, new Vector3(0.1f, pole, 0.1f), Post);
             }
         }
         AddChild(mesh.Instance("DistanceBoards"));
