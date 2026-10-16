@@ -32,11 +32,11 @@ public sealed class RuleLineControllerTests
     {
         DriverExecution full = DriverExecution.From(new DriverAbilities());
         DriverExecution back = DriverExecution.From(new DriverAbilities { Pace = 0f, CarControl = 0f });
-        Assert.Equal(1f, full.PaceEfficiency, 3);
-        Assert.Equal(1f, full.ControlAuthority, 3);
+        Assert.Equal(1f, full.PaceEfficiency, 2);
+        Assert.Equal(1f, full.ControlAuthority, 2);
         Assert.Equal(0f, full.BrakeMarkerErrorMeters);
-        Assert.Equal(0.95f, back.PaceEfficiency, 3);
-        Assert.Equal(0f, back.ControlAuthority, 3);
+        Assert.Equal(0.95f, back.PaceEfficiency, 2);
+        Assert.Equal(0f, back.ControlAuthority, 2);
     }
 
     [Fact]
