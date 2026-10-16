@@ -39,3 +39,10 @@ Drivers/Bake/raw/
 TestResults/
 *.trx
 *.coverage
+private/
+# Godot imports a CSV under res:// as a translation table; the track data is not one.
+Drivers/Tracks/*.translation
+Drivers/Tracks/*.csv.import
+*.csproj.old
+# Drawn from OpenStreetMap for a circuit kept out of the repository.
+Drivers/Bake/daytona_road_course_osm.png*
