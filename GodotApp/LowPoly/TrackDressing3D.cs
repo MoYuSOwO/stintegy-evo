@@ -38,6 +38,49 @@ public partial class TrackDressing3D : Node3D
         BuildMarshalPosts();
         BuildDistanceBoards();
         BuildStartGantry();
+        BuildFlags();
+    }
+
+    private readonly List<(Node3D Flag, float Phase)> _flags = [];
+    private double _time;
+
+    public override void _Process(double delta)
+    {
+        _time += delta;
+        foreach ((Node3D flag, float phase) in _flags)
+            flag.Rotation = new Vector3(0f, flag.Rotation.Y, 0.18f * MathF.Sin((float)_time * 2.3f + phase));
+    }
+
+    /// <summary>A row of flags either side of the start straight, behind the fence.</summary>
+    private void BuildFlags()
+    {
+        Color[] colours =
+        [
+            LowPolyMesh.Vermilion, LowPolyMesh.Ivory, Color.FromHtml("#2f7f86"),
+            Color.FromHtml("#d9a441"), Color.FromHtml("#3b5aa0"), LowPolyMesh.Ink,
+        ];
+        var poles = new LowPolyMesh();
+        int k = 0;
+        for (float offset = -140f; offset <= 140f; offset += 20f)
+        {
+            float s = _track.WrapS(_track.StartingLineS + offset);
+            foreach (int side in new[] { -1, 1 })
+            {
+                Vector3 foot = Behind(s, side, 2.6f);
+                poles.Box(foot + Vector3.Up * 3.5f, new Vector3(0.1f, 7f, 0.1f), Post);
+                var flagMesh = new LowPolyMesh();
+                Color colour = colours[k++ % colours.Length];
+                flagMesh.Quad(new Vector3(0, -0.6f, 0), new Vector3(1.8f, -0.6f, 0), new Vector3(1.8f, 0.6f, 0), new Vector3(0, 0.6f, 0), colour);
+                flagMesh.Quad(new Vector3(0, 0.6f, 0), new Vector3(1.8f, 0.6f, 0), new Vector3(1.8f, -0.6f, 0), new Vector3(0, -0.6f, 0), colour);
+                var flag = flagMesh.Instance($"Flag_{k}");
+                flag.Position = foot + Vector3.Up * 6.3f;
+                Vector3 along = (_circuit.Point(s + 1f, 0) - _circuit.Point(s, 0)).Normalized();
+                flag.Rotation = new Vector3(0f, -MathF.Atan2(along.Z, along.X), 0f);
+                AddChild(flag);
+                _flags.Add((flag, k * 0.7f));
+            }
+        }
+        AddChild(poles.Instance("FlagPoles"));
     }
 
     private float WallOffset(float s, int side)

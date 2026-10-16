@@ -46,7 +46,8 @@ public partial class RaceHud3D : CanvasLayer
         var bottom = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -141), new(527, -48));
         _driver.Position = new(17, 12); _driver.AddThemeFontSizeOverride("font_size", 13); _driver.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_driver);
         _speed.Position = new(16, 32); _speed.AddThemeFontSizeOverride("font_size", 36); _speed.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_speed);
-        _strategy.Position = new(189, 15); _strategy.AddThemeFontSizeOverride("font_size", 12); _strategy.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_strategy);
+        // Below the title line, which runs the width of the panel: beside it, the two overlapped.
+        _strategy.Position = new(200, 36); _strategy.AddThemeFontSizeOverride("font_size", 12); _strategy.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_strategy);
         var mapPanel = Panel(root, Control.LayoutPreset.BottomRight, new(-237, -231), new(-20, -48));
         Label(mapPanel, "CIRCUIT     /     5.891 KM", 10, new(14, 10), Muted);
         _map.Position = new(10, 29); _map.Size = new(195, 144); mapPanel.AddChild(_map); _map.Initialize(race.Surface, race.Simulation.Cars);

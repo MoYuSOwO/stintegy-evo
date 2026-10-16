@@ -45,7 +45,7 @@ public partial class RaceView3D : Node3D
     private double _hudElapsed, _coreMs, _renderTime, _warmup = 0.1;
     private long _completedTicks;
     private readonly FixedStepBudget _budget = new();
-    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float SteerAngle);
+    private readonly record struct CarPose(System.Numerics.Vector2 Position, float Heading, float SteerAngle, float Slide, float Speed, bool OffTrack);
     private sealed record StepBatch(double CoreMs, CarPose[][] Frames);
     private Task<StepBatch>? _step;
     private readonly Queue<(int Car, int Tire, int Power)> _commands = [];
@@ -240,7 +240,10 @@ public partial class RaceView3D : Node3D
                 {
                     double time = ++_completedTicks * FixedStepBudget.StepSeconds;
                     for (int i = 0; i < frame.Length; i++)
+                    {
                         _cars[i].Capture(time, frame[i].Position, frame[i].Heading, frame[i].SteerAngle);
+                        _cars[i].Effects(frame[i].Slide, frame[i].Speed, frame[i].OffTrack);
+                    }
                 }
             }
             catch (Exception error)
@@ -290,7 +293,10 @@ public partial class RaceView3D : Node3D
                         for (int i = 0; i < frame.Length; i++)
                         {
                             var car = simulation.Cars[i];
-                            frame[i] = new CarPose(car.State.Position, car.State.Heading, car.State.SteerAngleRadians);
+                            frame[i] = new CarPose(
+                                car.State.Position, car.State.Heading, car.State.SteerAngleRadians,
+                                MathF.Abs(car.State.SideslipAngleRadians), car.State.Speed,
+                                car.Progress.Region != TrackRegion.RacingSurface);
                         }
                         frames[tick] = frame;
                     }
@@ -433,8 +439,18 @@ public partial class RaceView3D : Node3D
                 FogAerialPerspective = 0.35f,
                 FogSkyAffect = 0.12f,
                 AdjustmentEnabled = true,
-                AdjustmentSaturation = 1.14f,
-                AdjustmentContrast = 1.05f,
+                AdjustmentSaturation = 1.12f,
+                AdjustmentContrast = 1.06f,
+                // A soft bloom on the brightest faces — sunlit roofs, the white
+                // lines, the clouds — which is most of what makes flat colour
+                // read as sunlight. Glow is one of the effects the mobile
+                // renderer has; SSAO, SSIL and SDFGI are Forward+ only.
+                GlowEnabled = true,
+                GlowIntensity = 0.55f,
+                GlowStrength = 0.9f,
+                GlowBloom = 0.06f,
+                GlowHdrThreshold = 0.95f,
+                GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Softlight,
             }
         });
         AddChild(new DirectionalLight3D

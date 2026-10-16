@@ -14,15 +14,12 @@ public partial class CircuitView3D : Node3D
     // drawn as grass: mown, in the alternating bands a groundsman leaves.
     private static readonly Color MownLight = Color.FromHtml("#9cb071"), MownDark = Color.FromHtml("#8ca265");
 
-    // Barrier faces. Boards on the straights, a tyre wall's belt round the
-    // outside of a corner: the same barrier where it always was, painted
-    // for what it would be.
-    private static readonly Color[] Boards =
-    [
-        Color.FromHtml("#c84e38"), Color.FromHtml("#222c30"), Color.FromHtml("#eee8d6"),
-        Color.FromHtml("#2f7f86"), Color.FromHtml("#d9a441"), Color.FromHtml("#3b5aa0"),
-    ];
-    private static readonly Color TyreDark = Color.FromHtml("#2a3134"), TyreBelt = Color.FromHtml("#b8473a");
+    // Barrier faces, kept quiet: concrete panels in two close tones on the
+    // straights, a darker tyre wall round the outside of a tight corner.
+    // Loud colour blocks along the whole lap fought the low-poly palette;
+    // the kerbs are the only saturated edge a circuit needs.
+    private static readonly Color[] Boards = [Color.FromHtml("#e6e1d1"), Color.FromHtml("#d8d3c2")];
+    private static readonly Color TyreDark = Color.FromHtml("#4a5254"), TyreBelt = Color.FromHtml("#565e60");
     private const float CornerBarrierCurvature = 1f / 160f;
     public void Initialize(TrackData track) => Initialize(track, null);
 

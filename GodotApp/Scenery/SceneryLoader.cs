@@ -401,9 +401,9 @@ public sealed partial class SceneryLoader : Node3D
             if (model is null)
                 return null;
             return SingleMesh(model) is (Mesh only, Transform3D local)
-                ? new Prop(null, only, local)
+                ? Prop.Batched(only, local)
                 : MergedMesh(model) is Mesh merged
-                    ? new Prop(null, merged)
+                    ? Prop.Batched(merged)
                     : new Prop(model, null);
         }
 
@@ -456,11 +456,11 @@ public sealed partial class SceneryLoader : Node3D
         return resource switch
         {
             PackedScene scene => SingleMesh(scene) is (Mesh only, Transform3D local)
-                ? new Prop(null, only, local)   // batch it: it is one mesh anyway
+                ? Prop.Batched(only, local)   // batch it: it is one mesh anyway
                 : MergedMesh(scene) is Mesh merged
-                    ? new Prop(null, merged)    // several meshes and nothing else: one mesh now
+                    ? Prop.Batched(merged)    // several meshes and nothing else: one mesh now
                     : new Prop(scene, null),
-            Mesh mesh => new Prop(null, mesh),
+            Mesh mesh => Prop.Batched(mesh),
             _ => null
         };
     }
@@ -478,6 +478,15 @@ public sealed partial class SceneryLoader : Node3D
     private readonly record struct Prop(PackedScene? Scene, Mesh? Mesh, Transform3D Local)
     {
         public Prop(PackedScene? scene, Mesh? mesh) : this(scene, mesh, Transform3D.Identity) { }
+
+        /// <summary>
+        /// A batched prop, re-cut flat-shaded: a prop made from Godot's
+        /// smooth primitives, or modelled smooth by a modder, still sits in
+        /// the circuit's faceted style.
+        /// </summary>
+        public static Prop Batched(Mesh mesh, Transform3D local) => new(null, LowPolyMesh.Faceted(mesh), local);
+
+        public static Prop Batched(Mesh mesh) => Batched(mesh, Transform3D.Identity);
     }
 
     private Dictionary<string, string> Catalogue()

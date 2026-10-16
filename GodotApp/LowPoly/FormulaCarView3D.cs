@@ -14,8 +14,13 @@ public partial class FormulaCarView3D : Node3D
     private MeshInstance3D _selection = null!;
     private Label3D _number = null!;
     private readonly Node3D[] _wheels = new Node3D[4];
+    private CpuParticles3D _smoke = null!, _dust = null!;
+
+    // A car sliding this far is scrubbing rubber off; one this fast with
+    // wheels off the road is throwing up the verge.
+    private const float SmokeSlide = 0.085f, SmokeSpeed = 9f, DustSpeed = 7f;
     private static readonly StandardMaterial3D Rubber = new() { AlbedoColor = Color.FromHtml("#252a2b"), Roughness = 1 };
-    private static readonly CylinderMesh Tire = new() { TopRadius = 0.34f, BottomRadius = 0.34f, Height = 0.36f, RadialSegments = 10, Rings = 1, Material = Rubber };
+    private static readonly Mesh Tire = LowPolyMesh.Faceted(new CylinderMesh { TopRadius = 0.34f, BottomRadius = 0.34f, Height = 0.36f, RadialSegments = 10, Rings = 1, Material = Rubber });
     public void Bind(RaceCar car, TrackSurfaceGeometry surface, Color color, int number)
     {
         Car = car; _surface = surface; TeamColor = color; Name = $"Car_{number:D2}";
@@ -63,9 +68,62 @@ public partial class FormulaCarView3D : Node3D
             Visible = false
         };
         AddChild(_number);
+        _smoke = Plume("Smoke", new Color(0.9f, 0.9f, 0.88f, 0.38f), 0.55f, 1.6f);
+        _dust = Plume("Dust", new Color(0.78f, 0.72f, 0.55f, 0.42f), 0.7f, 1.2f);
         var pose = MakePose(Car.State.Position, Car.State.Heading, Car.State.SteerAngleRadians);
         _poses = new SnapshotTimeline<RenderPose>(pose); Transform = pose.Transform;
     }
+    /// <summary>
+    /// Rubber smoke from the rear when the car is sliding, dust when it is
+    /// off the road: what the state of the car looks like from outside. Set
+    /// once per simulated step from that step's state, never invented here.
+    /// </summary>
+    public void Effects(float slide, float speed, bool offTrack)
+    {
+        _smoke.Emitting = slide > SmokeSlide && speed > SmokeSpeed && !offTrack;
+        _dust.Emitting = offTrack && speed > DustSpeed;
+    }
+
+    private CpuParticles3D Plume(string name, Color color, float size, float lifetime)
+    {
+        var material = new StandardMaterial3D
+        {
+            AlbedoColor = color,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            VertexColorUseAsAlbedo = true,
+        };
+        var puff = new SphereMesh { Radius = size, Height = size * 1.6f, RadialSegments = 6, Rings = 3, Material = material };
+        var fade = new Gradient();
+        fade.SetColor(0, color);
+        fade.SetColor(1, new Color(color, 0f));
+        var particles = new CpuParticles3D
+        {
+            Name = name,
+            Emitting = false,
+            Amount = 40,
+            Lifetime = lifetime,
+            Mesh = LowPolyMesh.Faceted(puff),
+            LocalCoords = false,
+            Position = new Vector3(-1.6f, 0.25f, 0f),
+            EmissionShape = CpuParticles3D.EmissionShapeEnum.Box,
+            EmissionBoxExtents = new Vector3(0.2f, 0.05f, 0.8f),
+            Direction = new Vector3(-1f, 0.35f, 0f),
+            Spread = 28f,
+            InitialVelocityMin = 1.5f,
+            InitialVelocityMax = 3.5f,
+            Gravity = new Vector3(0f, 0.7f, 0f),
+            DampingMin = 1.2f,
+            DampingMax = 2.0f,
+            ScaleAmountMin = 0.7f,
+            ScaleAmountMax = 1.6f,
+            ColorRamp = fade,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(particles);
+        return particles;
+    }
+
     public void Select(bool selected, bool closeView) { _selection.Visible = selected && closeView; _number.Visible = selected && closeView; }
     /// <summary>
     /// The wheels are drawn where they actually are.
