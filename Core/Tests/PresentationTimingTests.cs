@@ -50,7 +50,7 @@ public class PresentationTimingTests
                     timeline.Add(snapshotTime, snapshotTime * 50);
                 }
             var (previous, next, fraction) = timeline.Sample(time);
-            Assert.Equal(time * 50, previous + (next - previous) * fraction, 5);
+            Near.Equal(time * 50, previous + (next - previous) * fraction);
         }
     }
 }

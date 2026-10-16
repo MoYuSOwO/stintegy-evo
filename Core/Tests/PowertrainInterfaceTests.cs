@@ -46,21 +46,15 @@ public sealed class PowertrainInterfaceTests
     {
         CarConfig config = FuelCar();
 
-        Assert.Equal(
+        Near.Equal(
             config.MassKg + FullTankMassKg,
-            CarPhysics.TotalMassKg(config, PowertrainState.Filled(1f)),
-            3
-        );
-        Assert.Equal(
+            CarPhysics.TotalMassKg(config, PowertrainState.Filled(1f)));
+        Near.Equal(
             config.MassKg + FullTankMassKg * 0.4f,
-            CarPhysics.TotalMassKg(config, new PowertrainState(0.4f, 1f)),
-            3
-        );
-        Assert.Equal(
+            CarPhysics.TotalMassKg(config, new PowertrainState(0.4f, 1f)));
+        Near.Equal(
             config.MassKg,
-            CarPhysics.TotalMassKg(config, PowertrainState.Filled(0f)),
-            3
-        );
+            CarPhysics.TotalMassKg(config, PowertrainState.Filled(0f)));
     }
 
     [Fact]
@@ -116,7 +110,7 @@ public sealed class PowertrainInterfaceTests
         Assert.Equal(2, dashboard.Resources.Count);
         Assert.Equal("Fuel", dashboard.Resources[0].Label);
         Assert.Equal(0.5f, dashboard.Resources[0].Fraction);
-        Assert.Equal(FullTankMassKg * 0.5f, dashboard.Resources[0].RemainingMassKg, 3);
+        Near.Equal(FullTankMassKg * 0.5f, dashboard.Resources[0].RemainingMassKg);
         Assert.Equal("Charge", dashboard.Resources[1].Label);
         Assert.Equal(0.25f, dashboard.Resources[1].Fraction);
 
@@ -154,8 +148,8 @@ public sealed class PowertrainInterfaceTests
         Assert.Equal(0f, dashboard.Resources[0].RemainingMassKg);
         Assert.Equal("Fuel", dashboard.Resources[1].Label);
         Assert.Equal(0.62f, dashboard.Resources[1].Fraction);
-        Assert.Equal(0.62f * powertrain.FuelAllowanceKg, dashboard.Resources[1].RemainingMassKg, 3);
-        Assert.Equal(config.MassKg + 0.62f * powertrain.FuelAllowanceKg, dashboard.MassKg, 3);
+        Near.Equal(0.62f * powertrain.FuelAllowanceKg, dashboard.Resources[1].RemainingMassKg);
+        Near.Equal(config.MassKg + 0.62f * powertrain.FuelAllowanceKg, dashboard.MassKg);
         Assert.Equal(1f, dashboard.OutputAvailability);
         Assert.Equal("Power", dashboard.Modes[1].Label);
         Assert.Equal("Normal", dashboard.Modes[1].Rung);
@@ -178,7 +172,7 @@ public sealed class PowertrainInterfaceTests
         ElectricPowertrain pack = ElectricPowertrain.Default;
         float expected = pack.LowVoltageOutputFraction +
                          (1f - pack.LowVoltageOutputFraction) * (0.02f / pack.LowVoltageStart);
-        Assert.Equal(expected, dashboard.OutputAvailability, 4);
+        Near.Equal(expected, dashboard.OutputAvailability);
     }
 
     [Fact]

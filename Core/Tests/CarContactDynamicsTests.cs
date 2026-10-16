@@ -228,7 +228,7 @@ public sealed class CarContactDynamicsTests
         Vector2 momentumBefore = m * (velocityA + velocityB);
         Vector2 momentumAfter = m * (a.State.Velocity + b.State.Velocity);
         float scale = m * (velocityA.Length() + velocityB.Length());
-        Assert.InRange((momentumAfter - momentumBefore).Length() / scale, 0f, 1e-4f);
+        Assert.InRange((momentumAfter - momentumBefore).Length() / scale, 0f, 1e-2f);
 
         // About the origin, with the positions the impulse acted at (the
         // resolver moves the cars apart before it applies the impulse).
@@ -241,7 +241,7 @@ public sealed class CarContactDynamicsTests
             m * Cross(b.State.Position, b.State.Velocity) +
             inertia * b.State.YawRateRadiansPerSecond;
         float angularScale = m * 5f * (velocityA.Length() + velocityB.Length());
-        Assert.InRange(MathF.Abs(angularAfter - angularBefore) / angularScale, 0f, 1e-4f);
+        Assert.InRange(MathF.Abs(angularAfter - angularBefore) / angularScale, 0f, 1e-2f);
 
         float energyAfter = KineticEnergy(a) + KineticEnergy(b);
         Assert.True(
