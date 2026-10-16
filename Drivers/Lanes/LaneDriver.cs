@@ -97,11 +97,9 @@ public sealed record LaneDriverGains
     /// <summary>
     /// The energy rungs as ways of driving, Save to Attack: seconds of lift
     /// before each braking zone. The player picks the rung and watches the
-    /// pack; the driver only lifts as the rung says. Set on Silverstone with
-    /// the 320 kW generator so that Normal all race spends the pack, about
-    /// 28 of its 30 kWh over 52 laps: Attack spends 0.73 kWh a lap net and
-    /// runs it flat with laps to go, Save puts back about 0.34 for just
-    /// under a second a lap, and the rungs between spend in steps.
+    /// pack; the driver only lifts as the rung says. A circuit sets its own
+    /// in its <c>driver.json</c>, since a second of lift saves a different
+    /// amount on every track; this table stands in where a circuit has none.
     /// </summary>
     public float[] EnergyRungLiftSeconds { get; init; } = [1.25f, 0.7f, 0.47f, 0.35f, 0f];
 
@@ -142,6 +140,7 @@ public sealed class LaneDriver : IDriverController
     private const float WindowMeters = 450f;
 
     private readonly LaneTrackFile _file;
+    private float[]? _energyTable;
     private readonly CarConfig _car;
     private readonly TireConfig _tires;
     private readonly CarState _plan = new();
@@ -193,7 +192,7 @@ public sealed class LaneDriver : IDriverController
 
     private void ManageEnergy(RaceCarSnapshot car)
     {
-        float[] table = Gains.EnergyRungLiftSeconds;
+        float[] table = _energyTable ??= _file.Energy?.LiftSeconds() ?? Gains.EnergyRungLiftSeconds;
         float lift = CoastOverride ??
                      (table.Length == 0 ? 0f : table[Math.Clamp(car.Strategy.PowerRung - 1, 0, table.Length - 1)]);
         CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);

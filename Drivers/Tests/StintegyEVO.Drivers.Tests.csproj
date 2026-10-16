@@ -11,7 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Drivers.csproj" />
     <ProjectReference Include="../../Core/StintegyEVO.Core.csproj" />
-    <None Include="../Tracks/*.line.csv;../Tracks/*.lanes.csv" CopyToOutputDirectory="PreserveNewest" Link="Tracks/%(Filename)%(Extension)" />
+    <None Include="../Cars/**/*.csv;../Cars/**/*.json" CopyToOutputDirectory="PreserveNewest" Link="Cars/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
