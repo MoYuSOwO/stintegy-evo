@@ -452,9 +452,31 @@ class Track3D:
 
         L_e = weights['w_c'] * ((px - x_m_interp(s))**2 + (py - y_m_interp(s))**2 + (pz - z_m_interp(s))**2) + \
               weights['w_l'] * ca.dot(bl-bl_bar, bl-bl_bar) + weights['w_r'] * ca.dot(br-br_bar, br-br_bar)
-        L_rc = weights['w_theta'] * ddtheta**2 + weights['w_mu'] * ddmu**2 + weights['w_phi'] * ddphi**2
+        # Stintegy: the heading stiffness eases where the measured road turns
+        # hard. A change of curvature that the road really makes over a few
+        # metres -- a hairpin -- is the track's shape, not measurement noise,
+        # and a stiffness that is right for a fast sweeper moves a hairpin's
+        # edges by metres. Scaled by 1 / (1 + (k / kappa_ref)^2) on the
+        # measured curvature, lightly averaged; without kappa_ref, TUM's
+        # constant stiffness.
+        if weights.get('kappa_ref'):
+            kappa = np.abs(dtheta_radpm_raw)
+            window = max(1, int(round(weights.get('kappa_window_m', 10.0) / max(np.mean(np.diff(s_m_raw)), 1e-6))))
+            kernel = np.ones(2 * window + 1) / (2 * window + 1)
+            kappa = np.convolve(np.concatenate((kappa[-window:], kappa, kappa[:window])), kernel, mode='valid')
+            stiffness = 1.0 / (1.0 + (kappa / weights['kappa_ref']) ** 2)
+            stiffness_interp = ca.interpolant('theta_stiffness', 'linear', [s_m_raw], stiffness)
+            w_theta_s = weights['w_theta'] * stiffness_interp(s)
+        else:
+            w_theta_s = weights['w_theta']
+        L_rc = w_theta_s * ddtheta**2 + weights['w_mu'] * ddmu**2 + weights['w_phi'] * ddphi**2
         L_rw = weights['w_nl'] * dnl**2 + weights['w_nr'] * dnr**2
         L = L_e + L_rc + L_rw
+
+        # Stintegy: how far each smoothed edge sits from the measured one, for
+        # the hard limit below.
+        edge_gap = ca.Function('edge_gap', [x, s], [ca.vertcat(ca.dot(bl - bl_bar, bl - bl_bar), ca.dot(br - br_bar, br - br_bar))])
+        max_edge_dev = weights.get('max_edge_dev')
 
         # Discrete time dynamics using fixed step Runge-Kutta 4 integrator.
         M = 4  # RK4 steps per interval
@@ -528,6 +550,15 @@ class Track3D:
             lbg += [0.0] * nx
             ubg += [0.0] * nx
 
+            # Stintegy: neither smoothed edge may leave the measured one by
+            # more than max_edge_dev, as a constraint on the solve when
+            # edge_constraint is set (slow: it fights the smoothness), and
+            # as a check on the result always.
+            if max_edge_dev and weights.get('edge_constraint'):
+                g += [edge_gap(Xk, (k + 1) * step_size)]
+                lbg += [0.0, 0.0]
+                ubg += [max_edge_dev ** 2] * 2
+
         # Boundary constraint: start states = final states.
         g += [w[0] - Xk]
         lbg += [0.0, 0.0, 0.0, -2.0*np.pi, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -575,6 +606,27 @@ class Track3D:
         ddphi_opt = w_opt[13::(nx+nu)] * ddphi_s
         dnl_opt = w_opt[14::(nx+nu)] * dnl_s
         dnr_opt = w_opt[15::(nx+nu)] * dnr_s
+
+        # Stintegy: check the result against the measured road rather than
+        # trusting the solver -- the nearest distance from each smoothed edge
+        # to the measured edge, which is what a car on it would see.
+        if max_edge_dev:
+            if not solver.stats().get('success', False):
+                raise RuntimeError(f"Track smoothing did not converge: {solver.stats().get('return_status')}")
+            worst_gaps = []
+            for nb, wb in ((nl_opt, w_tr_left_m_raw), (nr_opt, w_tr_right_m_raw)):
+                measured = np.array([[x_m_raw[i], y_m_raw[i], z_m_raw[i]] for i in range(len(s_m_raw))]) + \
+                    np.array([self.get_normal_vector_numpy(theta_rad_raw[i], mu_rad_raw[i], phi_rad_raw[i]) * wb[i]
+                              for i in range(len(s_m_raw))])
+                fine = np.vstack([np.linspace(measured[i], measured[(i + 1) % len(measured)], 8, endpoint=False)
+                                  for i in range(len(measured))])
+                smoothed = np.array([[x_opt[i], y_opt[i], z_opt[i]] for i in range(len(s_opt))]) + \
+                    np.array([self.get_normal_vector_numpy(theta_opt[i], mu_opt[i], phi_opt[i]) * nb[i]
+                              for i in range(len(s_opt))])
+                worst_gaps.append(max(float(np.min(np.linalg.norm(fine - p_, axis=1))) for p_ in smoothed))
+            print(f"Smoothed edges off the measured ones by at most {worst_gaps[0]:.3f} m (left), {worst_gaps[1]:.3f} m (right).")
+            if max(worst_gaps) > max_edge_dev + 0.05:
+                raise RuntimeError(f"Smoothed edges leave the measured road by {max(worst_gaps):.2f} m")
 
         # Calculation of omega.
         # Empty matrix for omega values.
