@@ -32,14 +32,33 @@ public sealed class SceneryPlan
     public string Track { get; init; } = string.Empty;
     public IReadOnlyList<SceneryPlacement> Props { get; init; } = [];
 
+    /// <summary>Flat colour laid on the ground: fields, car parks, a paddock.</summary>
+    public IReadOnlyList<SceneryPatch> Patches { get; init; } = [];
+
+    /// <summary>Countryside generated around the circuit: a patchwork of fields with hedges between them.</summary>
+    public SceneryFarmland? Farmland { get; init; }
+
     /// <summary>
     /// Every prop the plan asks for, with repeats unrolled: a row of
     /// twelve trees is written once and arrives here twelve times.
     /// </summary>
     public IEnumerable<SceneryPlacement> Placements()
     {
-        foreach (SceneryPlacement prop in Props)
+        for (int entry = 0; entry < Props.Count; entry++)
         {
+            SceneryPlacement prop = Props[entry];
+            if (prop.Along is SceneryAlong along)
+            {
+                foreach (SceneryPlacement each in Along(prop, along, entry))
+                    yield return each;
+                continue;
+            }
+            if (prop.Area is SceneryArea area)
+            {
+                foreach (SceneryPlacement each in Area(prop, area, entry))
+                    yield return each;
+                continue;
+            }
             int count = Math.Max(1, prop.Repeat?.Count ?? 1);
             for (int i = 0; i < count; i++)
             {
@@ -71,6 +90,73 @@ public sealed class SceneryPlan
     /// would only obscure. Comments and trailing commas are allowed,
     /// because the file is for people.
     /// </summary>
+    /// <summary>
+    /// A prop every so many metres between two stations, on one side or
+    /// both, each nudged a little so a row reads as planted and not drawn
+    /// with a ruler. The nudges are seeded by the plan entry, so the same
+    /// file grows the same trees every time.
+    /// </summary>
+    private IEnumerable<SceneryPlacement> Along(SceneryPlacement prop, SceneryAlong along, int entry)
+    {
+        var random = new Random(Seed(entry));
+        float every = MathF.Max(along.Every, 0.5f);
+        int count = (int)MathF.Floor(MathF.Max(0f, along.To - along.From) / every) + 1;
+        int[] sides = along.Side switch
+        {
+            "both" => [1, -1],
+            "left" => [1],
+            "right" => [-1],
+            _ => [MathF.Sign(prop.D) == 0 ? 1 : (int)MathF.Sign(prop.D)]
+        };
+        for (int i = 0; i < count; i++)
+        {
+            foreach (int side in sides)
+            {
+                yield return prop with
+                {
+                    S = along.From + i * every + Jitter(random, along.SJitter),
+                    D = side * (MathF.Abs(prop.D) + Jitter(random, along.DJitter)),
+                    Yaw = prop.Yaw + Jitter(random, along.YawJitter),
+                    Scale = prop.Scale * (1f + Jitter(random, along.ScaleJitter)),
+                    Along = null,
+                    Repeat = null
+                };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Props scattered through a band beside the circuit — so many per
+    /// hundred square metres, anywhere between two stations and two
+    /// offsets. A wood is an area of trees; a car park is an area of cars.
+    /// </summary>
+    private IEnumerable<SceneryPlacement> Area(SceneryPlacement prop, SceneryArea area, int entry)
+    {
+        var random = new Random(Seed(entry));
+        float length = MathF.Abs(area.SEnd - area.SStart);
+        float width = MathF.Abs(area.DOuter - area.DInner);
+        int count = (int)MathF.Round(length * width / 100f * MathF.Max(area.PerHundredSquareMetres, 0f));
+        for (int i = 0; i < count; i++)
+        {
+            float scale = area.ScaleMin + (float)random.NextDouble() * (area.ScaleMax - area.ScaleMin);
+            yield return prop with
+            {
+                S = area.SStart + (float)random.NextDouble() * (area.SEnd - area.SStart),
+                D = area.DInner + (float)random.NextDouble() * (area.DOuter - area.DInner),
+                Yaw = area.RandomYaw ? (float)random.NextDouble() * MathF.Tau : prop.Yaw,
+                AlignToTrack = !area.RandomYaw && prop.AlignToTrack,
+                Scale = prop.Scale * scale,
+                Area = null,
+                Repeat = null
+            };
+        }
+    }
+
+    private int Seed(int entry) => unchecked(Track.GetHashCode(StringComparison.Ordinal) * 397 ^ (entry + 1) * 7919);
+
+    private static float Jitter(Random random, float amount) =>
+        amount <= 0f ? 0f : ((float)random.NextDouble() * 2f - 1f) * amount;
+
     public static SceneryPlan Parse(string json)
     {
         JsonDocumentOptions options = new()
@@ -86,12 +172,43 @@ public sealed class SceneryPlan
             foreach (JsonElement prop in placed.EnumerateArray())
                 props.Add(ReadPlacement(prop));
         }
+        List<SceneryPatch> patches = [];
+        if (root.TryGetProperty("patches", out JsonElement laid))
+        {
+            foreach (JsonElement patch in laid.EnumerateArray())
+            {
+                (float s0, float s1) = Pair(patch, "s", 0f, 0f);
+                (float d0, float d1) = Pair(patch, "d", 0f, 0f);
+                patches.Add(new SceneryPatch(
+                    Color: patch.TryGetProperty("color", out JsonElement color) ? color.GetString() ?? "#808080" : "#808080",
+                    SStart: s0, SEnd: s1, DInner: d0, DOuter: d1));
+            }
+        }
+        SceneryFarmland? farmland = null;
+        if (root.TryGetProperty("farmland", out JsonElement farm))
+        {
+            List<string> palette = [];
+            if (farm.TryGetProperty("palette", out JsonElement colours))
+                foreach (JsonElement colour in colours.EnumerateArray())
+                    palette.Add(colour.GetString() ?? "#9fb26b");
+            farmland = new SceneryFarmland(
+                Inner: Number(farm, "from", 180f),
+                Outer: Number(farm, "to", 900f),
+                Field: Number(farm, "field", 130f),
+                Angle: Number(farm, "angle", 0.3f),
+                Meadow: Number(farm, "meadow", 0.25f),
+                Palette: palette,
+                Hedge: farm.TryGetProperty("hedge", out JsonElement hedge) ? hedge.ValueKind == JsonValueKind.Number ? hedge.GetRawText() : hedge.GetString() ?? "" : "",
+                Tree: farm.TryGetProperty("tree", out JsonElement tree) ? tree.ValueKind == JsonValueKind.Number ? tree.GetRawText() : tree.GetString() ?? "" : "");
+        }
         return new SceneryPlan
         {
             Track = root.TryGetProperty("track", out JsonElement track)
                 ? track.GetString() ?? string.Empty
                 : string.Empty,
-            Props = props
+            Props = props,
+            Patches = patches,
+            Farmland = farmland
         };
     }
 
@@ -107,7 +224,35 @@ public sealed class SceneryPlan
                 StepYaw: Number(block, "step_yaw", 0f)
             );
         }
+        SceneryAlong? along = null;
+        if (prop.TryGetProperty("along", out JsonElement row))
+        {
+            along = new SceneryAlong(
+                From: Number(row, "from", 0f),
+                To: Number(row, "to", 0f),
+                Every: Number(row, "every", 10f),
+                Side: row.TryGetProperty("side", out JsonElement side) ? side.GetString() ?? "given" : "given",
+                SJitter: Number(row, "s_jitter", 0f),
+                DJitter: Number(row, "d_jitter", 0f),
+                YawJitter: Number(row, "yaw_jitter", 0f),
+                ScaleJitter: Number(row, "scale_jitter", 0f));
+        }
+        SceneryArea? area = null;
+        if (prop.TryGetProperty("area", out JsonElement zone))
+        {
+            (float s0, float s1) = Pair(zone, "s", 0f, 0f);
+            (float d0, float d1) = Pair(zone, "d", 0f, 0f);
+            (float k0, float k1) = Pair(zone, "scale", 1f, 1f);
+            area = new SceneryArea(
+                SStart: s0, SEnd: s1, DInner: d0, DOuter: d1,
+                PerHundredSquareMetres: Number(zone, "per_100m2", 1f),
+                ScaleMin: k0, ScaleMax: k1,
+                RandomYaw: !(zone.TryGetProperty("yaw", out JsonElement yaw) &&
+                             string.Equals(yaw.GetString(), "track", StringComparison.Ordinal)));
+        }
         return new SceneryPlacement(
+            Along: along,
+            Area: area,
             Prop: PropName(prop),
             S: Number(prop, "s", 0f),
             D: Number(prop, "d", 0f),
@@ -138,6 +283,21 @@ public sealed class SceneryPlan
             JsonValueKind.String => name.GetString() ?? string.Empty,
             _ => string.Empty
         };
+    }
+
+    /// <summary>A two-number array, "s": [1200, 1600]; one number means both ends.</summary>
+    private static (float, float) Pair(JsonElement owner, string name, float a, float b)
+    {
+        if (!owner.TryGetProperty(name, out JsonElement value))
+            return (a, b);
+        if (value.ValueKind == JsonValueKind.Number)
+        {
+            float only = (float)value.GetDouble();
+            return (only, only);
+        }
+        if (value.ValueKind == JsonValueKind.Array && value.GetArrayLength() >= 2)
+            return ((float)value[0].GetDouble(), (float)value[1].GetDouble());
+        return (a, b);
     }
 
     private static float Number(JsonElement owner, string name, float fallback) =>
@@ -223,8 +383,34 @@ public readonly record struct SceneryPlacement(
     float Scale = 1f,
     float Height = 0f,
     bool AlignToTrack = true,
-    SceneryRepeat? Repeat = null
+    SceneryRepeat? Repeat = null,
+    SceneryAlong? Along = null,
+    SceneryArea? Area = null,
+    Godot.Vector3? World = null
 );
+
+/// <summary>Every <c>Every</c> metres from <c>From</c> to <c>To</c>, on the given side, left, right or both.</summary>
+public readonly record struct SceneryAlong(
+    float From, float To, float Every, string Side,
+    float SJitter, float DJitter, float YawJitter, float ScaleJitter);
+
+/// <summary>So many per hundred square metres between two stations and two offsets.</summary>
+public readonly record struct SceneryArea(
+    float SStart, float SEnd, float DInner, float DOuter,
+    float PerHundredSquareMetres, float ScaleMin, float ScaleMax, bool RandomYaw);
+
+/// <summary>
+/// A patchwork of fields from <c>Inner</c> to <c>Outer</c> metres off the
+/// circuit: a grid of <c>Field</c>-metre parcels turned by <c>Angle</c>, each
+/// a crop from the palette or, a <c>Meadow</c> share of the time, left as
+/// grass; with a hedge prop along the edges and now and then a tree in one.
+/// </summary>
+public sealed record SceneryFarmland(
+    float Inner, float Outer, float Field, float Angle, float Meadow,
+    IReadOnlyList<string> Palette, string Hedge, string Tree);
+
+/// <summary>A flat colour on the ground between two stations and two offsets.</summary>
+public readonly record struct SceneryPatch(string Color, float SStart, float SEnd, float DInner, float DOuter);
 
 /// <summary>
 /// A row of the same prop, so that an avenue of trees is one line in the

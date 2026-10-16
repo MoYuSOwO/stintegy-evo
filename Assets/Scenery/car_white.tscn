@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://cscn0carwht1"]
+
+; A parked road car, as a block: what a car park is from a grandstand.
+; One mesh, so a car park full of them is a single batch per colour.
+
+[sub_resource type="StandardMaterial3D" id="Material_body"]
+albedo_color = Color(0.88, 0.87, 0.82, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="Mesh_body"]
+material = SubResource("Material_body")
+size = Vector3(4.3, 1.45, 1.85)
+
+[node name="car_white" type="MeshInstance3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.72, 0)
+mesh = SubResource("Mesh_body")

@@ -1,0 +1,37 @@
+[gd_scene load_steps=5 format=3 uid="uid://cscn0oak0001"]
+
+; A broadleaf tree: a short trunk and a faceted crown. Two parts, so it is
+; instanced as a scene; seven sides is a tree from the grandstand.
+
+[sub_resource type="StandardMaterial3D" id="Material_bark"]
+albedo_color = Color(0.36, 0.29, 0.22, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="Material_leaf"]
+albedo_color = Color(0.36, 0.5, 0.29, 1)
+roughness = 0.95
+
+[sub_resource type="CylinderMesh" id="Mesh_trunk"]
+material = SubResource("Material_bark")
+top_radius = 0.28
+bottom_radius = 0.38
+height = 3.2
+radial_segments = 6
+rings = 1
+
+[sub_resource type="SphereMesh" id="Mesh_crown"]
+material = SubResource("Material_leaf")
+radius = 3.2
+height = 5.4
+radial_segments = 7
+rings = 4
+
+[node name="oak" type="Node3D"]
+
+[node name="Trunk" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+mesh = SubResource("Mesh_trunk")
+
+[node name="Crown" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.4, 0)
+mesh = SubResource("Mesh_crown")

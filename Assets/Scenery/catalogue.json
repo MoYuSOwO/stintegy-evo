@@ -1,6 +1,14 @@
 {
   "props": {
     "1": "pine",
-    "2": "grandstand"
+    "2": "grandstand",
+    "3": "oak",
+    "4": "hedge",
+    "5": "car_red",
+    "6": "car_blue",
+    "7": "car_white",
+    "8": "car_grey",
+    "9": "tent",
+    "10": "house"
   }
 }

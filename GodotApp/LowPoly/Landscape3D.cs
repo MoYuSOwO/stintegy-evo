@@ -39,6 +39,12 @@ public partial class Landscape3D : Node3D
         BuildClouds(halfDiagonal, ground, random);
     }
 
+    public void ShowClouds(bool show)
+    {
+        if (_clouds is not null)
+            _clouds.Visible = show;
+    }
+
     public override void _Process(double delta)
     {
         if (_clouds is null)

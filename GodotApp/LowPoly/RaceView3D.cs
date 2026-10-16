@@ -316,6 +316,7 @@ public partial class RaceView3D : Node3D
     public void SetCameraMode(int mode)
     {
         _camera.SetMode(mode);
+        ApplyAtmosphere();
         _hudDirty = true;
         _hud.RefreshControls();
     }
@@ -381,6 +382,22 @@ public partial class RaceView3D : Node3D
         _hudDirty = true;
     }
 
+    private Godot.Environment? _environment;
+    private const float TracksideFog = 0.00042f, OverviewFog = 0.00005f;
+
+    /// <summary>
+    /// The overview looks down from kilometres up, through the clouds and
+    /// through more haze than a trackside camera ever sees across: there the
+    /// clouds stand aside and the haze thins, so the circuit is the picture.
+    /// </summary>
+    private void ApplyAtmosphere()
+    {
+        bool overview = _camera.Mode == 3;
+        if (_environment is not null)
+            _environment.FogDensity = overview ? OverviewFog : TracksideFog;
+        _circuit.GetNodeOrNull<Landscape3D>("Landscape")?.ShowClouds(!overview);
+    }
+
     private void CreateLighting()
     {
         // A pale afternoon: blue overhead fading to a hazy horizon, the far
@@ -399,7 +416,7 @@ public partial class RaceView3D : Node3D
         };
         AddChild(new WorldEnvironment
         {
-            Environment = new Godot.Environment
+            Environment = _environment = new Godot.Environment
             {
                 BackgroundMode = Godot.Environment.BGMode.Sky,
                 Sky = new Sky { SkyMaterial = sky },
@@ -412,7 +429,7 @@ public partial class RaceView3D : Node3D
                 TonemapExposure = 0.95f,
                 FogEnabled = true,
                 FogLightColor = Color.FromHtml("#d3dbd6"),
-                FogDensity = 0.00042f,
+                FogDensity = TracksideFog,
                 FogAerialPerspective = 0.35f,
                 FogSkyAffect = 0.12f,
                 AdjustmentEnabled = true,

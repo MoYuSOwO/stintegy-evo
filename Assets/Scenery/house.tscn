@@ -1,0 +1,29 @@
+[gd_scene load_steps=5 format=3 uid="uid://cscn0house01"]
+
+; A farmhouse or a barn, scaled to suit: walls and a pitched roof.
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.86, 0.82, 0.72, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Material_roof"]
+albedo_color = Color(0.55, 0.3, 0.24, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_walls"]
+material = SubResource("Material_wall")
+size = Vector3(10, 5, 7)
+
+[sub_resource type="PrismMesh" id="Mesh_roof"]
+material = SubResource("Material_roof")
+size = Vector3(7.6, 3, 10.4)
+
+[node name="house" type="Node3D"]
+
+[node name="Walls" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
+mesh = SubResource("Mesh_walls")
+
+[node name="Roof" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 6.5, 0)
+mesh = SubResource("Mesh_roof")

@@ -52,6 +52,54 @@ circuit whose geometry is re-cut keeps its scenery beside the same corners
 instead of scattering it across the county. Height is not authored: the
 ground is where the terrain says it is.
 
+## Many props at once
+
+A circuit needs thousands of things standing round it, and nobody places a
+wood one tree at a time. Three ways to place many:
+
+**Along the circuit** — a prop every so many metres between two stations,
+on one side, the other, or both, each nudged a little so a row looks
+planted rather than ruled:
+
+```json
+{ "prop": "hedge", "d": 40, "along": { "from": 200, "to": 900, "every": 10,
+  "side": "both", "d_jitter": 0.6, "s_jitter": 2, "scale_jitter": 0.1, "yaw_jitter": 0.2 } }
+```
+
+**An area** — so many per hundred square metres anywhere in a band beside
+the circuit, between two stations and two offsets. A wood is an area of
+trees; a car park is an area of cars (`"yaw": "track"` lines them up with
+the road instead of turning each at random):
+
+```json
+{ "prop": 1, "area": { "s": [1200, 1600], "d": [75, 175], "per_100m2": 0.55, "scale": [0.8, 1.5] } }
+```
+
+**Farmland** — one block per circuit: a patchwork of fields from `from` to
+`to` metres off the circuit, in parcels of about `field` metres on a grid
+turned by `angle`, each a colour from the palette or, a `meadow` share of
+the time, left as grass; with `hedge` along the parcel edges and now and
+then a `tree`. Fields are laid in the world, not along the road, because
+they were there first:
+
+```json
+"farmland": { "from": 190, "to": 1100, "field": 150, "angle": 0.42, "meadow": 0.22,
+  "palette": ["#cdb866", "#a9bd70", "#9c8461"], "hedge": 4, "tree": 3 }
+```
+
+Plain ground colour — a car park's tarmac, a campsite's mown grass — is a
+patch, between two stations and two offsets:
+
+```json
+"patches": [ { "color": "#6f7577", "s": [60, 420], "d": [72, 150] } ]
+```
+
+All of these are seeded by the plan itself, so the same file grows the
+same wood every time, and none of them can put anything on the circuit:
+whatever would stand inside the barrier of *any* part of the lap — not only
+the part it was placed beside — is left out and counted in the log
+(`… kept off the circuit`).
+
 ## Mods
 
 A player adding scenery does not edit these files: they drop a folder into
