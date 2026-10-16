@@ -24,13 +24,13 @@ public sealed class CarConfig
     /// Ask <see cref="CarPhysics.TotalMassKg"/> rather than reading this
     /// wherever the answer wanted is how much car there is right now.
     /// </summary>
-    public float MassKg { get; init; } = 820f;
+    public float MassKg { get; init; } = 900f;
 
     /// <summary>
     /// What turns the wheels. Owns the stores the strategist spends, the
     /// ladder they are spent on, and every number about either.
     /// </summary>
-    public IPowertrain Powertrain { get; init; } = ElectricPowertrain.Default;
+    public IPowertrain Powertrain { get; init; } = RangeExtenderPowertrain.Default;
     public float WheelBaseMeters { get; init; } = 3.1f;
     public float TrackWidthMeters { get; init; } = 1.65f;
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
@@ -42,7 +42,25 @@ public sealed class CarConfig
     /// work without changing the force they deliver or how the car moves.
     /// </summary>
     public float FrontLateralComplianceRatio { get; init; } = 1.4f;
-    public float FrontDriveShare { get; init; } = 0f;
+
+    /// <summary>
+    /// The front motor's share of the car's peak drive: 0.42 is a 250 kW
+    /// front motor beside a 350 kW rear one. Zero is a rear-driven car.
+    ///
+    /// With <see cref="AdaptiveDriveSplit"/> (the default) this is a ceiling,
+    /// not a split: each step the drive is shared between the axles by the
+    /// grip each has left after its corner, the way the brakes are, and each
+    /// axle takes no more than its own motor can give. Without it, it is the
+    /// fixed share of every request that goes to the front.
+    /// </summary>
+    public float FrontDriveShare { get; init; } = 0.42f;
+
+    /// <summary>
+    /// Share drive between the axles by the grip each has left, within each
+    /// motor's share, rather than in the fixed <see cref="FrontDriveShare"/>.
+    /// Two motors can do that at every instant, so a car that has them does.
+    /// </summary>
+    public bool AdaptiveDriveSplit { get; init; } = true;
     /// <summary>
     /// Where the axles sit relative to the centre of mass. The front arm is
     /// the longer one on this car, because the front carries less of the

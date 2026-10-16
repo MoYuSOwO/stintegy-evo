@@ -136,11 +136,6 @@ public static class CarPhysics
             rearLateral
         );
 
-        float gripDriveLimit = DistributedLongitudinalLimit(
-            frontLongitudinal,
-            rearLongitudinal,
-            config.FrontDriveShare
-        );
         float powertrainDriveLimit = config.Powertrain.DriveAccelerationLimit(
             state.Energy,
             strategy,
@@ -148,6 +143,13 @@ public static class CarPhysics
             massKg,
             config.MaxDriveAcceleration
         );
+        float gripDriveLimit = config.AdaptiveDriveSplit
+            ? SharedDriveLimit(frontLongitudinal, rearLongitudinal, powertrainDriveLimit, config.FrontDriveShare)
+            : DistributedLongitudinalLimit(
+                frontLongitudinal,
+                rearLongitudinal,
+                config.FrontDriveShare
+            );
         float maximumDrive = Math.Min(
             config.MaxDriveAcceleration,
             Math.Min(gripDriveLimit, powertrainDriveLimit)
@@ -351,18 +353,34 @@ public static class CarPhysics
 
         if (desiredAccel >= 0f)
         {
-            float driveAccel = Math.Min(
-                desiredAccel,
-                config.Powertrain.DriveAccelerationLimit(
-                    state.Energy,
-                    input.Strategy,
-                    state.Speed,
-                    massKg,
-                    config.MaxDriveAcceleration
-                )
+            float available = config.Powertrain.DriveAccelerationLimit(
+                state.Energy,
+                input.Strategy,
+                state.Speed,
+                massKg,
+                config.MaxDriveAcceleration
             );
-            frontLongRequest = driveAccel * config.FrontDriveShare;
-            rearLongRequest = driveAccel - frontLongRequest;
+            float driveAccel = Math.Min(desiredAccel, available);
+            if (config.AdaptiveDriveSplit)
+            {
+                AllocateDriveRequest(
+                    driveAccel,
+                    available,
+                    frontLatRequest,
+                    rearLatRequest,
+                    frontGrip,
+                    rearGrip,
+                    config.FrontDriveShare,
+                    input.DriverInput.FrontDriveBiasOffset,
+                    out frontLongRequest,
+                    out rearLongRequest
+                );
+            }
+            else
+            {
+                frontLongRequest = driveAccel * config.FrontDriveShare;
+                rearLongRequest = driveAccel - frontLongRequest;
+            }
             requestedLongitudinalAccel = driveAccel;
         }
         else
@@ -1548,6 +1566,12 @@ public static class CarPhysics
     /// </summary>
     private const float MaximumScrubWeight = 2f;
 
+    /// <summary>A spin bills a set of tyres for a spin, not for the race: slip work past one and a half peaks is not charged.</summary>
+    private const float MaximumSlipWorkWear = 1.5f;
+
+    /// <summary>Slip work past two and a half peaks heats the tread no further.</summary>
+    private const float MaximumSlipWorkHeat = 2.5f;
+
     /// <summary>
     /// How much more the rear is letting go than the front.
     ///
@@ -1691,6 +1715,63 @@ public static class CarPhysics
             limit = Math.Min(limit, rearCapacity / rearShare);
 
         return float.IsFinite(limit) ? Math.Max(0f, limit) : 0f;
+    }
+
+    /// <summary>
+    /// The most drive the two axles can put down between them: each the grip
+    /// it has left after its corner, and no more than its own motor's share
+    /// of what the powertrain can give.
+    /// </summary>
+    private static float SharedDriveLimit(
+        float frontCapacity,
+        float rearCapacity,
+        float powertrainLimit,
+        float frontMotorShare
+    )
+    {
+        float share = Math.Clamp(frontMotorShare, 0f, 1f);
+        return MathF.Min(frontCapacity, powertrainLimit * share) +
+               MathF.Min(rearCapacity, powertrainLimit * (1f - share));
+    }
+
+    /// <summary>
+    /// Drive shared between the axles as the brakes are: by the grip each
+    /// has left after the corner it is carrying, so an axle busy turning the
+    /// car is asked for little and one with grip to spare is asked for more.
+    /// Each axle is held to its own motor's share of the drive available; a
+    /// request one cannot take goes to the other. A rear-driven car (front
+    /// share zero) is all rear, exactly as before. The driver's offset moves
+    /// the split from the one the grip gives, as the brake bias offset does.
+    /// </summary>
+    private static void AllocateDriveRequest(
+        float driveAccel,
+        float available,
+        float frontLateralRequest,
+        float rearLateralRequest,
+        float frontGrip,
+        float rearGrip,
+        float frontMotorShare,
+        float frontDriveBiasOffset,
+        out float frontDrive,
+        out float rearDrive
+    )
+    {
+        float motorShare = Math.Clamp(frontMotorShare, 0f, 1f);
+        float frontMotor = available * motorShare;
+        float rearMotor = available * (1f - motorShare);
+        float frontCapacity = RemainingLongitudinalGrip(frontGrip, frontLateralRequest);
+        float rearCapacity = RemainingLongitudinalGrip(rearGrip, rearLateralRequest);
+        float total = frontCapacity + rearCapacity;
+        float share = total > Epsilon ? frontCapacity / total : motorShare;
+        share = Math.Clamp(share + frontDriveBiasOffset, 0f, 1f);
+
+        frontDrive = MathF.Min(driveAccel * share, frontMotor);
+        rearDrive = driveAccel - frontDrive;
+        if (rearDrive > rearMotor)
+        {
+            rearDrive = rearMotor;
+            frontDrive = MathF.Min(driveAccel - rearDrive, frontMotor);
+        }
     }
 
     private static void AllocateBrakeRequest(
@@ -1993,9 +2074,14 @@ public static class CarPhysics
         // rising where a use-squared reading would have it fall. That is
         // the near-limit heating that used to need its own hand-placed
         // branch, and it arrives here for free and continuous.
+        // Capped like the wear: a tyre dragged sideways in a spin is not
+        // heated without end -- the tread smokes and the sliding surface
+        // stops taking more -- and sliding heat that was allowed to run
+        // with the slip angle all the way round put a spun car's fronts a
+        // hundred and fifty degrees up in twelve seconds.
         float lateralSlipHeat =
             tires.LateralHeatRate * SlipHeatCalibration *
-            Math.Max(0f, lateralSlipWork) * lateralHeatScale;
+            MathF.Min(Math.Max(0f, lateralSlipWork), MaximumSlipWorkHeat) * lateralHeatScale;
         float directionalHeat =
             tires.LongitudinalHeatRate * longitudinalHeatUse;
         // Force demand is not the same thing as rubber dissipation. At modest
@@ -2087,9 +2173,16 @@ public static class CarPhysics
             tires,
             tire.SurfaceTempC
         );
+        // Sideways, a tyre spends rubber as it spends heat: force times how
+        // fast the contact patch is dragged across the road, which is the
+        // slip work the axle measured from its slip angle. Below the peak
+        // that rises far faster than the force does, so the last few
+        // percent of a corner are where a set of tyres goes.
+        float lateralWear = tires.WearFromSlipWork
+            ? tires.SlipWorkWearRate * MathF.Min(Math.Max(0f, lateralSlipWork), MaximumSlipWorkWear) * lateralWearScale
+            : tires.LateralWearRate * lateralUse * lateralUse * lateralWearScale;
         float directionalWear =
-            tires.LateralWearRate * lateralUse * lateralUse *
-            lateralWearScale +
+            lateralWear +
             tires.LongitudinalWearRate * longitudinalUse * longitudinalUse;
         float partialSlipWear = Math.Max(0f, tires.NearLimitWearRate) *
                                 MathF.Pow(
@@ -2106,7 +2199,14 @@ public static class CarPhysics
         float tireWorkWear =
             directionalWear + partialSlipWear +
             tires.OverLimitWearRate * thermalOverLimit * thermalOverLimit;
-        float wearDelta = tireWorkWear * tireWorkSpeedMultiplier *
+        // Sliding work per second goes with the speed the road passes
+        // under the tyre, with no ceiling: a metre of corner costs the same
+        // rubber however fast it is taken at the same force, so a slower lap
+        // is not charged more for the time it takes.
+        float wearSpeed = tires.WearFromSlipWork
+            ? Math.Max(0f, speed) / TireConfig.TireWorkReferenceSpeedMps
+            : tireWorkSpeedMultiplier;
+        float wearDelta = tireWorkWear * wearSpeed *
                           tempWearFactor * loadScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
@@ -2227,12 +2327,17 @@ public static class CarPhysics
             tires.IdealSurfaceTempHighC
         );
         float coldDistance = Math.Max(0f, idealLow - surfaceTempC);
-        float hotDistance = Math.Max(0f, surfaceTempC - idealHigh);
+        // Warm rubber is soft rubber: it abrades faster the hotter the tread
+        // runs, inside the window as well as past it, and steeply. A few
+        // degrees of tread is what separates a tyre being looked after from
+        // one being driven on, which is what makes saving a tyre cheap and
+        // pushing one dear.
+        float warm = Math.Max(0f, surfaceTempC - tires.WearReferenceTempC);
         return 1f +
                Math.Max(0f, tires.ColdWearPerCSquared) *
                coldDistance * coldDistance +
-               Math.Max(0f, tires.HotWearPerCSquared) *
-               hotDistance * hotDistance;
+               MathF.Min(MathF.Exp(warm / Math.Max(tires.WearTempScaleC, 1f)) - 1f,
+                   Math.Max(tires.MaximumHotWearFactor - 1f, 0f));
     }
 
     private static float CalculateAirCoolingMultiplier(float speed)

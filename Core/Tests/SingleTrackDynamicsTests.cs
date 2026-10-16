@@ -517,8 +517,15 @@ public sealed class SingleTrackDynamicsTests
         float wearCost = (gone.FrontLeft.Wear - startWear) * 100f;
         float heatRise = peak - startTemp;
 
-        Assert.InRange(wearCost, 0.5f, 1.1f);
-        Assert.InRange(heatRise, 16f, 27f);
+        // Up to two per cent: a spin overheats the tread as well as dragging
+        // it, and a hot tread wears faster (TireConfig.WearTempScaleC). Still
+        // well short of a set of tyres, which is the point of the cap.
+        Assert.InRange(wearCost, 0.5f, 2.0f);
+        // Sliding is where tread heat comes from since the heat balance was
+        // moved towards it (TireConfig.LateralHeatRate), so a spin heats the
+        // fronts by tens of degrees -- to where a spun tyre smokes -- and the
+        // cap on sliding heat keeps it there rather than at a melt.
+        Assert.InRange(heatRise, 30f, 60f);
         // And the thing that must not come back: a spin has to cost
         // something well above ordinary cornering, or the referee is
         // declaring an event the car does not feel.

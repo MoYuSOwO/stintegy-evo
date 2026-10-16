@@ -22,6 +22,8 @@ namespace StintegyEVO.Core.Tests;
 public sealed class WallContactDynamicsTests
 {
     private static readonly TrackData Track = TrackFactory.SimpleTestTrack();
+    internal static TrackData TrackForTrace => Track;
+    internal static (Vector2 Position, float Heading) NearLeftWallForTrace(float s, float offset, float heading) => NearLeftWall(s, offset, heading);
 
     /// <summary>
     /// A pose relative to the left wall, the side where the track's lateral
@@ -211,6 +213,7 @@ public sealed class WallContactDynamicsTests
     [InlineData(0.2f)]
     public void ACarPinnedNoseFirstGetsOut(float curvature)
     {
+        float furthest = 0f;
         (RaceCar car, _) = Run(
             s: 100f,
             offsetFromLeftWall: 2.3f,
@@ -218,10 +221,26 @@ public sealed class WallContactDynamicsTests
             speed: 0f,
             command: _ => new DriverInput(curvature, 3f),
             seconds: 10f,
-            out _
+            out _,
+            observe: c =>
+            {
+                float wall = TrackBoundaryResolver.GetWallLimits(Track.Project(c.State.Position).Sample).LeftWallD;
+                furthest = MathF.Max(furthest, wall - c.Progress.CurrentD);
+            }
         );
 
-        Assert.True(car.Progress.TotalDistance > 10f, $"covered {car.Progress.TotalDistance:F1} m");
+        // Out means away from the barrier and under way, whichever way the
+        // car went. A rear-driven car with lock on understeers along the wall
+        // and down the road; a front-and-rear-driven one turns away from it
+        // and, held on a five-metre circle by the command, goes round in the
+        // open, ten metres clear of the wall at the far side, making no
+        // progress along the track. Either is a car that got out. The circle
+        // is measured at its furthest, not at the last frame: ten seconds
+        // can end with the car on the leg that comes back towards the wall.
+        Assert.True(
+            car.Progress.TotalDistance > 10f || furthest > 3f,
+            $"covered {car.Progress.TotalDistance:F1} m and never more than {furthest:F2} m from the wall"
+        );
         Assert.True(car.State.Speed > 3f, $"speed {car.State.Speed:F2}");
     }
 
@@ -264,7 +283,9 @@ public sealed class WallContactDynamicsTests
         float speed,
         Func<bool, DriverInput> command,
         float seconds,
-        out int contactFrames
+        out int contactFrames,
+        CarConfig? config = null,
+        Action<RaceCar>? observe = null
     )
     {
         (Vector2 position, float pointing) = NearLeftWall(s, offsetFromLeftWall, headingIntoWall);
@@ -277,7 +298,8 @@ public sealed class WallContactDynamicsTests
                 Speed = speed,
                 Energy = PowertrainState.Filled(0.9f)
             },
-            command(false)
+            command(false),
+            config
         );
         var simulation = new RaceSimulation(Track);
         simulation.AddCar(car);
@@ -296,6 +318,7 @@ public sealed class WallContactDynamicsTests
                 contactFrames++;
             }
             car.ExternalInput = command(hit);
+            observe?.Invoke(car);
 
             Assert.True(float.IsFinite(car.State.Speed), $"speed at frame {i}");
             Assert.True(float.IsFinite(car.State.Heading), $"heading at frame {i}");

@@ -112,6 +112,28 @@ namespace StintegyEVO.Core.Tests;
 /// line the car draws, as they always do here; nothing in the powertrain
 /// changed.
 ///
+/// Re-recorded on 2026-10-16 for the battery's low end. The pack used to
+/// fade as the square of what was left from twenty per cent down, which had
+/// a car at fifteen per cent on little more than half its power; it now
+/// delivers full power through the usable window, sags to 85 per cent over
+/// the last five per cent and limps at empty. Only the two runs that start
+/// low move: the sagging-pack run now starts at three per cent (fifteen is
+/// full power under the new rule) and the empty-pack run crawls a little
+/// faster (2.43 m/s against 1.57) because the empty band blends towards the
+/// limp rather than sitting on it. The mixed and Attack runs are unchanged
+/// to the last digit, which is the check that nothing else moved.
+///
+/// Re-recorded on 2026-10-16 for the F1E car, which is now the default: a
+/// range extender (a 30 kWh pack topped up by a 300 kW generator), 900 kg,
+/// drive on both axles shared by the grip each has left, and tyre heat and
+/// wear driven by sliding. Every digit moves because it is a different
+/// car. Two things worth saying about the runs: the sagging-pack run now
+/// climbs out of the sag, because the generator is refilling the pack
+/// while it drives; and the empty-pack run has no fuel either, so it is
+/// still a car living on what braking puts back. The Attack run moved to
+/// the pure electric car, because the range extender races on one power
+/// ceiling and on it Attack would only repeat the mixed run.
+///
 /// What these pins are for, stated once so the next re-record does not
 /// have to argue it from the beginning: they guard refactoring. A change
 /// that is meant to leave the car alone -- moving code, splitting a class,
@@ -135,13 +157,14 @@ public sealed class PowertrainGoldenTests
     [Fact]
     public void ASaggingPackAtSpeedIsUnchanged()
     {
-        // Starts inside the low-charge limiter and fast enough that power,
-        // not grip, is what the car runs out of - so the sag term is doing
-        // the deciding for the whole run rather than being masked by a
-        // force ceiling the car could not reach anyway.
+        // Starts inside the low-voltage sag at the bottom of the usable
+        // window and fast enough that power, not grip, is what the car runs
+        // out of - so the sag term is doing the deciding for the whole run
+        // rather than being masked by a force ceiling the car could not reach
+        // anyway. (Fifteen per cent until the sag moved to the last five.)
         Assert.Equal(
             Expected.SaggingPack,
-            RunTrajectory(60f, 0.15f, CarStrategy.Default, 1200)
+            RunTrajectory(60f, 0.03f, CarStrategy.Default, 1200)
         );
     }
 
@@ -149,14 +172,18 @@ public sealed class PowertrainGoldenTests
     public void TheTopOfTheOutputLadderIsUnchanged()
     {
         // Attack raises the power ceiling and nothing else, so this run
-        // separates from the first one only where power was the limit.
+        // separates from the first one only where power was the limit. On
+        // the pure electric car, which is the one with a ladder of power
+        // ceilings; the range extender races on one ceiling and leaves the
+        // rungs to the driver.
         Assert.Equal(
             Expected.AttackLadder,
             RunTrajectory(
                 30f,
                 0.8f,
                 new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack),
-                1200
+                1200,
+                new CarConfig { Powertrain = ElectricPowertrain.Default }
             )
         );
     }
@@ -183,60 +210,60 @@ public sealed class PowertrainGoldenTests
     private static class Expected
     {
         public const string MixedDriving =
-            "speed 10.503875\n" +
-            "position 119.785484 232.3097\n" +
-            "heading 0.8034462\n" +
-            "sideslip 0.00399669\n" +
-            "yawrate 0.14844604\n" +
-            "charge 0.7992362\n" +
-            "drivepower 94497.25\n" +
+            "speed 16.859566\n" +
+            "position 220.96376 145.97528\n" +
+            "heading -1.551475\n" +
+            "sideslip 0.0070686173\n" +
+            "yawrate 0.17618407\n" +
+            "charge 0.8447239\n" +
+            "drivepower 216296.84\n" +
             "regenpower 0\n" +
-            "longaccel 9.8545265\n" +
-            "lataccel 2.3245997\n" +
-            "wear 0.006140316 0.008229952 0.0065681036 0.008362908\n" +
-            "coretemp 86.072815 87.0068 86.05677 86.87644";
+            "longaccel 11.523183\n" +
+            "lataccel 2.7676978\n" +
+            "wear 0.008535774 0.012809126 0.003314874 0.008056065\n" +
+            "coretemp 89.389496 91.09053 88.14037 89.09536";
 
         public const string SaggingPack =
-            "speed 12.469586\n" +
-            "position 251.94646 206.88443\n" +
-            "heading 0.2675818\n" +
-            "sideslip 0.0117959445\n" +
-            "yawrate 0.16288356\n" +
-            "charge 0.14951797\n" +
-            "drivepower 78888.02\n" +
+            "speed 17.44385\n" +
+            "position 288.25803 166.86389\n" +
+            "heading -1.524405\n" +
+            "sideslip 0.0067390534\n" +
+            "yawrate 0.18322404\n" +
+            "charge 0.07588903\n" +
+            "drivepower 204323.3\n" +
             "regenpower 0\n" +
-            "longaccel 6.778231\n" +
-            "lataccel 2.536681\n" +
-            "wear 0.010479987 0.013529259 0.010252206 0.0121586\n" +
-            "coretemp 87.18694 88.355675 86.784485 87.67511";
+            "longaccel 11.500067\n" +
+            "lataccel 2.983499\n" +
+            "wear 0.019311484 0.026255459 0.01445176 0.01985164\n" +
+            "coretemp 92.825455 95.00944 90.99691 92.33881";
 
         public const string AttackLadder =
-            "speed 11.185181\n" +
-            "position 104.26694 234.18494\n" +
-            "heading 1.0435033\n" +
-            "sideslip 0.0031593104\n" +
-            "yawrate 0.155935\n" +
-            "charge 0.7992547\n" +
-            "drivepower 101183.15\n" +
+            "speed 17.366413\n" +
+            "position 213.2151 144.39732\n" +
+            "heading -1.5888377\n" +
+            "sideslip 0.0064561157\n" +
+            "yawrate 0.17913395\n" +
+            "charge 0.79890907\n" +
+            "drivepower 202741.31\n" +
             "regenpower 0\n" +
-            "longaccel 9.921828\n" +
-            "lataccel 1.0404942\n" +
-            "wear 0.006109137 0.008212671 0.0064976853 0.00832536\n" +
-            "coretemp 85.99094 86.961586 85.97046 86.83836";
+            "longaccel 11.502533\n" +
+            "lataccel 2.896853\n" +
+            "wear 0.006286549 0.010922485 0.0022490413 0.005544171\n" +
+            "coretemp 88.535706 90.11254 87.43014 88.30958";
 
         public const string EmptyPack =
-            "speed 1.5746721\n" +
-            "position 106.40075 84.171135\n" +
-            "heading -2.7751317\n" +
-            "sideslip 0\n" +
-            "yawrate 0.96750796\n" +
-            "charge 0.0002377593\n" +
-            "drivepower 1341.8473\n" +
+            "speed 10.766233\n" +
+            "position 83.21116 147.31778\n" +
+            "heading 0.5188052\n" +
+            "sideslip 0.012505305\n" +
+            "yawrate 0.119251505\n" +
+            "charge 0.0027031489\n" +
+            "drivepower 63189.426\n" +
             "regenpower 0\n" +
-            "longaccel 0.7778206\n" +
-            "lataccel 1.5093746\n" +
-            "wear 0.0017717066 0.0024435304 0.0015242929 0.0021419\n" +
-            "coretemp 84.81786 85.59239 84.38617 85.035385";
+            "longaccel 5.7412767\n" +
+            "lataccel 0.7238014\n" +
+            "wear 0.0005450026 0.0007009862 0.0005355882 0.00068192906\n" +
+            "coretemp 85.158325 85.93098 84.82786 85.46673";
     }
 
     /// <summary>
@@ -255,10 +282,11 @@ public sealed class PowertrainGoldenTests
         float startSpeed,
         float startCharge,
         CarStrategy strategy,
-        int steps
+        int steps,
+        CarConfig? car = null
     )
     {
-        CarConfig config = new();
+        CarConfig config = car ?? new();
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,

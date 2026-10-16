@@ -107,27 +107,26 @@ public sealed class ElectricPowertrain : IPowertrain
     public float BatteryDriveEfficiency { get; init; } = 0.92f;
 
     /// <summary>
-    /// The charge below which the pack stops being able to give what it is
-    /// asked for, and how sharply it falls away underneath.
-    ///
-    /// A racing battery does not empty like a bucket. Its voltage sags as the
-    /// charge goes, so the power it can deliver goes with it, gently at first
-    /// and then not gently at all - and the last of it is never released,
-    /// because taking a cell that low ruins it. So the useful bottom of the
-    /// pack is well above zero, and a car that plans to use everything is
-    /// planning on charge that was never there.
-    ///
-    /// Which makes this the price of overspending, and it has to be a real
-    /// price. Taken away as a straight line from a low starting point, it was
-    /// not one: a car that finished a race on a quarter of what it should have
-    /// had still enjoyed most of its power the whole way, and running the tank
-    /// dry cost about four seconds against the twenty six that spending it
-    /// bought. Squared, and starting where a real pack starts to fade, missing
-    /// by a little costs a little and missing by a lot costs the race.
+    /// The pack the car reports is the pack it may use. A racing battery's
+    /// management keeps a reserve the car never sees, and inside the usable
+    /// window it delivers its rated power almost to the end: only over the
+    /// last few per cent does the voltage sag enough to take a little off,
+    /// down to <see cref="LowVoltageOutputFraction"/>. Then it is empty, and
+    /// empty is the price of overspending: the limp at
+    /// <see cref="LowSocPowerFloor"/>, which costs the race. A car that
+    /// misses its energy target by a little loses a little at the very end;
+    /// one that runs dry crawls home.
     /// </summary>
-    public float LowSocPowerLimitStart { get; init; } = 0.20f;
+    public float LowVoltageStart { get; init; } = 0.05f;
 
-    public float LowSocPowerFalloffExponent { get; init; } = 2f;
+    /// <summary>Output at the bottom of the usable window, just before it is empty.</summary>
+    public float LowVoltageOutputFraction { get; init; } = 0.85f;
+
+    /// <summary>
+    /// The last sliver over which output goes from the sag to the limp, so a
+    /// pack hovering at empty under regeneration does not flicker between them.
+    /// </summary>
+    public float EmptyBand { get; init; } = 0.005f;
 
     /// <summary>
     /// The limp. See <see cref="OutputAvailability"/> for why it exists and
@@ -210,46 +209,34 @@ public sealed class ElectricPowertrain : IPowertrain
     }
 
     /// <summary>
-    /// What a nearly empty pack can still deliver, as a fraction of
-    /// nominal — and the floor it never falls through.
+    /// What the pack can deliver now, as a fraction of nominal.
     ///
-    /// The fade itself is unchanged: below <see cref="LowSocPowerLimitStart"/>
-    /// the available power falls away as the square of what is left, so
-    /// missing the target by a little costs a little and missing it by a
-    /// lot costs the race. What changed is the bottom. It used to reach
-    /// zero, and a car at zero is not a car being punished — it is a car
-    /// that has stopped, taking a retirement and becoming an obstacle for
-    /// everyone still racing. Running out of energy should be ruinous and
-    /// survivable, the way it is on a real grid, where a car that has
-    /// nothing left still crawls home under its own power.
-    ///
-    /// So the floor. It is not a taste: at
-    /// <see cref="LowSocPowerFloor"/> of nominal this car can hold about
-    /// 118 km/h against its own drag, which puts a drained lap at roughly
-    /// twice a racing lap. That is the price — a lap lost per lap — and it
-    /// is far enough above the harness's one metre a second stall line
-    /// that a drained car keeps moving even up the steepest gradient in
-    /// the set. Recovery is untouched: braking still charges the pack at
-    /// full efficiency, so a driver who overspent can nurse it back rather
-    /// than being written off.
+    /// Full power through the usable window; a small sag over the last
+    /// <see cref="LowVoltageStart"/> of it, to
+    /// <see cref="LowVoltageOutputFraction"/>; and at empty the floor,
+    /// <see cref="LowSocPowerFloor"/>, which it never falls through. Running
+    /// out should be ruinous and survivable, the way it is on a real grid,
+    /// where a car that has nothing left still crawls home under its own
+    /// power: at eight per cent of nominal this car holds about 118 km/h
+    /// against its own drag, a lap about twice as slow as a racing one, and
+    /// braking still charges the pack, so an overspent car can nurse itself
+    /// back above empty.
     /// </summary>
     public float OutputAvailability(in PowertrainState energy)
     {
         float charge = energy.Primary;
-        if (charge >= LowSocPowerLimitStart)
+        if (charge >= LowVoltageStart)
             return 1f;
 
-        float faded = MathF.Pow(
-            Math.Clamp(
-                charge / Math.Max(LowSocPowerLimitStart, Epsilon),
-                0f,
-                1f
-            ),
-            MathF.Max(LowSocPowerFalloffExponent, 1f)
-        );
-        // Blended rather than clamped, so the curve stays continuous and
-        // monotone through the whole fade instead of running into a shelf.
-        return LowSocPowerFloor + (1f - LowSocPowerFloor) * faded;
+        float sag = LowVoltageOutputFraction +
+                    (1f - LowVoltageOutputFraction) *
+                    Math.Clamp(charge / Math.Max(LowVoltageStart, Epsilon), 0f, 1f);
+        if (charge >= EmptyBand)
+            return sag;
+
+        // Running out: from the sag to the limp across the last sliver.
+        float into = Math.Clamp(charge / Math.Max(EmptyBand, Epsilon), 0f, 1f);
+        return LowSocPowerFloor + (sag - LowSocPowerFloor) * into;
     }
 
     /// <summary>

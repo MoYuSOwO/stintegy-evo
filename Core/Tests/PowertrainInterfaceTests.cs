@@ -146,13 +146,18 @@ public sealed class PowertrainInterfaceTests
 
         dashboard.Refresh(config, state, CarStrategy.Default);
 
-        Assert.Single(dashboard.Resources);
+        // The range extender: a pack to drive from and fuel to refill it.
+        var powertrain = (RangeExtenderPowertrain)config.Powertrain;
+        Assert.Equal(2, dashboard.Resources.Count);
         Assert.Equal("Charge", dashboard.Resources[0].Label);
         Assert.Equal(0.62f, dashboard.Resources[0].Fraction);
-        // A pack weighs the same flat as full, so none of this car's mass is
-        // in the store and the reading should say so.
+        // A pack weighs the same flat as full, so none of its mass is in the
+        // store; the fuel is, and the car is that much heavier for it.
         Assert.Equal(0f, dashboard.Resources[0].RemainingMassKg);
-        Assert.Equal(config.MassKg, dashboard.MassKg, 3);
+        Assert.Equal("Fuel", dashboard.Resources[1].Label);
+        Assert.Equal(0.62f, dashboard.Resources[1].Fraction);
+        Assert.Equal(0.62f * powertrain.FuelAllowanceKg, dashboard.Resources[1].RemainingMassKg, 3);
+        Assert.Equal(config.MassKg + 0.62f * powertrain.FuelAllowanceKg, dashboard.MassKg, 3);
         Assert.Equal(1f, dashboard.OutputAvailability);
         Assert.Equal("Power", dashboard.Modes[1].Label);
         Assert.Equal("Normal", dashboard.Modes[1].Rung);
@@ -163,20 +168,18 @@ public sealed class PowertrainInterfaceTests
     {
         CarDashboard dashboard = new();
         CarConfig config = new();
-        CarState state = new() { Energy = PowertrainState.Filled(0.10f) };
+        CarState state = new() { Energy = PowertrainState.Filled(0.02f) };
         state.InstallFreshTires(WarmTires());
 
         dashboard.Refresh(config, state, CarStrategy.Default);
 
-        // A tenth of a pack is half of where the limiter starts and the
-        // fall-off is squared, so a quarter of the fade is left — and the
-        // fade now sits on top of the limp floor rather than running to
-        // zero, so a quarter of the way up from the floor is what the
-        // gauge shows. Written from the constants rather than as 0.31, so
-        // that moving the floor moves this with it instead of breaking it.
+        // Two per cent is two fifths of the way up the sag at the bottom of
+        // the usable window, so the gauge shows the sag's floor plus two
+        // fifths of what is left above it. Written from the constants, so
+        // that moving the sag moves this with it instead of breaking it.
         ElectricPowertrain pack = ElectricPowertrain.Default;
-        float expected =
-            pack.LowSocPowerFloor + (1f - pack.LowSocPowerFloor) * 0.25f;
+        float expected = pack.LowVoltageOutputFraction +
+                         (1f - pack.LowVoltageOutputFraction) * (0.02f / pack.LowVoltageStart);
         Assert.Equal(expected, dashboard.OutputAvailability, 4);
     }
 
