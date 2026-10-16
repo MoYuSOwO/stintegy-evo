@@ -1,0 +1,364 @@
+using StintegyEVO.Core.Cars;
+
+namespace StintegyEVO.Drivers.Lanes;
+
+/// <summary>
+/// What this car can do right now, read off the published envelope at three
+/// speeds and interpolated in v². The lateral figure is taken twice: once
+/// coasting and once under braking, because braking unloads the rear and the
+/// rear is the axle that runs out of corner first.
+/// </summary>
+internal readonly struct LaneEnvelope
+{
+    private static readonly float[] Anchors = [15f, 40f, 70f];
+
+    private readonly float[] _lateral;
+    private readonly float[] _lateralBraking;
+    private readonly float[] _brake;
+    private readonly float[] _drive;
+    private readonly float[] _loss;
+
+    // The same car in a left-hand and a right-hand corner: weight thrown onto
+    // the outside tyres, so the corner is held by those two, at their
+    // temperature and wear, not by an average of all four.
+    private readonly LaneEnvelope[]? _turns;
+
+    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss, LaneEnvelope[]? turns = null)
+    {
+        _turns = turns;
+        _lateral = lateral;
+        _lateralBraking = lateralBraking;
+        _brake = brake;
+        _drive = drive;
+        _loss = loss;
+        // Closed form for the corner speed: ay(v) = A + B v², from the ends.
+        B = (lateral[2] - lateral[0]) / (Anchors[2] * Anchors[2] - Anchors[0] * Anchors[0]);
+        A = lateral[0] - B * Anchors[0] * Anchors[0];
+        float brakeB = (brake[2] - brake[0]) / (Anchors[2] * Anchors[2] - Anchors[0] * Anchors[0]);
+        BrakeStatic = MathF.Max(0f, brake[0] - brakeB * Anchors[0] * Anchors[0]);
+    }
+
+    /// <summary>The part of the cornering grip that comes from the car's weight, at one g.</summary>
+    public float A { get; }
+
+    /// <summary>The part that comes from downforce, per v².</summary>
+    public float B { get; }
+
+    /// <summary>The part of the braking grip that comes from the car's weight, at one g.</summary>
+    public float BrakeStatic { get; }
+
+    /// <summary>
+    /// This envelope for a corner turning the way <paramref name="curvature"/>
+    /// does: the outside tyres' figures where they have been built, the
+    /// four-tyre average on a straight or where they have not.
+    /// </summary>
+    public LaneEnvelope ForTurn(float curvature)
+    {
+        if (_turns is null || MathF.Abs(curvature) < 1e-4f)
+            return this;
+        return curvature > 0f ? _turns[0] : _turns[1];
+    }
+
+    public static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy, bool turnAware)
+    {
+        LaneEnvelope straight = From(plan, car, tires, strategy);
+        if (!turnAware)
+            return straight;
+        var turns = new[] { From(plan, car, tires, strategy, +1f, straight), From(plan, car, tires, strategy, -1f, straight) };
+        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, turns);
+    }
+
+    /// <summary>
+    /// The envelope at the corner it describes: each anchor's limit read with
+    /// the car already at that limit, turning the way <paramref name="sign"/>
+    /// says, so the load sits on the outside wheels while it is read.
+    /// </summary>
+    private static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy, float sign, LaneEnvelope straight)
+    {
+        float cornerGrip = tires.GetAccelerationUsage(strategy);
+        var lateral = new float[3];
+        var lateralBraking = new float[3];
+        for (int i = 0; i < 3; i++)
+        {
+            float v = Anchors[i];
+            float curvature = sign * straight._lateral[i] / (v * v);
+            CarPerformanceLimits coast = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature: 0f, cornerGrip);
+            CarPerformanceLimits corner = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature, cornerGrip);
+            CarPerformanceLimits cornerBraking = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature, cornerGrip,
+                assumedLongitudinalAcceleration: -coast.MaximumBrakeDeceleration);
+            lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
+            lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
+        }
+        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss);
+    }
+
+    public static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy)
+    {
+        // The tyre rung is an allowance the combined-grip limiter enforces on
+        // braking and drive; it does not give the tyre more corner. So the
+        // corner is read at no more than the Normal rung, and the rung's own
+        // allowance only moves the longitudinal figures. Below Normal the
+        // corner comes down with it, which is what the wall asked for.
+        float grip = tires.GetAccelerationUsage(strategy);
+        // The tyre rung is the driver's authority over the circle; the plan
+        // spends what the rung allows, corner included.
+        float cornerGrip = grip;
+        var lateral = new float[3];
+        var lateralBraking = new float[3];
+        var brake = new float[3];
+        var drive = new float[3];
+        var loss = new float[3];
+        for (int i = 0; i < 3; i++)
+        {
+            float v = Anchors[i];
+            CarPerformanceLimits coast = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature: 0f, grip);
+            CarPerformanceLimits braking = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature: 0f, grip,
+                assumedLongitudinalAcceleration: -coast.MaximumBrakeDeceleration);
+            CarPerformanceLimits corner = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature: 0f, cornerGrip);
+            CarPerformanceLimits cornerBraking = CarPhysics.EstimatePerformanceLimits(
+                plan, car, tires, strategy, v, curvature: 0f, cornerGrip,
+                assumedLongitudinalAcceleration: -coast.MaximumBrakeDeceleration);
+            lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
+            lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
+            brake[i] = MathF.Max(1f, braking.MaximumBrakeDeceleration);
+            drive[i] = MathF.Max(0f, coast.MaximumDriveAcceleration);
+            loss[i] = MathF.Max(0f, coast.LossAcceleration);
+        }
+
+        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss);
+    }
+
+    /// <summary>
+    /// The same car on a road worth <paramref name="scale"/> of a clean one.
+    /// The published envelope does not read the day's surface grip, so the
+    /// driver folds it in here: corner and brakes go with the road, the motor
+    /// does not.
+    /// </summary>
+    public LaneEnvelope WithRoadGrip(float scale)
+    {
+        float s = MathF.Max(0.05f, scale);
+        return new LaneEnvelope(
+            _lateral.Select(x => x * s).ToArray(),
+            _lateralBraking.Select(x => x * s).ToArray(),
+            _brake.Select(x => x * s).ToArray(),
+            _drive,
+            _loss,
+            _turns?.Select(e => e.WithRoadGrip(scale)).ToArray());
+    }
+
+    public float Lateral(float v) => Interpolate(_lateral, v, extrapolate: true);
+    public float LateralBraking(float v) => Interpolate(_lateralBraking, v, extrapolate: true);
+    public float Brake(float v) => Interpolate(_brake, v, extrapolate: false);
+    public float Drive(float v) => Interpolate(_drive, v, extrapolate: false);
+    public float Loss(float v) => Interpolate(_loss, v, extrapolate: true);
+
+    private static float Interpolate(float[] values, float v, bool extrapolate)
+    {
+        float vv = v * v;
+        float a0 = Anchors[0] * Anchors[0];
+        float a1 = Anchors[1] * Anchors[1];
+        float a2 = Anchors[2] * Anchors[2];
+        if (vv <= a0)
+            return values[0];
+        if (vv <= a1)
+            return values[0] + (values[1] - values[0]) * (vv - a0) / (a1 - a0);
+        if (vv <= a2 || !extrapolate)
+            return vv <= a2 ? values[1] + (values[2] - values[1]) * (vv - a1) / (a2 - a1) : values[2];
+        return values[2] + (values[2] - values[1]) * (vv - a2) / (a2 - a1);
+    }
+}
+
+/// <summary>How much of the envelope the plan spends. The rest belongs to the tracker.</summary>
+public sealed record LaneShares
+{
+    public float Lateral { get; init; } = 0.95f;
+    public float Brake { get; init; } = 0.92f;
+    public float Drive { get; init; } = 1f;
+
+    /// <summary>Whether braking takes lateral grip from the rear. Off only for probes.</summary>
+    public bool BrakingCoupling { get; init; } = true;
+}
+
+/// <summary>
+/// Speed along a chain of stations: corner limits from curvature, then
+/// braking backwards and driving forwards through a friction ellipse.
+/// </summary>
+/// <summary>
+/// How the road lies at one station: the physics' own description, so the
+/// plan and the car agree on what a bank or a crest is worth.
+/// </summary>
+internal readonly record struct LaneRoad(float Grade, float Bank, float Vertical)
+{
+    /// <summary>Probe switch: credit the bank only for the corner it takes off the tyres, not the load it adds.</summary>
+    internal static bool BankAddsLoad = true;
+
+    public bool IsFlat => Grade == 0f && Bank == 0f && Vertical == 0f;
+    public RoadAttitude Attitude => new(Grade, Bank, Vertical);
+}
+
+/// <summary>
+/// Speed along a chain of stations: corner limits from curvature and the
+/// road's lie, then braking backwards and driving forwards through a friction
+/// ellipse, with gravity along the road paid or collected.
+/// </summary>
+internal static class LaneSpeedPlanner
+{
+    public const float TopSpeed = 95f;
+    private const float Gravity = 9.80665f;
+
+    public static float CornerLimit(in LaneEnvelope envelope, float absCurvature, float factor)
+    {
+        float denominator = absCurvature - factor * envelope.B;
+        if (denominator <= 1e-6f)
+            return TopSpeed;
+        return MathF.Min(TopSpeed, MathF.Sqrt(MathF.Max(1f, factor * envelope.A) / denominator));
+    }
+
+    /// <summary>
+    /// The fastest the corner can be taken where the road leans or climbs:
+    /// the bank takes part of the corner off the tyres and presses them into
+    /// the road, a crest lifts the car off them. Solved by bisection because
+    /// the two no longer fold into one closed form.
+    /// </summary>
+    public static float CornerLimit(in LaneEnvelope e, float curvature, float factor, LaneRoad road)
+    {
+        if (road.IsFlat)
+            return CornerLimit(e, MathF.Abs(curvature), factor);
+        RoadAttitude att = road.Attitude;
+        float a = e.A, b = e.B;
+        bool Holds(float v)
+        {
+            float demand = MathF.Abs(att.CurvatureDemandScale * v * v * curvature + att.LateralGravityDemand(Gravity, v));
+            float load = LaneRoad.BankAddsLoad
+                ? att.NormalGravity(Gravity, v, curvature) / Gravity
+                : new RoadAttitude(road.Grade, 0f, road.Vertical).NormalGravity(Gravity, v, curvature) / Gravity;
+            return demand <= factor * (a * load + b * v * v);
+        }
+        if (Holds(TopSpeed))
+            return TopSpeed;
+        float lo = 1f, hi = TopSpeed;
+        for (int k = 0; k < 22; k++)
+        {
+            float mid = 0.5f * (lo + hi);
+            if (Holds(mid)) lo = mid; else hi = mid;
+        }
+        return lo;
+    }
+
+    /// <summary>A closed lap: the chain wraps, so it is swept twice each way.</summary>
+    public static void PlanClosed(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> stepLength,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<float> brakeFactor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        Span<float> speed
+    )
+    {
+        int count = speed.Length;
+        for (int i = 0; i < count; i++)
+            speed[i] = CornerLimit(envelope.ForTurn(curvature[i]), curvature[i], factor[i] * shares.Lateral, Road(road, i));
+
+        for (int pass = 0; pass < 2; pass++)
+        {
+            for (int k = count - 1; k >= 0; k--)
+                speed[k] = MathF.Min(speed[k], BrakeFrom(envelope, speed[(k + 1) % count], curvature[k], stepLength[k], factor[k], brakeFactor[k], Road(road, k), shares));
+        }
+
+        for (int pass = 0; pass < 2; pass++)
+        {
+            for (int k = 0; k < count; k++)
+            {
+                int next = (k + 1) % count;
+                speed[next] = MathF.Min(speed[next], DriveFrom(envelope, speed[k], curvature[k], stepLength[k], factor[k], Road(road, k), shares));
+            }
+        }
+    }
+
+    /// <summary>An open window ahead of the car, ending at a speed it must be able to meet.</summary>
+    public static void PlanWindow(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> stepLength,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<float> brakeFactor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        float terminalSpeed,
+        Span<float> speed
+    )
+    {
+        int count = speed.Length;
+        for (int i = 0; i < count; i++)
+            speed[i] = CornerLimit(envelope.ForTurn(curvature[i]), curvature[i], factor[i] * shares.Lateral, Road(road, i));
+        speed[count - 1] = MathF.Min(speed[count - 1], terminalSpeed);
+        for (int k = count - 2; k >= 0; k--)
+            speed[k] = MathF.Min(speed[k], BrakeFrom(envelope, speed[k + 1], curvature[k], stepLength[k], factor[k], brakeFactor[k], Road(road, k), shares));
+    }
+
+    private static LaneRoad Road(ReadOnlySpan<LaneRoad> road, int i) => road.IsEmpty ? default : road[i];
+
+    /// <summary>The tyres' share of the corner at this speed, and how hard the road presses on them.</summary>
+    private static (float Demand, float Load) Corner(float v, float curvature, LaneRoad road)
+    {
+        if (road.IsFlat)
+            return (v * v * MathF.Abs(curvature), 1f);
+        RoadAttitude att = road.Attitude;
+        float demand = MathF.Abs(att.CurvatureDemandScale * v * v * curvature + att.LateralGravityDemand(Gravity, v));
+        float load = LaneRoad.BankAddsLoad
+            ? att.NormalGravity(Gravity, v, curvature) / Gravity
+            : new RoadAttitude(road.Grade, 0f, road.Vertical).NormalGravity(Gravity, v, curvature) / Gravity;
+        return (demand, load);
+    }
+
+    private static float BrakeFrom(in LaneEnvelope envelope, float vNext, float curvature, float ds, float factor, float brakeFactor, LaneRoad road, LaneShares shares)
+    {
+        LaneEnvelope e = envelope.ForTurn(curvature);
+        // Braking unloads the rear by as much as it brakes, not by the most it
+        // could: take the lateral limit part way to the full-braking one, in
+        // proportion to how hard the first guess brakes, and ask again.
+        (float ay, float load) = Corner(vNext, curvature, road);
+        float lateral = e.Lateral(vNext) + e.A * (load - 1f);
+        float brakingShare = e.LateralBraking(vNext) / MathF.Max(e.Lateral(vNext), 1f);
+        float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(vNext) + e.BrakeStatic * (load - 1f));
+        float coast = factor * shares.Lateral * lateral;
+        float full = shares.BrakingCoupling ? coast * brakingShare : coast;
+        float ax = brake * Ellipse(ay, coast);
+        for (int k = 0; k < 2; k++)
+        {
+            float limit = coast + (full - coast) * (ax / MathF.Max(brake, 1e-3f));
+            ax = brake * Ellipse(ay, limit);
+        }
+
+        // What the road does to the car along it, the physics' way round:
+        // the axles are scaled onto the slope, gravity is added on top.
+        RoadAttitude att = road.Attitude;
+        float decel = (ax + e.Loss(vNext)) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, vNext);
+        return MathF.Sqrt(vNext * vNext + 2f * MathF.Max(0.1f, decel) * ds);
+    }
+
+    private static float Ellipse(float used, float limit)
+    {
+        float share = MathF.Min(1f, used / MathF.Max(limit, 1f));
+        return MathF.Sqrt(MathF.Max(0f, 1f - share * share));
+    }
+
+    private static float DriveFrom(in LaneEnvelope envelope, float v, float curvature, float ds, float factor, LaneRoad road, LaneShares shares)
+    {
+        LaneEnvelope e = envelope.ForTurn(curvature);
+        (float ay, float load) = Corner(v, curvature, road);
+        float lateralLimit = factor * shares.Lateral * (e.Lateral(v) + e.A * (load - 1f));
+        float push = shares.Drive * e.Drive(v) * Ellipse(ay, lateralLimit);
+        RoadAttitude att = road.Attitude;
+        float accel = (push - e.Loss(v)) * att.LongitudinalDemandScale + att.AlongTrackGravity(Gravity, v);
+        return MathF.Sqrt(MathF.Max(0f, v * v + 2f * accel * ds));
+    }
+}

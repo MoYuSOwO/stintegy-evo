@@ -31,9 +31,10 @@ public static class RuleLineAssets
         return GeometricRacingLine.Bake(sample, lengthMeters, wrap, vehicleHalfWidthMeters);
     }
 
-    public static string? FindCsv(string id)
+    public static string? FindCsv(string id) => FindFile($"{id}.line.csv");
+
+    public static string? FindFile(string file)
     {
-        string file = $"{id}.line.csv";
         foreach (string candidate in CandidatePaths(file))
         {
             if (File.Exists(candidate))

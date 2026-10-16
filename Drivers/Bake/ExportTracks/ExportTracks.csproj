@@ -9,5 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../../Core/StintegyEVO.Core.csproj" />
+    <ProjectReference Include="../../StintegyEVO.Drivers.csproj" />
   </ItemGroup>
 </Project>

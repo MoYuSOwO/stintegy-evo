@@ -7,75 +7,160 @@ namespace StintegyEVO.GodotApp.LowPoly;
 
 public partial class RaceHud3D : CanvasLayer
 {
-    private readonly Label _clock = new(), _driver = new(), _speed = new(), _strategy = new(), _stats = new();
+    private readonly Label _clock = new(), _driver = new(), _speed = new(), _strategy = new(), _stats = new(), _laps = new();
     private readonly Button[] _cameras = new Button[3];
     private readonly Button[] _rows = new Button[8];
     private readonly int[] _rowCars = new int[8];
+    private readonly float[] _lastLapByCar = new float[8];
     private readonly CircuitMap _map = new();
+    private readonly TelemetryStrip _strip = new();
     private readonly CarDashboard _dashboard = new();
     private Button _pause = null!;
     private RaceView3D _race = null!;
+    private int _lapCar = -1;
+    private int _completedLap;
+    private float _lapStartedAt;
+    private float _lastLap;
+    private float _bestLap;
+    private bool _timing;
     private static readonly Color Paper = Color.FromHtml("#eeeadef5"), Ink = Color.FromHtml("#25312f"), Muted = Color.FromHtml("#647269");
+
     public void Initialize(RaceView3D race)
     {
-        _race = race; Layer = 50;
+        _race = race;
+        Layer = 50;
         var root = new Control { Name = "Interface", MouseFilter = Control.MouseFilterEnum.Ignore };
-        AddChild(root); root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        AddChild(root);
+        root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         var font = new SystemFont { FontNames = ["Avenir Next", "DejaVu Sans"], FontWeight = 500 };
         root.Theme = new Theme { DefaultFont = font, DefaultFontSize = 14 };
+
         var header = Panel(root, Control.LayoutPreset.TopWide, new Vector2(20, 18), new Vector2(-20, 78));
-        var title = Label(header, "STINTEGY", 21, new(18, 9)); title.AddThemeConstantOverride("outline_size", 0);
+        var title = Label(header, "STINTEGY", 21, new(18, 9));
+        title.AddThemeConstantOverride("outline_size", 0);
         Label(header, $"{string.Join(' ', race.CircuitName.ToUpperInvariant().ToCharArray())}   /   SIMULATION VIEW", 10, new(19, 37), Muted);
-        _clock.Position = new(358, 19); _clock.AddThemeFontSizeOverride("font_size", 17); _clock.AddThemeColorOverride("font_color", Ink); header.AddChild(_clock);
+        _clock.Position = new(358, 19);
+        _clock.AddThemeFontSizeOverride("font_size", 17);
+        _clock.AddThemeColorOverride("font_color", Ink);
+        header.AddChild(_clock);
         var controls = new HBoxContainer { Position = new(-529, 12), Size = new(510, 36), AnchorLeft = 1, AnchorRight = 1 };
-        controls.AddThemeConstantOverride("separation", 5); header.AddChild(controls);
+        controls.AddThemeConstantOverride("separation", 5);
+        header.AddChild(controls);
         string[] names = ["1  CHASE", "2  SIDE", "3  OVERVIEW"];
         for (int i = 0; i < 3; i++)
         {
-            int mode = i + 1; var b = Button(names[i]); b.CustomMinimumSize = new(116, 36); b.Pressed += () => race.SetCameraMode(mode); controls.AddChild(b); _cameras[i] = b;
+            int mode = i + 1;
+            var b = Button(names[i]);
+            b.CustomMinimumSize = new(116, 36);
+            b.Pressed += () => race.SetCameraMode(mode);
+            controls.AddChild(b);
+            _cameras[i] = b;
         }
-        _pause = Button("Ⅱ PAUSE"); _pause.CustomMinimumSize = new(104, 36); _pause.Pressed += race.TogglePause; controls.AddChild(_pause);
+        _pause = Button("Ⅱ PAUSE");
+        _pause.CustomMinimumSize = new(104, 36);
+        _pause.Pressed += race.TogglePause;
+        controls.AddChild(_pause);
+
         var order = Panel(root, Control.LayoutPreset.TopLeft, new(20, 100), new(239, 100 + 74 + Math.Min(_rows.Length, race.Simulation.Cars.Count) * 28));
         Label(order, "RUNNING ORDER", 11, new(15, 12), Muted);
-        Label(order, "POS     CAR                      LAP", 10, new(15, 37), Muted);
+        Label(order, "POS     CAR              LAST", 10, new(15, 37), Muted);
         for (int i = 0; i < _rows.Length; i++)
         {
-            int row = i; var b = Button(""); b.Position = new(8, 59 + i * 28); b.Size = new(203, 27); b.Alignment = HorizontalAlignment.Left;
-            b.AddThemeFontSizeOverride("font_size", 12); b.Pressed += () => race.SelectCar(_rowCars[row]); order.AddChild(b); _rows[i] = b;
+            int row = i;
+            var b = Button("");
+            b.Position = new(8, 59 + i * 28);
+            b.Size = new(223, 27);
+            b.Alignment = HorizontalAlignment.Left;
+            b.AddThemeFontSizeOverride("font_size", 12);
+            b.Pressed += () => race.SelectCar(_rowCars[row]);
+            order.AddChild(b);
+            _rows[i] = b;
         }
-        var bottom = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -141), new(527, -48));
-        _driver.Position = new(17, 12); _driver.AddThemeFontSizeOverride("font_size", 13); _driver.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_driver);
-        _speed.Position = new(16, 32); _speed.AddThemeFontSizeOverride("font_size", 36); _speed.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_speed);
-        // Below the title line, which runs the width of the panel: beside it, the two overlapped.
-        _strategy.Position = new(200, 36); _strategy.AddThemeFontSizeOverride("font_size", 12); _strategy.AddThemeColorOverride("font_color", Ink); bottom.AddChild(_strategy);
+
+        var telemetry = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -332), new(400, -168));
+        Label(telemetry, "INPUT     /     8 S WINDOW", 10, new(14, 8), Muted);
+        _strip.Position = new(10, 24);
+        _strip.Size = new(376, 132);
+        telemetry.AddChild(_strip);
+
+        var bottom = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -160), new(400, -48));
+        _driver.Position = new(16, 8);
+        _driver.AddThemeFontSizeOverride("font_size", 12);
+        _driver.AddThemeColorOverride("font_color", Ink);
+        bottom.AddChild(_driver);
+        _speed.Position = new(16, 28);
+        _speed.AddThemeFontSizeOverride("font_size", 28);
+        _speed.AddThemeColorOverride("font_color", Ink);
+        bottom.AddChild(_speed);
+        _laps.Position = new(16, 62);
+        _laps.AddThemeFontSizeOverride("font_size", 11);
+        _laps.AddThemeColorOverride("font_color", Ink);
+        bottom.AddChild(_laps);
+        _strategy.Position = new(210, 28);
+        _strategy.AddThemeFontSizeOverride("font_size", 11);
+        _strategy.AddThemeColorOverride("font_color", Ink);
+        bottom.AddChild(_strategy);
+
         var mapPanel = Panel(root, Control.LayoutPreset.BottomRight, new(-237, -231), new(-20, -48));
         Label(mapPanel, $"CIRCUIT     /     {race.Surface.Track.LengthMeters / 1000f:0.000} KM", 10, new(14, 10), Muted);
-        _map.Position = new(10, 29); _map.Size = new(195, 144); mapPanel.AddChild(_map); _map.Initialize(race.Surface, race.Simulation.Cars);
+        _map.Position = new(10, 29);
+        _map.Size = new(195, 144);
+        mapPanel.AddChild(_map);
+        _map.Initialize(race.Surface, race.Simulation.Cars);
+
         var footer = Label(root, "← →  CAR     SCROLL  ZOOM     RIGHT DRAG  ORBIT     SPACE  PAUSE     H  HIDE UI", 11, new(24, -28), Ink);
-        footer.AnchorTop = 1; footer.AnchorBottom = 1;
-        _stats.AnchorLeft = 1; _stats.AnchorRight = 1; _stats.AnchorTop = 1; _stats.AnchorBottom = 1; _stats.Position = new(-360, -28); _stats.Size = new(336, 20);
-        _stats.HorizontalAlignment = HorizontalAlignment.Right; _stats.AddThemeFontSizeOverride("font_size", 11); _stats.AddThemeColorOverride("font_color", Ink); root.AddChild(_stats);
+        footer.AnchorTop = 1;
+        footer.AnchorBottom = 1;
+        _stats.AnchorLeft = 1;
+        _stats.AnchorRight = 1;
+        _stats.AnchorTop = 1;
+        _stats.AnchorBottom = 1;
+        _stats.Position = new(-360, -28);
+        _stats.Size = new(336, 20);
+        _stats.HorizontalAlignment = HorizontalAlignment.Right;
+        _stats.AddThemeFontSizeOverride("font_size", 11);
+        _stats.AddThemeColorOverride("font_color", Ink);
+        root.AddChild(_stats);
+        SetProcess(true);
     }
+
+    public override void _Process(double delta)
+    {
+        if (_race == null || !_race.IsInitialized)
+            return;
+        var sim = _race.Simulation;
+        var car = sim.Cars[_race.SelectedCarIndex];
+        _strip.Push(sim.RaceTimeSeconds, car);
+        UpdateLaps(car, sim.RaceTimeSeconds);
+    }
+
     public void Refresh(double coreMs)
     {
-        var sim = _race.Simulation; var car = sim.Cars[_race.SelectedCarIndex];
+        var sim = _race.Simulation;
+        var car = sim.Cars[_race.SelectedCarIndex];
         var elapsed = TimeSpan.FromSeconds(sim.RaceTimeSeconds);
         _clock.Text = $"{elapsed.Minutes:00}:{elapsed.Seconds:00}  /  {sim.Cars.Count} {(sim.Cars.Count == 1 ? "CAR" : "CARS")}";
         string controller = car.Driver == null ? "NO CONTROLLER" : "CONTROLLER ATTACHED";
-        _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    {controller}    /    LAP {car.Progress.Lap + 1:00}";
+        _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    {controller}";
         _speed.Text = $"{car.State.Speed * 3.6f:000} km/h";
         float wear = (car.State.FrontLeft.Wear + car.State.FrontRight.Wear + car.State.RearLeft.Wear + car.State.RearRight.Wear) / 4;
         _dashboard.Refresh(car.CarConfig, car.State, car.Strategy);
-        var tireMode = _dashboard.Modes[0]; var powerMode = _dashboard.Modes[1];
+        var tireMode = _dashboard.Modes[0];
+        var powerMode = _dashboard.Modes[1];
         string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
-        _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung,-10}  Q / E\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung,-10}  A / D\n{stores}     TYRE LIFE  {(1 - wear) * 100:0}%";
+        _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung}\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung}\n{stores}\nTYRE LIFE  {(1 - wear) * 100:0}%";
+        UpdateLaps(car, sim.RaceTimeSeconds);
+        _laps.Text = $"LAP  {car.Progress.Lap + 1:00}    THIS  {LapString(CurrentLap(sim.RaceTimeSeconds))}\nLAST {LapString(_lastLap)}     BEST {LapString(_bestLap)}";
         var ordered = sim.Cars.Select((c, i) => (Car: c, Index: i)).OrderByDescending(x => x.Car.Progress.RaceDistanceMeters).ToArray();
         for (int i = 0; i < _rows.Length; i++)
         {
             _rows[i].Visible = i < ordered.Length;
-            if (i >= ordered.Length) continue;
-            _rowCars[i] = ordered[i].Index; _rows[i].Text = $"{i + 1:00}      CAR {ordered[i].Index + 1:00}                 {ordered[i].Car.Progress.Lap + 1:00}";
-            _rows[i].AddThemeColorOverride("font_color", ordered[i].Index == _race.SelectedCarIndex ? LowPolyMesh.Vermilion : Ink);
+            if (i >= ordered.Length)
+                continue;
+            int index = ordered[i].Index;
+            _rowCars[i] = index;
+            _rows[i].Text = $"{i + 1:00}      CAR {index + 1:00}        {LapString(_lastLapByCar[index])}";
+            _rows[i].AddThemeColorOverride("font_color", index == _race.SelectedCarIndex ? LowPolyMesh.Vermilion : Ink);
         }
         RefreshControls();
         _stats.Text = coreMs > 0
@@ -83,29 +168,86 @@ public partial class RaceHud3D : CanvasLayer
             : $"{Engine.GetFramesPerSecond():0} FPS  /  {(_race.IsPreview ? "PREVIEW — NO CONTROLLER" : "STARTING")}";
         _map.Refresh(_race.SelectedCarIndex);
     }
+
     public void RefreshControls()
     {
-        if (_pause == null) return;
-        for (int i = 0; i < 3; i++) _cameras[i].AddThemeColorOverride("font_color", _race.CameraMode == i + 1 ? LowPolyMesh.Vermilion : Ink);
+        if (_pause == null)
+            return;
+        for (int i = 0; i < 3; i++)
+            _cameras[i].AddThemeColorOverride("font_color", _race.CameraMode == i + 1 ? LowPolyMesh.Vermilion : Ink);
         _pause.Text = _race.IsPaused ? "▶ RUN" : "Ⅱ PAUSE";
     }
+
+    private float CurrentLap(float raceTime) => _timing ? MathF.Max(0f, raceTime - _lapStartedAt) : 0f;
+
+    private void UpdateLaps(StintegyEVO.Core.Racing.RaceCar car, float raceTime)
+    {
+        int selected = _race.SelectedCarIndex;
+        if (selected != _lapCar)
+        {
+            _lapCar = selected;
+            _completedLap = car.Progress.Lap;
+            _timing = false;
+            _lastLap = _lastLapByCar[selected];
+        }
+        if (!_timing && car.Progress.RaceDistanceMeters >= 0f)
+        {
+            _timing = true;
+            _lapStartedAt = raceTime;
+            _completedLap = car.Progress.Lap;
+        }
+        if (_timing && car.Progress.Lap > _completedLap)
+        {
+            _lastLap = raceTime - _lapStartedAt;
+            if (_lastLap > 1f && (_bestLap <= 0f || _lastLap < _bestLap))
+                _bestLap = _lastLap;
+            if ((uint)selected < (uint)_lastLapByCar.Length)
+                _lastLapByCar[selected] = _lastLap;
+            _lapStartedAt = raceTime;
+            _completedLap = car.Progress.Lap;
+        }
+    }
+
+    private static string LapString(float seconds)
+    {
+        if (seconds <= 0f || !float.IsFinite(seconds))
+            return "—";
+        int minutes = (int)(seconds / 60f);
+        return $"{minutes}:{seconds - minutes * 60f:00.000}";
+    }
+
     private static Panel Panel(Control parent, Control.LayoutPreset preset, Vector2 start, Vector2 end)
     {
-        var p = new Panel(); parent.AddChild(p); p.SetAnchorsAndOffsetsPreset(preset);
-        p.OffsetLeft = start.X; p.OffsetTop = start.Y; p.OffsetRight = end.X; p.OffsetBottom = end.Y;
-        p.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = Paper, BorderColor = Color.FromHtml("#d2d2c5"), BorderWidthBottom = 1 }); return p;
+        var p = new Panel();
+        parent.AddChild(p);
+        p.SetAnchorsAndOffsetsPreset(preset);
+        p.OffsetLeft = start.X;
+        p.OffsetTop = start.Y;
+        p.OffsetRight = end.X;
+        p.OffsetBottom = end.Y;
+        p.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = Paper, BorderColor = Color.FromHtml("#d2d2c5"), BorderWidthBottom = 1 });
+        return p;
     }
+
     private static Label Label(Control parent, string text, int size, Vector2 position, Color? color = null)
     {
         var label = new Label { Text = text, Position = position, MouseFilter = Control.MouseFilterEnum.Ignore };
-        label.AddThemeFontSizeOverride("font_size", size); label.AddThemeColorOverride("font_color", color ?? Ink); parent.AddChild(label); return label;
+        label.AddThemeFontSizeOverride("font_size", size);
+        label.AddThemeColorOverride("font_color", color ?? Ink);
+        parent.AddChild(label);
+        return label;
     }
+
     private static Button Button(string text)
     {
         var b = new Button { Text = text, FocusMode = Control.FocusModeEnum.None, MouseDefaultCursorShape = Control.CursorShape.PointingHand };
         b.AddThemeStyleboxOverride("normal", new StyleBoxFlat { BgColor = new Color(0, 0, 0, 0) });
         b.AddThemeStyleboxOverride("hover", new StyleBoxFlat { BgColor = Color.FromHtml("#d9dccd") });
         b.AddThemeStyleboxOverride("pressed", new StyleBoxFlat { BgColor = Color.FromHtml("#c8cdbd") });
-        b.AddThemeColorOverride("font_color", Ink); b.AddThemeColorOverride("font_hover_color", Ink); b.AddThemeColorOverride("font_pressed_color", Ink); b.AddThemeFontSizeOverride("font_size", 12); return b;
+        b.AddThemeColorOverride("font_color", Ink);
+        b.AddThemeColorOverride("font_hover_color", Ink);
+        b.AddThemeColorOverride("font_pressed_color", Ink);
+        b.AddThemeFontSizeOverride("font_size", 12);
+        return b;
     }
 }
