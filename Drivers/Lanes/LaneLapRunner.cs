@@ -79,7 +79,8 @@ public static class LaneLapRunner
         CarStrategy? strategy = null,
         float roadGrip = 1f,
         float startingWear = 0f,
-        float startingCharge = 0.8f
+        float startingCharge = 0.8f,
+        CarConfig? carConfig = null
     )
     {
         LaneSet lanes = file.LanesFor(track);
@@ -90,7 +91,7 @@ public static class LaneLapRunner
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
         float heading = MathF.Atan2(next.Y - here.Y, next.X - here.X);
 
-        var carConfig = new CarConfig();
+        carConfig ??= new CarConfig();
         var tires = tireConfig ?? new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
         var driver = new LaneDriver(file, carConfig, tires)
         {
