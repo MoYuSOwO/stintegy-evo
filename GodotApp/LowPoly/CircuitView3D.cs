@@ -13,7 +13,7 @@ public partial class CircuitView3D : Node3D
     /// sky and sun the race view lights it by — from its scenery plan's
     /// environment block, or the defaults where there is none.
     /// </summary>
-    public Scenery.SceneryEnvironment Look { get; private set; } = new();
+    public Scenery.CircuitLook Look { get; private set; } = Scenery.CircuitLook.From(new Scenery.SceneryEnvironment());
 
     /// <summary>The plan this circuit was built with, if it had one.</summary>
     public Scenery.SceneryPlan? Plan { get; private set; }
@@ -32,7 +32,7 @@ public partial class CircuitView3D : Node3D
         Surface = new(track);
         // Read first: the plan says what colour the ground is before any of it is built.
         Plan = ReadPlan(sceneryPlanPath);
-        Look = Plan?.Environment ?? new Scenery.SceneryEnvironment();
+        Look = Scenery.CircuitLook.From(Plan?.Environment ?? new Scenery.SceneryEnvironment());
         BuildTerrain();
         var landscape = new Landscape3D { Name = "Landscape" };
         AddChild(landscape);

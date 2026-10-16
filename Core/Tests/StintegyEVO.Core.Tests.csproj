@@ -16,6 +16,8 @@
          eye instead. -->
     <Compile Include="../../GodotApp/Scenery/SceneryPlan.cs" />
     <Compile Include="../../GodotApp/Scenery/SceneryCatalogue.cs" />
+    <Compile Include="../../GodotApp/Scenery/SceneryEnvironment.cs" />
+    <Compile Include="../../GodotApp/Scenery/SceneryFurniture.cs" />
   </ItemGroup>
 
   <ItemGroup>

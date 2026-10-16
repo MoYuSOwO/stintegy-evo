@@ -24,7 +24,7 @@ public partial class Landscape3D : Node3D
     private float _cloudSpan;
     private Vector3 _center;
 
-    public void Initialize(TrackSurfaceGeometry surface, Scenery.SceneryEnvironment look)
+    public void Initialize(TrackSurfaceGeometry surface, Scenery.CircuitLook look)
     {
         Plain = look.Plain;
         NearHill = look.NearHills;
