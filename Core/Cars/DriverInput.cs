@@ -5,7 +5,10 @@ public readonly record struct DriverInput(
     float DesiredAccel,
     // Signed fraction of total braking demand. Positive values move braking
     // toward the front axle; zero retains the dynamically optimal split.
-    float FrontBrakeBiasOffset = 0f
+    float FrontBrakeBiasOffset = 0f,
+    // Signed fraction of total drive moved toward the front axle, off the
+    // split the car makes by grip; zero keeps that split.
+    float FrontDriveBiasOffset = 0f
 );
 
 /// <summary>

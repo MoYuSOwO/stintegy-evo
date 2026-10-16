@@ -16,7 +16,7 @@ namespace StintegyEVO.Core.Tests;
 public sealed class PhysicsBoundaryTests
 {
     [Fact]
-    public void DriverInputKeepsOnlyCurvatureAccelerationAndBrakeBias()
+    public void DriverInputKeepsOnlyCurvatureAccelerationAndTheTwoBiases()
     {
         string[] properties = typeof(DriverInput)
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
@@ -25,7 +25,7 @@ public sealed class PhysicsBoundaryTests
             .ToArray();
 
         Assert.Equal(
-            new[] { "DesiredAccel", "DesiredCurvature", "FrontBrakeBiasOffset" },
+            new[] { "DesiredAccel", "DesiredCurvature", "FrontBrakeBiasOffset", "FrontDriveBiasOffset" },
             properties
         );
     }

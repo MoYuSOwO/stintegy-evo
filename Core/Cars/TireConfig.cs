@@ -38,8 +38,8 @@ public sealed class TireConfig
     // term stands in for the micro-slip caused by working a tyre in aerodynamically
     // unsteady air, and vanishes unless the tyre is doing lateral work.
     public const float WakeCorneringHeatRate = 4f;
-    public const float RollingSurfaceHeatRate = 1f;
-    public const float RollingCoreHeatRate = 0.35f;
+    public const float RollingSurfaceHeatRate = 0.7f;
+    public const float RollingCoreHeatRate = 0.3f;
     // A small share of the work done by the brakes reaches the tyre through
     // the disc, wheel and enclosed air. It enters the slow carcass mass, not
     // the tread, and follows the axle that actually supplied the braking.
@@ -197,14 +197,14 @@ public sealed class TireConfig
     // threshold: progressively hotter or colder tread simply moves farther
     // along the same curve.
     public float ColdGripLossPerCSquared { get; init; } = 0.00060f;
-    public float HotGripLossPerCSquared { get; init; } = 0.00070f;
+    public float HotGripLossPerCSquared { get; init; } = 0.00025f;
     public float CoreOverheatTempC { get; init; } = 115f;
     public float CoreOverheatGripLossPerC { get; init; } = 0f;
     public float WearLinearGripLoss { get; init; } = 0.10f;
     public float WearCliffStart { get; init; } = 0.70f;
     public float WearCliffGripLoss { get; init; } = 0.15f;
 
-    public float LateralHeatRate { get; init; } = 1.10f;
+    public float LateralHeatRate { get; init; } = 4.0f;
     public float LongitudinalHeatRate { get; init; } = 0.55f;
     /// <summary>
     /// Extra tread heat at the edge of the friction circle.
@@ -221,7 +221,14 @@ public sealed class TireConfig
     // keeps Normal's established tyre life while letting harder use spend the
     // tyre disproportionately faster.
     public float LateralWearRate { get; init; } = 0.00048f;
-    public float LongitudinalWearRate { get; init; } = 0.000127f;
+    public float LongitudinalWearRate { get; init; } = 0.0000546f;
+
+    /// <summary>
+    /// Lateral wear from slip work - force share times sliding speed - in
+    /// place of the square of the force share. Off reproduces the old bill.
+    /// </summary>
+    public bool WearFromSlipWork { get; init; } = true;
+    public float SlipWorkWearRate { get; init; } = 0.0002064f;
     /// <summary>
     /// Abrasion added as friction-circle use approaches one.
     ///
@@ -230,8 +237,21 @@ public sealed class TireConfig
     /// the directional work terms, while the last few percent of available
     /// grip carry increasingly more partial-slip work.
     /// </summary>
-    public float NearLimitWearRate { get; init; } = 0.00012f;
-    public float OverLimitWearRate { get; init; } = 0.00110f;
+    public float NearLimitWearRate { get; init; } = 0.0000516f;
+    public float OverLimitWearRate { get; init; } = 0.0004730f;
     public float ColdWearPerCSquared { get; init; } = 0.0015f;
     public float HotWearPerCSquared { get; init; } = 0.0035f;
+
+    /// <summary>Tread temperature above which wear starts to climb.</summary>
+    public float WearReferenceTempC { get; init; } = 100f;
+
+    /// <summary>Degrees of tread above the reference for wear to grow by a factor of e.</summary>
+    public float WearTempScaleC { get; init; } = 10f;
+
+    /// <summary>
+    /// The most a hot tread can multiply wear by. Past it the rubber is
+    /// blistering whatever the temperature reads, and an uncapped curve
+    /// would bill a spin for a set of tyres in a second.
+    /// </summary>
+    public float MaximumHotWearFactor { get; init; } = 6f;
 }
