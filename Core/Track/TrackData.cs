@@ -26,6 +26,8 @@ namespace StintegyEVO.Core.Track;
 /// </remarks>
 public struct TrackGridConfig
 {
+    public TrackGridConfig() { }
+
     /// <summary>Which centreline node the start/finish line crosses.</summary>
     public int StartingLineIdx;
 
@@ -42,18 +44,21 @@ public struct TrackGridConfig
     /// </summary>
     public float GridOffset;
 
-    public const float GridLength = 4.5f;
-    public const float GridWidth = 2.4f;
+    /// <summary>A painted box, along the road.</summary>
+    public float BoxLengthMeters = 4.5f;
+
+    /// <summary>A painted box, across the road.</summary>
+    public float BoxWidthMeters = 2.4f;
 
     /// <summary>
     /// Box to box along the road. Consecutive boxes alternate sides, so the
-    /// gap between two cars in the same column is sixteen metres, which is
-    /// the Grand Prix figure.
+    /// gap between two cars in the same column is twice this; eight gives
+    /// sixteen metres, the Grand Prix figure.
     /// </summary>
-    public const int GridStepMeters = 8;
+    public int StepMeters = 8;
 
     /// <summary>How far behind the line pole sits.</summary>
-    public const int PoleSetbackMeters = 10;
+    public int PoleSetbackMeters = 10;
 }
 
 public readonly struct Grid
@@ -198,8 +203,8 @@ public sealed class StartingGridAccessor
         var config = _data.GridConfig;
         float s = (
             config.StartingLineIdx
-            - TrackGridConfig.PoleSetbackMeters
-            - (gridPos - 1) * TrackGridConfig.GridStepMeters
+            - config.PoleSetbackMeters
+            - (gridPos - 1) * config.StepMeters
         ) * TrackData.StepLength;
         return _data.WrapS(s);
     }
@@ -243,7 +248,7 @@ public class TrackData
     public float LengthMeters => Length * StepLength;
     public float StartingLineS => WrapS(GridConfig.StartingLineIdx * StepLength);
     public int StartingGridCount => Math.Max(0, GridConfig.GridCount);
-    internal readonly TrackGridConfig GridConfig;
+    public readonly TrackGridConfig GridConfig;
     private TrackNode this[int index]
     {
         get

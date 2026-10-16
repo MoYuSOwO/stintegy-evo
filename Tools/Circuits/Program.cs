@@ -1,4 +1,5 @@
 using System.Numerics;
+using StintegyEVO.Circuits;
 using StintegyEVO.Core.Track;
 
 // Writes Circuits/<id>/ for every circuit the project ships: circuit.json and
@@ -10,6 +11,7 @@ using StintegyEVO.Core.Track;
 //   dotnet run --project Tools/Circuits -- check  [root]
 
 string repo = FindRepository();
+Sources.Folder = Path.Combine(repo, "Tools", "Circuits", "Sources");
 string command = args.Length > 0 ? args[0] : "export";
 string outRoot = args.Length > 1 ? args[1] : Path.Combine(repo, CircuitLibrary.FolderName);
 
@@ -73,7 +75,16 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
         Name = spec.Name,
         LengthMeters = count,
         StartLineMeters = grid.StartingLineIdx,
-        Grid = new CircuitGrid { Count = grid.GridCount, FirstLeft = grid.IsFirstGridLeft, OffsetMeters = grid.GridOffset },
+        Grid = new CircuitGrid
+        {
+            Count = grid.GridCount,
+            FirstLeft = grid.IsFirstGridLeft,
+            OffsetMeters = grid.GridOffset,
+            BoxLengthMeters = grid.BoxLengthMeters,
+            BoxWidthMeters = grid.BoxWidthMeters,
+            StepMeters = grid.StepMeters,
+            PoleSetbackMeters = grid.PoleSetbackMeters
+        },
         Source = spec.Source
     };
     File.WriteAllText(Path.Combine(folder, CircuitManifest.FileName), manifest.ToJson() + "\n");
@@ -181,9 +192,9 @@ sealed record CircuitSpec(string Id, string Name, Func<TrackData> Build, Circuit
 static class CircuitSpecs
 {
     private const string Tum = "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4";
-    private const string TumLicense = "Core/Track/Data/LICENSE.LGPL-3.0";
+    private const string TumLicense = "Tools/Circuits/Sources/LICENSE.LGPL-3.0";
     private const string Bacinger = "bacinger/f1-circuits";
-    private const string BacingerLicense = "Core/Track/Data/LICENSE.bacinger-MIT";
+    private const string BacingerLicense = "Tools/Circuits/Sources/LICENSE.bacinger-MIT";
     private const string Authored = "Elevation is authored in the style of the venue, not surveyed.";
 
     private static CircuitSource FromTum(string notes) =>
@@ -197,39 +208,39 @@ static class CircuitSpecs
 
     public static readonly CircuitSpec[] All =
     [
-        new("silverstone", "Silverstone (Arena Grand Prix)", TrackFactory.SilverstoneStyleTestTrack,
+        new("silverstone", "Silverstone (Arena Grand Prix)", Layouts.SilverstoneStyleTestTrack,
             FromTum("TUM smoothed OpenStreetMap centreline with surveyed widths, scaled to the FIA 5,891 m. " + Authored), TumLicense),
-        new("shanghai", "Shanghai International Circuit", TrackFactory.ShanghaiStyleTestTrack,
+        new("shanghai", "Shanghai International Circuit", Layouts.ShanghaiStyleTestTrack,
             FromTum("TUM centreline and satellite widths, scaled from 5,445.25 m to the FIA 5,451 m. " + Authored), TumLicense),
-        new("sepang", "Sepang International Circuit", TrackFactory.SepangStyleTestTrack,
+        new("sepang", "Sepang International Circuit", Layouts.SepangStyleTestTrack,
             FromTum("TUM centreline scaled to 5,543 m; widths normalised to the operator's 16-22 m. " + Authored), TumLicense),
-        new("monaco", "Circuit de Monaco", TrackFactory.MonacoStyleTestTrack,
+        new("monaco", "Circuit de Monaco", Layouts.MonacoStyleTestTrack,
             FromBacinger("mc-1929 @ b8c7e17c", "Projected to local metres, rotated to start on Boulevard Albert 1er, 10.5 m wide, scaled to the FIA 3,337 m. " + Authored), BacingerLicense),
-        new("zandvoort", "Circuit Zandvoort", TrackFactory.ZandvoortStyleTestTrack,
+        new("zandvoort", "Circuit Zandvoort", Layouts.ZandvoortStyleTestTrack,
             FromBacinger("nl-1948", "Projected to local metres, 12 m wide, scaled to 4,259 m; Hugenholtz and Arie Luyendijk banked at 18 degrees. " + Authored), BacingerLicense),
-        new("baku", "Baku City Circuit", TrackFactory.BakuStyleTestTrack,
+        new("baku", "Baku City Circuit", Layouts.BakuStyleTestTrack,
             FromBacinger("az-2016", "Projected, rotated to start on a straight, scaled to 6,003 m; 13 m seafront, 12 m, 10 m old town, 7.6 m castle. " + Authored), BacingerLicense),
-        new("spa", "Circuit de Spa-Francorchamps", TrackFactory.SpaStyleTestTrack,
+        new("spa", "Circuit de Spa-Francorchamps", Layouts.SpaStyleTestTrack,
             FromBacinger("be-1925", "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. " + Authored), BacingerLicense),
-        new("monza", "Autodromo Nazionale Monza", TrackFactory.MonzaStyleTestTrack,
+        new("monza", "Autodromo Nazionale Monza", Layouts.MonzaStyleTestTrack,
             FromBacinger("it-1922", "Projected, 12 m wide, scaled to 5,793 m. " + Authored), BacingerLicense),
-        new("interlagos", "Autodromo Jose Carlos Pace", TrackFactory.InterlagosStyleTestTrack,
+        new("interlagos", "Autodromo Jose Carlos Pace", Layouts.InterlagosStyleTestTrack,
             FromBacinger("br-1940", "Projected, 12 m wide, scaled to 4,309 m. " + Authored), BacingerLicense),
-        new("singapore", "Marina Bay Street Circuit", TrackFactory.SingaporeStyleTestTrack,
+        new("singapore", "Marina Bay Street Circuit", Layouts.SingaporeStyleTestTrack,
             FromBacinger("sg-2008", "Projected, rotated to start on a straight, 11 m wide, scaled to 4,928 m. " + Authored), BacingerLicense),
-        new("portimao", "Autodromo Internacional do Algarve", TrackFactory.PortimaoStyleTestTrack,
+        new("portimao", "Autodromo Internacional do Algarve", Layouts.PortimaoStyleTestTrack,
             FromBacinger("pt-2008", "Projected, 14 m wide, scaled to 4,653 m. " + Authored), BacingerLicense),
-        new("simple", "Simple test layout", () => TrackFactory.SimpleTestTrack(),
+        new("simple", "Simple test layout", () => Layouts.SimpleTestTrack(),
             Project("Hairpin, esses, a 30 m climb and two banked corners, turning right.")),
-        new("simple-left", "Simple test layout, mirrored", () => TrackFactory.SimpleTestTrack(isLeft: true),
+        new("simple-left", "Simple test layout, mirrored", () => Layouts.SimpleTestTrack(isLeft: true),
             Project("The simple layout turning left.")),
-        new("banked-speedway", "Banked short track", TrackFactory.BankedSpeedwayTestTrack,
+        new("banked-speedway", "Banked short track", Layouts.BankedSpeedwayTestTrack,
             Project("Ninety-metre turns banked from about 18 degrees at the apron to 31 at the wall.")),
-        new("banked-sweeper", "Banked sweeper", TrackFactory.BankedSweeperTestTrack,
+        new("banked-sweeper", "Banked sweeper", Layouts.BankedSweeperTestTrack,
             Project("Corners from 60 to 400 m radius, banked up to 18 degrees with the radius.")),
-        new("flat-sweeper", "Flat sweeper", TrackFactory.FlatSweeperTestTrack,
+        new("flat-sweeper", "Flat sweeper", Layouts.FlatSweeperTestTrack,
             Project("The banked sweeper's layout with only drainage crossfall.")),
-        new("daytona", "Superspeedway (Daytona-style)", TrackFactory.DaytonaStyleTestTrack,
+        new("daytona", "Superspeedway (Daytona-style)", Layouts.DaytonaStyleTestTrack,
             Project("Two 1,050 m straights and two 305 m turns, 31 degrees in the turns and 3 on the straights.")),
     ];
 }

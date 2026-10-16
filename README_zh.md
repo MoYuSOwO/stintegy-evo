@@ -113,4 +113,4 @@ python3 Tools/verify_boundary.py --godot /path/to/godot-dotnet
 
 - **代码**采用 [GNU Affero 通用公共许可证 v3.0](LICENSE)。
 - **内容与素材**适用单独的[内容许可说明](CONTENT_LICENSE_zh.md)，涵盖项目素材、第三方材料和官方发行版。
-- `Core/Track/Data/` 下的**第三方赛道数据**保留原有的 LGPL-3.0 或 MIT 条款，详见 [`Core/Track/Data/README.md`](Core/Track/Data/README.md)。
+- `Tools/Circuits/Sources/` 及由它生成的 `Circuits/` 赛道文件夹中的**第三方赛道数据**保留原有的 LGPL-3.0 或 MIT 条款，详见 [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md)。

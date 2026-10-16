@@ -1,11 +1,11 @@
+using StintegyEVO.Core.Track;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 
-namespace StintegyEVO.Core.Track;
+namespace StintegyEVO.Circuits;
 
 internal readonly record struct TrackCenterlinePoint(
     Vector2 Center,
@@ -16,8 +16,11 @@ internal readonly record struct TrackCenterlinePoint(
     public float Width => RightWidth + LeftWidth;
 }
 
-internal static class TrackCenterlineData
+internal static class Sources
 {
+    /// <summary>Where the source centrelines are: Tools/Circuits/Sources.</summary>
+    public static string Folder { get; set; } = "Sources";
+
     private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
         SilverstonePoints = new(() => LoadEmbeddedCsv("Silverstone.csv"));
     private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
@@ -72,13 +75,8 @@ internal static class TrackCenterlineData
         int startingPointIndex = 0
     )
     {
-        Assembly assembly = typeof(TrackCenterlineData).Assembly;
-        string resourceName = $"StintegyEVO.Core.Track.Data.{fileName}";
-        using Stream stream = assembly.GetManifestResourceStream(resourceName)
-            ?? throw new InvalidOperationException(
-                $"Embedded track centerline '{resourceName}' was not found."
-            );
-        using StreamReader reader = new(stream);
+        string resourceName = Path.Combine(Folder, fileName);
+        using StreamReader reader = new(resourceName);
 
         List<TrackCenterlinePoint> points = [];
         while (reader.ReadLine() is { } line)

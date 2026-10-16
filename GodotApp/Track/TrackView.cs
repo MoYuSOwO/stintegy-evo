@@ -149,8 +149,8 @@ public partial class TrackView : Node2D
             Grid grid = track.Grids[gridPosition];
             TrackSample sample = track.Sample(grid.S);
             Vector2 center = grid.Position.ToGodot();
-            Vector2 halfWidth = sample.Normal.ToGodot() * (TrackGridConfig.GridWidth * 0.5f);
-            Vector2 halfLength = sample.Tangent.ToGodot() * (TrackGridConfig.GridLength * 0.5f);
+            Vector2 halfWidth = sample.Normal.ToGodot() * (track.GridConfig.BoxWidthMeters * 0.5f);
+            Vector2 halfLength = sample.Tangent.ToGodot() * (track.GridConfig.BoxLengthMeters * 0.5f);
             parent.AddChild(new Line2D
             {
                 Points =

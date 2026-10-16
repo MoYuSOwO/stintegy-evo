@@ -8,7 +8,11 @@
   "grid": {
     "count": 30,
     "firstLeft": true,
-    "offsetMeters": 4.25
+    "offsetMeters": 4.25,
+    "boxLengthMeters": 4.5,
+    "boxWidthMeters": 2.4,
+    "stepMeters": 8,
+    "poleSetbackMeters": 10
   },
   "source": {
     "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",

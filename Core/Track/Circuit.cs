@@ -19,6 +19,16 @@ public sealed record CircuitGrid
 
     /// <summary>Half the lateral stagger: pole this far one side of the centreline, second this far the other.</summary>
     public float OffsetMeters { get; init; }
+
+    /// <summary>A painted box, along and across the road.</summary>
+    public float BoxLengthMeters { get; init; } = 4.5f;
+    public float BoxWidthMeters { get; init; } = 2.4f;
+
+    /// <summary>Box to box along the road; boxes alternate sides.</summary>
+    public int StepMeters { get; init; } = 8;
+
+    /// <summary>How far behind the line pole sits.</summary>
+    public int PoleSetbackMeters { get; init; } = 10;
 }
 
 /// <summary>Where a circuit's data came from and on what terms.</summary>
@@ -67,7 +77,7 @@ public sealed record CircuitManifest
         JsonSerializer.Deserialize<CircuitManifest>(json, Json)
         ?? throw new InvalidDataException("circuit.json is empty.");
 
-    public string ToJson() => JsonSerializer.Serialize(this, Json);
+    public string ToJson() => JsonSerializer.Serialize(this, Json).Replace("\r\n", "\n");
 }
 
 /// <summary>
@@ -183,7 +193,11 @@ public static class CircuitTrackFile
             StartingLineIdx = manifest.StartLineMeters,
             GridCount = manifest.Grid.Count,
             IsFirstGridLeft = manifest.Grid.FirstLeft,
-            GridOffset = manifest.Grid.OffsetMeters
+            GridOffset = manifest.Grid.OffsetMeters,
+            BoxLengthMeters = manifest.Grid.BoxLengthMeters,
+            BoxWidthMeters = manifest.Grid.BoxWidthMeters,
+            StepMeters = manifest.Grid.StepMeters,
+            PoleSetbackMeters = manifest.Grid.PoleSetbackMeters
         });
     }
 
