@@ -1275,7 +1275,7 @@ public sealed class LaneModeProbe
         int lastLap = int.MinValue;
         var r = LaneLapRunner.Run(track, file, flyingLaps: 2, strategy: strategy, onStep: (car, d, t) =>
         {
-            d.CoastSeconds = coast;
+            d.CoastOverride = coast;
             if (car.Progress.Lap != lastLap)
             {
                 if (lastLap != int.MinValue)
@@ -1322,44 +1322,6 @@ public sealed class LaneModeProbe
         {
             var m = Measure(track, file, new StintegyEVO.Core.Cars.CarStrategy(tyre, StintegyEVO.Core.Cars.PowerOutputMode.Normal), 0f);
             _output.WriteLine($"tyre {tyre,-7}: lap {m.Lap.FlyingLapSeconds:F2}s wear {m.WearPerLap * 100f:F3}%/lap  spins {m.Lap.Spins}{(m.Lap.SpinS >= 0 ? $"@{m.Lap.SpinS:F0}" : "")} off {m.Lap.OffTrackSeconds:F2} worst {m.Lap.WorstErrorMeters:F2}");
-        }
-    }
-}
-
-public sealed class LaneEnergyRace
-{
-    private readonly ITestOutputHelper _output;
-    public LaneEnergyRace(ITestOutputHelper output) => _output = output;
-
-    [Fact]
-    public void ThirtyEightLapsPerRung()
-    {
-        if (!LaneProbes.Enabled) return;
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
-        const int laps = 38;
-        var physics = new StintegyEVO.Core.Cars.CarStrategy(StintegyEVO.Core.Cars.TireUsageMode.Normal, StintegyEVO.Core.Cars.PowerOutputMode.Attack);
-        foreach (var rung in Enum.GetValues<StintegyEVO.Core.Cars.PowerOutputMode>())
-        {
-            bool set = false;
-            float coastSum = 0f; int coastN = 0; float minCharge = 1f;
-            float? finish = LaneDriver.FinishChargeFor(rung);
-            // Wear is taken out of the grip here so the race is about energy
-            // alone; a 38-lap stint is past this tyre's cliff.
-            var tyres = new StintegyEVO.Core.Cars.TireConfig
-            {
-                StartingSurfaceTempC = 90f, StartingCoreTempC = 90f, WearLinearGripLoss = 0f, WearCliffGripLoss = 0f
-            };
-            var r = LaneLapRunner.Run(track, file, startSpeed: 30f, flyingLaps: laps - 1, strategy: physics, startingCharge: 1f, tireConfig: tyres,
-                onStep: (car, d, t) =>
-                {
-                    if (!set) { d.SetEnergyTarget(laps * track.LengthMeters, finish); set = true; }
-                    coastSum += d.CoastSeconds; coastN++;
-                    minCharge = MathF.Min(minCharge, car.State.Energy.Primary);
-                });
-            var times = r.LapTimes;
-            float total = r.OutLapSeconds + times.Sum();
-            _output.WriteLine($"{rung,-7} target {(finish.HasValue ? $"{finish.Value * 100f:F0}%" : "none"),-4} | laps {times.Count + 1} total {total:F1}s mean {times.Average():F2}s first {times.First():F2} last {times.Last():F2} | finish charge {minCharge * 100f:F1}% mean lift {coastSum / MathF.Max(coastN, 1):F2}s | spins {r.Spins}");
         }
     }
 }

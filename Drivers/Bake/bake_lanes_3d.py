@@ -50,6 +50,10 @@ SMOOTHING = {
     "max_edge_dev": 0.25, "edge_constraint": False,
 }
 
+# How much slower than the free lane a side lane may be and still be a
+# line rather than a solver that never left its starting guess.
+SIDE_LANE_MAX_SLOWDOWN = 1.10
+
 SOLVER = {
     # Side lanes, with a car's width taken off one edge, converge more slowly
     # than the free lane; 5000 was not always enough for them.
@@ -141,6 +145,7 @@ def bake(track_id: str, args: argparse.Namespace) -> None:
     ggr.track_path = smoothed_dir
     ggr.gg_diagram_path = os.path.join(args.out, "gg")
     rows = []
+    free_lap = None
     for lane in args.lanes:
         frame = base.copy()
         # The bake's n is positive to the left of travel. Our "left" lane is
@@ -158,10 +163,28 @@ def bake(track_id: str, args: argparse.Namespace) -> None:
             line = pd.read_csv(line_path, index_col=0)
             print(f"{track_id} {lane}: reusing {line_path}", flush=True)
         else:
-            line = solve(name, line_path, args)
+            try:
+                line = solve(name, line_path, args)
+            except RuntimeError as refused:
+                # One lane that will not bake is not a reason to lose the
+                # others: the file goes out without it, and the driver takes
+                # that lane from its own geometric bake.
+                print(f"{track_id} {lane}: refused, {refused}", flush=True)
+                continue
+        lap = float(line["laptime"].iloc[0])
+        if lane == "free":
+            free_lap = lap
+        elif free_lap is not None and lap > free_lap * SIDE_LANE_MAX_SLOWDOWN:
+            # A side lane gives up a strip of road, not a tenth of the lap.
+            # One this much slower never got away from its starting guess
+            # (Monaco's left lane sat at the guessed 30 m/s for the whole
+            # lap and was nearly feasible doing it), so it is refused, and
+            # its line is removed so that a --reuse run does not pick it up.
+            print(f"{track_id} {lane}: refused, {lap:.2f}s against the free lane's {free_lap:.2f}s", flush=True)
+            os.remove(line_path)
+            continue
         track = Track3D(path=os.path.join(smoothed_dir, name))
         xyz = track.sn2cartesian(line["s_opt"].to_numpy(), line["n_opt"].to_numpy())
-        lap = float(line["laptime"].iloc[0])
         for k in range(len(line)):
             rows.append((lane, line["s_opt"].iloc[k], xyz[k, 0], xyz[k, 1], xyz[k, 2],
                          line["n_opt"].iloc[k], line["v_opt"].iloc[k], lap))

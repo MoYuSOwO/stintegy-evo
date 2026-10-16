@@ -278,10 +278,23 @@ public partial class RaceView3D : Node3D
             while (_commands.TryDequeue(out var command))
             {
                 var car = Simulation.Cars[command.Car];
-                car.Strategy = new CarStrategy(
-                    (TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, TireLadder.Usage.RungCount),
-                    car.CarConfig.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power)
-                );
+                car.Strategy = car.Strategy with
+                {
+                    TireMode = (TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, TireLadder.Usage.RungCount),
+                    PowerRung = car.CarConfig.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power)
+                };
+            }
+            // Push-to-pass is held, not toggled: P down is the button down,
+            // for the car being watched. The car decides whether a push runs.
+            for (int i = 0; i < Simulation.Cars.Count; i++)
+            {
+                RaceCar car = Simulation.Cars[i];
+                bool held = i == SelectedCarIndex && Input.IsPhysicalKeyPressed(Key.P);
+                if (car.Strategy.PushToPass != held)
+                {
+                    car.Strategy = car.Strategy with { PushToPass = held };
+                    _hudDirty = true;
+                }
             }
 
             if (_hudDirty || _hudElapsed >= 0.2)

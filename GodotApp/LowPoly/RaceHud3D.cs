@@ -77,13 +77,13 @@ public partial class RaceHud3D : CanvasLayer
             _rows[i] = b;
         }
 
-        var telemetry = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -332), new(400, -168));
+        var telemetry = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -350), new(400, -186));
         Label(telemetry, "INPUT     /     8 S WINDOW", 10, new(14, 8), Muted);
         _strip.Position = new(10, 24);
         _strip.Size = new(376, 132);
         telemetry.AddChild(_strip);
 
-        var bottom = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -160), new(400, -48));
+        var bottom = Panel(root, Control.LayoutPreset.BottomLeft, new(20, -178), new(400, -48));
         _driver.Position = new(16, 8);
         _driver.AddThemeFontSizeOverride("font_size", 12);
         _driver.AddThemeColorOverride("font_color", Ink);
@@ -108,7 +108,7 @@ public partial class RaceHud3D : CanvasLayer
         mapPanel.AddChild(_map);
         _map.Initialize(race.Surface, race.Simulation.Cars);
 
-        var footer = Label(root, "← →  CAR     SCROLL  ZOOM     RIGHT DRAG  ORBIT     SPACE  PAUSE     H  HIDE UI", 11, new(24, -28), Ink);
+        var footer = Label(root, "← →  CAR     Q E  TYRE     A D  ENERGY     HOLD P  PUSH     SPACE  PAUSE     H  HIDE UI", 11, new(24, -28), Ink);
         footer.AnchorTop = 1;
         footer.AnchorBottom = 1;
         _stats.AnchorLeft = 1;
@@ -134,6 +134,17 @@ public partial class RaceHud3D : CanvasLayer
         UpdateLaps(car, sim.RaceTimeSeconds);
     }
 
+    private static string PushText(StintegyEVO.Core.Racing.RaceCar car)
+    {
+        PushToPassState push = car.State.PushToPass;
+        float left = push.RemainingSeconds(car.CarConfig.PushToPass);
+        string now = push.Locked ? "LOCKED"
+            : push.Active ? $"ON  {car.CarConfig.PushToPass.MaxActivationSeconds - push.ActivationSeconds:0}s"
+            : push.CooldownSeconds > 0f ? $"WAIT  {push.CooldownSeconds:0}s"
+            : left > 0f ? "READY" : "USED";
+        return $"PUSH  {now}   {left:0}s LEFT";
+    }
+
     public void Refresh(double coreMs)
     {
         var sim = _race.Simulation;
@@ -148,7 +159,7 @@ public partial class RaceHud3D : CanvasLayer
         var tireMode = _dashboard.Modes[0];
         var powerMode = _dashboard.Modes[1];
         string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
-        _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung}\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung}\n{stores}\nTYRE LIFE  {(1 - wear) * 100:0}%";
+        _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung}\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung}\n{stores}\nTYRE LIFE  {(1 - wear) * 100:0}%\n{PushText(car)}";
         UpdateLaps(car, sim.RaceTimeSeconds);
         _laps.Text = $"LAP  {car.Progress.Lap + 1:00}    THIS  {LapString(CurrentLap(sim.RaceTimeSeconds))}\nLAST {LapString(_lastLap)}     BEST {LapString(_bestLap)}";
         var ordered = sim.Cars.Select((c, i) => (Car: c, Index: i)).OrderByDescending(x => x.Car.Progress.RaceDistanceMeters).ToArray();
