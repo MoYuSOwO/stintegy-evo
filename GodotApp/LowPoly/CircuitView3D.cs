@@ -8,7 +8,22 @@ namespace StintegyEVO.GodotApp.LowPoly;
 public partial class CircuitView3D : Node3D
 {
     public TrackSurfaceGeometry Surface { get; private set; } = null!;
-    private static readonly Color Road = Color.FromHtml("#535b5d"), Runoff = Color.FromHtml("#b4ab8e"), Grass = Color.FromHtml("#89976c");
+    private static readonly Color Road = Color.FromHtml("#535b5d"), Grass = Color.FromHtml("#89976c");
+
+    // The buffer is grass to the physics (SurfaceGrip.Buffer), so it is
+    // drawn as grass: mown, in the alternating bands a groundsman leaves.
+    private static readonly Color MownLight = Color.FromHtml("#9cb071"), MownDark = Color.FromHtml("#8ca265");
+
+    // Barrier faces. Boards on the straights, a tyre wall's belt round the
+    // outside of a corner: the same barrier where it always was, painted
+    // for what it would be.
+    private static readonly Color[] Boards =
+    [
+        Color.FromHtml("#c84e38"), Color.FromHtml("#222c30"), Color.FromHtml("#eee8d6"),
+        Color.FromHtml("#2f7f86"), Color.FromHtml("#d9a441"), Color.FromHtml("#3b5aa0"),
+    ];
+    private static readonly Color TyreDark = Color.FromHtml("#2a3134"), TyreBelt = Color.FromHtml("#b8473a");
+    private const float CornerBarrierCurvature = 1f / 160f;
     public void Initialize(TrackData track) => Initialize(track, null);
 
     /// <summary>
@@ -21,6 +36,9 @@ public partial class CircuitView3D : Node3D
     {
         Surface = new(track);
         BuildTerrain();
+        var landscape = new Landscape3D { Name = "Landscape" };
+        AddChild(landscape);
+        landscape.Initialize(Surface);
         int segments = (int)MathF.Ceiling(track.LengthMeters / 3f);
         float step = track.LengthMeters / segments;
         // Chunked geometry keeps the long circuit cullable in the follow camera.
@@ -49,11 +67,11 @@ public partial class CircuitView3D : Node3D
                     float kerbA = ea + side * SurfaceGrip.KerbWidthMeters;
                     float kerbB = eb + side * SurfaceGrip.KerbWidthMeters;
                     if (wa - sa.HalfWidth > SurfaceGrip.KerbWidthMeters + 1e-3f)
-                        Strip(mesh, a, b, kerbA, side * wa, kerbB, side * wb, Runoff, 0f);
+                        Strip(mesh, a, b, kerbA, side * wa, kerbB, side * wb, (i / 2) % 2 == 0 ? MownLight : MownDark, 0f);
                     // The white line is the last of the racing surface, not
                     // the first of the run-off: painted inside its own edge.
                     Strip(mesh, a, b, ea - side * 0.12f, ea, eb - side * 0.12f, eb, LowPolyMesh.Ivory, 0.03f);
-                    Wall(mesh, a, b, side * wa, side * wb);
+                    Wall(mesh, a, b, side * wa, side * wb, BarrierFace(track, i, a, side, wa));
                     Verge(mesh, a, b, side * wa, side * wb, side);
                 }
             }
@@ -61,6 +79,9 @@ public partial class CircuitView3D : Node3D
         }
         BuildKerbs();
         BuildMarkings();
+        var dressing = new TrackDressing3D { Name = "Dressing" };
+        AddChild(dressing);
+        dressing.Initialize(this);
         BuildScenery(sceneryPlanPath);
     }
 
@@ -144,14 +165,38 @@ public partial class CircuitView3D : Node3D
     public Vector3 Point(float s, float d, float lift = 0f) => LowPolyMesh.V(Surface.Point(s, d)) + Vector3.Up * lift;
     private void Strip(LowPolyMesh mesh, float a, float b, float a0, float a1, float b0, float b1, Color color, float lift)
         => mesh.GroundQuad(Point(a, a0, lift), Point(a, a1, lift), Point(b, b1, lift), Point(b, b0, lift), color);
-    private void Wall(LowPolyMesh mesh, float a, float b, float da, float db)
+    private void Wall(LowPolyMesh mesh, float a, float b, float da, float db, Color face)
     {
         float side = MathF.Sign(da), thickness = 0.35f;
         Vector3 p = Point(a, da), q = Point(b, db), r = Point(b, db + side * thickness), s = Point(a, da + side * thickness);
         var up = Vector3.Up * 0.85f; var col = Color.FromHtml("#dedbc9");
         mesh.GroundQuad(p + up, q + up, r + up, s + up, col);
-        if (side > 0) { mesh.Quad(p, q, q + up, p + up, col); mesh.Quad(r, s, s + up, r + up, col); }
-        else { mesh.Quad(q, p, p + up, q + up, col); mesh.Quad(s, r, r + up, s + up, col); }
+        if (side > 0) { mesh.Quad(p, q, q + up, p + up, face); mesh.Quad(r, s, s + up, r + up, col); }
+        else { mesh.Quad(q, p, p + up, q + up, face); mesh.Quad(s, r, r + up, s + up, col); }
+    }
+
+    /// <summary>
+    /// What the road-facing side of this three-metre panel of barrier is
+    /// painted as: a tyre wall's belt on the outside of a corner tight
+    /// enough to need one, otherwise advertising boards in twelve-metre runs.
+    /// </summary>
+    private Color BarrierFace(TrackData track, int segment, float s, int side, float wallOffset)
+    {
+        if (MathF.Abs(track.Sample(s).Curvature) > CornerBarrierCurvature && IsOutside(s, side, wallOffset))
+            return segment % 2 == 0 ? TyreDark : TyreBelt;
+        return Boards[(segment / 4 + (side > 0 ? 3 : 0)) % Boards.Length];
+    }
+
+    /// <summary>
+    /// Whether this side is the outside of the bend here. Measured, not
+    /// derived from a sign convention: the outside edge of an arc is the
+    /// longer one.
+    /// </summary>
+    public bool IsOutside(float s, int side, float offset)
+    {
+        float own = (Point(s + 8f, side * offset) - Point(s - 8f, side * offset)).Length();
+        float other = (Point(s + 8f, -side * offset) - Point(s - 8f, -side * offset)).Length();
+        return own > other;
     }
     /// <summary>
     /// The ground from the barrier out to where the meadow takes over.

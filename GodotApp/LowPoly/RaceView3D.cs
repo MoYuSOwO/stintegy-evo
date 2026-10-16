@@ -383,26 +383,49 @@ public partial class RaceView3D : Node3D
 
     private void CreateLighting()
     {
+        // A pale afternoon: blue overhead fading to a hazy horizon, the far
+        // country folded into it by distance. The sky lights the ground a
+        // little as well as filling the background, so shade has some blue
+        // in it and the sunlit side some warmth against it.
+        var sky = new ProceduralSkyMaterial
+        {
+            SkyTopColor = Color.FromHtml("#6f9cc6"),
+            SkyHorizonColor = Color.FromHtml("#d8dfd8"),
+            SkyCurve = 0.11f,
+            GroundBottomColor = Color.FromHtml("#8d9d6e"),
+            GroundHorizonColor = Color.FromHtml("#d8dfd8"),
+            SunAngleMax = 28f,
+            SunCurve = 0.12f,
+        };
         AddChild(new WorldEnvironment
         {
             Environment = new Godot.Environment
             {
-                BackgroundMode = Godot.Environment.BGMode.Color,
-                BackgroundColor = Color.FromHtml("#c5ccba"),
-                AmbientLightSource = Godot.Environment.AmbientSource.Color,
+                BackgroundMode = Godot.Environment.BGMode.Sky,
+                Sky = new Sky { SkyMaterial = sky },
+                AmbientLightSource = Godot.Environment.AmbientSource.Sky,
+                AmbientLightSkyContribution = 0.55f,
                 AmbientLightColor = Color.FromHtml("#c7d5db"),
-                AmbientLightEnergy = 0.42f,
+                AmbientLightEnergy = 0.75f,
                 ReflectedLightSource = Godot.Environment.ReflectionSource.Disabled,
                 TonemapMode = Godot.Environment.ToneMapper.Filmic,
-                TonemapExposure = 0.85f,
+                TonemapExposure = 0.95f,
+                FogEnabled = true,
+                FogLightColor = Color.FromHtml("#d3dbd6"),
+                FogDensity = 0.00042f,
+                FogAerialPerspective = 0.35f,
+                FogSkyAffect = 0.12f,
+                AdjustmentEnabled = true,
+                AdjustmentSaturation = 1.14f,
+                AdjustmentContrast = 1.05f,
             }
         });
         AddChild(new DirectionalLight3D
         {
             Name = "AfternoonSun",
-            RotationDegrees = new Vector3(-48, -35, 0),
-            LightColor = Color.FromHtml("#fff0ce"),
-            LightEnergy = 0.9f,
+            RotationDegrees = new Vector3(-40, -35, 0),
+            LightColor = Color.FromHtml("#ffe9c2"),
+            LightEnergy = 1.15f,
             ShadowEnabled = true,
             DirectionalShadowMaxDistance = 700f,
             ShadowBias = 0.06f,
@@ -410,4 +433,5 @@ public partial class RaceView3D : Node3D
             DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel4Splits
         });
     }
+
 }
