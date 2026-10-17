@@ -88,14 +88,25 @@ public sealed class LaneTrackFile
     /// <summary>
     /// The factors for a lane at this grip, interpolated between the two
     /// levels either side and held at the ends, written into
-    /// <paramref name="corner"/> and <paramref name="brake"/>.
+    /// <paramref name="corner"/> and <paramref name="brake"/>, the whole lap.
     /// </summary>
-    public void FactorsAtGrip(LaneId lane, float grip, Span<float> corner, Span<float> brake)
+    public void FactorsAtGrip(LaneId lane, float grip, Span<float> corner, Span<float> brake) =>
+        FactorsAtGrip(lane, grip, 0, corner.Length, corner, brake);
+
+    /// <summary>
+    /// The same for <paramref name="count"/> stations from
+    /// <paramref name="start"/>, wrapped round the lap, written at their own
+    /// stations in lap-long <paramref name="corner"/> and <paramref name="brake"/>.
+    /// </summary>
+    public void FactorsAtGrip(LaneId lane, float grip, int start, int count, Span<float> corner, Span<float> brake)
     {
+        int n = corner.Length;
+        count = Math.Min(count, n);
+        start = ((start % n) + n) % n;
         (int lo, int hi, float t) = Bracket(grip);
         float[] cLo = _corner[lo][(int)lane], cHi = _corner[hi][(int)lane];
         float[] bLo = _brake[lo][(int)lane], bHi = _brake[hi][(int)lane];
-        for (int i = 0; i < corner.Length; i++)
+        for (int k = 0, i = start; k < count; k++, i = i + 1 == n ? 0 : i + 1)
         {
             corner[i] = cLo[i] + (cHi[i] - cLo[i]) * t;
             brake[i] = bLo[i] + (bHi[i] - bLo[i]) * t;
@@ -112,7 +123,7 @@ public sealed class LaneTrackFile
         for (int k = above; k < GripLevels.Length; k++)
         {
             float[] cCap = _corner[k][(int)lane], bCap = _brake[k][(int)lane];
-            for (int i = 0; i < corner.Length; i++)
+            for (int j = 0, i = start; j < count; j++, i = i + 1 == n ? 0 : i + 1)
             {
                 corner[i] = MathF.Min(corner[i], cCap[i]);
                 brake[i] = MathF.Min(brake[i], bCap[i]);
