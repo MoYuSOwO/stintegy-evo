@@ -73,6 +73,10 @@ public sealed class LowPolyMesh
     }
     public ArrayMesh Build()
     {
+        // Nothing to draw (a street circuit with nowhere to stand a board):
+        // an empty mesh, not a surface of no vertices, which Godot refuses.
+        if (_vertices.Count == 0)
+            return new ArrayMesh();
         var arrays = new Godot.Collections.Array(); arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = _vertices.ToArray();
         arrays[(int)Mesh.ArrayType.Normal] = _normals.ToArray();
