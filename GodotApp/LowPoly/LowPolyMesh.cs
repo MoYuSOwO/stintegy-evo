@@ -41,6 +41,12 @@ public sealed class LowPolyMesh
         if ((b - a).Cross(c - a).Y < 0f) Quad(d, c, b, a, color);
         else Quad(a, b, c, d, color);
     }
+    /// <summary>A triangle of ground, wound whichever way faces it up.</summary>
+    public void GroundTriangle(Vector3 a, Vector3 b, Vector3 c, Color color)
+    {
+        if ((b - a).Cross(c - a).Y < 0f) Triangle(a, c, b, color);
+        else Triangle(a, b, c, color);
+    }
     public void Box(Vector3 center, Vector3 size, Color color)
     {
         var h = size * 0.5f;

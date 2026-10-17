@@ -225,7 +225,7 @@ public sealed partial class SceneryLoader : Node3D
             (float s, float d) = surface.NearestStation(new System.Numerics.Vector2(p.X, p.Y));
             return MathF.Abs(d);
         }
-        Vector3 Ground(Vector2 p) => new(p.X, surface.MeadowHeight(p.X, p.Y) + 0.05f, p.Y);
+        Vector3 Ground(Vector2 p) => new(p.X, surface.GroundHeight(p.X, p.Y) + 0.05f, p.Y);
 
         for (int i = -n; i < n; i++)
         {
@@ -313,7 +313,7 @@ public sealed partial class SceneryLoader : Node3D
                         float wrapped = surface.Track.WrapS(s);
                         var sample = surface.Track.Sample(wrapped);
                         var p = sample.Center + sample.Normal * d;
-                        return new Vector3(p.X, surface.MeadowHeight(p.X, p.Y) + 0.06f, p.Y);
+                        return new Vector3(p.X, surface.GroundHeight(p.X, p.Y) + 0.06f, p.Y);
                     }
                     // Far out on the inside of a bend the band folds back over
                     // itself; a cell whose edge runs against the road there is
@@ -340,14 +340,14 @@ public sealed partial class SceneryLoader : Node3D
             // Placed in the world rather than the circuit's frame: generated
             // countryside, which does not care where the road goes.
             Basis turned = new Basis(Vector3.Up, prop.Yaw).Scaled(Vector3.One * MathF.Max(prop.Scale, 0.01f));
-            return new Transform3D(turned, new Vector3(planted.X, surface.MeadowHeight(planted.X, planted.Z) + prop.Height, planted.Z));
+            return new Transform3D(turned, new Vector3(planted.X, surface.GroundHeight(planted.X, planted.Z) + prop.Height, planted.Z));
         }
         float s = surface.Track.WrapS(prop.S);
         var sample = surface.Track.Sample(s);
         var position = sample.Center + sample.Normal * prop.D;
         float height = MathF.Abs(prop.D) <= sample.HalfWidth
             ? surface.Height(s, prop.D)
-            : surface.MeadowHeight(position.X, position.Y);
+            : surface.GroundHeight(position.X, position.Y);
         float facing = prop.AlignToTrack
             ? -MathF.Atan2(sample.Tangent.Y, sample.Tangent.X) + prop.Yaw
             : prop.Yaw;

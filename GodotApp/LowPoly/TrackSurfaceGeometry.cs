@@ -11,11 +11,9 @@ public sealed class TrackSurfaceGeometry
     private const float StationStepMeters = 5f;
 
     /// <summary>
-    /// How far out the circuit's own verge reaches. Inside this band the
-    /// meadow is flat ground a fixed drop below the road, so the verge's
-    /// rim and the meadow are the same surface where they meet; the
-    /// meadow's own rolling starts here rather than under the barrier,
-    /// which is where it used to rise through the verge and show sky.
+    /// How wide the verge is: the band beyond the barrier over which the
+    /// ground eases from the road's edge down to the meadow, and inside
+    /// which the meadow itself does not roll.
     /// </summary>
     public const float VergeMeters = 24f;
 
@@ -128,41 +126,47 @@ public sealed class TrackSurfaceGeometry
     }
 
     /// <summary>
-    /// How far out from the barrier at (s, d) the verge may reach, at most
-    /// <see cref="VergeMeters"/>: only as far as this stretch of road is
-    /// still the nearest one. On the inside of a hairpin tighter than the
-    /// verge is wide the band would sweep past the centre of the bend and
-    /// over the road on its far side, and where two parts of the lap run
-    /// close it would lie across the other road; stopping where the
-    /// nearest station is somewhere else on the lap stops it at the line
-    /// halfway between them, both cases at once, and the two verges meet
-    /// there.
+    /// The ground at a point off the road: at the barrier, the road's own
+    /// edge height, so the terrain mesh and the run-off meet in one line;
+    /// across the verge it eases down to the meadow. The terrain's
+    /// vertices are set from this, and scenery stands on it.
     /// </summary>
-    public float VergeReach(float s, float d, int side)
+    public float GroundHeight(float x, float z)
     {
-        var sample = Track.Sample(s);
-        float lap = Track.LengthMeters;
-        float reach = 0f;
-        for (float probe = VergeProbeMeters; probe <= VergeMeters + 1e-3f; probe += VergeProbeMeters)
-        {
-            Vector2 point = sample.Center + sample.Normal * (d + side * probe);
-            float along = MathF.Abs(NearestStation(point).S - Track.WrapS(s));
-            if (MathF.Min(along, lap - along) > ElsewhereMeters)
-                break;
-            reach = probe;
-        }
-        return reach;
+        (float s, float d) = Project(new Vector2(x, z));
+        int side = d >= 0f ? 1 : -1;
+        float barrier = BarrierOffset(s, side);
+        float t = Math.Clamp((MathF.Abs(d) - barrier) / VergeMeters, 0f, 1f);
+        float ease = t * t * (3f - 2f * t);
+        float edge = Height(s, side * barrier);
+        return edge + (MeadowHeight(x, z) - edge) * ease;
     }
 
-    /// <summary>The step the verge's reach is measured in.</summary>
-    private const float VergeProbeMeters = 1f;
+    /// <summary>How far from the centreline the barrier stands on this side: the road and its buffer.</summary>
+    public float BarrierOffset(float s, int side)
+    {
+        var sample = Track.Sample(s);
+        return sample.HalfWidth + (side > 0 ? sample.LeftBufferWidth : sample.RightBufferWidth);
+    }
 
     /// <summary>
-    /// How far along the lap the nearest station may be from the verge's own
-    /// before that is another part of the circuit: a couple of station
-    /// steps, which the inside of an ordinary bend never reaches.
+    /// Where a point sits against the centreline, to well under a metre:
+    /// the nearest coarse station, then slid along the tangent onto the
+    /// foot of the perpendicular. Defined anywhere on the map.
     /// </summary>
-    private const float ElsewhereMeters = 2.5f * StationStepMeters;
+    public (float S, float D) Project(Vector2 point)
+    {
+        float s = NearestStation(point).S;
+        for (int i = 0; i < 3; i++)
+        {
+            var sample = Track.Sample(s);
+            float along = Math.Clamp(Vector2.Dot(point - sample.Center, sample.Tangent),
+                -StationStepMeters, StationStepMeters);
+            s = Track.WrapS(s + along);
+        }
+        var foot = Track.Sample(s);
+        return (s, Vector2.Dot(point - foot.Center, foot.Normal));
+    }
 
     public Vector3 Point(float s, float d)
     {

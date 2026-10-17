@@ -27,4 +27,8 @@
     <!-- Nested worktrees are separate checkouts, not game source files. -->
     <Compile Remove=".worktrees/**/*.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Clipper2" Version="2.0.0" />
+  </ItemGroup>
 </Project>
