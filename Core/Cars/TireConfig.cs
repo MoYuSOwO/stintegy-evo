@@ -210,7 +210,7 @@ public sealed class TireConfig
     /// The reduced-order tyre has no contact patch, so it cannot see the
     /// patch starting to slide from the back as the corner fills it. Force
     /// times slip angle does not make up for it here: the car can only hold
-    /// about nine tenths of the peak (<see cref="TireSlipCurve.SustainablePeakShare"/>),
+    /// about nine tenths of the peak (<see cref="NearLimitHeatLimitShare"/>),
     /// and that far below the peak the curve is still nearly straight. A
     /// car on Attack, flat against that limit, measured one degree hotter
     /// than the same car on Normal two per cent short of it, and no tyre
@@ -228,6 +228,16 @@ public sealed class TireConfig
     /// limit pays all of it.
     /// </summary>
     public const float NearLimitHeatStartShare = 0.97f;
+
+    /// <summary>
+    /// The use the near-limit heat is measured against: the limit the car
+    /// could hold when NearLimitHeatRate and the overheating targets were
+    /// calibrated. It was TireSlipCurve.SustainablePeakShare then, and stays
+    /// where it was when the steering stopped giving away a tenth of the
+    /// car's cornering and that share rose, so the tyres heat as calibrated
+    /// until they are calibrated again on the car as it now corners.
+    /// </summary>
+    public const float NearLimitHeatLimitShare = 0.9f;
 
     // Part of the stint's wear lives in NearLimitWearRate, so harder use
     // spends the tyre disproportionately faster than ordinary running.

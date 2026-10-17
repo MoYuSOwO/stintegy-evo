@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
@@ -1807,7 +1808,7 @@ public sealed class CarPhysicsTests
             state,
             car,
             tires,
-            share: 0.90f
+            share: CalibratedCornerUse(0.90f)
         );
         SetSteadyCorner(state, car, tires, curvature);
 
@@ -1829,7 +1830,7 @@ public sealed class CarPhysicsTests
                 // each step as a driver reads it: a carcass past its
                 // threshold takes grip away, and nine tenths of the grip
                 // it had at the start is soon more than it has.
-                curvature = CurvatureForGripShare(state, car, tires, share: 0.90f);
+                curvature = CurvatureForGripShare(state, car, tires, share: CalibratedCornerUse(0.90f));
                 input = input with { DriverInput = new DriverInput(curvature, 0f) };
                 CarPhysics.Step(state, car, tires, input, 1f / 60f);
                 // The heat balance is what this gate is about. Sixteen
@@ -2271,6 +2272,44 @@ public sealed class CarPhysicsTests
     /// <summary>A drive ceiling high enough that the tyres, not the motor, are what limits it.</summary>
     private const float UncappedDriveAcceleration = 30f;
 
+    /// <summary>
+    /// Braking into a fast corner, the rear is light. Asked for a little more
+    /// corner than it can carry, the car turns at about the most it can: it
+    /// does not wind the wheel off and run straight on. The steering's
+    /// inversion once asked the rear for a slip angle at its peak and the
+    /// front for little, and "front minus rear" turned the wheel the wrong
+    /// way: here, 38 m/s^2 asked and 17 given, where 34 asked had given 27.
+    /// </summary>
+    [Fact]
+    public void AskedPastTheRearsGripBrakingTheCarStillTurnsNearItsLimit()
+    {
+        var car = new CarConfig();
+        TestTires tires = WarmTires();
+        (float Asked, float Got) Corner(float share)
+        {
+            CarState state = CreateState(65f, 0.8f, tires);
+            float settle = CurvatureForGripShare(state, car, tires, 0.5f);
+            SetSteadyCorner(state, car, tires, settle);
+            float curvature = CurvatureForGripShare(state, car, tires, share);
+            float asked = 0f, got = 0f;
+            for (int i = 0; i < 30; i++)
+            {
+                CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(curvature, -25f)), 1f / 60f);
+                if (i >= 10)
+                {
+                    asked += curvature * state.Speed * state.Speed;
+                    got += MathF.Abs(state.Telemetry.ActualLateralAccel);
+                }
+            }
+            return (asked / 20f, got / 20f);
+        }
+        var rows = new[] { 0.6f, 0.75f, 0.9f, 1.0f, 1.1f, 1.25f }.Select(Corner).ToArray();
+        string table = string.Join("  ", rows.Select(r => $"{r.Asked:F1}->{r.Got:F1}"));
+        // Asked for more, it never gives much less than it gave for less.
+        for (int i = 1; i < rows.Length; i++)
+            Assert.True(rows[i].Got >= 0.9f * rows[i - 1].Got, table);
+    }
+
     private static CarState CreateState(float speed, float batterySoc, TestTires tires)
     {
         CarState state = new()
@@ -2485,6 +2524,16 @@ public sealed class CarPhysicsTests
         }
     }
 
+    /// <summary>
+    /// A share of the car's cornering limit as the tyres' heat was calibrated
+    /// against it. The limit rose when the steering stopped giving a tenth of
+    /// it away; the medium's heat has not been calibrated on the car as it
+    /// now corners, so the heat tests ask its tyres for what they were asked
+    /// when it was (TireConfig.NearLimitHeatLimitShare).
+    /// </summary>
+    private static float CalibratedCornerUse(float share) =>
+        share * TireConfig.NearLimitHeatLimitShare / TireSlipCurve.SustainablePeakShare;
+
     private static CarState RunRepresentativeCoreDutyCycle(float use)
     {
         TestTires tires = new(new TireConfig
@@ -2513,7 +2562,7 @@ public sealed class CarPhysicsTests
                 curvature: 0f
             );
             float curvature = phaseSeconds < 2f
-                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * use /
+                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * CalibratedCornerUse(use) /
                   (state.Speed * state.Speed)
                 : 0f;
             float acceleration = phaseSeconds switch
