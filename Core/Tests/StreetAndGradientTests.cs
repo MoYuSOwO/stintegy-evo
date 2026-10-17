@@ -24,7 +24,7 @@ public sealed class StreetAndGradientTests
             steepest = MathF.Max(
                 steepest, MathF.Abs(track.Sample(s + 0.5f).Grade));
         }
-        Assert.InRange(narrowest, 10.5f, 11.5f);
+        Assert.InRange(narrowest, 8.5f, 10.5f);
         // Marina Bay is flat and pretending otherwise would paper over the
         // gradient hole with fiction. Bridges only.
         Assert.True(steepest < 0.03f, $"Singapore climbs {steepest * 100:0.0}%");

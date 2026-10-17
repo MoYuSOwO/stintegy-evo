@@ -14,6 +14,6 @@
     "centreline": "bacinger/f1-circuits (mc-1929 @ b8c7e17c)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected to local metres, rotated to start on Boulevard Albert 1er, 10.5 m wide, scaled to the FIA 3,337 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along mc-1929 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m, scaled to the published 42.0 m highest to lowest."
+    "notes": "Projected to local metres, rotated to start on Boulevard Albert 1er, 8-15.5 m wide by section from OpenStreetMap (ODbL), walled at the kerb, scaled to the FIA 3,337 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along mc-1929 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m, scaled to the published 42.0 m highest to lowest."
   }
 }

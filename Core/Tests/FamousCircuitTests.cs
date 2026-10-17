@@ -34,9 +34,10 @@ public sealed class FamousCircuitTests
         float steepest = 0f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
             steepest = MathF.Max(steepest, track.Sample(s + 0.5f).Grade);
-        // The compression climb: well past the training maximum of 7.3
-        // and past Monaco's 8.6, which is what it is held out for.
-        Assert.InRange(steepest, 0.10f, 0.14f);
+        // Raidillon, at its published 15 to 19 per cent: well past the
+        // training maximum of 7.3 and past Monaco's, which is what it is
+        // held out for.
+        Assert.InRange(steepest, 0.15f, 0.19f);
     }
 
     [Fact]
