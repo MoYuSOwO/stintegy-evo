@@ -71,8 +71,13 @@ public sealed class PhysicsBoundaryTests
         TireConfig tires = WarmTires();
         CarState limited = NewState(45f, tires);
         CarState free = NewState(45f, tires);
-        DriverInput command = new(0.006f, -30f);
         CarStrategy protect = new(TireUsageMode.Protect, PowerOutputMode.Normal);
+        // A tenth more braking than the tyres have in a straight line, in a
+        // gentle corner: a real request, read off this car rather than a
+        // number that was one for the car of the day.
+        float brake = CarPhysics.EstimatePerformanceLimits(
+            limited, fitted, tires, protect, 45f, curvature: 0f).MaximumBrakeDeceleration;
+        DriverInput command = new(0.006f, -1.1f * brake);
 
         CarPhysics.Step(limited, fitted, tires, StepInput(command, protect), 1f / 60f);
         CarPhysics.Step(free, unfitted, tires, StepInput(command, protect), 1f / 60f);

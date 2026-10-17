@@ -43,8 +43,15 @@ public sealed class TireConfig
     // harder, and the warm-up was tuned against that. Without it the tyres
     // ran three degrees cooler and a cold car at 80 per cent use never
     // reached its window; 0.8 puts both back where they were measured.
-    public float RollingSurfaceHeatRate { get; init; } = 0.8f;
-    public float RollingCoreHeatRate { get; init; } = 0.3f;
+    //
+    // About two thirds of that since the car took a Formula One car's
+    // downforce: rolling heat goes with the load, a fast lap now presses the
+    // tyres about 1.6 times as hard, and at 0.8 a Silverstone stint on
+    // Normal held the carcass at 125 C and lost a tenth of its pace to it.
+    // At 0.52 it holds Normal short of the carcass's 112 C, and ordinary
+    // running at forty-odd metres a second still keeps the tread above 70.
+    public float RollingSurfaceHeatRate { get; init; } = 0.52f;
+    public float RollingCoreHeatRate { get; init; } = 0.195f;
     // A small share of the work done by the brakes reaches the tyre through
     // the disc, wheel and enclosed air. It enters the slow carcass mass, not
     // the tread, and follows the axle that actually supplied the braking.
