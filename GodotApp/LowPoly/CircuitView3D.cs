@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Godot;
 using StintegyEVO.Core.Track;
 using NVector2 = System.Numerics.Vector2;
@@ -64,7 +65,9 @@ public partial class CircuitView3D : Node3D
                     // run-off in between, which is what the grammar says.
                     float kerbA = ea + side * SurfaceGrip.KerbWidthMeters;
                     float kerbB = eb + side * SurfaceGrip.KerbWidthMeters;
-                    if (wa - sa.HalfWidth > SurfaceGrip.KerbWidthMeters + 1e-3f)
+                    // The pit lane lies over the run-off where it crosses it; the grass is not drawn under it.
+                    if (wa - sa.HalfWidth > SurfaceGrip.KerbWidthMeters + 1e-3f
+                        && !OnPitLane(a, (kerbA + side * wa) * 0.5f) && !OnPitLane(b, (kerbB + side * wb) * 0.5f))
                         Strip(mesh, a, b, kerbA, side * wa, kerbB, side * wb, Look.Mown[(i / 2) % Look.Mown.Count], 0f);
                     // The white line is the last of the racing surface, not
                     // the first of the run-off: painted inside its own edge.
@@ -164,6 +167,10 @@ public partial class CircuitView3D : Node3D
                 Color color = i % 2 == 0 ? LowPolyMesh.Vermilion : LowPolyMesh.Ivory;
                 foreach (int side in new[] { -1, 1 })
                 {
+                    // None where the pit lane leaves or joins the track: there the edge is a road.
+                    if (OnPitLane(a, side * (halfA + SurfaceGrip.KerbWidthMeters * 0.5f))
+                        || OnPitLane(b, side * (halfB + SurfaceGrip.KerbWidthMeters * 0.5f)))
+                        continue;
                     Strip(
                         mesh, a, b,
                         side * halfA, side * (halfA + SurfaceGrip.KerbWidthMeters),
@@ -182,6 +189,15 @@ public partial class CircuitView3D : Node3D
             return false;
         TrackSample sample = Surface.Track.Sample(s);
         return pit.Contains(sample.Center + sample.Normal * d);
+    }
+
+    /// <summary>Whether a point of the world, in the view's axes, is on the track or its run-off, barrier to barrier.</summary>
+    private bool OnCircuit(Vector3 point) => OnCircuit(point, 0.5f);
+
+    private bool OnCircuit(Vector3 point, float margin)
+    {
+        (float s, float d) = Surface.Project(new NVector2(point.X, point.Z));
+        return MathF.Abs(d) <= Surface.BarrierOffset(s, d >= 0f ? 1 : -1) + margin;
     }
 
     /// <summary>Whether a point of the world, in the view's axes, is on the pit lane.</summary>
@@ -225,6 +241,25 @@ public partial class CircuitView3D : Node3D
                     LowPolyMesh.Ivory);
         }
 
+        // The line between the fast lane and the working lane, dashed, where
+        // the lane is both: the working lane is the side the boxes are on,
+        // a box in the middle of it.
+        if (pit.Boxes.Count > 0)
+        {
+            PitBox first = pit.Boxes[0];
+            PitLaneSample at = pit.Sample(first.U);
+            float offset = NVector2.Dot(first.Position - at.Center, at.Normal);
+            float widest = at.Width;
+            for (float u = 0f; u + 3f < pit.LengthMeters; u += 6f)
+            {
+                float half = pit.Sample(u).HalfWidth;
+                if (half * 2f < widest - 0.05f)
+                    continue;
+                float divider = 2f * offset - MathF.Sign(offset) * half;
+                Band(u, u + 3f, divider - 0.06f, divider + 0.06f, LowPolyMesh.Ivory, paint);
+            }
+        }
+
         // The limit lines, the whole width across.
         foreach (float u in new[] { pit.SpeedLimitFromU, pit.SpeedLimitToU })
         {
@@ -234,6 +269,7 @@ public partial class CircuitView3D : Node3D
 
         // Each box: its outline in the working lane, and its garage behind it.
         var garages = new LowPolyMesh();
+        var fronts = new System.Collections.Generic.List<(float From, float To, int Side)>();
         Color wall = Color.FromHtml("#c9c4b4"), door = Color.FromHtml("#39444a"), roof = Color.FromHtml("#8d969a");
         foreach (PitBox box in pit.Boxes)
         {
@@ -244,11 +280,24 @@ public partial class CircuitView3D : Node3D
             Band(box.U - along, box.U + along, d + across - 0.12f, d + across, LowPolyMesh.Vermilion, paint);
             Band(box.U + along - 0.12f, box.U + along, d - across, d + across, LowPolyMesh.Vermilion, paint);
 
-            // The garage stands back from the lane's edge on the boxes' side.
-            float side = MathF.Sign(d), front = at.HalfWidth + 1f, back = front + 14f;
+            // The garage opens onto the lane's edge on the boxes' side. As
+            // deep as the ground behind it allows, and never over the
+            // circuit: a garage with no room even at its shallowest is not built.
+            float side = MathF.Sign(d), front = at.HalfWidth + 0.05f;
             float half = 6.6f, height = 6f;
             Vector3 p0 = At(box.U - half, side * front, 0f), p1 = At(box.U + half, side * front, 0f);
-            Vector3 p2 = At(box.U + half, side * back, 0f), p3 = At(box.U - half, side * back, 0f);
+            Vector3 p2 = default, p3 = default;
+            bool fits = false;
+            foreach (float depth in new[] { 14f, 11f, 8f, 5f })
+            {
+                p2 = At(box.U + half, side * (front + depth), 0f);
+                p3 = At(box.U - half, side * (front + depth), 0f);
+                if (fits = !new[] { p0, p1, p2, p3, (p0 + p2) * 0.5f, (p1 + p3) * 0.5f }.Any(OnCircuit))
+                    break;
+            }
+            if (!fits)
+                continue;
+            fronts.Add((box.U - half, box.U + half, (int)side));
             float floor = MathF.Min(MathF.Min(p0.Y, p1.Y), MathF.Min(p2.Y, p3.Y)) - 0.5f;
             Vector3 b0 = new(p0.X, floor, p0.Z), b1 = new(p1.X, floor, p1.Z), b2 = new(p2.X, floor, p2.Z), b3 = new(p3.X, floor, p3.Z);
             float top = MathF.Max(p0.Y, p1.Y) + height;
@@ -269,7 +318,35 @@ public partial class CircuitView3D : Node3D
             Face(b2, b1, t1, t2, wall);
             garages.GroundQuad(t0, t1, t2, t3, roof);
         }
+        // Walled both sides, with no run-off: on the track's side the
+        // track's own barrier is the pit wall, so the lane's wall is drawn
+        // only where it is not beside the circuit, and not where the lane is
+        // joining the road; on the other side, wall except where a garage
+        // opens onto the lane.
+        var walls = new LowPolyMesh();
+        Color concrete = Color.FromHtml("#dedbc9");
+        int panels = (int)MathF.Ceiling(pit.LengthMeters / 3f);
+        float panel = pit.LengthMeters / panels;
+        for (int i = 0; i < panels; i++)
+        {
+            float a = i * panel, b = (i + 1) * panel;
+            foreach (int side in new[] { -1, 1 })
+            {
+                float ea = side * pit.Sample(a).HalfWidth, eb = side * pit.Sample(b).HalfWidth;
+                Vector3 p = At(a, ea, 0f), q = At(b, eb, 0f);
+                Vector3 r = At(b, eb + side * 0.3f, 0f), s = At(a, ea + side * 0.3f, 0f);
+                if (OnCircuit(s, 1f) || OnCircuit(r, 1f))
+                    continue;
+                if (fronts.Exists(f => f.Side == side && b > f.From && a < f.To))
+                    continue;
+                var up = Vector3.Up * 1.1f;
+                walls.GroundQuad(p + up, q + up, r + up, s + up, concrete);
+                if (side > 0) { walls.Quad(p, q, q + up, p + up, concrete); walls.Quad(r, s, s + up, r + up, concrete); }
+                else { walls.Quad(q, p, p + up, q + up, concrete); walls.Quad(s, r, r + up, s + up, concrete); }
+            }
+        }
         AddChild(mesh.Instance("PitLane"));
+        AddChild(walls.Instance("PitWalls"));
         AddChild(garages.Instance("PitGarages"));
     }
 
