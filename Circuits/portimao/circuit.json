@@ -12,17 +12,17 @@
   },
   "pitLane": {
     "track": "pitlane.csv",
-    "lengthMeters": 756,
-    "entryMeters": 4203,
-    "exitMeters": 300,
+    "lengthMeters": 1229,
+    "entryMeters": 3679,
+    "exitMeters": 320,
     "speedLimitKph": 80,
     "speedLimitFromMeters": 45,
-    "speedLimitToMeters": 711,
+    "speedLimitToMeters": 1184,
     "boxes": {
       "count": 15,
-      "firstMeters": 280,
+      "firstMeters": 902,
       "spacingMeters": 14,
-      "offsetMeters": -3
+      "offsetMeters": -2.5
     }
   },
   "source": {

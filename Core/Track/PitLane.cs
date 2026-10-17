@@ -36,10 +36,10 @@ public sealed record CircuitPitLane
     /// <summary>The lane, in metres: one less than the number of rows, since the lane has two ends.</summary>
     public int LengthMeters { get; init; }
 
-    /// <summary>The row of the track file where the lane leaves the track: its first row lies on the road there.</summary>
+    /// <summary>The row of the track file where the lane leaves the track: its first row is that row's point of the centreline.</summary>
     public int EntryMeters { get; init; }
 
-    /// <summary>The row of the track file where the lane comes back: its last row lies on the road there.</summary>
+    /// <summary>The row of the track file where the lane comes back: its last row is that row's point of the centreline.</summary>
     public int ExitMeters { get; init; }
 
     /// <summary>The speed limit between the two lines, km/h. Each circuit's own: sixty at Monaco, eighty at most.</summary>
@@ -224,14 +224,21 @@ public sealed class PitLane
 /// <summary>
 /// A pit lane as it is stored, and the one way it becomes a <see cref="PitLane"/>:
 /// checked against the track it belongs to, so a lane that does not start
-/// and end on the road, or a limit that is not on the lane, is refused
-/// when the circuit loads rather than found out in a race.
+/// and end on points of the track's centreline, or a limit that is not on
+/// the lane, is refused when the circuit loads rather than found out in a race.
 /// </summary>
 public static class PitLaneFile
 {
     public static readonly string[] Columns = ["x_m", "y_m", "z_m", "width_m"];
 
     public readonly record struct Row(Vector2 Center, float Z, float Width);
+
+    /// <summary>
+    /// How far a lane's first or last row may be from the centreline point
+    /// it leaves or rejoins at: the two files' rounding, and nothing more.
+    /// The ends are those points.
+    /// </summary>
+    public const float EndTolerance = 0.01f;
 
     public static PitLane Parse(CircuitPitLane lane, string csv, TrackData track, string id = "")
     {
@@ -275,9 +282,9 @@ public static class PitLaneFile
 
         void EndOnRoad(Vector2 end, int s, string what)
         {
-            TrackSample road = track.Sample(s * TrackData.StepLength);
-            if (Vector2.Distance(end, road.Center) > road.HalfWidth)
-                throw new InvalidDataException($"{Where()} {what} the track off the road at {s} m.");
+            Vector2 centre = track.Sample(s * TrackData.StepLength).Center;
+            if (Vector2.Distance(end, centre) > EndTolerance)
+                throw new InvalidDataException($"{Where()} {what} the track {Vector2.Distance(end, centre):F2} m from the centreline's point at {s} m.");
         }
     }
 

@@ -65,31 +65,32 @@ layouts, simply has no `pitLane` in its `circuit.json`. Where there is one:
 ```json
 "pitLane": {
   "track": "pitlane.csv",
-  "lengthMeters": 456,
-  "entryMeters": 5809,
-  "exitMeters": 368,
+  "lengthMeters": 1133,
+  "entryMeters": 5270,
+  "exitMeters": 687,
   "speedLimitKph": 80,
   "speedLimitFromMeters": 45,
-  "speedLimitToMeters": 411,
-  "boxes": { "count": 12, "firstMeters": 151, "spacingMeters": 14, "offsetMeters": -3 }
+  "speedLimitToMeters": 1088,
+  "boxes": { "count": 12, "firstMeters": 667.5, "spacingMeters": 14, "offsetMeters": -2.5 }
 }
 ```
 
 `entryMeters` and `exitMeters` are the rows of `track.csv` where the lane
-leaves the track and comes back; the lane's first and last rows lie on the
-road there, and the game refuses a lane that does not. The limit holds
+leaves the track and comes back: the lane's first row is that entry row's
+point of the centreline, and its last row the exit row's, and the game
+refuses a lane whose ends are not those points. The limit holds
 between the two lines, measured along the lane. A box is where a car
 stops: `count` of them from `firstMeters` along the lane, `spacingMeters`
 apart, `offsetMeters` to the left of the lane's middle (negative is right).
 
-`pitlane.csv` is the lane from end to end, `lengthMeters` + 1 rows a metre
-apart, in the same plane as the track:
+`pitlane.csv` is the lane from end to end, any shape it has, `lengthMeters`
++ 1 rows a metre apart, in the same plane as the track:
 
 | column | meaning |
 |---|---|
 | `x_m`, `y_m` | the middle of the lane, metres, as in `track.csv` |
 | `z_m` | height, metres |
-| `width_m` | edge to edge |
+| `width_m` | wall to wall: a pit lane has no run-off |
 
 ## Making one
 
@@ -103,3 +104,13 @@ dotnet run --project Tools/Circuits -- check
 ```
 
 `check` builds every circuit again and compares it with its folder.
+
+The pit lanes are the real ones, from OpenStreetMap (the Formula One lane
+where a circuit has more than one). The ways each circuit uses are named in
+`Tools/Circuits/Program.cs`; `fetch-pitlanes` reads them through the Overpass
+API into `Tools/Circuits/Sources/pitlanes/`, and `export` lays each on our
+road (see `Tools/Circuits/Pits.cs`):
+
+```bash
+dotnet run --project Tools/Circuits -- fetch-pitlanes
+```

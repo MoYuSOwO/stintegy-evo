@@ -23,7 +23,7 @@ public sealed class PitLaneTests
         return (track, track.PitLane!);
     }
 
-    /// <summary>The lane starts and ends on the road, running the way the lap does.</summary>
+    /// <summary>The lane starts and ends at points of the centreline, running the way the lap does.</summary>
     [Theory]
     [MemberData(nameof(CircuitsWithPits))]
     public void BothEndsAreOnTheRoad(string id)
@@ -33,8 +33,8 @@ public sealed class PitLaneTests
         {
             PitLaneSample end = lane.Sample(u);
             TrackSample road = track.Sample(s);
-            Assert.True(Vector2.Distance(end.Center, road.Center) <= road.HalfWidth, $"{id}: lane end at {u} m is off the road");
-            Assert.True(Vector2.Dot(end.Tangent, road.Tangent) > 0.95f, $"{id}: lane end at {u} m does not run with the road");
+            Assert.True(Vector2.Distance(end.Center, road.Center) <= PitLaneFile.EndTolerance, $"{id}: lane end at {u} m is not the centreline's point");
+            Assert.True(Vector2.Dot(end.Tangent, road.Tangent) > 0.5f, $"{id}: lane end at {u} m does not run the way the lap does");
         }
     }
 
