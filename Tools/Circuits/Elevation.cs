@@ -53,6 +53,26 @@ internal static class Elevation
     };
 
     /// <summary>
+    /// The steepest stretch of road, where it is published: Raidillon's 17
+    /// per cent (lapmeta), the Subida dos Boxes' 10 (circuit guides).
+    /// Smoothing a 30 m survey over 200 m takes the top off a short, steep
+    /// climb -- Raidillon came out at 13.6 -- so the steepest stretch of the
+    /// survey has its grade drawn in towards its middle until the middle is
+    /// this steep, with the heights at either end of it, and so everywhere
+    /// else, left where they were.
+    ///
+    /// Portimão is not here. Its "up to 12 per cent" is a ticket page's,
+    /// names no stretch, and drawn onto the survey's steepest descent it
+    /// rounds the crest above it to 460 m, which a car crossing it at 300
+    /// km/h would leave the ground on.
+    /// </summary>
+    public static readonly Dictionary<string, float> PublishedSteepestGrade = new()
+    {
+        ["spa"] = 0.17f,
+        ["interlagos"] = 0.10f,
+    };
+
+    /// <summary>
     /// Circuits whose survey is not the road. Marina Bay runs between tower
     /// blocks, and SRTM, which sees the roofs, makes a 5 m circuit climb 28;
     /// its authored profile is kept.
@@ -77,7 +97,8 @@ internal static class Elevation
     public static string Notes(string id) =>
         $"Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every {SampleMeters:F0} m along " +
         $"{Codes[id]} from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m" +
-        (PublishedClimbMeters.TryGetValue(id, out float m) ? $", scaled to the published {m:F1} m highest to lowest." : ".");
+        (PublishedClimbMeters.TryGetValue(id, out float m) ? $", scaled to the published {m:F1} m highest to lowest" : "") +
+        (PublishedSteepestGrade.TryGetValue(id, out float g) ? $", its steepest stretch drawn to the published {g * 100f:F0}%." : ".");
 
     public static async Task Fetch(IEnumerable<string> ids)
     {
@@ -169,12 +190,99 @@ internal static class Elevation
             scaled = $", scaled from {surveyed:F1} m to the published {published:F1} m";
         }
 
-        float maxGrade = 0f;
-        for (int i = 0; i < n; i++)
-            maxGrade = MathF.Max(maxGrade, MathF.Abs(z[(i + 1) % n] - z[(i - 1 + n) % n]) / 2f);
+        if (PublishedSteepestGrade.TryGetValue(id, out float steepest))
+        {
+            float before = SteepestGrade(z);
+            if (Steepen(z, steepest))
+                scaled += $", steepest drawn from {before * 100f:F1}% to the published {steepest * 100f:F0}%";
+        }
+
+        float maxGrade = SteepestGrade(z);
         report = $"survey {raw.Min():F0}..{raw.Max():F0} m, aligned {(reversed ? "reversed" : "forward")} at {shift * 100f / bins:F1}% (match {score:F2}), " +
                  $"climb {z.Max() - z.Min():F1} m{scaled}, steepest {maxGrade * 100f:F1}%";
         return z;
+    }
+
+    private static float SteepestGrade(float[] z)
+    {
+        int n = z.Length;
+        float steepest = 0f;
+        for (int i = 0; i < n; i++)
+            steepest = MathF.Max(steepest, MathF.Abs(z[(i + 1) % n] - z[(i - 1 + n) % n]) / 2f);
+        return steepest;
+    }
+
+    /// <summary>
+    /// The steepest stretch, up or down -- the run of road around the
+    /// steepest row that keeps at least a quarter of its grade -- drawn in
+    /// towards its middle until the middle reaches <paramref name="target"/>.
+    /// Each row's grade above the stretch's edge is raised to a power and
+    /// scaled back to the height the stretch had, so the climb's two ends do
+    /// not move, its grade runs on unbroken into the road either side, and
+    /// nothing outside it changes. False when the survey is already this steep.
+    /// </summary>
+    private static bool Steepen(float[] z, float target)
+    {
+        int n = z.Length;
+        var grade = new float[n];
+        for (int i = 0; i < n; i++)
+            grade[i] = z[(i + 1) % n] - z[i];
+        int peak = 0;
+        for (int i = 1; i < n; i++)
+            if (MathF.Abs(grade[i]) > MathF.Abs(grade[peak]))
+                peak = i;
+        float sign = MathF.Sign(grade[peak]);
+        float top = MathF.Abs(grade[peak]);
+        if (top >= target)
+            return false;
+
+        int first = peak, last = peak;
+        while (sign * grade[(first - 1 + n) % n] > 0.25f * top && (peak - first) < n / 4)
+            first--;
+        while (sign * grade[(last + 1) % n] > 0.25f * top && (last - peak) < n / 4)
+            last++;
+        int count = last - first + 1;
+        var g = new float[count];
+        float climb = 0f;
+        for (int k = 0; k < count; k++)
+        {
+            g[k] = sign * grade[(first + k + n) % n];
+            climb += g[k];
+        }
+
+        // Only the grade above the stretch's edge is drawn in, so where the
+        // stretch begins and ends the grade runs on unbroken: a step in the
+        // grade is a kink in the road, felt as a jolt and seen by the bake
+        // as a spike in the vertical bend.
+        float edge = 0.25f * top;
+        float[] Drawn(float power)
+        {
+            var d = new float[count];
+            float sum = 0f;
+            for (int k = 0; k < count; k++)
+                sum += d[k] = MathF.Pow(MathF.Max(g[k] - edge, 0f) / (top - edge), power);
+            float scale = (climb - count * edge) / sum;
+            for (int k = 0; k < count; k++)
+                d[k] = edge + d[k] * scale;
+            return d;
+        }
+
+        float low = 1f, high = 8f;
+        for (int iteration = 0; iteration < 40; iteration++)
+        {
+            float mid = 0.5f * (low + high);
+            if (Drawn(mid).Max() < target) low = mid; else high = mid;
+        }
+        float[] drawn = Drawn(high);
+        if (drawn.Max() < target * 0.98f)
+            return false;
+        float height = z[(first + n) % n];
+        for (int k = 0; k < count - 1; k++)
+        {
+            height += sign * drawn[k];
+            z[(first + k + 1 + n) % n] = height;
+        }
+        return true;
     }
 
     private static List<(double Lat, double Lon)> Ring(string geojson)

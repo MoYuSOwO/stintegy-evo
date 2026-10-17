@@ -320,8 +320,8 @@ public sealed class SingleTrackDynamicsTests
             "braking should take cornering off the same corner"
         );
         Assert.True(
-            braking.Telemetry.RearLateralUse + braking.Telemetry.RearLongitudinalUse >
-            free.Telemetry.RearLateralUse + free.Telemetry.RearLongitudinalUse,
+            braking.Axles().RearLateralUse + braking.Axles().RearLongitudinalUse >
+            free.Axles().RearLateralUse + free.Axles().RearLongitudinalUse,
             "the trail-braked axle should be working harder overall"
         );
     }
@@ -601,7 +601,7 @@ public sealed class SingleTrackDynamicsTests
                 MathF.Abs(state.Telemetry.ActualLateralAccel) > peak)
             {
                 peak = MathF.Abs(state.Telemetry.ActualLateralAccel);
-                grip = state.Telemetry.FrontGripAccel + state.Telemetry.RearGripAccel;
+                grip = state.Axles().FrontGripAccel + state.Axles().RearGripAccel;
             }
         }
         return (peak, spun, grip);

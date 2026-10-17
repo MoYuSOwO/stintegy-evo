@@ -208,7 +208,7 @@ public sealed class LaneDriver : IDriverController
     {
         float[] table = _energyTable ??= _file.Energy?.LiftSeconds() ?? Gains.EnergyRungLiftSeconds;
         float lift = CoastOverride ??
-                     (table.Length == 0 ? 0f : table[Math.Clamp(car.Strategy.PowerRung - 1, 0, table.Length - 1)]);
+                     (table.Length == 0 ? 0f : table[Math.Clamp(car.Strategy.Rung(0, _car.Powertrain.OutputLadder) - 1, 0, table.Length - 1)]);
         CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);
     }
 
@@ -326,6 +326,7 @@ public sealed class LaneDriver : IDriverController
             RefreshAhead(car, context.Environment.SurfaceGripScalar);
         MoveBlend(dt);
 
+        _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
         float station = _lanes.StationOf(car.TrackS);
 
@@ -372,7 +373,7 @@ public sealed class LaneDriver : IDriverController
         // The physics winds the wheel off the moment either axle is asked for
         // more than it has, so this is a cliff, not a slope, and the only
         // number accurate enough to stand at the edge of it is its own.
-        CarTelemetry axles = car.Telemetry;
+        AxleTelemetry axles = _axles;
         if (Gains.CapFromAxles && axles.FrontGripAccel > 0.5f && axles.RearGripAccel > 0.5f && speed > 8f)
         {
             float frontShare = Math.Clamp(_car.FrontStaticLoadShare, 0.05f, 0.95f);
@@ -477,7 +478,7 @@ public sealed class LaneDriver : IDriverController
         // Throttle: whatever the driven axle has left after the corner it is
         // already carrying. Hot, that is more than the motor can use; cold,
         // it is less, and the throttle comes in only as fast as it is taken.
-        CarTelemetry tyres = car.Telemetry;
+        AxleTelemetry tyres = _axles;
         float driveLimit = car.Capabilities.AvailableDriveAcceleration;
         // What the tyres will carry of the coming corner on this road: a bank
         // takes its share off them, so the throttle is not held back on
@@ -547,6 +548,26 @@ public sealed class LaneDriver : IDriverController
         return new DriverInput(curvature, accel, FrontBrakeBiasOffset: _performance?.FrontBrakeBiasOffset ?? 0f);
     }
 
+    // What the car's own instruments say of its two axles this step.
+    private AxleTelemetry _axles;
+
+    /// <summary>
+    /// The axles as the car reports them, by its instruments' names (the
+    /// single-track chassis's: SingleTrackCar.TelemetryChannels). A car
+    /// without them reads as no grip measured, and every use of them falls
+    /// back to the envelope.
+    /// </summary>
+    private static AxleTelemetry AxlesOf(RaceCarSnapshot car) => new(
+        car.Instrument("front_grip_mps2") ?? 0f,
+        car.Instrument("rear_grip_mps2") ?? 0f,
+        car.Instrument("front_lateral_use") ?? 0f,
+        car.Instrument("rear_lateral_use") ?? 0f,
+        car.Instrument("front_longitudinal_use") ?? 0f,
+        car.Instrument("rear_longitudinal_use") ?? 0f,
+        car.Instrument("grip_limiter_cut_mps2") ?? 0f,
+        car.Instrument("induced_drag_mps2") ?? 0f,
+        car.Instrument("rear_slide_severity") ?? 0f);
+
     private float _perceivedSlip;
     private float _perceivedYawError;
     private float _slidingFor;
@@ -581,7 +602,7 @@ public sealed class LaneDriver : IDriverController
         float slipSeverity = Math.Clamp((MathF.Abs(sideslip) - 0.07f) / 0.08f, 0f, 1f);
         float yawSeverity = Math.Clamp((MathF.Abs(yawError) - 0.10f) / 0.6f, 0f, 1f) *
                             Math.Clamp(MathF.Abs(sideslip) / 0.06f, 0f, 1f);
-        float rearSeverity = Math.Clamp((car.Telemetry.RearSlideSeverity - 0.15f) / 0.6f, 0f, 1f);
+        float rearSeverity = Math.Clamp((_axles.RearSlideSeverity - 0.15f) / 0.6f, 0f, 1f);
         float severity = MathF.Max(slipSeverity, MathF.Max(yawSeverity, rearSeverity));
 
         if (!_recovering)

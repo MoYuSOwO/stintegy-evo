@@ -39,6 +39,13 @@ public partial class RaceView3D : Node3D
     /// </summary>
     public string CircuitId { get; set; } = "silverstone";
 
+    /// <summary>
+    /// Which car the view puts out when nobody has composed a race for it,
+    /// by its pack's id (<see cref="CarLibrary"/>). Set it before the view
+    /// enters the tree; the default is the game's own.
+    /// </summary>
+    public string CarId { get; set; } = "official:formula_a_mixed";
+
     /// <summary>The circuit's name for the screen: the plan's, or the id if the plan gives none.</summary>
     public string CircuitName => _circuit.Plan?.Name is { Length: > 0 } name
         ? name
@@ -191,12 +198,7 @@ public partial class RaceView3D : Node3D
         TrackSample sample = track.Sample(start.S);
         var car = new RaceCar(
             "display-01",
-            new CarConfig(),
-            new TireConfig
-            {
-                StartingSurfaceTempC = 86f,
-                StartingCoreTempC = 84f
-            },
+            GodotCars.Load(CarId).Car,
             state: new CarState
             {
                 Position = sample.Center,
@@ -205,6 +207,7 @@ public partial class RaceView3D : Node3D
                 Energy = PowertrainState.Filled(0.82f)
             }
         );
+        car.State.WarmTires(86f, 84f);
         Simulation.AddCar(car);
         // Off the grid: no push until the line.
         car.LockPushToPassUntilLine();
@@ -281,11 +284,10 @@ public partial class RaceView3D : Node3D
             while (_commands.TryDequeue(out var command))
             {
                 var car = Simulation.Cars[command.Car];
-                car.Strategy = car.Strategy with
-                {
-                    TireMode = (TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, TireLadder.Usage.RungCount),
-                    PowerRung = car.CarConfig.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power)
-                };
+                CarStrategy strategy = car.Strategy.NudgedTires(command.Tire);
+                if (car.Car.Ladders.Count > 0)
+                    strategy = strategy.Nudged(0, car.Car.Ladders[0], command.Power);
+                car.Strategy = strategy;
             }
             // Push-to-pass is held, not toggled: P down is the button down,
             // for the car being watched. The car decides whether a push runs.

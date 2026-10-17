@@ -101,7 +101,7 @@ public sealed class PowertrainInterfaceTests
         state.InstallFreshTires(WarmTires());
 
         dashboard.Refresh(
-            FuelCar(),
+            new SingleTrackCar(FuelCar(), WarmTires()),
             state,
             new CarStrategy(TireUsageMode.Push, PowerOutputMode.Save)
         );
@@ -136,7 +136,7 @@ public sealed class PowertrainInterfaceTests
         CarState state = new() { Energy = PowertrainState.Filled(0.62f) };
         state.InstallFreshTires(WarmTires());
 
-        dashboard.Refresh(config, state, CarStrategy.Default);
+        dashboard.Refresh(new SingleTrackCar(config, WarmTires()), state, CarStrategy.Default);
 
         // The range extender: a pack to drive from and fuel to refill it.
         var powertrain = (RangeExtenderPowertrain)config.Powertrain;
@@ -163,7 +163,7 @@ public sealed class PowertrainInterfaceTests
         CarState state = new() { Energy = PowertrainState.Filled(0.02f) };
         state.InstallFreshTires(WarmTires());
 
-        dashboard.Refresh(config, state, CarStrategy.Default);
+        dashboard.Refresh(new SingleTrackCar(config, WarmTires()), state, CarStrategy.Default);
 
         // Two per cent is two fifths of the way up the sag at the bottom of
         // the usable window, so the gauge shows the sag's floor plus two
@@ -216,7 +216,7 @@ public sealed class PowertrainInterfaceTests
         CarState state = new() { Energy = PowertrainState.Filled(1f) };
         state.InstallFreshTires(WarmTires());
         dashboard.Refresh(
-            config,
+            new SingleTrackCar(config, WarmTires()),
             state,
             new CarStrategy(TireUsageMode.Normal, 7)
         );
@@ -242,9 +242,10 @@ public sealed class PowertrainInterfaceTests
             Powertrain = new TankAndBatteryPowertrain(ThreeMaps)
         };
 
+        // Nobody has set it, so it sits in the middle of the ladder it has.
         Assert.Equal(
             2,
-            CarStrategy.DefaultFor(config.Powertrain).PowerRung
+            CarStrategy.Default.Rung(0, config.Powertrain.OutputLadder)
         );
         Assert.True(
             SpeedAfterAStint(config, 3) > SpeedAfterAStint(config, 1),
@@ -427,7 +428,7 @@ public sealed class PowertrainInterfaceTests
 
         public float DriveAccelerationLimit(
             in PowertrainState energy,
-            in CarStrategy strategy,
+            int outputRung,
             float speed,
             float massKg,
             float chassisForceCeiling,
@@ -439,7 +440,7 @@ public sealed class PowertrainInterfaceTests
 
             // Each map up the ladder is worth a little more power, whatever
             // length the ladder happens to be.
-            float watts = 300000f + 15000f * _maps.Clamp(strategy.PowerRung);
+            float watts = 300000f + 15000f * _maps.Clamp(outputRung);
             float powerLimited = watts / (massKg * MathF.Max(speed, 8f));
             return MathF.Min(chassisForceCeiling, powerLimited);
         }

@@ -131,9 +131,13 @@ public partial class RaceHud3D : CanvasLayer
     private static string PushText(StintegyEVO.Core.Racing.RaceCar car)
     {
         PushToPassState push = car.State.PushToPass;
-        float left = push.RemainingSeconds(car.CarConfig.PushToPass);
+        float left = car.Car.PushToPassRemainingSeconds(car.State);
+        // How long one push may last is the chassis's rule; another car may not have one.
+        string active = car.Car is SingleTrackCar chassis
+            ? $"ON  {chassis.Config.PushToPass.MaxActivationSeconds - push.ActivationSeconds:0}s"
+            : "ON";
         string now = push.Locked ? "LOCKED"
-            : push.Active ? $"ON  {car.CarConfig.PushToPass.MaxActivationSeconds - push.ActivationSeconds:0}s"
+            : push.Active ? active
             : push.CooldownSeconds > 0f ? $"WAIT  {push.CooldownSeconds:0}s"
             : left > 0f ? "READY" : "USED";
         return $"PUSH  {now}   {left:0}s LEFT";
@@ -149,9 +153,8 @@ public partial class RaceHud3D : CanvasLayer
         _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    {controller}";
         _speed.Text = $"{car.State.Speed * 3.6f:000} km/h";
         float wear = (car.State.FrontLeft.Wear + car.State.FrontRight.Wear + car.State.RearLeft.Wear + car.State.RearRight.Wear) / 4;
-        _dashboard.Refresh(car.CarConfig, car.State, car.Strategy);
-        var tireMode = _dashboard.Modes[0];
-        var powerMode = _dashboard.Modes[1];
+        _dashboard.Refresh(car.Car, car.State, car.Strategy);
+        var tireMode = _dashboard.Modes[0]; var powerMode = _dashboard.Modes[1];
         string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
         _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung}\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung}\n{stores}\nTYRE LIFE  {(1 - wear) * 100:0}%\n{PushText(car)}";
         SampleLaps();

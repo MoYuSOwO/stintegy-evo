@@ -54,14 +54,8 @@ public static class TrackBoundaryResolver
     public static TrackBoundaryContact? ResolveCurrent(
         TrackData track,
         CarState state,
-        CarCollisionConfig collision
-    ) => ResolveCurrent(track, state, collision, new CarConfig());
-
-    public static TrackBoundaryContact? ResolveCurrent(
-        TrackData track,
-        CarState state,
         CarCollisionConfig collision,
-        CarConfig car
+        ICar car
     )
     {
         TrackBoundaryContact? lastContact = null;
@@ -84,15 +78,8 @@ public static class TrackBoundaryResolver
         TrackData track,
         CarState startState,
         CarState targetState,
-        CarCollisionConfig collision
-    ) => ResolveSweep(track, startState, targetState, collision, new CarConfig());
-
-    public static TrackBoundaryContact? ResolveSweep(
-        TrackData track,
-        CarState startState,
-        CarState targetState,
         CarCollisionConfig collision,
-        CarConfig car
+        ICar car
     )
     {
         CarBodyGeometry startBody = CarBodyGeometry.FromState(startState, collision);
@@ -427,13 +414,13 @@ public static class TrackBoundaryResolver
     private static void ApplyWallVelocityResponse(
         CarState state,
         CarCollisionConfig collision,
-        CarConfig car,
+        ICar car,
         Vector2 normal,
         Vector2 arm
     )
     {
-        float invMass = 1f / MathF.Max(car.MassKg, Epsilon);
-        float invInertia = 1f / MathF.Max(car.YawInertiaKgM2, Epsilon);
+        float invMass = 1f / MathF.Max(car.TotalMassKg(state), Epsilon);
+        float invInertia = 1f / MathF.Max(car.Spec.YawInertiaKgM2, Epsilon);
         Vector2 velocity = state.Velocity;
         float yawRate = state.YawRateRadiansPerSecond;
 
@@ -447,7 +434,7 @@ public static class TrackBoundaryResolver
         // second came off it at four, with ten times its static tyre load
         // for the step. Below the dynamic speed the wall meets the car as a
         // body that translates only.
-        if (state.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        if (state.Speed <= car.Spec.KinematicBelowSpeed)
         {
             yawRate = 0f;
             invInertia = 0f;
@@ -484,7 +471,7 @@ public static class TrackBoundaryResolver
         }
 
         state.Speed = velocity.Length();
-        if (state.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        if (state.Speed <= car.Spec.KinematicBelowSpeed)
         {
             // At a crawl the car model does not carry sideslip or a yaw rate
             // of its own: the body follows its path. A turn handed over here

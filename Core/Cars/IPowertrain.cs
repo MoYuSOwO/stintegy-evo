@@ -49,7 +49,14 @@ public sealed class ModeLadder
     public const int MinimumRungs = 2;
 
     public ModeLadder(string label, params string[] rungs)
+        : this(IdOf(label), label, rungs)
     {
+    }
+
+    /// <param name="id">Stable name, for a saved strategy or a telemetry column; never shown.</param>
+    public ModeLadder(string id, string label, string[] rungs)
+    {
+        Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("A ladder needs an id.", nameof(id)) : id;
         if (rungs is null || rungs.Length < MinimumRungs)
         {
             throw new ArgumentException(
@@ -63,6 +70,7 @@ public sealed class ModeLadder
         Rungs = rungs;
     }
 
+    public string Id { get; }
     public string Label { get; }
     public IReadOnlyList<string> Rungs { get; }
     public int RungCount => Rungs.Count;
@@ -82,6 +90,9 @@ public sealed class ModeLadder
     {
         return Rungs[Clamp(ordinal) - 1];
     }
+
+    private static string IdOf(string label) =>
+        string.Join('_', label.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     /// <summary>
     /// The nearest rung this ladder actually has. Called wherever a setting
@@ -138,13 +149,16 @@ public interface IPowertrain
     /// limited: a motor cannot make its rated torque on a sagging pack, and
     /// an engine starved of fuel does not make its rated torque either.
     ///
+    /// <paramref name="outputRung"/> is where the strategist has set
+    /// <see cref="OutputLadder"/>, counted from one and already on it.
+    ///
     /// <paramref name="pushToPass"/> is whether a push is running this step
     /// (<see cref="PushToPassState"/>); machinery with nothing extra to give
     /// ignores it.
     /// </summary>
     float DriveAccelerationLimit(
         in PowertrainState energy,
-        in CarStrategy strategy,
+        int outputRung,
         float speed,
         float massKg,
         float chassisForceCeiling,

@@ -54,7 +54,7 @@ public sealed class RaceSimulation
                 throw new ArgumentException("A driver and controller can belong to only one entry.", nameof(car));
         }
 
-        TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.CarConfig);
+        TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.Car);
         TrackPose pose = Track.Project(car.State.Position);
         car.Progress.Reset(
             Track,
@@ -161,7 +161,7 @@ public sealed class RaceSimulation
             for (int i = 0; i < carCount; i++)
             {
                 RaceCar car = _cars[i];
-                _preStepContacts[i] = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.CarConfig);
+                _preStepContacts[i] = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.Car);
                 _stepPoses[i] = Track.Project(car.State.Position);
                 // Freeze all host inputs before any controller callback is invoked.
                 _stepInputs[i] = car.ExternalInput;
@@ -276,27 +276,27 @@ public sealed class RaceSimulation
                     continue;
                 }
 
-                CarConfig wakeCar = _cars[j].CarConfig;
+                CarWake wakeCar = _cars[j].Car.Spec.Wake;
                 // The wake's two faces part company with distance: it rises
                 // off the road as it ages, so the follower's body stays sunk
                 // in slowed air - the drag relief keeps a long hyperbolic
                 // tail - while wings and floor climb out of it within a
                 // couple of car lengths, so everything the downforce model
                 // reads decays on the short Gaussians.
-                float towDeficit = wakeCar.WakeVelocityDeficit /
+                float towDeficit = wakeCar.VelocityDeficit /
                                    (1f + gap / MathF.Max(
-                                       wakeCar.WakeTowHalfDistanceMeters,
+                                       wakeCar.TowHalfDistanceMeters,
                                        1e-3f
                                    ));
-                float downforceDeficit = wakeCar.WakeVelocityDeficit *
+                float downforceDeficit = wakeCar.VelocityDeficit *
                                          GaussianFalloff(
                                              gap,
-                                             wakeCar.WakeDownforceDecayLengthMeters
+                                             wakeCar.DownforceDecayLengthMeters
                                          );
-                float downforceLoss = wakeCar.WakeDownforceDisruption *
+                float downforceLoss = wakeCar.DownforceDisruption *
                                       GaussianFalloff(
                                           gap,
-                                          wakeCar.WakeDirtyAirDecayLengthMeters
+                                          wakeCar.DirtyAirDecayLengthMeters
                                       );
 
                 // Across the wake the deficit falls away from the middle, and
@@ -329,7 +329,7 @@ public sealed class RaceSimulation
             // own trait.
             float sensitivity = MathF.Max(
                 0f,
-                _cars[i].CarConfig.DirtyAirSensitivity
+                _cars[i].Car.Spec.DirtyAirSensitivity
             );
             snapshots[i] = ego with
             {
@@ -368,20 +368,14 @@ public sealed class RaceSimulation
             CarState startState = _startStates[i];
             CarState predictedState = _predictedStates[i];
             predictedState.CopyFrom(startState);
-            CarPhysics.Step(
-                predictedState,
-                car.CarConfig,
-                car.TireConfig,
-                physicsInput,
-                dt
-            );
+            car.Car.Step(predictedState, physicsInput, dt);
 
             TrackBoundaryContact? sweepContact = TrackBoundaryResolver.ResolveSweep(
                 Track,
                 startState,
                 predictedState,
                 car.Collision,
-                car.CarConfig
+                car.Car
             );
             _sweepContacts[i] = sweepContact;
         }
@@ -477,7 +471,7 @@ public sealed class RaceSimulation
         Vector2 forward = new(MathF.Cos(heading), MathF.Sin(heading));
         Vector2 left = new(-forward.Y, forward.X);
         Vector2 normal = sample.Normal;
-        CarConfig config = car.CarConfig;
+        CarSpec config = car.Car.Spec;
         float halfTrack = MathF.Max(config.TrackWidthMeters, 0f) * 0.5f;
 
         float OffsetOf(Vector2 fromCentre) =>
@@ -536,7 +530,7 @@ public sealed class RaceSimulation
         bool resolvedAny = false;
         foreach (RaceCar car in _cars)
         {
-            TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.CarConfig);
+            TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(Track, car.State, car.Collision, car.Car);
             if (contact.HasValue)
             {
                 car.LastBoundaryContact = contact;
