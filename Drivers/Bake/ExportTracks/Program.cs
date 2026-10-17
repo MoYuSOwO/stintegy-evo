@@ -109,9 +109,21 @@ internal static class Program
         (float latA, _) = Split(v => Coast(v).LateralAccelerationLimit);
         (float brakeA, _) = Split(v => Braking(v).MaximumBrakeDeceleration);
 
+        // The bake's longitudinal acceleration is the car's net one: it has no
+        // drag of its own. So the air and the rolling tyres come off what the
+        // motor gives and add to what the brakes do. Left out, the bake drove
+        // a car with no drag, still gaining 6 m/s² at 95 m/s where this one
+        // has stopped gaining, and every line ran to the table's last speed.
+        //
+        // The table runs to the first speed the car cannot gain at, so the
+        // bake finds the car's top speed rather than the table's end.
+        float top = 10f;
+        while (top < 150f && Coast(top).MaximumDriveAcceleration - Coast(top).LossAcceleration > 0f)
+            top += 5f;
+
         var csv = new StringBuilder();
         csv.AppendLine("v_mps,g_mps2,ax_max,ax_min,ay_max");
-        for (float v = 10f; v <= 95f + 1e-3f; v += 5f)
+        for (float v = 10f; v <= top + 1e-3f; v += 5f)
         {
             CarPerformanceLimits coast = Coast(v);
             float brake = Braking(v).MaximumBrakeDeceleration;
@@ -119,13 +131,13 @@ internal static class Program
             {
                 float extra = g / Gravity - 1f;
                 float ay = MathF.Max(0.5f, coast.LateralAccelerationLimit + latA * extra);
-                float ax = MathF.Max(0.5f, MathF.Min(car.MaxBrakeAccel, brake + brakeA * extra));
-                float drive = MathF.Max(0.5f, coast.MaximumDriveAcceleration * MathF.Min(1f, g / Gravity));
+                float ax = MathF.Max(0.5f, MathF.Min(car.MaxBrakeAccel, brake + brakeA * extra)) + coast.LossAcceleration;
+                float drive = coast.MaximumDriveAcceleration * MathF.Min(1f, g / Gravity) - coast.LossAcceleration;
                 csv.AppendLine(string.Join(",", F(v), F(g), F(drive), F(-ax), F(ay)));
             }
         }
         File.WriteAllText(path, csv.ToString());
-        Console.WriteLine($"gg -> {path} (static lateral {latA:0.0}, static brake {brakeA:0.0} m/s² per g)");
+        Console.WriteLine($"gg -> {path} (static lateral {latA:0.0}, static brake {brakeA:0.0} m/s² per g, to {top:0} m/s)");
     }
 
 

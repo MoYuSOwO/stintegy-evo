@@ -109,7 +109,9 @@ def write_gg(csv_path: str, out_dir: str, exponent: float) -> None:
     rho = np.zeros(shape + (alpha_list.size,))
     for k, alpha in enumerate(alpha_list):
         s, c = np.sin(alpha), np.cos(alpha)
-        ax_lim = np.where(s >= 0.0, ax_max, -ax_min)
+        # Past its top speed the car gains nothing: the polar form needs a
+        # radius, so it is given a sliver there.
+        ax_lim = np.where(s >= 0.0, np.maximum(ax_max, 0.1), -ax_min)
         rho[:, :, k] = 1.0 / np.sqrt((s / ax_lim) ** 2 + (c / ay_max) ** 2)
 
     os.makedirs(out_dir, exist_ok=True)
