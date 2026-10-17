@@ -227,10 +227,10 @@ public sealed class Tire
         // no longer partly sliding but sliding, which the slip-work term
         // already charges, so this one hands over: gone by the peak.
         float startShare = TireConfig.NearLimitHeatStartShare;
-        float holdable = combinedUse / TireSlipCurve.SustainablePeakShare;
+        float holdable = combinedUse / TireConfig.NearLimitHeatLimitShare;
         float rising = Math.Clamp((holdable - startShare) / (1f - startShare), 0f, 1f);
         float handedOver = Math.Clamp(
-            (holdable - 1f) / (1f / TireSlipCurve.SustainablePeakShare - 1f),
+            (holdable - 1f) / (1f / TireConfig.NearLimitHeatLimitShare - 1f),
             0f,
             1f
         );
