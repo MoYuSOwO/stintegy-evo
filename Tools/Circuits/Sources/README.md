@@ -20,8 +20,8 @@ scaled and resampled to the FIA-published 5,891 metre Arena Grand Prix length.
 at commit `b8c7e17c528d54b65b3aa3b0e14a3278bf96b5ac`, licensed under
 MIT; the complete upstream license is included as `LICENSE.bacinger-MIT`.
 Longitude and latitude are projected to local metres, the duplicated closing
-point is removed, and a conservative 10.5 metre street-circuit width is
-assigned. When its circuit folder is written, the centreline is scaled to the FIA-published 3,337 metre
+point is removed, and the width is measured roughly per section from
+OpenStreetMap (see below). When its circuit folder is written, the centreline is scaled to the FIA-published 3,337 metre
 length. The source LineString starts near Massenet/Casino, so it is rotated to
 source point 118, the closest supplied point to the modern start/finish line on
 Boulevard Albert 1er, before spline generation.
@@ -44,9 +44,9 @@ licensed under MIT; the complete upstream license is included as
 about the ring's centroid and the duplicated closing point is removed. The
 projected ring measures 4,260.2 metres against the published 4,259, so the
 scaling barely moves it. The source LineString already begins on the
-start/finish straight, so unlike Monaco it needs no rotation. Width is
-assigned rather than sourced: twelve metres, which is a narrow permanent
-circuit and is what Zandvoort is.
+start/finish straight, so unlike Monaco it needs no rotation. Width
+comes from the circuit's own OpenStreetMap tags (see below): about ten
+metres, a narrow permanent circuit, which is what Zandvoort is.
 
 `Baku.csv`, `Spa.csv`, `Monza.csv` and `Interlagos.csv` are projected from
 [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (`az-2016`,
@@ -55,18 +55,36 @@ license is included as `LICENSE.bacinger-MIT`. Longitude and latitude are
 projected to local metres about each ring's centroid and duplicated closing
 points are removed; projected lengths land within 1.1% of the published
 6,003, 7,004, 5,793 and 4,309 metres that they are scaled to. Baku
-and Spa are rotated to start on a straight (source points 83 and 118). All
-widths are assigned rather than sourced: Baku carries 13 m on the seafront
-straight, 12 m elsewhere, 10 m through the old town and 7.6 m through the
-castle squeeze, which is the narrowest point in the sport; the other three
-carry a flat 13, 12 and 12 m. Elevation is authored in the style of each
+and Spa are rotated to start on a straight (source points 83 and 118). Baku's
+widths are measured roughly per section from OpenStreetMap (see below),
+except the castle squeeze, which is kept at 7.6 m, the narrowest point in
+the sport; Spa, Monza and Interlagos have no usable widths there and carry
+a flat 13, 12 and 12 m. Elevation is authored in the style of each
 venue, not surveyed.
 
 `Singapore.csv` and `Portimao.csv` follow the same recipe from the same
 MIT-licensed source (`sg-2008`, `pt-2008`): centroid projection, duplicate
 closing point removed, projected lengths within 0.3% of the published 4,928
 and 4,653 metres. Singapore is rotated to start on a straight (source point
-21). Widths are assigned — 11 m streets, 14 m for the modern circuit — and
+21). Widths are measured roughly per section from OpenStreetMap (see below), and
 elevation is authored in the style of each venue: Marina Bay honestly flat
 but for its bridges, the Algarve rollercoaster with its plunge past ten
 percent.
+
+## Widths from OpenStreetMap
+
+The per-section widths of `Monaco.csv`, `Baku.csv`, `Singapore.csv`,
+`Zandvoort.csv` and `Portimao.csv` are derived from OpenStreetMap data,
+© OpenStreetMap contributors, available under the Open Database License
+(ODbL 1.0, https://opendatacommons.org/licenses/odbl/). Those two width
+columns are a derived database under that licence; the centreline columns
+remain under their own sources' terms.
+
+They are rough, by design. Across the centreline every two metres, the
+first pavement (a footway running alongside the road, taken to stand a
+metre back from the kerb) on either side gives the road's edge; where a
+circuit's own way carries a `width` tag, that is used instead. Each source
+point takes the median of what was found within twelve metres of it,
+rounded to half a metre; points where nothing believable was found are
+filled in from their neighbours. A street circuit's barriers stand on the
+kerb line (`Layouts.StreetBarrierMeters`).

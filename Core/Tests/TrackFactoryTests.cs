@@ -85,8 +85,19 @@ public sealed class TrackFactoryTests
         Assert.Equal(3_337f, track.LengthMeters);
         Assert.Equal(0f, track.StartingLineS);
         Assert.Equal(3_327f, track.Grids[1].S);
-        Assert.InRange(MinimumWidth(track), 10.5f, 10.7f);
-        Assert.InRange(MaximumWidth(track), 10.5f, 10.7f);
+        // The streets as they are: eight metres at the narrowest, wider at
+        // the hairpin and on the harbour front, not one width all the way.
+        Assert.InRange(MinimumWidth(track), 7.5f, 9f);
+        Assert.InRange(MaximumWidth(track), 13f, 17f);
+        // Walled at the kerb nearly everywhere.
+        float walled = 0f;
+        for (int s = 0; s < (int)track.LengthMeters; s++)
+        {
+            var node = track.Sample(s);
+            if (node.LeftBufferWidth < 1.5f && node.RightBufferWidth < 1.5f)
+                walled++;
+        }
+        Assert.True(walled / track.LengthMeters > 0.9f, $"walled at the kerb on {walled / track.LengthMeters:P0} of the lap");
         Assert.Equal(0, CountCoarseCenterlineIntersections(track, 5f));
         AssertSmoothAndNonIntersecting(track);
     }

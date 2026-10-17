@@ -8,12 +8,12 @@
   "grid": {
     "count": 30,
     "firstLeft": true,
-    "offsetMeters": 4.5
+    "offsetMeters": 3.5
   },
   "source": {
     "centreline": "bacinger/f1-circuits (nl-1948)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected to local metres, 12 m wide, scaled to 4,259 m; Hugenholtz and Arie Luyendijk banked at 18 degrees. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along nl-1948 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
+    "notes": "Projected to local metres, about 10 m wide from OpenStreetMap (ODbL), scaled to 4,259 m; Hugenholtz and Arie Luyendijk banked at 18 degrees. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along nl-1948 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
   }
 }

@@ -14,6 +14,6 @@
     "centreline": "bacinger/f1-circuits (sg-2008)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected, rotated to start on a straight, 11 m wide, scaled to 4,928 m. Elevation is authored in the style of the venue, not surveyed. (SRTM reads the tower blocks along it; the published figure is 5 m, which the authored profile keeps.)"
+    "notes": "Projected, rotated to start on a straight, 9-16 m wide by section from OpenStreetMap (ODbL), walled at the kerb, scaled to 4,928 m. Elevation is authored in the style of the venue, not surveyed. (SRTM reads the tower blocks along it; the published figure is 5 m, which the authored profile keeps.)"
   }
 }

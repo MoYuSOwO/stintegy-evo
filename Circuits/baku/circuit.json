@@ -8,12 +8,12 @@
   "grid": {
     "count": 30,
     "firstLeft": true,
-    "offsetMeters": 5
+    "offsetMeters": 3.5
   },
   "source": {
     "centreline": "bacinger/f1-circuits (az-2016)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected, rotated to start on a straight, scaled to 6,003 m; 13 m seafront, 12 m, 10 m old town, 7.6 m castle. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along az-2016 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
+    "notes": "Projected, rotated to start on a straight, scaled to 6,003 m; widths by section from OpenStreetMap (ODbL), 7.6 m at the castle, walled at the kerb. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along az-2016 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
   }
 }

@@ -11,6 +11,13 @@ namespace StintegyEVO.Circuits;
 internal static class Layouts
 {
     private const float GrandPrixTestBufferMeters = 5f;
+
+    /// <summary>
+    /// A street circuit's barriers stand on the kerb line: the pavement is
+    /// behind them, not beside the road. Half a metre is the kerb and the
+    /// gap to the barrier's face.
+    /// </summary>
+    private const float StreetBarrierMeters = 0.5f;
     private const float GrandPrixTestTrackWidthMeters = 15f;
 
 
@@ -216,13 +223,14 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Monaco,
             3_337f,
-            3f,
-            3f
+            StreetBarrierMeters,
+            StreetBarrierMeters
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
         builder.WithSurface(CrossSections.RoadCircuit);
-        // Ten and a half metres of road, the narrowest on the calendar, which is
-        // what the 3.5 m stagger has always been for. The back of the grid does
+        // Eight to fifteen metres of road, the narrowest on the calendar, about
+        // ten on the grid, which is what the 3.5 m stagger has always been for.
+        // The back of the grid does
         // run into Sainte Devote's approach: the straight behind the line is only
         // 198 m and 30 boxes want 242 m. That is Monaco, and it is authored.
         return builder.Build(new TrackGridConfig
@@ -547,18 +555,19 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Baku,
             6_003f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            StreetBarrierMeters,
+            StreetBarrierMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
         builder.WithSurface(CrossSections.RoadCircuit);
+        // About ten metres of road on the grid: Monaco's stagger.
         return builder.Build(new TrackGridConfig
         {
             StartingLineIdx = 0,
             GridCount = 30,
             IsFirstGridLeft = true,
-            GridOffset = 5f
+            GridOffset = 3.5f
         });
     }
 
@@ -651,8 +660,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Singapore,
             4_928f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            StreetBarrierMeters,
+            StreetBarrierMeters,
             controlSpacingMeters: 12f
         );
         builder.WithSurface(TrackElevation.Profile(
@@ -713,13 +722,13 @@ internal static class Layouts
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
         builder.WithSurface(ZandvoortSurface);
-        // Twelve metres of road at the grid.
+        // About ten metres of road at the grid: Monaco's stagger.
         return builder.Build(new TrackGridConfig
         {
             StartingLineIdx = 0,
             GridCount = 30,
             IsFirstGridLeft = true,
-            GridOffset = 4.5f
+            GridOffset = 3.5f
         });
     }
 
