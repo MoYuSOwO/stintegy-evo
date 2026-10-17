@@ -86,9 +86,18 @@ public sealed class CarCollisionConfig
     public float WidthMeters { get; init; } = 1.9f;
     public float Restitution { get; init; } = 0.05f;
     public float Friction { get; init; } = 0.35f;
-    public float WallRestitution { get; init; } = 0.02f;
+    /// <summary>
+    /// How much of the speed into the barrier comes back out of it. Full-scale
+    /// crash tests into rigid barriers measure about a tenth: the car
+    /// crumples and the barrier hardly gives.
+    /// </summary>
+    public float WallRestitution { get; init; } = 0.1f;
+
+    /// <summary>
+    /// Sliding friction between the car and the barrier: carbon, aluminium
+    /// and tyre sidewall on steel and concrete.
+    /// </summary>
     public float WallFriction { get; init; } = 0.5f;
-    public float ReferenceImpactSpeed { get; init; } = 25f;
     public int SolverIterations { get; init; } = 6;
 
     public float HalfLengthMeters => LengthMeters * 0.5f;

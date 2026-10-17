@@ -241,7 +241,10 @@ public sealed class WallContactDynamicsTests
             car.Progress.TotalDistance > 10f || furthest > 3f,
             $"covered {car.Progress.TotalDistance:F1} m and never more than {furthest:F2} m from the wall"
         );
-        Assert.True(car.State.Speed > 3f, $"speed {car.State.Speed:F2}");
+        // Under way, not quick: held on full lock into the barrier, the car
+        // that understeers along it rubs it as it goes, and the barrier's
+        // friction holds it near walking pace.
+        Assert.True(car.State.Speed > 1.5f, $"speed {car.State.Speed:F2}");
     }
 
     /// <summary>
@@ -304,6 +307,77 @@ public sealed class WallContactDynamicsTests
             );
         }
         return (car, firstContactYaw);
+    }
+
+    /// <summary>
+    /// A car its own tyres hold pressed against the barrier, rubbing along
+    /// it, is slowed by it: the wall pushes back every step, and every push
+    /// brings friction with it. The same car alongside the same wall, not
+    /// steered into it, loses only what the air takes.
+    /// </summary>
+    [Fact]
+    public void RubbingAlongTheBarrierScrubsSpeed()
+    {
+        float Final(float curvatureIntoWall, out int contactFrames)
+        {
+            (RaceCar car, _) = Run(
+                s: 100f,
+                offsetFromLeftWall: 1.2f,
+                headingIntoWall: 0f,
+                speed: 30f,
+                command: _ => new DriverInput(TowardsLeftWall(100f) * curvatureIntoWall, 0f),
+                seconds: 1.5f,
+                out contactFrames
+            );
+            return car.State.Speed;
+        }
+
+        float rubbing = Final(0.01f, out int rubbed);
+        float alongside = Final(0f, out int touched);
+        Assert.True(rubbed > 60, $"pressed on the wall for only {rubbed} frames");
+        Assert.Equal(0, touched);
+        Assert.True(alongside - rubbing > 1f, $"rubbing the wall ended at {rubbing:F1} m/s, running alongside it at {alongside:F1}");
+    }
+
+    /// <summary>
+    /// Flush against the wall through a bend and moving along it, a step
+    /// gets the car most of its move, wherever on the lap and whether it
+    /// points a shade into the wall or a shade away. The slide along the
+    /// wall is straight and the wall curves into it: a car put back a tenth
+    /// of a millimetre clear met the wall again a few centimetres down every
+    /// slide, and stood still against the barrier at full speed for as long
+    /// as it pressed on it.
+    /// </summary>
+    [Fact]
+    public void ACarFlushWithTheWallThroughABendCanRunAlongIt()
+    {
+        var collision = new CarCollisionConfig();
+        int poses = 0;
+        for (float s = 0f; s < Track.LengthMeters; s += 7f)
+        {
+            if (MathF.Abs(Track.Sample(s).Curvature) < 1e-3f)
+                continue;
+            foreach (float headingIntoWall in new[] { -0.003f, 0f, 0.003f, 0.009f })
+            {
+                // Pressed a centimetre into the wall, and put back out of it
+                // the way the simulation does at the start of a step.
+                (Vector2 position, float heading) = NearLeftWall(s, collision.HalfWidthMeters - 0.01f, headingIntoWall);
+                CarState start = new() { Position = position, Heading = heading, Speed = 42f };
+                TrackBoundaryResolver.ResolveCurrent(Track, start, collision);
+
+                CarState target = new();
+                target.CopyFrom(start);
+                Vector2 forward = new(MathF.Cos(start.Heading), MathF.Sin(start.Heading));
+                target.Position = start.Position + forward * 0.35f;
+                TrackBoundaryResolver.ResolveSweep(Track, start, target, collision);
+
+                float moved = Vector2.Distance(start.Position, target.Position);
+                Assert.True(moved > 0.25f, $"at {s} m, {headingIntoWall} rad into the wall: moved {moved:F4} m of 0.35");
+                Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, target, collision), $"through the wall at {s} m");
+                poses++;
+            }
+        }
+        Assert.True(poses > 50, $"only {poses} poses in bends");
     }
 
     private static float KineticEnergy(CarState state, CarConfig car) =>
