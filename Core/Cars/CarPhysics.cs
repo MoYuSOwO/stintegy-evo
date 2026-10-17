@@ -1919,11 +1919,10 @@ public static class CarPhysics
         if (speed <= 0.01f)
             return 0f;
 
-        float metAir = 1f - Math.Clamp(airVelocityDeficit, 0f, 1f);
         return
             config.RollingDragAccel +
-            config.AeroDragPerSpeedSquared * speed * speed *
-            metAir * metAir / Math.Max(massKg, Epsilon);
+            config.Aero.DragForce(speed, new AeroAir(airVelocityDeficit, 0f, 0f, 0f)) /
+            Math.Max(massKg, Epsilon);
     }
 
     /// <summary>
@@ -2184,9 +2183,9 @@ public static class CarPhysics
     /// out slower than one whose character is a long straight, which is the
     /// wrong way round.
     ///
-    /// Downforce is shared front to rear in the same proportion as weight.
-    /// Real cars are trimmed away from that, and that trim is a setup choice
-    /// this model does not offer yet.
+    /// Downforce is shared front to rear as the aero is trimmed
+    /// (<see cref="IAero.FrontDownforceShare"/>), as the weight is unless
+    /// it says otherwise.
     /// </summary>
     private static WheelLoads CalculateWheelLoads(
         CarConfig config,
@@ -2207,7 +2206,11 @@ public static class CarPhysics
             activeAero
         ) * speed * speed;
         float totalLoad = massKg * normalGravity + downforce;
-        float frontLoad = totalLoad * config.FrontStaticLoadShare;
+        // The downforce sits on the axles as the weight does unless the aero
+        // is trimmed away from it, and only the difference moves.
+        float aeroBalance = config.Aero.FrontDownforceShare ?? config.FrontStaticLoadShare;
+        float frontLoad = totalLoad * config.FrontStaticLoadShare +
+                          downforce * (aeroBalance - config.FrontStaticLoadShare);
         frontLoad -= massKg * longitudinalAcceleration * config.CenterOfGravityHeightMeters /
                      Math.Max(config.WheelBaseMeters, Epsilon);
         frontLoad = Math.Clamp(frontLoad, 0f, totalLoad);
@@ -2232,44 +2235,18 @@ public static class CarPhysics
         );
     }
 
-    /// <summary>
-    /// The share of the wake's downforce disruption the tires actually feel.
-    /// Whatever the active aero hands back to the load model must also stop
-    /// shaking the car, or an assisted car would corner on recovered grip
-    /// while being charged full dirty-air tyre temperature for it.
-    /// </summary>
     private static float EffectiveTireWakeDownforceLoss(
         CarState state,
         CarConfig config
-    )
-    {
-        return state.WakeDownforceLoss *
-               (1f - config.ActiveAeroWakeDownforceRecovery *
-                Math.Clamp(state.ActiveAero, 0f, 1f));
-    }
+    ) => config.Aero.TireWakeDownforceLoss(AeroAir.Of(state));
 
     private static float EffectiveDownforcePerSpeedSquared(
         CarConfig config,
         float downforceVelocityDeficit,
         float wakeDownforceLoss,
         float activeAero
-    )
-    {
-        float metAir = 1f - Math.Clamp(downforceVelocityDeficit, 0f, 1f);
-        float usableDownforce = 1f - Math.Clamp(wakeDownforceLoss, 0f, 1f);
-        float wakeFactor = metAir * metAir * usableDownforce;
-        // Hands back part of what the wake took, and nothing more: in clean air
-        // the factor is already one, so the active aero cannot make a car
-        // quicker than itself with nobody in front.
-        float restored = wakeFactor +
-                         config.ActiveAeroWakeDownforceRecovery *
-                         Math.Clamp(activeAero, 0f, 1f) *
-                         (1f - wakeFactor);
-        return MathF.Max(
-            0f,
-            config.DownforcePerSpeedSquared * restored
-        );
-    }
+    ) => config.Aero.EffectiveDownforcePerSpeedSquared(
+        new AeroAir(0f, downforceVelocityDeficit, wakeDownforceLoss, activeAero));
 
     private static void ApplyWheelLoads(CarState state, WheelLoads loads)
     {

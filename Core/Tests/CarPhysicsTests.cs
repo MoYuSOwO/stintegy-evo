@@ -33,8 +33,7 @@ public sealed class CarPhysicsTests
         {
             FrontStaticLoadShare = 0.5f,
             CenterOfGravityHeightMeters = 0f,
-            DownforcePerSpeedSquared = 0f,
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
             OverLimitCostCap = 0f
         };
@@ -1124,7 +1123,7 @@ public sealed class CarPhysicsTests
     [Fact]
     public void HotTreadWearClimbsWithTemperatureAndIsCapped()
     {
-        CarConfig car = new() { DownforcePerSpeedSquared = 0f };
+        CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,
@@ -1160,7 +1159,7 @@ public sealed class CarPhysicsTests
     [Fact]
     public void WearRisesFasterThanSquaredDemandNearTheLimit()
     {
-        CarConfig car = new() { DownforcePerSpeedSquared = 0f };
+        CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,
@@ -1223,7 +1222,7 @@ public sealed class CarPhysicsTests
         // acceleration is a smaller share of what it can give. This is about
         // the tyre model, so the car is the one where speed changes nothing
         // else.
-        CarConfig car = new() { DownforcePerSpeedSquared = 0f };
+        CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
         TireConfig tires = new()
         {
             StartingSurfaceTempC = 90f,
@@ -1498,8 +1497,7 @@ public sealed class CarPhysicsTests
             FrontStaticLoadShare = 0.5f,
             FrontLateralComplianceRatio = 1f,
             CenterOfGravityHeightMeters = 0f,
-            DownforcePerSpeedSquared = 0f,
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
         CarConfig softerFront = new()
@@ -1507,8 +1505,7 @@ public sealed class CarPhysicsTests
             FrontStaticLoadShare = 0.5f,
             FrontLateralComplianceRatio = 2f,
             CenterOfGravityHeightMeters = 0f,
-            DownforcePerSpeedSquared = 0f,
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
         TireConfig tires = new()
@@ -1596,8 +1593,7 @@ public sealed class CarPhysicsTests
             FrontStaticLoadShare = 0.0001f,
             FrontLateralComplianceRatio = 1f,
             CenterOfGravityHeightMeters = 0f,
-            DownforcePerSpeedSquared = 0f,
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
         CarConfig extremeCompliance = new()
@@ -1605,8 +1601,7 @@ public sealed class CarPhysicsTests
             FrontStaticLoadShare = 0.0001f,
             FrontLateralComplianceRatio = 100_000_000f,
             CenterOfGravityHeightMeters = 0f,
-            DownforcePerSpeedSquared = 0f,
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
         TireConfig tires = new()
@@ -1696,7 +1691,7 @@ public sealed class CarPhysicsTests
         {
             FrontStaticLoadShare = 0.5f,
             CenterOfGravityHeightMeters = 0f,
-            DownforcePerSpeedSquared = 0f
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f }
         };
         TireConfig tires = new()
         {
@@ -2092,7 +2087,7 @@ public sealed class CarPhysicsTests
         // tyre, which is what this is about. With them the load at fifty five
         // metres a second is more than doubled and the heat that comes with it
         // swamps the cooling being measured.
-        CarConfig car = new() { DownforcePerSpeedSquared = 0f };
+        CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
         TireConfig tires = WarmTires();
         CarState parked = CreateState(speed: 0f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 55f, batterySoc: 0.8f, tires);
@@ -2126,8 +2121,7 @@ public sealed class CarPhysicsTests
         // only physical difference is how much air the following tyre meets.
         CarConfig car = new()
         {
-            DownforcePerSpeedSquared = 0f,
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f
         };
         TireConfig tires = WarmTires();
@@ -2578,7 +2572,7 @@ public sealed class CarPhysicsTests
         };
         CarConfig car = new()
         {
-            AeroDragPerSpeedSquared = 0f,
+            Aero = new StandardAero { DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
         CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
