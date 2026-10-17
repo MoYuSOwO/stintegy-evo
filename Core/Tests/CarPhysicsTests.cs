@@ -1234,7 +1234,11 @@ public sealed class CarPhysicsTests
         };
         CarState slow = CreateState(speed: 15f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 45f, batterySoc: 0.8f, tires);
-        const float targetLateralAccel = 6f;
+        // Two fifths of the car's corner, the share six m/s^2 was when this
+        // was written: much less and the steering's slip compensation fades
+        // and the faster car falls short of what it was asked for.
+        float targetLateralAccel = 0.4f * CarPhysics.EstimateCorneringLimit(
+            slow, car, tires, CarStrategy.Default, slow.Speed);
         float slowCurvature = targetLateralAccel / (slow.Speed * slow.Speed);
         float fastCurvature = targetLateralAccel / (fast.Speed * fast.Speed);
         SetSteadyCorner(slow, car, tires, slowCurvature);
@@ -1900,6 +1904,12 @@ public sealed class CarPhysicsTests
             for (int step = 0; step < 60 * 60; step++)
             {
                 state.Speed = 55f;
+                // Nine tenths of what the car can hold now, read again
+                // each step as a driver reads it: a carcass past its
+                // threshold takes grip away, and nine tenths of the grip
+                // it had at the start is soon more than it has.
+                curvature = CurvatureForGripShare(state, car, tires, share: 0.90f);
+                input = input with { DriverInput = new DriverInput(curvature, 0f) };
                 CarPhysics.Step(state, car, tires, input, 1f / 60f);
                 // The heat balance is what this gate is about. Sixteen
                 // kilometres of cornering at nine tenths wears a set of
