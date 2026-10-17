@@ -111,12 +111,12 @@ public static class CarPhysics
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
-            loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
-            loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
+            WheelGripForce(tires, state.FrontLeft, loads.FrontLeft) +
+            WheelGripForce(tires, state.FrontRight, loads.FrontRight)
         ) / Math.Max(massKg, Epsilon) * usage;
         float rearGrip = (
-            loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
-            loads.RearRight * CalculateTireMu(tires, state.RearRight)
+            WheelGripForce(tires, state.RearLeft, loads.RearLeft) +
+            WheelGripForce(tires, state.RearRight, loads.RearRight)
         ) / Math.Max(massKg, Epsilon) * usage;
 
         // What the car can hold, not what it can touch. See
@@ -228,12 +228,12 @@ public static class CarPhysics
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float mass = Math.Max(massKg, Epsilon);
         float frontGrip = (
-            loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
-            loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
+            WheelGripForce(tires, state.FrontLeft, loads.FrontLeft) +
+            WheelGripForce(tires, state.FrontRight, loads.FrontRight)
         ) / mass * usage;
         float rearGrip = (
-            loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
-            loads.RearRight * CalculateTireMu(tires, state.RearRight)
+            WheelGripForce(tires, state.RearLeft, loads.RearLeft) +
+            WheelGripForce(tires, state.RearRight, loads.RearRight)
         ) / mass * usage;
 
         return MathF.Max(
@@ -2532,12 +2532,37 @@ public static class CarPhysics
         // grass, and the axle is worth the sum of the two rather than the
         // better of them - so half a car off the road is half an axle's
         // grip gone, and the cost of running wide scales with how far.
-        float leftForce = left.LoadN * CalculateTireMu(tires, left) *
+        float leftForce = WheelGripForce(tires, left, left.LoadN) *
                           MathF.Max(0f, left.SurfaceGrip);
-        float rightForce = right.LoadN * CalculateTireMu(tires, right) *
+        float rightForce = WheelGripForce(tires, right, right.LoadN) *
                            MathF.Max(0f, right.SurfaceGrip);
         return (leftForce + rightForce) / Math.Max(massKg, Epsilon);
     }
+
+    /// <summary>
+    /// The most force a tyre can give at this load: the load times its
+    /// friction, and the friction falls as the load rises (load
+    /// sensitivity). A tyre pressed twice as hard grips less than twice as
+    /// hard, which is why a car's cornering grows more slowly than its
+    /// downforce, and why moving load from the inside wheels to the
+    /// outside ones in a corner costs the axle grip.
+    /// </summary>
+    private static float WheelGripForce(TireConfig tires, TireState tire, float loadN)
+    {
+        float ratio = MathF.Max(
+            loadN / MathF.Max(tires.ReferenceLoadN, Epsilon),
+            MinimumLoadSensitivityRatio
+        );
+        return loadN * CalculateTireMu(tires, tire) *
+               MathF.Pow(ratio, -Math.Max(0f, tires.LoadSensitivity));
+    }
+
+    /// <summary>
+    /// The lightest load, as a share of the reference, whose friction still
+    /// rises as it lightens. A wheel all but off the ground gives next to
+    /// nothing anyway; without a floor its friction would run to infinity.
+    /// </summary>
+    private const float MinimumLoadSensitivityRatio = 0.2f;
 
     private static float CalculateTireMu(TireConfig tires, TireState tire)
     {
