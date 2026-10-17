@@ -21,7 +21,7 @@ public sealed class PhysicsBoundaryTests
         // combined-grip limiter; a car without one drives the same command
         // identically on every rung.
         CarConfig car = new() { CombinedGripLimiterStrength = 0f };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState protect = NewState(45f, tires);
         CarState attack = NewState(45f, tires);
         DriverInput command = new(0.006f, -12f);
@@ -68,7 +68,7 @@ public sealed class PhysicsBoundaryTests
     {
         CarConfig fitted = new();
         CarConfig unfitted = new() { CombinedGripLimiterStrength = 0f };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState limited = NewState(45f, tires);
         CarState free = NewState(45f, tires);
         CarStrategy protect = new(TireUsageMode.Protect, PowerOutputMode.Normal);
@@ -91,11 +91,10 @@ public sealed class PhysicsBoundaryTests
     }
 
     /// <summary>
-    /// Strength zero is bit-for-bit the car without the device. The
-    /// reference is the fitted car on tyres that allow the whole circle,
-    /// which leaves the device nothing to do; an unfitted car on any rung
-    /// has to match it digit for digit through a sweep of cornering, full
-    /// drive and full braking.
+    /// Strength zero is bit-for-bit the car without the device: whatever
+    /// share of the circle the rung would allow a fitted limiter, an
+    /// unfitted car never has a cut, and it drives digit for digit the same
+    /// through a sweep of cornering, full drive and full braking.
     /// </summary>
     [Theory]
     [InlineData(TireUsageMode.Protect)]
@@ -103,20 +102,20 @@ public sealed class PhysicsBoundaryTests
     [InlineData(TireUsageMode.Push)]
     public void AnUnfittedLimiterIsBitForBitTheIdleDevice(TireUsageMode mode)
     {
-        CarConfig fitted = new();
+        // Unfitted, the limiter cuts nothing, so the rung -- which only sets
+        // how much of the circle a fitted one allows -- changes nothing.
         CarConfig unfitted = new() { CombinedGripLimiterStrength = 0f };
-        TireConfig tires = WarmTires();
-        TireConfig wholeCircle = new() { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f, AccelerationUsage = 1f };
-        CarState idle = NewState(45f, wholeCircle);
+        TestTires tires = WarmTires();
+        CarState idle = NewState(45f, tires);
         CarState absent = NewState(45f, tires);
         CarStrategy attack = new(TireUsageMode.Attack, PowerOutputMode.Normal);
-        CarStrategy rung = new(mode, PowerOutputMode.Normal);
+        CarStrategy rung = new CarStrategy(mode, PowerOutputMode.Normal).WithTireGripUsage(0.6f);
 
         for (int i = 0; i < 240; i++)
         {
             float pedal = i % 80 < 40 ? 12f : -30f;
             DriverInput command = new(0.008f * MathF.Sin(i * 0.05f), pedal);
-            CarPhysics.Step(idle, fitted, wholeCircle, StepInput(command, attack), 1f / 60f);
+            CarPhysics.Step(idle, unfitted, tires, StepInput(command, attack), 1f / 60f);
             CarPhysics.Step(absent, unfitted, tires, StepInput(command, rung), 1f / 60f);
 
             Assert.Equal(idle.Speed, absent.Speed);
@@ -143,7 +142,7 @@ public sealed class PhysicsBoundaryTests
         Assert.True(method!.IsPublic);
         Assert.True(typeof(CarPerformanceLimits).IsPublic);
 
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         ICar car = new SingleTrackCar(new CarConfig(), tires);
         CarState state = NewState(40f, tires);
         CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Normal);
@@ -179,9 +178,7 @@ public sealed class PhysicsBoundaryTests
         return state;
     }
 
-    private static TireConfig WarmTires() => new()
+    private static TestTires WarmTires() => new(new TireConfig
     {
-        StartingSurfaceTempC = 90f,
-        StartingCoreTempC = 90f
-    };
+    }, 90f, 90f);
 }

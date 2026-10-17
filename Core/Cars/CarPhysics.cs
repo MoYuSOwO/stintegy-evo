@@ -39,10 +39,44 @@ public static class CarPhysics
     private const float FullSlipCompensationShare = 0.35f;
 
     /// <summary>
+    /// The most of an axle's grip the steering inverts the slip curve for.
+    /// Above it the curve is too flat near its peak to say which slip angle
+    /// a share wants: a few hundredths of share invert to twice the angle.
+    /// Asked for more, the steering asks both ends for this and lets the
+    /// tyres and the curvature feedback find the rest, which on the skidpad
+    /// is nearly all of it (<see cref="TireSlipCurve.SustainablePeakShare"/>).
+    /// </summary>
+    private const float SteeringInversionShare = 0.9f;
+
+    /// <summary>
     /// The chassis's own ladders are its powertrain's output ladder and
     /// nothing else, so that is the first one a strategy sets for it.
     /// </summary>
     internal const int OutputLadderIndex = 0;
+
+    /// <summary>
+    /// The share of the tyre's friction circle the combined-grip limiter lets
+    /// the pedals take it to, the same whatever the tyre rung: the device's
+    /// own margin, short of the peak where a tyre stops answering, at the
+    /// figure the Normal rung always had. It is the limiter's, not the
+    /// tyre's, so it is the same whatever compound is on.
+    ///
+    /// It used to be a ladder, a smaller share at each rung down from Attack,
+    /// so that Protect was a car held to 95 per cent of its tyres by the
+    /// physics. The rungs are ways of driving now, and the driver carries
+    /// them out (how much of each corner, of the brakes, of the throttle it
+    /// spends); a second ladder underneath, in the car, doubled every gap
+    /// and made the rung a property of the hardware rather than of the
+    /// person driving it. A host that wants the limiter tighter still says
+    /// so with <see cref="CarStrategy.WithTireGripUsage"/>.
+    /// </summary>
+    public const float LimiterGripShare = 0.977f;
+
+    /// <summary>The share the limiter holds the tyres to: its own, or less if the host asks.</summary>
+    public static float GripUsage(in CarStrategy strategy) =>
+        strategy.TireGripUsageOverride is { } asked
+            ? Math.Clamp(asked, 0.05f, LimiterGripShare)
+            : LimiterGripShare;
 
     private static int OutputRung(CarConfig config, in CarStrategy strategy) =>
         strategy.Rung(OutputLadderIndex, config.Powertrain.OutputLadder);
@@ -488,7 +522,7 @@ public static class CarPhysics
             roadLateralDemand,
             curvatureDemandScale,
             dynamicYawBlend,
-            tires.Front.GripUsage(input.Strategy),
+            GripUsage(input.Strategy),
             dt
         );
         AxleResult front = lateral.Front;
@@ -1226,10 +1260,26 @@ public static class CarPhysics
         // inverse runs
         // out, which is the point at which no amount of lock buys any more
         // corner - understeer, arrived at honestly.
-        float frontShare = rearArm / wheelBase * requestedLateralAccel;
-        float rearShare = frontArm / wheelBase * requestedLateralAccel;
+        //
+        // The inversion is of a corner the axles can hold. Near its peak the
+        // slip curve is so flat that a share a few hundredths apart inverts
+        // to an angle twice the size, so asked for more than both ends had,
+        // the end nearer its peak read as a slip angle far larger than the
+        // other's, and "front minus rear" turned the wheel off: braking into
+        // a fast corner at 65 m/s, 52 m/s^2 asked unwound the lock from 2.4
+        // to 0.3 degrees with the tyres at half their grip, and the car took
+        // 15. So the corner inverted is the one each axle can sustain, its
+        // moment-arm share of it no more than SteeringInversionShare of its
+        // grip; asked for more, the same balance is asked of both ends there,
+        // and the tyres give what they give.
         float frontCapacity = MathF.Max(frontGrip, Epsilon);
         float rearCapacity = MathF.Max(rearGrip, Epsilon);
+        float holdable = SteeringInversionShare * MathF.Min(
+            frontCapacity * wheelBase / MathF.Max(rearArm, Epsilon),
+            rearCapacity * wheelBase / MathF.Max(frontArm, Epsilon));
+        float corner = Math.Clamp(requestedLateralAccel, -holdable, holdable);
+        float frontShare = rearArm / wheelBase * corner;
+        float rearShare = frontArm / wheelBase * corner;
         float slipCompensation =
             TireSlipCurve.InverseEvaluate(
                 frontShare / frontCapacity,
@@ -2146,7 +2196,7 @@ public static class CarPhysics
         return new AxleScales(frontScale, rearScale);
     }
 
-    /// <summary>The force a tyre gives at its load against what it gives at the load it was sized for (<see cref="ITireModel.ForceScale"/>).</summary>
+    /// <summary>The force a tyre gives at its load against what it gives at the load it was sized for (<see cref="Tire.ForceScale"/>).</summary>
     private static float CalculateTireForceScale(
         TireState tire,
         CarConfig config,
@@ -2286,7 +2336,7 @@ public static class CarPhysics
         return (leftForce + rightForce) / Math.Max(massKg, Epsilon);
     }
 
-    /// <summary>The most force a tyre can give at this load (<see cref="ITireModel.GripForce"/>).</summary>
+    /// <summary>The most force a tyre can give at this load (<see cref="Tire.GripForce"/>).</summary>
     private static float WheelGripForce(CarConfig config, TireSet tires, TireState tire, float loadN, bool front) =>
         tires.For(front).GripForce(tire, loadN, SizedWheelLoad(config, front));
 

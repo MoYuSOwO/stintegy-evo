@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
@@ -27,7 +28,7 @@ public sealed class CarPhysicsTests
     /// of rear-only heat in one step; the bound is two orders tighter.
     /// </summary>
     [Fact]
-    public void ZeroLateralHeatCoefficientDoesNotLeaveASecondRearSlipHeater()
+    public void ACompoundThatMakesNoHeatMakesNoneAnywhere()
     {
         CarConfig car = new()
         {
@@ -37,13 +38,11 @@ public sealed class CarPhysicsTests
             RollingDragAccel = 0f,
             OverLimitCostCap = 0f
         };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
-            LateralHeatRate = 0f,
-            LongitudinalHeatRate = 0f
-        };
+        // Every source of heat in the tyre goes through the compound's own
+        // scale: with it at nothing, the rear of a cornering car -- where a
+        // second, rear-only slip heater once lived -- warms no more than the
+        // rear of one going straight, and neither warms at all.
+        TestTires tires = new(new TireConfig { HeatScale = 0f }, 90f, 90f);
         CarState straight = CreateState(30f, 0.8f, tires);
         CarState corner = CreateState(30f, 0.8f, tires);
         float curvature = CurvatureForGripShare(corner, car, tires, 0.6f);
@@ -57,11 +56,9 @@ public sealed class CarPhysicsTests
 
         Assert.True(corner.Axles().RearLateralUse > 0.1f);
         Assert.Equal(0, corner.SpinEvents);
-        // Equal static wheel loads remove load-transfer heating. With no
-        // lateral or longitudinal dissipation, both cases retain only the
-        // same rolling heat; allow float rounding and tiny speed changes.
         Assert.InRange(Math.Abs(AverageRearSurfaceTemp(corner) -
             AverageRearSurfaceTemp(straight)), 0f, 0.01f);
+        Assert.True(AverageRearSurfaceTemp(corner) <= 90f, "nothing heats a tyre the compound makes no heat in");
     }
 
     [Fact]
@@ -70,7 +67,7 @@ public sealed class CarPhysicsTests
         // The all-electric car: its pack is the only store, so drive comes
         // straight out of it. The range extender's own case is below.
         CarConfig car = new() { Powertrain = ElectricPowertrain.Default };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 24f, batterySoc: 0.8f, tires);
         float startSpeed = state.Speed;
         float startSoc = state.Energy.Primary;
@@ -87,7 +84,7 @@ public sealed class CarPhysicsTests
     public void BrakeRequestSlowsCarAndRegeneratesEnergy()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 34f, batterySoc: 0.5f, tires);
         float startSpeed = state.Speed;
         float startSoc = state.Energy.Primary;
@@ -130,14 +127,14 @@ public sealed class CarPhysicsTests
     )
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarStrategy strategy = new(mode, PowerOutputMode.Normal);
         CarState state = CreateState(speed: 45f, batterySoc: 0.8f, tires);
         float curvature = CurvatureForGripShare(
             state, car, tires, strategy, 0.8f
         );
         SetSteadyCorner(state, car, tires, curvature);
-        float allowance = tires.GetAccelerationUsage(mode);
+        float allowance = CarPhysics.LimiterGripShare;
 
         for (int i = 0; i < 30; i++)
         {
@@ -178,7 +175,7 @@ public sealed class CarPhysicsTests
     public void APedalRequestInsideTheAllowanceArrivesUntouched()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState governed = CreateState(speed: 45f, batterySoc: 0.8f, tires);
         CarState free = CreateState(speed: 45f, batterySoc: 0.8f, tires);
         DriverInput gentle = new(0f, 2f);
@@ -219,7 +216,7 @@ public sealed class CarPhysicsTests
     public void TheAllowanceIsStillReachableThroughTheSlipAngleAlone()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarStrategy strategy = CarStrategy.Default;
         CarState state = CreateState(speed: 45f, batterySoc: 0.8f, tires);
         // A corner past what the car will hold, and not one pedal touched.
@@ -227,7 +224,7 @@ public sealed class CarPhysicsTests
             state, car, tires, strategy, 1.3f
         );
         SetSteadyCorner(state, car, tires, curvature);
-        float allowance = tires.GetAccelerationUsage(strategy.TireMode);
+        float allowance = CarPhysics.LimiterGripShare;
 
         float worst = 0f;
         for (int i = 0; i < 30; i++)
@@ -276,12 +273,10 @@ public sealed class CarPhysicsTests
         // asked for more than it has, which a fitted limiter would never let
         // the pedals reach below the Attack rung.
         CarConfig car = new() { CombinedGripLimiterStrength = 0f };
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
             BaseMu = 0.6f
-        };
+        }, 90f, 90f);
         CarState state = CreateState(speed: 32f, batterySoc: 0.5f, tires);
 
         CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(0f, -12f)), 1f / 60f);
@@ -306,12 +301,10 @@ public sealed class CarPhysicsTests
             CombinedGripLimiterStrength = 0f
         };
         CarConfig defaultEfficiencyLoss = new() { CombinedGripLimiterStrength = 0f };
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
             BaseMu = 0.6f
-        };
+        }, 90f, 90f);
         CarState noEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
         CarState defaultEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
         CarPhysicsStepInput input = PhysicsInput(new DriverInput(0f, -12f));
@@ -334,7 +327,7 @@ public sealed class CarPhysicsTests
     public void FrontGripLimitReducesDeliveredCurvature()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 46f, batterySoc: 0.8f, tires);
         DriverInput input = new(0.03f, 0f);
 
@@ -354,7 +347,7 @@ public sealed class CarPhysicsTests
     public void ExtremeOverLimitRequestDoesNotEraseSpeedInOneStep()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 55f, batterySoc: 0.8f, tires);
 
         DriverInput absurd = new(car.MaxCurvatureRequest, 0f);
@@ -386,7 +379,7 @@ public sealed class CarPhysicsTests
     public void RearOverlimitCutsDeliveredDrive()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         DriverInput input = new(0.018f, 7f);
@@ -412,7 +405,7 @@ public sealed class CarPhysicsTests
         // car's 12 m/s^2 of drive, so its pedal never reaches the circle;
         // the limiter is under test, not the motor's ceiling.
         CarConfig car = new() { CombinedGripLimiterStrength = 0f, MaxDriveAcceleration = UncappedDriveAcceleration };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
@@ -443,7 +436,7 @@ public sealed class CarPhysicsTests
     public void BrakeDistributionUsesEachAxlesRemainingFrictionCircle()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 25f, batterySoc: 0.9f, tires);
         state.SideslipAngleRadians = 0.04f;
 
@@ -481,7 +474,7 @@ public sealed class CarPhysicsTests
     public void BrakeBiasErrorLeavesGripUnusedAtTheLimit()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState optimal = CreateState(speed: 25f, batterySoc: 0.9f, tires);
         CarState frontBiased = CreateState(speed: 25f, batterySoc: 0.9f, tires);
         // Braking hard enough into a corner that both axles are working, so a
@@ -528,7 +521,7 @@ public sealed class CarPhysicsTests
     public void DefaultRearDriveMakesTheRearCloserToTheCombinedLimitUnderPower()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 30f, batterySoc: 0.9f, tires);
         SetSteadyCorner(state, car, tires, 0.008f);
 
@@ -560,7 +553,7 @@ public sealed class CarPhysicsTests
         // Without the combined-grip limiter, which exists to stop exactly
         // this and would cut the drive before the rear let go.
         CarConfig car = new() { CombinedGripLimiterStrength = 0f };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeRearTiresHotAndWorn(state);
         CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
@@ -627,7 +620,7 @@ public sealed class CarPhysicsTests
     public void NeutralYawDynamicsTracksTheCurvatureYawRateReference()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 30f, batterySoc: 0.9f, tires);
 
         StepMany(
@@ -656,7 +649,7 @@ public sealed class CarPhysicsTests
     public void FrontAxleSaturationBuildsUndersteerSideslip()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         MakeFrontTiresHotAndWorn(state);
         // More corner than a worn front will hold, which is what saturating
@@ -713,7 +706,7 @@ public sealed class CarPhysicsTests
         // the limiter is under test, not the motor's ceiling.
         CarConfig controlledCar = new() { FrontDriveShare = 0f, MaxDriveAcceleration = UncappedDriveAcceleration };
         CarConfig uncontrolledCar = new() { FrontDriveShare = 0f, CombinedGripLimiterStrength = 0f, MaxDriveAcceleration = UncappedDriveAcceleration };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarStrategy attack = new(TireUsageMode.Protect, PowerOutputMode.Attack);
@@ -752,7 +745,7 @@ public sealed class CarPhysicsTests
         // car's 12 m/s^2 of drive, so its pedal never reaches the circle;
         // the limiter is under test, not the motor's ceiling.
         CarConfig car = new() { MaxDriveAcceleration = UncappedDriveAcceleration };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState aligned = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState sliding = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         // Most of the way to the rear's peak slip angle (0.14), so the
@@ -788,7 +781,7 @@ public sealed class CarPhysicsTests
     public void TireUsageModeDoesNotChangePhysicsForSameDriverInput()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState protect = CreateState(speed: 37f, batterySoc: 0.8f, tires);
         CarState attack = CreateState(speed: 37f, batterySoc: 0.8f, tires);
         DriverInput input = new(0.014f, 0f);
@@ -813,7 +806,7 @@ public sealed class CarPhysicsTests
     public void ARearDrivenCarPutsAllItsDriveOnTheRear()
     {
         CarConfig car = new() { FrontDriveShare = 0f };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 20f, batterySoc: 0.8f, tires);
         StepMany(state, car, tires, new DriverInput(0f, 6f), CarStrategy.Default, steps: 5);
         (float front, float rear) = AxleDrive(state);
@@ -825,7 +818,7 @@ public sealed class CarPhysicsTests
     public void BothMotorsDriveInAStraightLine()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 20f, batterySoc: 0.8f, tires);
         StepMany(state, car, tires, new DriverInput(0f, 6f), CarStrategy.Default, steps: 5);
         (float front, float rear) = AxleDrive(state);
@@ -843,7 +836,7 @@ public sealed class CarPhysicsTests
     [Fact]
     public void InACornerTheDriveGoesWhereTheGripIsLeft()
     {
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float Busiest(bool adaptive)
         {
             CarConfig car = new() { AdaptiveDriveSplit = adaptive };
@@ -867,7 +860,7 @@ public sealed class CarPhysicsTests
     public void NeitherAxleTakesMoreThanItsMotorCanGive()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 70f, batterySoc: 0.9f, tires);
         StepMany(state, car, tires, new DriverInput(0f, car.MaxDriveAcceleration), CarStrategy.Default, steps: 3);
         (float front, float rear) = AxleDrive(state);
@@ -881,7 +874,7 @@ public sealed class CarPhysicsTests
     {
         CarConfig car = new();
         var powertrain = (RangeExtenderPowertrain)car.Powertrain;
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 30f, batterySoc: 0.5f, tires);
         float startFuel = state.Energy.Secondary;
 
@@ -906,7 +899,7 @@ public sealed class CarPhysicsTests
         // The all-electric car's output ladder caps power by rung. The range
         // extender's race power is one figure; its rungs are driving.
         CarConfig car = new() { Powertrain = ElectricPowertrain.Default };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState save = CreateState(speed: 50f, batterySoc: 0.8f, tires);
         CarState attack = CreateState(speed: 50f, batterySoc: 0.8f, tires);
         DriverInput input = new(0f, car.MaxDriveAcceleration);
@@ -945,7 +938,7 @@ public sealed class CarPhysicsTests
     public void BatteryModesShareLowSpeedAccelerationAndEfficiency()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState save = CreateState(speed: 10f, batterySoc: 0.8f, tires);
         CarState attack = CreateState(speed: 10f, batterySoc: 0.8f, tires);
         DriverInput input = new(0f, 7f);
@@ -975,7 +968,7 @@ public sealed class CarPhysicsTests
     public void LowBatterySocLimitsDriveOutput()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState full = CreateState(speed: 26f, batterySoc: 0.8f, tires);
         // Inside the last sliver of the usable window, where output runs from
         // the sag down to the limp: the sag alone (85 per cent at worst) does
@@ -1001,7 +994,7 @@ public sealed class CarPhysicsTests
     public void TireUsageModeDoesNotChangeAvailablePhysicalGrip()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState protect = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         CarState attack = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         DriverInput input = new(0.018f, 0f);
@@ -1021,7 +1014,7 @@ public sealed class CarPhysicsTests
     public void HotWornTiresDeliverLessGripThanFreshWarmTires()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState fresh = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         CarState worn = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         MakeTiresHotAndWorn(worn);
@@ -1042,7 +1035,7 @@ public sealed class CarPhysicsTests
     public void SurfaceTemperatureGripUsesAFlatWindowAndSmoothOuterCurve()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState cold = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState lowIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState middleIdeal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
@@ -1053,8 +1046,8 @@ public sealed class CarPhysicsTests
         // Read off the compound rather than written down, so moving the window
         // moves the test with it instead of leaving it asserting about a band
         // no tyre has any more.
-        float bandLow = tires.IdealSurfaceTempLowC;
-        float bandHigh = tires.IdealSurfaceTempHighC;
+        float bandLow = tires.Config.IdealSurfaceTempLowC;
+        float bandHigh = tires.Config.IdealSurfaceTempHighC;
         SetTireTemps(cold, surfaceTempC: bandLow - 10f, coreTempC: 90f);
         SetTireTemps(lowIdeal, surfaceTempC: bandLow, coreTempC: 90f);
         SetTireTemps(
@@ -1118,22 +1111,16 @@ public sealed class CarPhysicsTests
     public void HotTreadWearClimbsWithTemperatureAndIsCapped()
     {
         CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
-            SlipWorkWearRate = 1f,
-            LongitudinalWearRate = 0f,
-            NearLimitWearRate = 0f,
-            OverLimitWearRate = 0f
-        };
-        float reference = tires.WearReferenceTempC;
+        // The temperature multiplies every kind of wear alike, so the same
+        // corner at three treads compares the factor alone.
+        TestTires tires = new(new TireConfig(), 90f, 90f);
+        float reference = TireConfig.WearReferenceTempC;
         CarState atReference = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState warmer = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState scorching = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         SetTireTemps(atReference, reference, reference);
-        SetTireTemps(warmer, reference + tires.WearTempScaleC, reference + tires.WearTempScaleC);
-        SetTireTemps(scorching, reference + 8f * tires.WearTempScaleC, reference + 8f * tires.WearTempScaleC);
+        SetTireTemps(warmer, reference + TireConfig.WearTempScaleC, reference + TireConfig.WearTempScaleC);
+        SetTireTemps(scorching, reference + 8f * TireConfig.WearTempScaleC, reference + 8f * TireConfig.WearTempScaleC);
 
         const float gripShare = 0.6f;
         const float dt = 1f / 600f;
@@ -1147,21 +1134,14 @@ public sealed class CarPhysicsTests
         float baseline = AverageWear(atReference);
         Assert.True(baseline > 0f);
         Assert.InRange(AverageWear(warmer) / baseline, MathF.E * 0.85f, MathF.E * 1.15f);
-        Assert.InRange(AverageWear(scorching) / baseline, tires.MaximumHotWearFactor * 0.8f, tires.MaximumHotWearFactor * 1.2f);
+        Assert.InRange(AverageWear(scorching) / baseline, TireConfig.MaximumHotWearFactor * 0.8f, TireConfig.MaximumHotWearFactor * 1.2f);
     }
 
     [Fact]
     public void WearRisesFasterThanSquaredDemandNearTheLimit()
     {
         CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
-            LateralWearRate = 0.00055f,
-            LongitudinalWearRate = 0f,
-            OverLimitWearRate = 0f
-        };
+        TestTires tires = new(new TireConfig(), 90f, 90f);
         CarState moderate = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState nearLimit = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         float moderateCurvature = CurvatureForGripShare(
@@ -1217,14 +1197,7 @@ public sealed class CarPhysicsTests
         // the tyre model, so the car is the one where speed changes nothing
         // else.
         CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f,
-            LateralWearRate = 0.01f,
-            LongitudinalWearRate = 0f,
-            OverLimitWearRate = 0f
-        };
+        TestTires tires = new(new TireConfig(), 90f, 90f);
         CarState slow = CreateState(speed: 15f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 45f, batterySoc: 0.8f, tires);
         // Two fifths of the car's corner, the share six m/s^2 was when this
@@ -1280,11 +1253,9 @@ public sealed class CarPhysicsTests
     public void WakeDownforceLossReducesHighSpeedLateralLimit()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState dirtyAir = cleanAir.Clone();
         dirtyAir.WakeDownforceLoss = 0.1f;
@@ -1317,11 +1288,9 @@ public sealed class CarPhysicsTests
     public void AirVelocityDeficitAlsoReducesHighSpeedLateralLimit()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         // The wake's two faces are carried by separate fields: the body's
         // deficit trims drag and cooling, the surface deficit is what the
@@ -1371,11 +1340,9 @@ public sealed class CarPhysicsTests
     public void AirVelocityDeficitReducesHighSpeedAeroLoss()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState tow = cleanAir.Clone();
         tow.AirVelocityDeficit = 0.08f;
@@ -1407,7 +1374,7 @@ public sealed class CarPhysicsTests
     public void CorneringScrubSlowsCarEvenWithoutBrakeRequest()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState straight = CreateState(speed: 38f, batterySoc: 0.8f, tires);
         CarState cornering = CreateState(speed: 38f, batterySoc: 0.8f, tires);
 
@@ -1422,7 +1389,7 @@ public sealed class CarPhysicsTests
     public void HighSpeedStraightCoastProducesVisibleDeceleration()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 60f, batterySoc: 0.8f, tires);
 
         StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 300);
@@ -1437,11 +1404,9 @@ public sealed class CarPhysicsTests
     public void RepresentativeRunningKeepsWarmTiresInABoundedWindow()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 86f,
-            StartingCoreTempC = 84f
-        };
+        }, 86f, 84f);
         CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
         const float dt = 1f / 60f;
 
@@ -1502,18 +1467,7 @@ public sealed class CarPhysicsTests
             Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 100f,
-            StartingCoreTempC = 100f,
-            LateralHeatRate = 1f,
-            LongitudinalHeatRate = 0f,
-            NearLimitHeatRate = 0f,
-            LateralWearRate = 0.001f,
-            LongitudinalWearRate = 0f,
-            NearLimitWearRate = 0f,
-            OverLimitWearRate = 0f
-        };
+        TestTires tires = new(new TireConfig(), 100f, 100f);
         CarState equal = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState frontWorkingHarder = CreateState(
             speed: 30f,
@@ -1598,18 +1552,7 @@ public sealed class CarPhysicsTests
             Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f,
         };
-        TireConfig tires = new()
-        {
-            StartingSurfaceTempC = 100f,
-            StartingCoreTempC = 100f,
-            LateralHeatRate = 1f,
-            LongitudinalHeatRate = 0f,
-            NearLimitHeatRate = 0f,
-            LateralWearRate = 0.001f,
-            LongitudinalWearRate = 0f,
-            NearLimitWearRate = 0f,
-            OverLimitWearRate = 0f
-        };
+        TestTires tires = new(new TireConfig(), 100f, 100f);
         CarState ordinary = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         CarState extreme = CreateState(speed: 30f, batterySoc: 0.8f, tires);
         float curvature = CurvatureForGripShare(
@@ -1656,11 +1599,9 @@ public sealed class CarPhysicsTests
     public void StraightRollingBuildsCoreHeatWithoutTireSlip()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 25f,
-            StartingCoreTempC = 25f
-        };
+        }, 25f, 25f);
         CarState state = CreateState(speed: 40f, batterySoc: 0.8f, tires);
         CarPhysicsStepInput input = new(
             new DriverInput(0f, 0f),
@@ -1687,11 +1628,9 @@ public sealed class CarPhysicsTests
             CenterOfGravityHeightMeters = 0f,
             Aero = new StandardAero { DownforcePerSpeedSquared = 0f }
         };
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
         CarState frontBiased = CreateState(speed: 50f, batterySoc: 0.8f, tires);
         CarState rearBiased = CreateState(speed: 50f, batterySoc: 0.8f, tires);
 
@@ -1734,11 +1673,9 @@ public sealed class CarPhysicsTests
     public void CoreShedsHeatToTheAirFarMoreSlowlyThanTheTread()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 100f,
-            StartingCoreTempC = 100f
-        };
+        }, 100f, 100f);
         CarState state = CreateState(speed: 0f, batterySoc: 0.8f, tires);
 
         StepMany(
@@ -1765,11 +1702,9 @@ public sealed class CarPhysicsTests
     public void CoreTemperatureRespondsMoreSlowlyThanTreadSurface()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 70f,
-            StartingCoreTempC = 70f
-        };
+        }, 70f, 70f);
         CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
         // Working the tyre hard enough that the tread actually heats: the point
         // is which of the two follows the other, and a corner the tyre strolls
@@ -1864,18 +1799,16 @@ public sealed class CarPhysicsTests
     [Fact]
     public void SteadyCorneringSettlesAtATemperatureInsteadOfRunningAway()
     {
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
         CarConfig car = new();
         CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
         float curvature = CurvatureForGripShare(
             state,
             car,
             tires,
-            share: 0.90f
+            share: CalibratedCornerUse(0.90f)
         );
         SetSteadyCorner(state, car, tires, curvature);
 
@@ -1897,7 +1830,7 @@ public sealed class CarPhysicsTests
                 // each step as a driver reads it: a carcass past its
                 // threshold takes grip away, and nine tenths of the grip
                 // it had at the start is soon more than it has.
-                curvature = CurvatureForGripShare(state, car, tires, share: 0.90f);
+                curvature = CurvatureForGripShare(state, car, tires, share: CalibratedCornerUse(0.90f));
                 input = input with { DriverInput = new DriverInput(curvature, 0f) };
                 CarPhysics.Step(state, car, tires, input, 1f / 60f);
                 // The heat balance is what this gate is about. Sixteen
@@ -1915,8 +1848,8 @@ public sealed class CarPhysicsTests
         System.Console.WriteLine($"GATE2 settled {settled:0.00} prev {previous:0.00}");
         Assert.InRange(
             settled,
-            tires.IdealSurfaceTempLowC - 20f,
-            tires.IdealSurfaceTempHighC + 20f
+            tires.Config.IdealSurfaceTempLowC - 20f,
+            tires.Config.IdealSurfaceTempHighC + 20f
         );
         // Converged, not merely finite: the last minute must move it less
         // than the resolution anyone would care about.
@@ -1991,11 +1924,9 @@ public sealed class CarPhysicsTests
         out int reachedSeconds
     )
     {
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 25f,
-            StartingCoreTempC = 25f
-        };
+        }, 25f, 25f);
         CarConfig car = new();
         CarState state = CreateState(speed: 55f, batterySoc: 1f, tires);
         CarStrategy strategy = CarStrategy.Default;
@@ -2032,7 +1963,7 @@ public sealed class CarPhysicsTests
                 1f / 60f
             );
             if (reachedSeconds < 0 &&
-                AverageFrontSurfaceTemp(state) >= tires.IdealSurfaceTempLowC)
+                AverageFrontSurfaceTemp(state) >= tires.Config.IdealSurfaceTempLowC)
             {
                 reachedSeconds = step / 60;
             }
@@ -2082,7 +2013,7 @@ public sealed class CarPhysicsTests
         // metres a second is more than doubled and the heat that comes with it
         // swamps the cooling being measured.
         CarConfig car = new() { Aero = new StandardAero { DownforcePerSpeedSquared = 0f } };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState parked = CreateState(speed: 0f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         SetTireTemps(parked, surfaceTempC: 112f, coreTempC: 104f);
@@ -2118,7 +2049,7 @@ public sealed class CarPhysicsTests
             Aero = new StandardAero { DownforcePerSpeedSquared = 0f, DragPerSpeedSquared = 0f },
             RollingDragAccel = 0f
         };
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState wake = cleanAir.Clone();
         wake.AirVelocityDeficit = 0.08f;
@@ -2153,7 +2084,7 @@ public sealed class CarPhysicsTests
     public void WakeDownforceLossAddsOnlyCorneringSurfaceHeat()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState cleanCorner = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState dirtyCorner = cleanCorner.Clone();
         dirtyCorner.WakeDownforceLoss = 0.08f;
@@ -2224,7 +2155,7 @@ public sealed class CarPhysicsTests
     public void BrakingWhileCorneringHasLessDeliveredBrakeThanStraightBraking()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState straight = CreateState(speed: 44f, batterySoc: 0.6f, tires);
         CarState cornering = CreateState(speed: 44f, batterySoc: 0.6f, tires);
 
@@ -2249,7 +2180,7 @@ public sealed class CarPhysicsTests
     public void HeavyCorneringBrakeStillAppliesSomeDeceleration()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(speed: 44f, batterySoc: 0.6f, tires);
         // Enough brake that the axles cannot hold it, which is now the
         // only way to be past the circle: cornering force comes from slip
@@ -2279,11 +2210,9 @@ public sealed class CarPhysicsTests
     [Fact]
     public void FreshTireInstallResetsTireLedger()
     {
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 32f,
-            StartingCoreTempC = 30f
-        };
+        }, 32f, 30f);
         CarState state = new();
         state.FrontLeft.SurfaceTempC = 118f;
         state.FrontLeft.CoreTempC = 104f;
@@ -2343,7 +2272,45 @@ public sealed class CarPhysicsTests
     /// <summary>A drive ceiling high enough that the tyres, not the motor, are what limits it.</summary>
     private const float UncappedDriveAcceleration = 30f;
 
-    private static CarState CreateState(float speed, float batterySoc, TireConfig tires)
+    /// <summary>
+    /// Braking into a fast corner, the rear is light. Asked for a little more
+    /// corner than it can carry, the car turns at about the most it can: it
+    /// does not wind the wheel off and run straight on. The steering's
+    /// inversion once asked the rear for a slip angle at its peak and the
+    /// front for little, and "front minus rear" turned the wheel the wrong
+    /// way: here, 38 m/s^2 asked and 17 given, where 34 asked had given 27.
+    /// </summary>
+    [Fact]
+    public void AskedPastTheRearsGripBrakingTheCarStillTurnsNearItsLimit()
+    {
+        var car = new CarConfig();
+        TestTires tires = WarmTires();
+        (float Asked, float Got) Corner(float share)
+        {
+            CarState state = CreateState(65f, 0.8f, tires);
+            float settle = CurvatureForGripShare(state, car, tires, 0.5f);
+            SetSteadyCorner(state, car, tires, settle);
+            float curvature = CurvatureForGripShare(state, car, tires, share);
+            float asked = 0f, got = 0f;
+            for (int i = 0; i < 30; i++)
+            {
+                CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(curvature, -25f)), 1f / 60f);
+                if (i >= 10)
+                {
+                    asked += curvature * state.Speed * state.Speed;
+                    got += MathF.Abs(state.Telemetry.ActualLateralAccel);
+                }
+            }
+            return (asked / 20f, got / 20f);
+        }
+        var rows = new[] { 0.6f, 0.75f, 0.9f, 1.0f, 1.1f, 1.25f }.Select(Corner).ToArray();
+        string table = string.Join("  ", rows.Select(r => $"{r.Asked:F1}->{r.Got:F1}"));
+        // Asked for more, it never gives much less than it gave for less.
+        for (int i = 1; i < rows.Length; i++)
+            Assert.True(rows[i].Got >= 0.9f * rows[i - 1].Got, table);
+    }
+
+    private static CarState CreateState(float speed, float batterySoc, TestTires tires)
     {
         CarState state = new()
         {
@@ -2557,13 +2524,21 @@ public sealed class CarPhysicsTests
         }
     }
 
+    /// <summary>
+    /// A share of the car's cornering limit as the tyres' heat was calibrated
+    /// against it. The limit rose when the steering stopped giving a tenth of
+    /// it away; the medium's heat has not been calibrated on the car as it
+    /// now corners, so the heat tests ask its tyres for what they were asked
+    /// when it was (TireConfig.NearLimitHeatLimitShare).
+    /// </summary>
+    private static float CalibratedCornerUse(float share) =>
+        share * TireConfig.NearLimitHeatLimitShare / TireSlipCurve.SustainablePeakShare;
+
     private static CarState RunRepresentativeCoreDutyCycle(float use)
     {
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 107f,
-            StartingCoreTempC = 103f
-        };
+        }, 107f, 103f);
         CarConfig car = new()
         {
             Aero = new StandardAero { DragPerSpeedSquared = 0f },
@@ -2587,7 +2562,7 @@ public sealed class CarPhysicsTests
                 curvature: 0f
             );
             float curvature = phaseSeconds < 2f
-                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * use /
+                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * CalibratedCornerUse(use) /
                   (state.Speed * state.Speed)
                 : 0f;
             float acceleration = phaseSeconds switch
@@ -2624,13 +2599,11 @@ public sealed class CarPhysicsTests
         yield return state.RearRight;
     }
 
-    private static TireConfig WarmTires()
+    private static TestTires WarmTires()
     {
-        return new TireConfig
+        return new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
     }
 
     private static void StepMany(

@@ -42,7 +42,7 @@ public sealed class SingleTrackDynamicsTests
     public void SteadyCorneringStillFindsTheCarsOwnEnvelope()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float best = 0f;
         float bestCurvature = 0f;
         float grip = 0f;
@@ -68,15 +68,18 @@ public sealed class SingleTrackDynamicsTests
             $"at curvature {bestCurvature:0.0000}, axle grip sum {grip:0.00} " +
             $"({grip / 9.80665f:0.00} g), used {best / grip * 100f:0.0}%"
         );
+        // The top of the band is 5.2 g, not the 4.8 it was: the car held a
+        // tenth of its grip back until the steering stopped winding itself
+        // off near the limit, and the tenth is the tyres', not a new car's.
         Assert.True(
-            best > 3.8f * 9.80665f && best < 4.8f * 9.80665f,
+            best > 3.8f * 9.80665f && best < 5.2f * 9.80665f,
             $"steady cornering at 216 km/h should land in a Formula One car's " +
             $"band; got {best / 9.80665f:0.00} g"
         );
         // Short of the whole circle, because a tyre's peak is a peak: sit
         // exactly on it and the next disturbance takes force away rather
         // than adding it.
-        Assert.InRange(best / grip, 0.85f, 0.99f);
+        Assert.InRange(best / grip, 0.85f, 0.995f);
     }
 
     /// <summary>
@@ -105,7 +108,7 @@ public sealed class SingleTrackDynamicsTests
     public void TheAdvertisedGripMatchesWhatTheSkidpadMeasures()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         const float Speed = 60f;
 
         float measured = 0f;
@@ -135,7 +138,7 @@ public sealed class SingleTrackDynamicsTests
     public void AskingForMoreThanTheTyresHaveGivesUnderteerRatherThanGrip()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
 
         CarState reasonable = CreateState(60f, tires);
         HoldSpeed(reasonable, car, tires, 0.004f, 60f, 180);
@@ -207,7 +210,7 @@ public sealed class SingleTrackDynamicsTests
     public void HoldingACornerTakesMoreLockThanGeometryAsksFor()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(60f, tires);
         HoldSpeed(state, car, tires, 0.005f, 60f, 240);
 
@@ -239,7 +242,7 @@ public sealed class SingleTrackDynamicsTests
     public void AStepOfSteeringSettlesInsteadOfRinging()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(50f, tires);
         DriverInput input = new(0.004f, 0f);
 
@@ -301,7 +304,7 @@ public sealed class SingleTrackDynamicsTests
     public void BrakingIntoACornerCostsTheCornering()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         DriverInput coasting = new(0.005f, 0f);
         DriverInput trailing = new(0.005f, -18f);
 
@@ -335,7 +338,7 @@ public sealed class SingleTrackDynamicsTests
     public void TheWheelsCannotArriveInstantly()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(40f, tires);
         DriverInput hard = new(car.MaxCurvatureRequest, 0f);
 
@@ -392,7 +395,7 @@ public sealed class SingleTrackDynamicsTests
     public void ASpunCarSlidesBackTowardsTheGrip()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
         float hold = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f;
 
@@ -497,7 +500,7 @@ public sealed class SingleTrackDynamicsTests
     public void ASpinIsBilledByTheSameFormulaAsEverythingElse()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
         CarState gone = HeldSideways(
             car, tires, past, SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f
@@ -544,7 +547,7 @@ public sealed class SingleTrackDynamicsTests
     public void OnlyASustainedSlideIsASpin()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
         float verdict = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds;
 
@@ -707,11 +710,9 @@ public sealed class SingleTrackDynamicsTests
         return state;
     }
 
-    private static TireConfig WarmTires() => new()
+    private static TestTires WarmTires() => new(new TireConfig
     {
-        StartingSurfaceTempC = 90f,
-        StartingCoreTempC = 90f
-    };
+    }, 90f, 90f);
 
     private static CarPhysicsStepInput PhysicsInput(DriverInput input) =>
         new(input, CarStrategy.Default, TestAirTempC, TestTrackTempC);
