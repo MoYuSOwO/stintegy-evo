@@ -218,7 +218,7 @@ static class CircuitSpecs
         new("baku", "Baku City Circuit", Layouts.BakuStyleTestTrack,
             FromBacinger("az-2016", "Projected, rotated to start on a straight, scaled to 6,003 m; widths by section from OpenStreetMap (ODbL), 7.6 m at the castle, walled at the kerb. " + Authored), BacingerLicense),
         new("spa", "Circuit de Spa-Francorchamps", Layouts.SpaStyleTestTrack,
-            FromBacinger("be-1925", "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. " + Authored), BacingerLicense),
+            FromBacinger("be-1925", "Projected, 13 m wide, scaled to 7,004 m, the line on the climb from the Bus Stop to La Source. " + Authored), BacingerLicense),
         new("monza", "Autodromo Nazionale Monza", Layouts.MonzaStyleTestTrack,
             FromBacinger("it-1922", "Projected, 12 m wide, scaled to 5,793 m. " + Authored), BacingerLicense),
         new("interlagos", "Autodromo Jose Carlos Pace", Layouts.InterlagosStyleTestTrack,
