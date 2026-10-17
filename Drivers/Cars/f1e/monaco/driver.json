@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "circuit": "monaco",
+  "lanes": "lanes.csv",
+  "learnedFor": {
+    "physics": "a028a2a821d2",
+    "date": "2026-10-17"
+  }
+}
