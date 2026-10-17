@@ -11,6 +11,15 @@ public static class TrackBoundaryResolver
     private const int SweepIterations = 16;
     private const float Epsilon = 1e-4f;
 
+    /// <summary>
+    /// The most a slide along the wall may be put back out of it at its end:
+    /// what a wall curving towards the car bulges into a straight slide over
+    /// one step. A five-metre radius bulges five centimetres into the
+    /// longest step there is; anything deeper is a wall the car ran into,
+    /// not one it is running along.
+    /// </summary>
+    private const float WallFollowMeters = 0.05f;
+
     public static TrackRegion Classify(TrackPose pose)
     {
         float d = pose.D;
@@ -185,6 +194,16 @@ public static class TrackBoundaryResolver
     /// it touches on every substep, and used to lose most of every step's
     /// travel to that. The wall used to hide it by laying every car it
     /// touched exactly parallel to itself.
+    ///
+    /// The slide is straight, along the wall where it was met, and a wall
+    /// is not: on the outside of a bend it curves into the slide. A car put
+    /// back a tenth of a millimetre clear touches it again a few centimetres
+    /// down the slide, on every step, and with a slide that cannot get
+    /// anywhere the car stood still against the wall at full speed for as
+    /// long as it pressed on it (Monaco after Sainte Devote, once its
+    /// barriers stood on the kerb). So the slide's end is put back out of
+    /// the wall it bent into, the way a car is put back out of one at the
+    /// start of a step, and the car follows the wall round.
     /// </summary>
     private static Vector2 SweepTranslation(
         TrackData track,
@@ -198,13 +217,31 @@ public static class TrackBoundaryResolver
         if (blocked is not WallViolation wall)
             return reached;
 
+        // What is left of the move, less whatever of it went into the wall
+        // where the wall was met. A move already heading out of it there is
+        // kept whole: it was stopped by the wall curving in further on.
         Vector2 remaining = to - reached;
         float into = Vector2.Dot(remaining, wall.Normal);
-        if (into >= 0f)
-            return reached;
+        Vector2 along = into < 0f ? reached + (remaining - wall.Normal * into) : to;
+        Vector2 slid = SweepStraight(track, reached, along, heading, collision, out WallViolation? bent);
+        if (bent is null)
+            return slid;
 
-        Vector2 along = reached + (remaining - wall.Normal * into);
-        return SweepStraight(track, reached, along, heading, collision, out _);
+        Vector2 followed = along;
+        for (int i = 0; i < 4; i++)
+        {
+            if (!TryFindDeepestViolation(
+                    track,
+                    InterpolateBody(followed, heading, followed, heading, collision, 0f),
+                    out WallViolation bulge))
+            {
+                return followed;
+            }
+            if (bulge.Penetration > WallFollowMeters)
+                break;
+            followed += bulge.Normal * (bulge.Penetration + Epsilon);
+        }
+        return slid;
     }
 
     /// <summary>
