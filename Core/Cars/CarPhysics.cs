@@ -2137,9 +2137,23 @@ public static class CarPhysics
         // thermal time constant turned the duplicate into rear-tyre peaks
         // the car spun on. The rear's sliding is in lateralSlipWork; it does
         // not get a second heater of its own.
+        // Partial sliding as the car nears what it can hold; see
+        // TireConfig.NearLimitHeatRate. Past what it can hold the patch is
+        // no longer partly sliding but sliding, which the slip-work term
+        // already charges, so this one hands over: gone by the peak.
+        float startShare = Math.Clamp(tires.NearLimitHeatStartShare, 0f, 0.999f);
+        float holdable = combinedUse / TireSlipCurve.SustainablePeakShare;
+        float rising = Math.Clamp((holdable - startShare) / (1f - startShare), 0f, 1f);
+        float handedOver = Math.Clamp(
+            (holdable - 1f) / (1f / TireSlipCurve.SustainablePeakShare - 1f),
+            0f,
+            1f
+        );
+        float nearLimitHeat = Math.Max(0f, tires.NearLimitHeatRate) *
+                              rising * rising * (1f - handedOver);
         float surfaceHeat =
             tireWorkSpeedMultiplier *
-            (directionalHeat + lateralSlipHeat) +
+            (directionalHeat + lateralSlipHeat + nearLimitHeat) +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             wakeCorneringHeat;
         surfaceHeat *= loadScale;

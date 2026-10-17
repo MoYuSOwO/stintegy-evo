@@ -56,7 +56,13 @@ public sealed class TireConfig
     // direct path smaller so low-use running can recover without erasing the
     // heat soak that Push and Attack create near the tire limit.
     public const float SurfaceCoreTransferRate = 0.04375f;
-    public const float CoreHeatCapacityRatio = 12f;
+    // The carcass is what soaks. At 12 it was through in under a lap, so a
+    // tyre driven too hard was overheated on the next straight and cooled
+    // on the one after, and pushing cost nothing for a few laps the way it
+    // does on a real car. At 18 a carcass held at the limit takes two or
+    // three laps to come up to where it starts losing grip, and a lap of
+    // easier driving to come back.
+    public const float CoreHeatCapacityRatio = 18f;
 
     /// <summary>
     /// How long the rubber takes to get anywhere, as a multiple of what it
@@ -136,12 +142,35 @@ public sealed class TireConfig
     // with blankets an out lap gives away next to nothing, and the worst
     // case on record without them, a cold night at Le Mans, is about seven
     // per cent of a lap. At 0.0006 a 25 C start lost a quarter of its lap
-    // at Silverstone; at 0.0001 it loses three per cent, and a 70 C start
-    // off the blankets a tenth of a second.
-    public float ColdGripLossPerCSquared { get; init; } = 0.00010f;
-    public float HotGripLossPerCSquared { get; init; } = 0.00025f;
-    public float CoreOverheatTempC { get; init; } = 115f;
-    public float CoreOverheatGripLossPerC { get; init; } = 0f;
+    // at Silverstone; at 0.00008 it loses three per cent, and a 70 C start
+    // off the blankets a tenth of a second. (The slower carcass below keeps
+    // a cold tread cooler for longer, which is why this is a little flatter
+    // than the 0.0001 that gave the same three per cent before it.)
+    public float ColdGripLossPerCSquared { get; init; } = 0.00008f;
+
+    // Too hot is two things. The heat is made in the tread, which spikes in
+    // every corner and cools on the next straight; the carcass (the bulk of
+    // the tyre, which is what grip is generally reckoned to follow best)
+    // takes it in slowly and keeps it.
+    //
+    // The tread past its window costs a little and gives it back as soon as
+    // it cools. Kept gentle because a qualifying lap at the limit is the
+    // fastest lap a tyre does: at 0.00025 a car at the limit gave all of
+    // its pace away to tread spikes on its first lap and was never quicker
+    // than one two per cent short of it.
+    //
+    // The carcass past CoreOverheatTempC is the overheating a driver has to
+    // manage, the kind described as being able to follow for a lap or two
+    // before having to back off: it builds over laps and takes three per
+    // cent of the grip for every degree. A car on Normal at Silverstone
+    // holds its carcass at about 108 C; one held at the limit climbs past
+    // 112 in two or three laps and is no faster than Normal by the fourth,
+    // and a lap of Normal brings it back. How real tyres split the penalty
+    // between tread and bulk is not published; these figures are set by
+    // that behaviour, not by a measured curve.
+    public float HotGripLossPerCSquared { get; init; } = 0.0001f;
+    public float CoreOverheatTempC { get; init; } = 112f;
+    public float CoreOverheatGripLossPerC { get; init; } = 0.03f;
     // A set run to the cliff is worth about two seconds at Silverstone, the
     // size of the gap between new and old tyres in the series this car
     // stands in for; at 0.10 it was four and a half. Past the cliff the
@@ -154,14 +183,29 @@ public sealed class TireConfig
     public float LateralHeatRate { get; init; } = 4.0f;
     public float LongitudinalHeatRate { get; init; } = 0.55f;
     /// <summary>
-    /// Extra tread heat at the edge of the friction circle.
+    /// Extra tread heat at the edge of what the car can hold.
     ///
-    /// The reduced-order tyre has no local slip ratio or slip velocity, so
-    /// this is a bounded stand-in for the partial sliding that appears just
-    /// before the axle saturates. It is additive: reaching the threshold must
-    /// not multiply all of the ordinary cornering and traction heat.
+    /// The reduced-order tyre has no contact patch, so it cannot see the
+    /// patch starting to slide from the back as the corner fills it. Force
+    /// times slip angle does not make up for it here: the car can only hold
+    /// about nine tenths of the peak (<see cref="TireSlipCurve.SustainablePeakShare"/>),
+    /// and that far below the peak the curve is still nearly straight. A
+    /// car on Attack, flat against that limit, measured one degree hotter
+    /// than the same car on Normal two per cent short of it, and no tyre
+    /// could be driven too hard. This is the partial sliding, measured from
+    /// the limit the car can actually reach rather than from a peak it
+    /// never stands on. It is additive: reaching the edge must not multiply
+    /// all of the ordinary cornering and traction heat.
     /// </summary>
-    public float NearLimitHeatRate { get; init; } = 1.50f;
+    public float NearLimitHeatRate { get; init; } = 2f;
+
+    /// <summary>
+    /// Where the partial-sliding heat begins, as a share of the limit the
+    /// car can hold. It grows with the square of the way from here to the
+    /// limit, so a car a few per cent short pays little and one at the
+    /// limit pays all of it.
+    /// </summary>
+    public float NearLimitHeatStartShare { get; init; } = 0.97f;
 
     // The ordinary work rates are lower than the old purely-quadratic model:
     // part of the same total stint wear now lives in NearLimitWearRate. This
