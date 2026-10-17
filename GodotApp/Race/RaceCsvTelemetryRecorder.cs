@@ -30,7 +30,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
     private const string CommonColumns =
         "time_s,car_id,controller_status,lap,total_distance_m,s_m,d_m,x_m,y_m,heading_rad," +
         "speed_mps,desired_curvature_1pm,desired_accel_mps2,front_brake_bias_offset," +
-        "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm," +
+        "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm,front_steer_angle_rad," +
         "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw," +
         "sideslip_angle_rad,yaw_rate_radps,yaw_accel_radps2," +
         "primary_energy,air_temp_c,track_temp_c,fl_surface_temp_c,fr_surface_temp_c," +
@@ -93,6 +93,10 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             telemetry.ActualLongitudinalAccel,
             telemetry.ActualLateralAccel,
             telemetry.ActualCurvature,
+            // The road wheels' angle beside the corner asked for and the one
+            // driven: the three together show the steering's answer, which
+            // once wound the lock off near the limit unseen.
+            state.SteerAngleRadians,
             telemetry.OverLimit,
             telemetry.LossAccel,
             telemetry.DrivePowerWatts * 0.001f,
