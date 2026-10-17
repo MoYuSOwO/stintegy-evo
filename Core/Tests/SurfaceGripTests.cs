@@ -168,11 +168,9 @@ public sealed class SurfaceGripTests
     public void PuttingTwoWheelsOverTheLineCostsCornering()
     {
         CarConfig car = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
 
         float onRoad = SteadyLateral(car, tires, WheelSurfaceGrip.Clean);
         // Two wheels on the grass: the outside pair at buffer grip, the

@@ -1,5 +1,6 @@
 using Godot;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Content;
 
 namespace StintegyEVO.GodotApp.Interop;
 
@@ -19,8 +20,8 @@ public static class GodotCars
         if (!_rooted)
         {
             string user = ProjectSettings.GlobalizePath("user://data");
-            if (!CarLibrary.Roots.Contains(user))
-                CarLibrary.Roots.Add(user);
+            if (!DataFolders.Roots.Contains(user))
+                DataFolders.Roots.Add(user);
             _rooted = true;
         }
         return CarLibrary.Load(id);

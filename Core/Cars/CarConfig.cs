@@ -187,7 +187,7 @@ public sealed class CarConfig
     /// force -- drive and brakes alike -- so that the tyre's combined use,
     /// slip angle and pedals together, ends the step inside the share of the
     /// friction circle the tyre allows, which is all of it unless the host
-    /// asks for less (<see cref="TireConfig.GetAccelerationUsage(CarStrategy)"/>). It does
+    /// asks for less (<see cref="CarPhysics.GripUsage"/>). It does
     /// not steer, so it never takes a correction away.
     ///
     /// On an axle that spends a share s of its circle on its slip angle, a

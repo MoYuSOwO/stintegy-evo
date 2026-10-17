@@ -42,7 +42,7 @@ public sealed class SingleTrackDynamicsTests
     public void SteadyCorneringStillFindsTheCarsOwnEnvelope()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float best = 0f;
         float bestCurvature = 0f;
         float grip = 0f;
@@ -105,7 +105,7 @@ public sealed class SingleTrackDynamicsTests
     public void TheAdvertisedGripMatchesWhatTheSkidpadMeasures()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         const float Speed = 60f;
 
         float measured = 0f;
@@ -135,7 +135,7 @@ public sealed class SingleTrackDynamicsTests
     public void AskingForMoreThanTheTyresHaveGivesUnderteerRatherThanGrip()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
 
         CarState reasonable = CreateState(60f, tires);
         HoldSpeed(reasonable, car, tires, 0.004f, 60f, 180);
@@ -207,7 +207,7 @@ public sealed class SingleTrackDynamicsTests
     public void HoldingACornerTakesMoreLockThanGeometryAsksFor()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(60f, tires);
         HoldSpeed(state, car, tires, 0.005f, 60f, 240);
 
@@ -239,7 +239,7 @@ public sealed class SingleTrackDynamicsTests
     public void AStepOfSteeringSettlesInsteadOfRinging()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(50f, tires);
         DriverInput input = new(0.004f, 0f);
 
@@ -301,7 +301,7 @@ public sealed class SingleTrackDynamicsTests
     public void BrakingIntoACornerCostsTheCornering()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         DriverInput coasting = new(0.005f, 0f);
         DriverInput trailing = new(0.005f, -18f);
 
@@ -335,7 +335,7 @@ public sealed class SingleTrackDynamicsTests
     public void TheWheelsCannotArriveInstantly()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = CreateState(40f, tires);
         DriverInput hard = new(car.MaxCurvatureRequest, 0f);
 
@@ -392,7 +392,7 @@ public sealed class SingleTrackDynamicsTests
     public void ASpunCarSlidesBackTowardsTheGrip()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
         float hold = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f;
 
@@ -497,7 +497,7 @@ public sealed class SingleTrackDynamicsTests
     public void ASpinIsBilledByTheSameFormulaAsEverythingElse()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
         CarState gone = HeldSideways(
             car, tires, past, SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f
@@ -544,7 +544,7 @@ public sealed class SingleTrackDynamicsTests
     public void OnlyASustainedSlideIsASpin()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         float past = SingleTrackDynamicsLimits.SpinVerdictSideslipRadians * 1.1f;
         float verdict = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds;
 
@@ -707,11 +707,9 @@ public sealed class SingleTrackDynamicsTests
         return state;
     }
 
-    private static TireConfig WarmTires() => new()
+    private static TestTires WarmTires() => new(new TireConfig
     {
-        StartingSurfaceTempC = 90f,
-        StartingCoreTempC = 90f
-    };
+    }, 90f, 90f);
 
     private static CarPhysicsStepInput PhysicsInput(DriverInput input) =>
         new(input, CarStrategy.Default, TestAirTempC, TestTrackTempC);

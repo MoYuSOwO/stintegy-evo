@@ -562,11 +562,9 @@ public sealed class RoadAttitudeTests
     private static float RunStraight(RoadAttitude road)
     {
         CarConfig config = new();
-        TireConfig tires = new()
+        TestTires tires = new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
         CarState state = new()
         {
             Position = Vector2.Zero,
