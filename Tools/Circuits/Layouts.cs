@@ -13,6 +13,15 @@ internal static class Layouts
     private const float GrandPrixTestBufferMeters = 5f;
 
     /// <summary>
+    /// Run-off on a permanent circuit, either side, where the layout leaves
+    /// room for it: gravel and asphalt run tens of metres deep at the
+    /// corners and a few metres along the straights, and ten metres is the
+    /// least of it. Where the circuit passes close to itself it is cut back
+    /// to what fits between (Centreline).
+    /// </summary>
+    private const float PermanentCircuitRunoffMeters = 10f;
+
+    /// <summary>
     /// A street circuit's barriers stand on the kerb line: the pavement is
     /// behind them, not beside the road. Half a metre is the kerb and the
     /// gap to the barrier's face.
@@ -197,8 +206,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Silverstone,
             5_891f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
         builder.WithSurface(CrossSections.RoadCircuit);
@@ -582,8 +591,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Spa,
             7_004f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
@@ -607,8 +616,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Monza,
             5_793f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
@@ -632,8 +641,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Interlagos,
             4_309f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
@@ -696,8 +705,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Portimao,
             4_653f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
@@ -716,8 +725,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Zandvoort,
             ZandvoortLengthMeters,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
@@ -777,8 +786,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Shanghai,
             5_451f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters,
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters,
             controlSpacingMeters: 12f
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
@@ -801,8 +810,8 @@ internal static class Layouts
         TrackBuilder builder = Centreline.FromClosedCenterline(
             Sources.Sepang,
             5_543f,
-            GrandPrixTestBufferMeters,
-            GrandPrixTestBufferMeters
+            PermanentCircuitRunoffMeters,
+            PermanentCircuitRunoffMeters
         );
         // Heights come from the survey (Elevation); the layout gives the cross-section.
         builder.WithSurface(CrossSections.RoadCircuit);
