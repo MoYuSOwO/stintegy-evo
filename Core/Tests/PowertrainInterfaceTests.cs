@@ -61,7 +61,7 @@ public sealed class PowertrainInterfaceTests
     public void DrivingBurnsTheFirstStoreAndLeavesTheSecondAlone()
     {
         CarConfig config = FuelCar();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = new()
         {
             Speed = 55f,
@@ -304,7 +304,7 @@ public sealed class PowertrainInterfaceTests
     /// </summary>
     private static float SpeedAfterAStint(CarConfig config, int rung)
     {
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = new()
         {
             Speed = 40f,
@@ -342,7 +342,7 @@ public sealed class PowertrainInterfaceTests
         CarConfig config = FuelCar();
         float Drag(float tankFraction)
         {
-            TireConfig tires = WarmTires();
+            TestTires tires = WarmTires();
             CarState state = new() { Speed = 70f, Energy = new PowertrainState(tankFraction, 1f) };
             state.InstallFreshTires(tires);
             CarPhysics.Step(state, config, tires, new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 28f), Dt);
@@ -356,7 +356,7 @@ public sealed class PowertrainInterfaceTests
     private static float TotalWheelLoadAfterAStep(float tankFraction)
     {
         CarConfig config = FuelCar();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = new()
         {
             Speed = 30f,
@@ -383,13 +383,11 @@ public sealed class PowertrainInterfaceTests
         return new CarConfig { Powertrain = new TankAndBatteryPowertrain() };
     }
 
-    private static TireConfig WarmTires()
+    private static TestTires WarmTires()
     {
-        return new TireConfig
+        return new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
     }
 
     /// <summary>

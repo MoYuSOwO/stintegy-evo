@@ -33,6 +33,37 @@ public sealed class CircuitFolderTests
         }
     }
 
+    /// <summary>
+    /// The line is where the race starts, on the run to the first slow
+    /// corner, never somewhere else on the lap. A source centreline starts
+    /// wherever its author began drawing it: Spa's began on the run to
+    /// Blanchimont, so its grid stood in the bends and the first slow corner
+    /// was the Bus Stop, 1.2 km on, instead of La Source.
+    /// </summary>
+    [Theory]
+    [InlineData("baku")]
+    [InlineData("interlagos")]
+    [InlineData("monaco")]
+    [InlineData("monza")]
+    [InlineData("portimao")]
+    [InlineData("sepang")]
+    [InlineData("shanghai")]
+    [InlineData("silverstone")]
+    [InlineData("singapore")]
+    [InlineData("spa")]
+    [InlineData("zandvoort")]
+    public void TheLineIsOnTheRunToTheFirstSlowCorner(string id)
+    {
+        const float SlowRadius = 45f;
+        const float FurthestRun = 900f;
+        TrackData track = CircuitLibrary.Load(id);
+        float line = track.StartingLineS;
+        float run = 0f;
+        while (run < track.LengthMeters && MathF.Abs(track.Sample(track.WrapS(line + run)).Curvature) < 1f / SlowRadius)
+            run += 1f;
+        Assert.True(run < FurthestRun, $"{id}: the first corner tighter than {SlowRadius} m is {run:F0} m after the line");
+    }
+
     /// <summary>A file that is not one row a metre is refused, not stretched to fit.</summary>
     [Fact]
     public void ATrackFileThatIsNotARowAMetreIsRefused()

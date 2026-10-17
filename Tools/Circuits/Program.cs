@@ -245,8 +245,8 @@ static class CircuitSpecs
             // Beside the long run down Neftchilar Avenue, either side of the line, to before the first corner.
             new PitSpec(EntryRow: -350, ExitRow: 400, Side: 1, SpeedLimitKph: 80f)),
         new("spa", "Circuit de Spa-Francorchamps", Layouts.SpaStyleTestTrack,
-            FromBacinger("be-1925", "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. " + Authored), BacingerLicense,
-            // Inside the climb from the Bus Stop to La Source, where the line really is (row 1580).
+            FromBacinger("be-1925", "Projected, 13 m wide, scaled to 7,004 m, the line on the climb from the Bus Stop to La Source. " + Authored), BacingerLicense,
+            // Inside the climb from the Bus Stop to La Source, either side of the line.
             new PitSpec(EntryRow: 1300, ExitRow: 1805, Side: -1, SpeedLimitKph: 80f)),
         new("monza", "Autodromo Nazionale Monza", Layouts.MonzaStyleTestTrack,
             FromBacinger("it-1922", "Projected, 12 m wide, scaled to 5,793 m. " + Authored), BacingerLicense,

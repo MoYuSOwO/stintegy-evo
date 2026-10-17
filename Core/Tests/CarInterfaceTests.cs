@@ -181,8 +181,10 @@ public sealed class CarInterfaceTests
 
         public float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) => 10f;
         public float GripUsage(CarStrategy strategy) => 1f;
-        public TireWindow TireWindow(WheelId wheel) => Window;
-        public void InstallFreshTires(CarState state) { }
+        public IReadOnlyList<TireCompound> Compounds { get; } = [TireCompound.Of(new TireConfig(), "hard")];
+        public void FitTires(CarState state, string compound) => state.Compound = compound;
+        public void InstallFreshTires(CarState state) => state.Compound = Compounds[0].Id;
+        public TireWindow TireWindow(CarState state, WheelId wheel) => Window;
 
         public CarCapabilities Capabilities(CarState state, CarStrategy strategy) =>
             new(800f, 0.2f, SteerLock, 1f, 5f, 5f, 1f, Window.Compound);

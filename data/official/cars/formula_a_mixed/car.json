@@ -2,5 +2,6 @@
   "format": 1,
   "id": "formula_a_mixed",
   "name": "Formula A (mixed)",
-  "assembly": "official.formula_a_mixed.dll"
+  "assembly": "official.formula_a_mixed.dll",
+  "tyres": ["official:formula_a"]
 }

@@ -2,19 +2,17 @@ namespace StintegyEVO.Core.Cars;
 
 public sealed class TireState
 {
-    public TireState() : this(TireConfig.Default)
+    /// <summary>A new tyre, off the blankets.</summary>
+    public TireState()
     {
+        Reset(Tire.BlanketTempC, Tire.BlanketTempC);
     }
 
-    public TireState(TireConfig config)
+    /// <summary>A new tyre, at these temperatures.</summary>
+    public void Reset(float surfaceTempC, float coreTempC)
     {
-        Reset(config);
-    }
-
-    public void Reset(TireConfig config)
-    {
-        SurfaceTempC = config.StartingSurfaceTempC;
-        CoreTempC = config.StartingCoreTempC;
+        SurfaceTempC = surfaceTempC;
+        CoreTempC = coreTempC;
         Wear = 0f;
         LoadN = 0f;
     }
