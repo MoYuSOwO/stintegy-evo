@@ -130,21 +130,21 @@ public sealed class TireConfig
         return Math.Clamp(strategy.TireGripUsageOverride.Value, 0.05f, AccelerationUsage);
     }
 
-    /// <summary>The tyre's friction at <see cref="ReferenceLoadN"/>, at its best temperature, new.</summary>
-    public float BaseMu { get; init; } = 1.72f;
-
     /// <summary>
-    /// The load <see cref="BaseMu"/> is measured at: about what one wheel
-    /// of the car carries standing still.
+    /// The tyre's friction at the load it was sized for, its own wheel's
+    /// share of the car standing still: at its best temperature, new.
     /// </summary>
-    public float ReferenceLoadN { get; init; } = 2000f;
+    public float BaseMu { get; init; } = 2.4f;
 
     /// <summary>
     /// How fast friction falls as the load rises: it goes as the load to
     /// the minus this. Zero is a tyre whose grip is exactly proportional
-    /// to its load.
+    /// to its load. 0.3 is a racing slick's: at the load of a fast corner,
+    /// five times what it was sized for, it has two fifths less friction than
+    /// standing still. It is why a car with this much downforce corners at
+    /// under 6 g rather than 8.
     /// </summary>
-    public float LoadSensitivity { get; init; } = 0f;
+    public float LoadSensitivity { get; init; } = 0.3f;
     public float IdealSurfaceTempLowC { get; init; } = 85f;
     public float IdealSurfaceTempHighC { get; init; } = 115f;
     // Grip is flat inside the working window, then falls smoothly with the
@@ -194,8 +194,17 @@ public sealed class TireConfig
     public float WearCliffStart { get; init; } = 0.70f;
     public float WearCliffGripLoss { get; init; } = 0.12f;
 
-    public float LateralHeatRate { get; init; } = 4.0f;
-    public float LongitudinalHeatRate { get; init; } = 0.55f;
+    // Heat from work: what the tread carries times how fast it is dragged,
+    // and the load is in it. With the downforce of a Formula One car a
+    // fast corner presses each tyre about 1.4 times as hard as the old car
+    // did and it ran 160 C at nine tenths of the limit; real tyres built
+    // for those loads run their window there. Every work-driven heat and
+    // wear rate is three fifths of what it was on that car, which puts a
+    // tyre at the same share of its grip back at the same temperature and
+    // wear at speed; a slow corner, where the load barely changed, is now
+    // gentler on the tyres than it was, as a slow circuit is in life.
+    public float LateralHeatRate { get; init; } = 2.4f;
+    public float LongitudinalHeatRate { get; init; } = 0.33f;
     /// <summary>
     /// Extra tread heat at the edge of what the car can hold.
     ///
@@ -211,7 +220,7 @@ public sealed class TireConfig
     /// never stands on. It is additive: reaching the edge must not multiply
     /// all of the ordinary cornering and traction heat.
     /// </summary>
-    public float NearLimitHeatRate { get; init; } = 2f;
+    public float NearLimitHeatRate { get; init; } = 1.2f;
 
     /// <summary>
     /// Where the partial-sliding heat begins, as a share of the limit the
@@ -225,15 +234,15 @@ public sealed class TireConfig
     // part of the same total stint wear now lives in NearLimitWearRate. This
     // keeps Normal's established tyre life while letting harder use spend the
     // tyre disproportionately faster.
-    public float LateralWearRate { get; init; } = 0.00048f;
-    public float LongitudinalWearRate { get; init; } = 0.0000546f;
+    public float LateralWearRate { get; init; } = 0.000288f;
+    public float LongitudinalWearRate { get; init; } = 0.0000328f;
 
     /// <summary>
     /// Lateral wear from slip work - force share times sliding speed - in
     /// place of the square of the force share. Off reproduces the old bill.
     /// </summary>
     public bool WearFromSlipWork { get; init; } = true;
-    public float SlipWorkWearRate { get; init; } = 0.0002064f;
+    public float SlipWorkWearRate { get; init; } = 0.0001238f;
     /// <summary>
     /// Abrasion added as friction-circle use approaches one.
     ///
@@ -242,7 +251,7 @@ public sealed class TireConfig
     /// the directional work terms, while the last few percent of available
     /// grip carry increasingly more partial-slip work.
     /// </summary>
-    public float NearLimitWearRate { get; init; } = 0.0000516f;
+    public float NearLimitWearRate { get; init; } = 0.000031f;
     public float OverLimitWearRate { get; init; } = 0.0004730f;
     public float ColdWearPerCSquared { get; init; } = 0.0015f;
     public float HotWearPerCSquared { get; init; } = 0.0035f;
