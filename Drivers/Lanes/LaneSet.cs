@@ -297,6 +297,12 @@ public sealed class LaneSet
                 s[k] = s[k - 1] + step;
                 d[k] = list[k].D;
             }
+            // A bake closes its lap by ending on its first point again. Kept,
+            // the loop holds that point twice, a step of nothing that the
+            // spline bends round: on Spa it put a 4 g kink in Blanchimont's
+            // straight-lined middle, and the car lifted for it every lap.
+            while (m > 16 && s[m - 1] > s[0] + length - 0.5f * spacing)
+                m--;
             var smooth = new float[m];
             for (int k = 0; k < m; k++)
                 smooth[k] = 0.25f * d[(k - 1 + m) % m] + 0.5f * d[k] + 0.25f * d[(k + 1) % m];

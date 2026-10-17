@@ -420,7 +420,14 @@ internal static class LaneSpeedPlanner
         LaneEnvelope e = envelope.ForTurn(curvature);
         (float ay, float load) = Corner(v, curvature, road);
         float lateralLimit = factor * shares.Lateral * (e.Lateral(v) + e.A * (load - 1f));
-        float push = shares.Drive * e.Drive(v) * Ellipse(ay, lateralLimit);
+        // The motor's drive or what the tyres have left beside the corner,
+        // whichever is less. Scaling the motor by the ellipse charged it for
+        // grip it never asked for: up a fast bend at 240 km/h the motor gives
+        // nine metres a second squared against tyres good for fifty, and the
+        // plan had it give seven, so the car was held to part throttle with
+        // half its grip unused.
+        float traction = lateralLimit * Ellipse(ay, lateralLimit);
+        float push = shares.Drive * MathF.Min(e.Drive(v), traction);
         RoadAttitude att = road.Attitude;
         float accel = (push - e.Loss(v)) * att.LongitudinalDemandScale + att.AlongTrackGravity(Gravity, v);
         return MathF.Sqrt(MathF.Max(0f, v * v + 2f * accel * ds));
