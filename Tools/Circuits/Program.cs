@@ -104,16 +104,30 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
             ? spec.Source with { Notes = spec.Source.Notes.Replace(" Elevation is authored in the style of the venue, not surveyed.", "") + " " + Elevation.Notes(spec.Id) }
             : spec.Source
     };
-    File.WriteAllText(Path.Combine(folder, CircuitManifest.FileName), manifest.ToJson() + "\n");
-    File.WriteAllText(
-        Path.Combine(folder, manifest.Track),
-        CircuitTrackFile.Write(rows, $"{spec.Id}: {count} m, one row a metre; written by Tools/Circuits"));
+    string trackCsv = CircuitTrackFile.Write(rows, $"{spec.Id}: {count} m, one row a metre; written by Tools/Circuits");
     // Godot reads a .csv as a translation table unless told to leave it be.
-    File.WriteAllText(Path.Combine(folder, manifest.Track + ".import"), "[remap]\n\nimporter=\"keep\"\n");
+    const string keepImport = "[remap]\n\nimporter=\"keep\"\n";
+    string pitLine = "";
+    if (spec.Pit is { } pit)
+    {
+        // Drawn against the road exactly as the game will load it, and
+        // read back the way the game reads it.
+        TrackData written = CircuitTrackFile.Parse(manifest, trackCsv);
+        (CircuitPitLane lane, PitLaneFile.Row[] laneRows) = Pits.Build(pit, written, rows.Select(r => r.Z).ToArray());
+        manifest = manifest with { PitLane = lane };
+        string laneCsv = PitLaneFile.Write(laneRows, $"{spec.Id} pit lane: {lane.LengthMeters} m, one row a metre; written by Tools/Circuits");
+        PitLaneFile.Parse(lane, laneCsv, written, spec.Id);
+        File.WriteAllText(Path.Combine(folder, lane.Track), laneCsv);
+        File.WriteAllText(Path.Combine(folder, lane.Track + ".import"), keepImport);
+        pitLine = $"  pit lane {lane.LengthMeters} m, {lane.Boxes.Count} boxes";
+    }
+    File.WriteAllText(Path.Combine(folder, CircuitManifest.FileName), manifest.ToJson() + "\n");
+    File.WriteAllText(Path.Combine(folder, manifest.Track), trackCsv);
+    File.WriteAllText(Path.Combine(folder, manifest.Track + ".import"), keepImport);
     if (spec.LicenseFrom is { } license)
         File.Copy(Path.Combine(repo, license), Path.Combine(folder, spec.Source.LicenseFile), overwrite: true);
 
-    Console.WriteLine($"{spec.Id,-16} {count,6} m  rows {shortest:F4}..{longest:F4} m apart  climb {z.Max() - z.Min():F1} m{respaced}");
+    Console.WriteLine($"{spec.Id,-16} {count,6} m  rows {shortest:F4}..{longest:F4} m apart  climb {z.Max() - z.Min():F1} m{respaced}{pitLine}");
     if (survey.Length > 0)
         Console.WriteLine($"{"",-16} {survey}");
 }
@@ -184,7 +198,7 @@ static string FindRepository()
     throw new DirectoryNotFoundException("Run from inside the repository.");
 }
 
-sealed record CircuitSpec(string Id, string Name, Func<TrackData> Build, CircuitSource Source, string? LicenseFrom = null);
+sealed record CircuitSpec(string Id, string Name, Func<TrackData> Build, CircuitSource Source, string? LicenseFrom = null, PitSpec? Pit = null);
 
 static class CircuitSpecs
 {
@@ -206,7 +220,9 @@ static class CircuitSpecs
     public static readonly CircuitSpec[] All =
     [
         new("silverstone", "Silverstone (Arena Grand Prix)", Layouts.SilverstoneStyleTestTrack,
-            FromTum("TUM smoothed OpenStreetMap centreline with surveyed widths, scaled to the FIA 5,891 m. " + Authored), TumLicense),
+            FromTum("TUM smoothed OpenStreetMap centreline with surveyed widths, scaled to the FIA 5,891 m. " + Authored), TumLicense,
+            // Behind the pit wall along the Hamilton straight, from the exit of Club to before Abbey.
+            new PitSpec(EntryFromLine: -180, ExitFromLine: 270, Side: -1, SpeedLimitKph: 80f)),
         new("shanghai", "Shanghai International Circuit", Layouts.ShanghaiStyleTestTrack,
             FromTum("TUM centreline and satellite widths, scaled from 5,445.25 m to the FIA 5,451 m. " + Authored), TumLicense),
         new("sepang", "Sepang International Circuit", Layouts.SepangStyleTestTrack,
@@ -218,7 +234,9 @@ static class CircuitSpecs
         new("baku", "Baku City Circuit", Layouts.BakuStyleTestTrack,
             FromBacinger("az-2016", "Projected, rotated to start on a straight, scaled to 6,003 m; widths by section from OpenStreetMap (ODbL), 7.6 m at the castle, walled at the kerb. " + Authored), BacingerLicense),
         new("spa", "Circuit de Spa-Francorchamps", Layouts.SpaStyleTestTrack,
-            FromBacinger("be-1925", "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. " + Authored), BacingerLicense),
+            FromBacinger("be-1925", "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. " + Authored), BacingerLicense,
+            // Along the straight the line is on, either side of it.
+            new PitSpec(EntryFromLine: -250, ExitFromLine: 250, Side: -1, SpeedLimitKph: 80f)),
         new("monza", "Autodromo Nazionale Monza", Layouts.MonzaStyleTestTrack,
             FromBacinger("it-1922", "Projected, 12 m wide, scaled to 5,793 m. " + Authored), BacingerLicense),
         new("interlagos", "Autodromo Jose Carlos Pace", Layouts.InterlagosStyleTestTrack,
