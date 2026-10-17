@@ -82,11 +82,11 @@ public sealed class PhysicsBoundaryTests
         CarPhysics.Step(limited, fitted, tires, StepInput(command, protect), 1f / 60f);
         CarPhysics.Step(free, unfitted, tires, StepInput(command, protect), 1f / 60f);
 
-        Assert.True(limited.Telemetry.CombinedGripLimiterCutAccel > 0f);
-        Assert.Equal(0f, free.Telemetry.CombinedGripLimiterCutAccel);
+        Assert.True(limited.Axles().CombinedGripLimiterCutAccel > 0f);
+        Assert.Equal(0f, free.Axles().CombinedGripLimiterCutAccel);
         Assert.True(
-            limited.Telemetry.FrontLongitudinalUse <
-            free.Telemetry.FrontLongitudinalUse
+            limited.Axles().FrontLongitudinalUse <
+            free.Axles().FrontLongitudinalUse
         );
     }
 
@@ -125,7 +125,7 @@ public sealed class PhysicsBoundaryTests
             Assert.Equal(idle.Heading, absent.Heading);
             Assert.Equal(idle.RearLeft.Wear, absent.RearLeft.Wear);
             Assert.Equal(idle.FrontRight.SurfaceTempC, absent.FrontRight.SurfaceTempC);
-            Assert.Equal(0f, absent.Telemetry.CombinedGripLimiterCutAccel);
+            Assert.Equal(0f, absent.Axles().CombinedGripLimiterCutAccel);
         }
     }
 

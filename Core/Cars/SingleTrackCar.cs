@@ -124,7 +124,7 @@ public class SingleTrackCar : ICar
 
     public void ReadTelemetry(CarState state, Span<float> values)
     {
-        CarTelemetry t = state.Telemetry;
+        AxleTelemetry t = state.Axles();
         ReadOnlySpan<float> readings =
         [
             t.FrontLateralUse, t.RearLateralUse, t.FrontLongitudinalUse, t.RearLongitudinalUse,

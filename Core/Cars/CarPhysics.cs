@@ -747,22 +747,24 @@ public static class CarPhysics
             actualLongitudinalAccel,
             lossAccel,
             actualCurvature,
+            overLimit,
+            drivePowerWatts,
+            regenPowerWatts,
+            state.SideslipAngleRadians,
+            referenceYawRate,
+            state.YawRateRadiansPerSecond,
+            actualYawAcceleration
+        );
+        SingleTrackState.Of(state).Axles = new AxleTelemetry(
             frontGrip,
             rearGrip,
             frontLateralUse,
             rearLateralUse,
             frontLongitudinalUse,
             rearLongitudinalUse,
-            overLimit,
-            drivePowerWatts,
-            regenPowerWatts,
             lateral.Front.LimiterCut + lateral.Rear.LimiterCut,
             inducedDragAccel,
-            state.SideslipAngleRadians,
-            rearSlideSeverity,
-            referenceYawRate,
-            state.YawRateRadiansPerSecond,
-            actualYawAcceleration
+            rearSlideSeverity
         );
 
         state.Normalize();
@@ -1039,22 +1041,19 @@ public static class CarPhysics
             actualLongitudinalAccel,
             0f,
             0f,
-            CalculateAxleGripAccel(massKg, config, tires, state.FrontLeft, state.FrontRight, front: true),
-            CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false),
-            0f,
-            0f,
-            0f,
-            0f,
             0f,
             settlement.DrawnPowerWatts,
             0f,
-            0f,
-            0f,
             state.SideslipAngleRadians,
-            1f,
             0f,
             yawRate,
             (yawRate - previousYawRate) / dt
+        );
+        SingleTrackState.Of(state).Axles = new AxleTelemetry(
+            CalculateAxleGripAccel(massKg, config, tires, state.FrontLeft, state.FrontRight, front: true),
+            CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false),
+            0f, 0f, 0f, 0f, 0f, 0f,
+            1f
         );
 
         if (gathering &&

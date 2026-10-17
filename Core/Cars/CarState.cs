@@ -4,6 +4,20 @@ using StintegyEVO.Core.Util;
 
 namespace StintegyEVO.Core.Cars;
 
+/// <summary>
+/// The part of a car's state that belongs to the kind of car it is, and
+/// that nothing outside that car reads. The race copies it with the rest of
+/// the state -- a step tried and undone, a frame held back -- without
+/// knowing what is in it.
+/// </summary>
+public interface ICarStateExtension
+{
+    ICarStateExtension Clone();
+
+    /// <summary>Takes on <paramref name="other"/>'s values; it is always the same kind.</summary>
+    void CopyFrom(ICarStateExtension other);
+}
+
 public sealed class CarState
 {
     public Vector2 Position { get; set; }
@@ -151,6 +165,9 @@ public sealed class CarState
         RearRight.Reset(config);
     }
 
+    /// <summary>The car's own state, which only that car reads (<see cref="ICarStateExtension"/>).</summary>
+    public ICarStateExtension? Own { get; set; }
+
     public CarState Clone()
     {
         CarState clone = new()
@@ -173,7 +190,8 @@ public sealed class CarState
             DownforceVelocityDeficit = DownforceVelocityDeficit,
             ActiveAero = ActiveAero,
             PushToPass = PushToPass,
-            Telemetry = Telemetry
+            Telemetry = Telemetry,
+            Own = Own?.Clone()
         };
         clone.FrontLeft.CopyFrom(FrontLeft);
         clone.FrontRight.CopyFrom(FrontRight);
@@ -203,6 +221,12 @@ public sealed class CarState
         ActiveAero = other.ActiveAero;
         PushToPass = other.PushToPass;
         Telemetry = other.Telemetry;
+        if (other.Own is null)
+            Own = null;
+        else if (Own is not null && Own.GetType() == other.Own.GetType())
+            Own.CopyFrom(other.Own);
+        else
+            Own = other.Own.Clone();
         FrontLeft.CopyFrom(other.FrontLeft);
         FrontRight.CopyFrom(other.FrontRight);
         RearLeft.CopyFrom(other.RearLeft);
