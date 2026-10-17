@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "formula_a",
+  "name": "Formula A",
+  "compounds": [
+    {
+      "id": "medium",
+      "name": "Medium",
+      "tyre": {
+        "baseMu": 2.4,
+        "loadSensitivity": 0.3,
+        "idealSurfaceTempLowC": 85,
+        "idealSurfaceTempHighC": 115,
+        "coldGripLossPerCSquared": 0.00008,
+        "hotGripLossPerCSquared": 0.0001,
+        "coreOverheatTempC": 112,
+        "heatScale": 1,
+        "wearScale": 1,
+        "wearCliffGripLoss": 0.12
+      }
+    }
+  ]
+}

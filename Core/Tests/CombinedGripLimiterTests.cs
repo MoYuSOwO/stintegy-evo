@@ -23,7 +23,7 @@ public sealed class CombinedGripLimiterTests
 {
     private const float Grip = 10f;
     private static readonly float Normal =
-        new TireConfig().GetAccelerationUsage(TireUsageMode.Normal);
+        CarPhysics.LimiterGripShare;
 
     private static readonly CarConfig Fitted = new();
 
@@ -48,7 +48,7 @@ public sealed class CombinedGripLimiterTests
         float[] speeds = [0f, 6f, 35f];
         foreach (TireUsageMode mode in Enum.GetValues<TireUsageMode>())
         {
-            float allowance = new TireConfig().GetAccelerationUsage(mode);
+            float allowance = CarPhysics.LimiterGripShare;
             foreach (float request in requests)
             foreach (float multiple in multiples)
             foreach (float speed in speeds)
@@ -174,7 +174,7 @@ public sealed class CombinedGripLimiterTests
         TireUsageMode mode, float peakScale
     )
     {
-        float allowance = new TireConfig().GetAccelerationUsage(mode);
+        float allowance = CarPhysics.LimiterGripShare;
         float previous = float.PositiveInfinity;
         const int samples = 800;
         for (int i = 0; i <= samples; i++)

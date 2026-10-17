@@ -29,9 +29,30 @@ internal static class TestControlFixtures
         return car;
     }
 
-    public static TireConfig WarmTires() => new()
+    public static TestTires WarmTires() => new(new TireConfig
     {
-        StartingSurfaceTempC = 90f,
-        StartingCoreTempC = 90f
-    };
+    }, 90f, 90f);
+}
+
+/// <summary>
+/// A compound for a test and how warm a fresh set of it starts. How warm
+/// tyres start is the paddock's (the blankets), not the compound's, so a
+/// test that wants them warmer or colder says so here and the set is
+/// brought there when it is put on (<see cref="TestTireExtensions"/>).
+/// Passes for its compound wherever a <see cref="TireConfig"/> is asked for.
+/// </summary>
+public sealed record TestTires(TireConfig Config, float SurfaceTempC = Tire.BlanketTempC, float CoreTempC = Tire.BlanketTempC)
+{
+    public static implicit operator TireConfig(TestTires tires) => tires.Config;
+    public static implicit operator TestTires(TireConfig config) => new(config);
+}
+
+public static class TestTireExtensions
+{
+    /// <summary>A fresh set on every corner, at the test's temperatures.</summary>
+    public static void InstallFreshTires(this CarState state, TestTires tires)
+    {
+        state.InstallFreshTires();
+        state.WarmTires(tires.SurfaceTempC, tires.CoreTempC);
+    }
 }

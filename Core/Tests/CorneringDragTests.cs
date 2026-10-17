@@ -19,11 +19,9 @@ public sealed class CorneringDragTests
 {
     private const float Dt = 1f / 60f;
 
-    private static TireConfig WarmTires() => new()
+    private static TestTires WarmTires() => new(new TireConfig
     {
-        StartingSurfaceTempC = 90f,
-        StartingCoreTempC = 90f
-    };
+    }, 90f, 90f);
 
     private static CarState Rolling(float speed)
     {
@@ -74,7 +72,7 @@ public sealed class CorneringDragTests
     public void ShakingTheWheelCostsSpeedThatDrivingStraightDoesNot()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState straight = Rolling(45f);
         CarState shaken = Rolling(45f);
 
@@ -112,7 +110,7 @@ public sealed class CorneringDragTests
     public void ASteadyCornerIsChargedTheSineOfTheAngleItIsHeldAt()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = Rolling(45f);
         for (int i = 0; i < 240; i++)
             Drive(state, car, tires, 0.006f);
@@ -141,7 +139,7 @@ public sealed class CorneringDragTests
     public void ASlideCostsAtLeastWhatTheBodyAngleSaid()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = Rolling(50f);
         for (int i = 0; i < 40; i++)
             Drive(state, car, tires, 0.02f);
@@ -181,7 +179,7 @@ public sealed class CorneringDragTests
     public void ThePublishedEnvelopeQuotesWhatTheCarIsCharged(float curvature)
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = Rolling(45f);
         for (int i = 0; i < 240; i++)
             Drive(state, car, tires, curvature);
@@ -207,7 +205,7 @@ public sealed class CorneringDragTests
     public void ACrawlingCarIsNotChargedForItsWheelsBeingTurned()
     {
         CarConfig car = new();
-        TireConfig tires = WarmTires();
+        TestTires tires = WarmTires();
         CarState state = Rolling(2f);
         float crawlingDrag = 0f;
         for (int i = 0; i < 30; i++)

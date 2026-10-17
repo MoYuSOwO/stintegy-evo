@@ -62,13 +62,26 @@ public interface ICar
     float GripUsage(CarStrategy strategy);
 
     /// <summary>
+    /// The compounds this car can be given, from the tyre packs its pack
+    /// declares; the first is what it is given when nobody says otherwise.
+    /// No car runs a compound it does not list.
+    /// </summary>
+    IReadOnlyList<TireCompound> Compounds { get; }
+
+    /// <summary>
+    /// A new set of <paramref name="compound"/> (its full id) on every
+    /// corner, off the blankets. A compound the car does not list is refused.
+    /// </summary>
+    void FitTires(CarState state, string compound);
+
+    /// <summary>A new set of what is on, or of the first compound if nothing is.</summary>
+    void InstallFreshTires(CarState state);
+
+    /// <summary>
     /// Where the tyre on this corner works, for the driver deciding how hard
     /// to lean on it and the screen colouring its temperature.
     /// </summary>
-    TireWindow TireWindow(WheelId wheel);
-
-    /// <summary>A new set of tyres on every corner.</summary>
-    void InstallFreshTires(CarState state);
+    TireWindow TireWindow(CarState state, WheelId wheel);
 
     /// <summary>The limits a controller is told about, as they stand.</summary>
     CarCapabilities Capabilities(CarState state, CarStrategy strategy);

@@ -77,11 +77,9 @@ public sealed class WallSweepRecoveryTests
         TrackData track = TrackFactory.SimpleTestTrack();
         CarState state = FrozenStart();
         state.Energy = PowertrainState.Filled(0.9f);
-        state.InstallFreshTires(new TireConfig
+        state.InstallFreshTires(new TestTires(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        });
+        }, 90f, 90f));
         RaceCar car = TestControlFixtures.ExternalCar(
             "pinned",
             state,

@@ -74,13 +74,15 @@ internal static class TireSlipCurve
     /// last percent.
     ///
     /// Measured on the constant-speed skidpad in the dynamics tests: the
-    /// car settles at a little under nine tenths of the grip its axles
-    /// have. Anything planning a corner speed has to plan against this
-    /// number and not the circle, or it arrives at every apex asking for a
-    /// tenth more than the tyres will give and running wide by exactly
-    /// that.
+    /// car settles at 0.99 of the grip its axles have, and this is a hair
+    /// under that. Anything planning a corner speed has to plan against this
+    /// number and not the circle.
+    ///
+    /// It read nine tenths until the steering stopped winding itself off
+    /// near the limit (CarPhysics.SteeringInversionShare): a tenth of the
+    /// car's cornering had been the steering's, not the tyres'.
     /// </summary>
-    public const float SustainablePeakShare = 0.9f;
+    public const float SustainablePeakShare = 0.98f;
 
     /// <summary>
     /// Cornering stiffness at zero slip, as a share of the axle's grip per

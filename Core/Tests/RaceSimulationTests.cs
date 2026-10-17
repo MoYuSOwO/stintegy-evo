@@ -698,13 +698,11 @@ public sealed class RaceSimulationTests
             });
     }
 
-    private static TireConfig WarmTires()
+    private static TestTires WarmTires()
     {
-        return new TireConfig
+        return new(new TireConfig
         {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        }, 90f, 90f);
     }
 
     private static (

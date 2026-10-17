@@ -157,19 +157,24 @@ public sealed class CarState
         };
     }
 
-    public void InstallFreshTires(TireConfig config)
+    /// <summary>
+    /// The compound on the car, by its full id (<see cref="TireCompound.Id"/>);
+    /// none before the car has been given any (<see cref="ICar.FitTires"/>).
+    /// </summary>
+    public string? Compound { get; set; }
+
+    /// <summary>A new tyre on every corner, off the blankets, whatever the compound.</summary>
+    public void InstallFreshTires()
     {
-        FrontLeft.Reset(config);
-        FrontRight.Reset(config);
-        RearLeft.Reset(config);
-        RearRight.Reset(config);
+        foreach (TireState tire in new[] { FrontLeft, FrontRight, RearLeft, RearRight })
+            tire.Reset(Tire.BlanketTempC, Tire.BlanketTempC);
     }
 
     /// <summary>
-    /// Off the blankets: every tyre brought to these temperatures, as a team
-    /// does before the car leaves the garage. Which tyres are on and how worn
-    /// they are is the car's (<see cref="ICar.InstallFreshTires"/>); how warm
-    /// they start is the paddock's.
+    /// Every tyre brought to these temperatures, in place of the blankets'
+    /// (<see cref="Tire.BlanketTempC"/>): for a host or a test that wants
+    /// a car on tyres already warm, or stone cold. Which tyres are on and
+    /// how worn they are is the car's (<see cref="ICar.FitTires"/>).
     /// </summary>
     public void WarmTires(float surfaceTempC, float coreTempC)
     {
@@ -198,6 +203,7 @@ public sealed class CarState
             SpinSeconds = SpinSeconds,
             SpinEvents = SpinEvents,
             Energy = Energy,
+            Compound = Compound,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
             AirVelocityDeficit = AirVelocityDeficit,
@@ -228,6 +234,7 @@ public sealed class CarState
         SpinSeconds = other.SpinSeconds;
         SpinEvents = other.SpinEvents;
         Energy = other.Energy;
+        Compound = other.Compound;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
         AirVelocityDeficit = other.AirVelocityDeficit;
