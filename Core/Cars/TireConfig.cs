@@ -211,11 +211,12 @@ public sealed class TireConfig
     // falling with load grows more slowly than the load. Three fifths of
     // the rates the car had before its Formula One downforce, with the
     // rolling heat below at four fifths: the split between the two is what
-    // puts both a stint at the limit and an out lap where they were. Held at
-    // nine tenths of its grip at 55 m/s a tyre settles at about 113 C;
-    // ordinary running at forty-odd metres a second holds the tread at
-    // 74 C, as before; a cold set is in its window inside two and a half
-    // laps.
+    // puts both a stint at the limit and an out lap where they were (with
+    // the air cooling below). A Silverstone stint on Normal holds its
+    // carcass at 108 C; held at nine tenths of its grip at 55 m/s a tyre
+    // settles at about 114 C; ordinary running at forty-odd metres a second
+    // holds the tread near 79 C; a cold set is in its window inside two and
+    // a half laps.
     public float LateralHeatRate { get; init; } = 2.4f;
     public float LongitudinalHeatRate { get; init; } = 0.33f;
     /// <summary>
