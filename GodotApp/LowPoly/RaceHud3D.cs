@@ -65,7 +65,7 @@ public partial class RaceHud3D : CanvasLayer
         _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    {controller}    /    LAP {car.Progress.Lap + 1:00}";
         _speed.Text = $"{car.State.Speed * 3.6f:000} km/h";
         float wear = (car.State.FrontLeft.Wear + car.State.FrontRight.Wear + car.State.RearLeft.Wear + car.State.RearRight.Wear) / 4;
-        _dashboard.Refresh(car.CarConfig, car.State, car.Strategy);
+        _dashboard.Refresh(car.Car, car.State, car.Strategy);
         var tireMode = _dashboard.Modes[0]; var powerMode = _dashboard.Modes[1];
         string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
         _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung,-10}  Q / E\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung,-10}  A / D\n{stores}     TYRE LIFE  {(1 - wear) * 100:0}%";

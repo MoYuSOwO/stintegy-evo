@@ -31,6 +31,12 @@ public sealed class CarConfig
     /// ladder they are spent on, and every number about either.
     /// </summary>
     public IPowertrain Powertrain { get; init; } = RangeExtenderPowertrain.Default;
+
+    /// <summary>
+    /// The wings, the floor and the body against the air: downforce, drag
+    /// and how a car in front changes both.
+    /// </summary>
+    public IAero Aero { get; init; } = new StandardAero();
     public float WheelBaseMeters { get; init; } = 3.1f;
     public float TrackWidthMeters { get; init; } = 1.65f;
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
@@ -210,41 +216,6 @@ public sealed class CarConfig
     public float RollingDragAccel { get; init; } = 0.18f;
 
     /// <summary>
-    /// Aerodynamic drag, in newtons per squared metre per second: half the
-    /// air's density times the drag area. A force, because the air pushes on
-    /// the car's shape and not on its mass; written as an acceleration it was,
-    /// and a car carrying a full tank met a tenth more air than the same car
-    /// empty. 0.81 is a drag area of about 1.3 m², where a high-downforce
-    /// single-seater sits, and the 0.0009 per kilogram the car had at its
-    /// 900 kg dry weight.
-    /// </summary>
-    public float AeroDragPerSpeedSquared { get; init; } = 0.81f;
-
-    /// <summary>
-    /// Downforce, in newtons per squared metre per second: half the air's
-    /// density times the lift area. A force, the wings and floor against the
-    /// air, the same whatever the car weighs.
-    ///
-    /// 5.6 is a lift area of about 9 m²: downforce equal to the car's own
-    /// weight at about 145 km/h, the rule of thumb for a Formula One car.
-    /// Set with the tyres' load sensitivity against what such a car
-    /// corners at: about 2 g in Monaco's hairpin, 3.3 g through Tabac at
-    /// 160 km/h (Pirelli), 5 to 6 g through Maggotts and Becketts at
-    /// 300 km/h.
-    ///
-    /// The drag was left where it was, so the lift to drag ratio is about
-    /// 6.9, twice a Formula One car's 2.5 to 3.5: a near-future car, whose
-    /// floor makes downforce far more cheaply than any built yet. That is a
-    /// setting, not an oversight; it is what keeps the straights quick on
-    /// this powertrain.
-    ///
-    /// Zero is a car with no wings at all: grip that does not care how fast
-    /// the car is going, so a fast corner is worth no more than a slow one of
-    /// the same radius.
-    /// </summary>
-    public float DownforcePerSpeedSquared { get; init; } = 5.6f;
-
-    /// <summary>
     /// How much of its own speed the air is still carrying directly behind
     /// this car, as a fraction, before any of it has been left behind.
     ///
@@ -318,17 +289,6 @@ public sealed class CarConfig
     /// runs lower than a car that leans on over-body wings.
     /// </summary>
     public float DirtyAirSensitivity { get; init; } = 1f;
-
-    /// <summary>
-    /// Fraction of the downforce lost to a leading car's wake that the active
-    /// aero hands back while push-to-pass runs: flaps that trim to the
-    /// disturbed air rather than to clean air. It scales what the wake
-    /// removed, so in clean air it does nothing, and at one it would erase
-    /// the cornering penalty of following entirely; half keeps dirty air a
-    /// real cost while letting a committed follower live close enough to
-    /// strike. It does not touch drag: the push is power, not a stalled wing.
-    /// </summary>
-    public float ActiveAeroWakeDownforceRecovery { get; init; } = 0.5f;
 
     /// <summary>
     /// What is left of an axle's braking or drive once it is being asked

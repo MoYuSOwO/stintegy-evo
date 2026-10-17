@@ -11,12 +11,19 @@
 
   <ItemGroup>
     <ProjectReference Include="Core/StintegyEVO.Core.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
+    <!-- The game's own car is a pack the game loads from data/ like anyone's:
+         built with the game, never referenced by it. -->
+    <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj"
+                      AdditionalProperties="Configuration=$(SimulationConfiguration)"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove=".godot/**/*.cs" />
     <Compile Remove="Core/**/*.cs" />
     <Compile Remove="Training/**/*.cs" />
+    <!-- Car packs are their own assemblies. -->
+    <Compile Remove="Cars/**/*.cs" />
     <!-- The circuit tool writes Circuits/ offline; it is not part of the game. -->
     <Compile Remove="Tools/Circuits/**/*.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->

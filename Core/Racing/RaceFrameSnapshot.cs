@@ -78,14 +78,14 @@ public readonly record struct RaceCarSnapshot(
     )
     {
         CarState state = car.State;
-        IPowertrain powertrain = car.CarConfig.Powertrain;
+        ICar model = car.Car;
+        IPowertrain powertrain = model.Powertrain;
         var resources = ImmutableArray.CreateBuilder<PowertrainResourceSnapshot>(powertrain.Resources.Count);
         for (int i = 0; i < powertrain.Resources.Count && i < PowertrainState.Capacity; i++)
         {
             PowertrainResourceInfo info = powertrain.Resources[i];
             resources.Add(new(info.Id, info.Label, info.Class, state.Energy[i], info.FullMassKg * state.Energy[i]));
         }
-        float mass = car.CarConfig.MassKg + powertrain.ConsumableMassKg(state.Energy);
         return new RaceCarSnapshot(
             car.Id,
             state.Position,
@@ -102,7 +102,7 @@ public readonly record struct RaceCarSnapshot(
             TrackBoundaryResolver.Classify(pose),
             car.Collision.LengthMeters,
             car.Collision.WidthMeters,
-            car.CarConfig.MaxBrakeAccel,
+            model.Spec.MaximumBrakeDeceleration,
             car.LastInput
         )
         {
@@ -119,44 +119,39 @@ public readonly record struct RaceCarSnapshot(
             ActiveAero = state.ActiveAero,
             PushToPassActive = state.PushToPass.Active,
             PushToPassLocked = state.PushToPass.Locked,
-            PushToPassRemainingSeconds = state.PushToPass.RemainingSeconds(car.CarConfig.PushToPass),
+            PushToPassRemainingSeconds = model.PushToPassRemainingSeconds(state),
             PushToPassCooldownSeconds = state.PushToPass.CooldownSeconds,
-            FrontLeft = TireSnapshot.Capture(state.FrontLeft),
-            FrontRight = TireSnapshot.Capture(state.FrontRight),
-            RearLeft = TireSnapshot.Capture(state.RearLeft),
-            RearRight = TireSnapshot.Capture(state.RearRight),
+            FrontLeft = TireSnapshot.Capture(state.FrontLeft, model.TireWindow(WheelId.FrontLeft)),
+            FrontRight = TireSnapshot.Capture(state.FrontRight, model.TireWindow(WheelId.FrontRight)),
+            RearLeft = TireSnapshot.Capture(state.RearLeft, model.TireWindow(WheelId.RearLeft)),
+            RearRight = TireSnapshot.Capture(state.RearRight, model.TireWindow(WheelId.RearRight)),
             Resources = resources.ToImmutable(),
-            Capabilities = new(
-                mass, car.CarConfig.MaxCurvatureRequest, car.CarConfig.MaxSteerAngleRadians,
-                car.CarConfig.SteerRateLimitRadiansPerSecond, car.CarConfig.MaxDriveAcceleration,
-                powertrain.DriveAccelerationLimit(state.Energy, car.Strategy, state.Speed, mass, car.CarConfig.MaxDriveAcceleration, state.PushToPass.Active),
-                powertrain.OutputAvailability(state.Energy), car.TireConfig.CompoundId),
+            Capabilities = model.Capabilities(state, car.Strategy),
             Telemetry = state.Telemetry,
             BoundaryContactSeconds = car.BoundaryContactSeconds,
             HitCar = car.HitCarThisStep,
             RaceDistanceMeters = car.Progress.RaceDistanceMeters,
             TrackLengthMeters = MathF.Max(0f, trackLengthMeters),
             TrackWidthMeters = pose.Sample.Width,
-            WheelBaseMeters = car.CarConfig.WheelBaseMeters
+            WheelBaseMeters = model.Spec.WheelBaseMeters
         };
     }
 }
 
-/// <summary>A value copy of one tyre. It never exposes the live TireState.</summary>
+/// <summary>
+/// A value copy of one tyre, with where that tyre works as its car tells it.
+/// It never exposes the live TireState.
+/// </summary>
 public readonly record struct TireSnapshot(float SurfaceTempC, float CoreTempC, float Wear, float LoadN, float SurfaceGrip)
 {
-    internal static TireSnapshot Capture(TireState tire) =>
-        new(tire.SurfaceTempC, tire.CoreTempC, tire.Wear, tire.LoadN, tire.SurfaceGrip);
+    public TireWindow Window { get; init; }
+
+    internal static TireSnapshot Capture(TireState tire, TireWindow window) =>
+        new(tire.SurfaceTempC, tire.CoreTempC, tire.Wear, tire.LoadN, tire.SurfaceGrip) { Window = window };
 }
 
 public readonly record struct PowertrainResourceSnapshot(
     string Id, string Label, PowertrainResourceClass Class, float Fraction, float RemainingMassKg);
-
-/// <summary>Typed vehicle limits and current output, independent of a controller's encoding.</summary>
-public readonly record struct CarCapabilities(
-    float MassKg, float MaxCurvatureRequest, float MaxSteerAngleRadians,
-    float SteerRateLimitRadiansPerSecond, float MaxDriveAcceleration,
-    float AvailableDriveAcceleration, float OutputAvailability, string TireCompoundId);
 
 public readonly record struct RaceEnvironmentSnapshot(float AirTempC, float TrackTempC, float SurfaceGripScalar);
 

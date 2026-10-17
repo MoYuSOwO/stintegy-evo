@@ -308,7 +308,7 @@ public sealed class RaceSimulationTests
             "a protruding nose corner should count as crossing the wall even when the center is inside"
         );
 
-        TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(track, state, collision);
+        TrackBoundaryContact? contact = TrackBoundaryResolver.ResolveCurrent(track, state, collision, new SingleTrackCar(new CarConfig(), new TireConfig()));
 
         Assert.True(contact.HasValue);
         Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(track, state, collision));

@@ -174,26 +174,6 @@ public sealed class ElectricPowertrain : IPowertrain
         };
     }
 
-    public float GetDrivePowerLimitWatts(CarStrategy strategy)
-    {
-        if (!strategy.DrivePowerLimitWattsOverride.HasValue)
-            return GetDrivePowerLimitWatts(strategy.PowerRung);
-
-        float minimum = Math.Min(
-            SaveDrivePowerLimitWatts,
-            AttackDrivePowerLimitWatts
-        );
-        float maximum = Math.Max(
-            SaveDrivePowerLimitWatts,
-            AttackDrivePowerLimitWatts
-        );
-        return Math.Clamp(
-            strategy.DrivePowerLimitWattsOverride.Value,
-            minimum,
-            maximum
-        );
-    }
-
     public float GetDrivePowerLimitWatts(float sliderPosition)
     {
         float scaled = Math.Clamp(sliderPosition, 0f, 1f) * 4f;
@@ -252,7 +232,7 @@ public sealed class ElectricPowertrain : IPowertrain
     /// </summary>
     public float DriveAccelerationLimit(
         in PowertrainState energy,
-        in CarStrategy strategy,
+        int outputRung,
         float speed,
         float massKg,
         float chassisForceCeiling,
@@ -260,7 +240,7 @@ public sealed class ElectricPowertrain : IPowertrain
     )
     {
         float powerLimitedAccel =
-            GetDrivePowerLimitWatts(strategy) /
+            GetDrivePowerLimitWatts(outputRung) /
             (massKg * Math.Max(speed, MinPowerSpeed));
 
         return Math.Min(chassisForceCeiling, powerLimitedAccel) *

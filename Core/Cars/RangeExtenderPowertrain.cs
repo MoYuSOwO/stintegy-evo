@@ -99,15 +99,14 @@ public sealed class RangeExtenderPowertrain : IPowertrain
 
     public float DriveAccelerationLimit(
         in PowertrainState energy,
-        in CarStrategy strategy,
+        int outputRung,
         float speed,
         float massKg,
         float chassisForceCeiling,
         bool pushToPass = false
     )
     {
-        float power = strategy.DrivePowerLimitWattsOverride ??
-                      (pushToPass ? PushToPassDrivePowerWatts : RaceDrivePowerLimitWatts);
+        float power = pushToPass ? PushToPassDrivePowerWatts : RaceDrivePowerLimitWatts;
         float powerLimitedAccel = power / (massKg * Math.Max(speed, MinPowerSpeed));
         return Math.Min(chassisForceCeiling, powerLimitedAccel) *
                OutputAvailability(energy);

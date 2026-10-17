@@ -117,8 +117,8 @@ public sealed class CorneringDragTests
         for (int i = 0; i < 240; i++)
             Drive(state, car, tires, 0.006f);
 
-        CarTelemetry telemetry = state.Telemetry;
-        float lateral = MathF.Abs(telemetry.ActualLateralAccel);
+        AxleTelemetry telemetry = state.Axles();
+        float lateral = MathF.Abs(state.Telemetry.ActualLateralAccel);
         Assert.True(lateral > 5f, "the fixture stopped cornering");
         Assert.True(
             telemetry.InducedDragAccel > 0f,
@@ -146,9 +146,9 @@ public sealed class CorneringDragTests
         for (int i = 0; i < 40; i++)
             Drive(state, car, tires, 0.02f);
 
-        CarTelemetry telemetry = state.Telemetry;
+        AxleTelemetry telemetry = state.Axles();
         float bodyReading = MathF.Abs(
-            telemetry.ActualLateralAccel *
+            state.Telemetry.ActualLateralAccel *
             MathF.Sin(state.SideslipAngleRadians)
         );
         Assert.True(
@@ -228,7 +228,7 @@ public sealed class CorneringDragTests
             // Charged nothing while it crawls; past the crawl it is a
             // car turning, and pays as one.
             if (crawling)
-                crawlingDrag = MathF.Max(crawlingDrag, state.Telemetry.InducedDragAccel);
+                crawlingDrag = MathF.Max(crawlingDrag, state.Axles().InducedDragAccel);
         }
 
         Near.Equal(0f, crawlingDrag);
