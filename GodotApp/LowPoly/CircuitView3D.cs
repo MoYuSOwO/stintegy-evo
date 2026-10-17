@@ -70,7 +70,6 @@ public partial class CircuitView3D : Node3D
                     // the first of the run-off: painted inside its own edge.
                     Strip(mesh, a, b, ea - side * 0.12f, ea, eb - side * 0.12f, eb, LowPolyMesh.Ivory, 0.03f);
                     Wall(mesh, a, b, side * wa, side * wb, BarrierFace(track, i, a, side, wa));
-                    Verge(mesh, a, b, side * wa, side * wb, side);
                 }
             }
             AddChild(mesh.Instance($"Road_{begin}"));
@@ -208,25 +207,6 @@ public partial class CircuitView3D : Node3D
         float other = (Point(s + 8f, -side * offset) - Point(s - 8f, -side * offset)).Length();
         return own > other;
     }
-    /// <summary>
-    /// The ground from the barrier out to where the meadow takes over.
-    ///
-    /// Its outer rim is put at exactly the height the meadow has at that
-    /// point, rather than at a constant drop below the road: the two
-    /// surfaces then meet instead of one hanging over the other, which is
-    /// what a strip of sky under the grass at the edge of a climbing
-    /// section was. The meadow itself runs unbroken beneath all of this —
-    /// under the road as well — so nothing here can leave a hole.
-    /// </summary>
-    private void Verge(LowPolyMesh mesh, float a, float b, float da, float db, int side)
-    {
-        Vector3 p = Point(a, da), q = Point(b, db);
-        Vector3 r = Point(b, db + side * Surface.VergeReach(b, db, side));
-        Vector3 t = Point(a, da + side * Surface.VergeReach(a, da, side));
-        r.Y = Surface.MeadowHeight(r.X, r.Z);
-        t.Y = Surface.MeadowHeight(t.X, t.Z);
-        mesh.GroundQuad(p, q, r, t, Look.Grass);
-    }
     private void BuildMarkings()
     {
         var mesh = new LowPolyMesh(); var track = Surface.Track;
@@ -248,29 +228,30 @@ public partial class CircuitView3D : Node3D
         }
         AddChild(mesh.Instance("GridAndFinish"));
     }
+    /// <summary>
+    /// The ground off the road, as one sheet that meets the run-off at the
+    /// barrier and eases out to the meadow (TerrainMesh): no strip of verge
+    /// laid over another, and nothing over the road.
+    /// </summary>
     private void BuildTerrain()
     {
-        var min = Surface.Minimum; var max = Surface.Maximum;
-        const float spacing = 18f, margin = 650f;
-        int nx = (int)MathF.Ceiling((max.X - min.X + margin * 2) / spacing), nz = (int)MathF.Ceiling((max.Z - min.Z + margin * 2) / spacing);
-        var vertices = new Vector3[nx + 1, nz + 1];
-        for (int x = 0; x <= nx; x++) for (int z = 0; z <= nz; z++)
+        const float cell = 18f, margin = 650f;
+        foreach (var ((cx, cz), triangles) in TerrainMesh.Build(Surface, cell, margin, chunkCells: 16))
         {
-            float px = min.X - margin + x * spacing, pz = min.Z - margin + z * spacing;
-            float height = Surface.MeadowHeight(px, pz);
-            vertices[x, z] = new(px, height, pz);
-        }
-        for (int bx = 0; bx < nx; bx += 16) for (int bz = 0; bz < nz; bz += 16)
-        {
+            if (triangles.Count == 0)
+                continue;
             var mesh = new LowPolyMesh();
-            for (int x = bx; x < Math.Min(bx + 16, nx); x++) for (int z = bz; z < Math.Min(bz + 16, nz); z++)
+            for (int t = 0; t + 2 < triangles.Count; t += 3)
             {
+                Vector3 a = LowPolyMesh.V(triangles[t]), b = LowPolyMesh.V(triangles[t + 1]), c = LowPolyMesh.V(triangles[t + 2]);
                 // Restrained field-sized variation rather than random rainbow triangles.
-                float tint = 0.018f * MathF.Sin(x * 0.35f + z * 0.2f);
-                var color = Look.Grass.Lightened(tint);
-                mesh.GroundQuad(vertices[x, z], vertices[x + 1, z], vertices[x + 1, z + 1], vertices[x, z + 1], color);
+                Vector3 middle = (a + b + c) / 3f;
+                float tint = 0.018f * MathF.Sin(middle.X / cell * 0.35f + middle.Z / cell * 0.2f);
+                mesh.GroundTriangle(a, b, c, Look.Grass.Lightened(tint));
             }
-            var instance = mesh.Instance($"Meadow_{bx}_{bz}"); instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off; AddChild(instance);
+            var instance = mesh.Instance($"Terrain_{cx}_{cz}");
+            instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+            AddChild(instance);
         }
     }
 }
