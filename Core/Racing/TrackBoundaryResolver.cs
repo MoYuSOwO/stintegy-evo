@@ -412,9 +412,9 @@ public static class TrackBoundaryResolver
     ///
     /// The wall does not move, so the whole impulse is the car's. Normal:
     /// the corner's approach speed comes back at the wall restitution.
-    /// Along the wall: the corner loses the share of its sliding speed the
-    /// impact severity calls for, which is the calibration the wall has
-    /// always had, now taken at the corner. Both are solved with the
+    /// Along the wall: Coulomb friction, at most the friction coefficient
+    /// times that normal impulse, and never more than stops the corner's
+    /// slide. Both are solved with the
     /// corner's lever arm, so a car that clips the wall with its nose is
     /// turned by it, and the linear change is what a body that can also
     /// rotate takes from the same impulse.
@@ -458,16 +458,18 @@ public static class TrackBoundaryResolver
         if (normalSpeed >= 0f)
             return;
 
-        float severity = Math.Clamp(
-            -normalSpeed / Math.Max(collision.ReferenceImpactSpeed, Epsilon),
-            0f,
-            1f
-        );
-
         float normalImpulse = -(1f + collision.WallRestitution) * normalSpeed /
                               EffectiveInverseMass(normal, arm, invMass, invInertia);
         Apply(normal * normalImpulse);
 
+        // Coulomb friction at the corner: the wall resists the corner's
+        // slide along it with at most the friction coefficient times the
+        // impulse it pushed back with, and never more than stops the slide.
+        // A hard hit scrubs hard; a car leaning on the barrier through a
+        // bend, pressed into it a little every step by its own tyres, is
+        // pushed back a little every step and scrubs a little every step:
+        // the steady drag of a car rubbing the wall, which a share of the
+        // slide taken by impact speed alone never gave.
         pointVelocity = PointVelocity(velocity, yawRate, arm);
         Vector2 tangentVelocity =
             pointVelocity - normal * Vector2.Dot(pointVelocity, normal);
@@ -475,10 +477,9 @@ public static class TrackBoundaryResolver
         if (slidingSpeed > Epsilon)
         {
             Vector2 tangent = tangentVelocity / slidingSpeed;
-            float removed = slidingSpeed *
-                            Math.Clamp(collision.WallFriction * severity, 0f, 1f);
-            float tangentImpulse = -removed /
-                                   EffectiveInverseMass(tangent, arm, invMass, invInertia);
+            float stopping = slidingSpeed /
+                             EffectiveInverseMass(tangent, arm, invMass, invInertia);
+            float tangentImpulse = -MathF.Min(collision.WallFriction * normalImpulse, stopping);
             Apply(tangent * tangentImpulse);
         }
 
