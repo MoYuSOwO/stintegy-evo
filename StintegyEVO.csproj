@@ -17,6 +17,8 @@
     <Compile Remove=".godot/**/*.cs" />
     <Compile Remove="Core/**/*.cs" />
     <Compile Remove="Training/**/*.cs" />
+    <!-- The circuit tool writes Circuits/ offline; it is not part of the game. -->
+    <Compile Remove="Tools/Circuits/**/*.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->
     <Compile Remove="Tools/Tests/**/*.cs" />
     <Compile Include="Tools/Tests/**/*.cs" Condition="'$(PresentationSmoke)' == 'true'" />

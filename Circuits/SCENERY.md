@@ -1,6 +1,6 @@
 # Scenery plans
 
-One file per circuit, named for it: `silverstone.json` is Silverstone's.
+One file per circuit, in its folder: `silverstone/scenery.json` is Silverstone's.
 It says which props stand where, and it is meant to be read and edited by
 a person.
 
@@ -11,7 +11,7 @@ a person.
     { "prop": 2, "s": 120.0, "d": -46.0, "yaw": 3.142, "scale": 1.0 },
     { "prop": 1, "s": 300.0, "d": 68.0, "scale": 1.15,
       "repeat": { "count": 14, "step_s": 26.0, "step_d": 2.5 } },
-    { "prop": "res://Assets/TrackScenery/silverstone/marquee.tscn",
+    { "prop": "res://Circuits/silverstone/props/marquee.tscn",
       "s": 210.0, "d": -38.0 }
   ]
 }
@@ -25,7 +25,7 @@ Three ways, and a plan may use all three at once.
 |---|---|
 | `"prop": 2` | the game's own prop number two, through `Assets/Scenery/catalogue.json` |
 | `"prop": "pine"` | `pine.tscn`, `pine.glb`, `pine.obj` … in `Assets/Scenery`, by name |
-| `"prop": "res://Assets/TrackScenery/silverstone/marquee.tscn"` | that file, wherever it is — a circuit bringing scenery of its own |
+| `"prop": "res://Circuits/silverstone/props/marquee.tscn"` | that file, wherever it is — a circuit bringing scenery of its own |
 
 Models in a format Godot has to import — glTF, Wavefront, COLLADA, FBX —
 work anywhere a name or a path does, but must be imported once first (see

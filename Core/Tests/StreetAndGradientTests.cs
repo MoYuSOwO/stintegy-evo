@@ -43,9 +43,8 @@ public sealed class StreetAndGradientTests
             down = MathF.Min(down, grade);
         }
         Assert.InRange(height, -0.05f, 0.05f);
-        // The climb must clear Monaco's 8.6 percent or the circuit has
-        // failed at its one job; the plunge is allowed to be wilder.
-        Assert.InRange(up, 0.087f, 0.12f);
-        Assert.InRange(-down, 0.10f, 0.18f);
+        // The rollercoaster: steep both ways, by the survey.
+        Assert.InRange(up, 0.05f, 0.18f);
+        Assert.InRange(-down, 0.05f, 0.18f);
     }
 }

@@ -1,11 +1,11 @@
+using StintegyEVO.Core.Track;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
-using System.Reflection;
 
-namespace StintegyEVO.Core.Track;
+namespace StintegyEVO.Circuits;
 
 internal readonly record struct TrackCenterlinePoint(
     Vector2 Center,
@@ -16,8 +16,11 @@ internal readonly record struct TrackCenterlinePoint(
     public float Width => RightWidth + LeftWidth;
 }
 
-internal static class TrackCenterlineData
+internal static class Sources
 {
+    /// <summary>Where the source centrelines are: Tools/Circuits/Sources.</summary>
+    public static string Folder { get; set; } = "Sources";
+
     private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
         SilverstonePoints = new(() => LoadEmbeddedCsv("Silverstone.csv"));
     private static readonly Lazy<IReadOnlyList<TrackCenterlinePoint>>
@@ -72,13 +75,8 @@ internal static class TrackCenterlineData
         int startingPointIndex = 0
     )
     {
-        Assembly assembly = typeof(TrackCenterlineData).Assembly;
-        string resourceName = $"StintegyEVO.Core.Track.Data.{fileName}";
-        using Stream stream = assembly.GetManifestResourceStream(resourceName)
-            ?? throw new InvalidOperationException(
-                $"Embedded track centerline '{resourceName}' was not found."
-            );
-        using StreamReader reader = new(stream);
+        string resourceName = Path.Combine(Folder, fileName);
+        using StreamReader reader = new(resourceName);
 
         List<TrackCenterlinePoint> points = [];
         while (reader.ReadLine() is { } line)
@@ -92,8 +90,12 @@ internal static class TrackCenterlineData
                     $"Track centerline row has {fields.Length} fields; four are required."
                 );
 
+            // The sources are drawn as a map is, y to the north; the game's
+            // plane has y to the south (Godot's, and what Core's left and
+            // right are defined against), so y turns over here, once,
+            // or every circuit comes out as its mirror image.
             float x = Parse(fields[0]);
-            float y = Parse(fields[1]);
+            float y = -Parse(fields[1]);
             float rightWidth = Parse(fields[2]);
             float leftWidth = Parse(fields[3]);
             points.Add(

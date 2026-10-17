@@ -147,8 +147,10 @@ public sealed class SceneryPlanTests
     {
         Assert.Equal(
             "silverstone",
-            SceneryPlan.TrackOf("res://Levels/scenery/silverstone.json")
+            SceneryPlan.TrackOf("res://Circuits/silverstone/scenery.json")
         );
+        // A mod's plan is named for its track.
+        Assert.Equal("silverstone", SceneryPlan.TrackOf("user://mods/greener/scenery/silverstone.json"));
         Assert.Equal("monaco", SceneryPlan.TrackOf("monaco.json"));
     }
 

@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "simple-left",
+  "name": "Simple test layout, mirrored",
+  "track": "track.csv",
+  "lengthMeters": 1804,
+  "startLineMeters": 300,
+  "grid": {
+    "count": 30,
+    "firstLeft": true,
+    "offsetMeters": 5
+  },
+  "source": {
+    "centreline": "Built from straights and arcs by Tools/Circuits",
+    "license": "Project content, see CONTENT_LICENSE.md",
+    "licenseFile": "",
+    "notes": "The simple layout turning left."
+  }
+}

@@ -1,4 +1,7 @@
-# Embedded track centreline data
+# Source track centreline data
+
+These are the sources `Tools/Circuits` makes the circuit folders under
+`Circuits/` from; nothing in the game reads them directly.
 
 `Silverstone.csv` is sourced from
 [TUMFTM/racetrack-database](https://github.com/TUMFTM/racetrack-database/blob/2b44832e938e707103a0975ff5677a6be80362c4/tracks/Silverstone.csv)
@@ -9,7 +12,7 @@ smoothed by the Technical University of Munich's Institute of Automotive
 Technology.
 
 The four columns are centreline `x`, centreline `y`, right track width and left
-track width, all in metres. At runtime the closed centreline is uniformly
+track width, all in metres. When its circuit folder is written, the closed centreline is uniformly
 scaled and resampled to the FIA-published 5,891 metre Arena Grand Prix length.
 
 `Monaco.csv` is projected from
@@ -18,7 +21,7 @@ at commit `b8c7e17c528d54b65b3aa3b0e14a3278bf96b5ac`, licensed under
 MIT; the complete upstream license is included as `LICENSE.bacinger-MIT`.
 Longitude and latitude are projected to local metres, the duplicated closing
 point is removed, and a conservative 10.5 metre street-circuit width is
-assigned. At runtime the centreline is scaled to the FIA-published 3,337 metre
+assigned. When its circuit folder is written, the centreline is scaled to the FIA-published 3,337 metre
 length. The source LineString starts near Massenet/Casino, so it is rotated to
 source point 118, the closest supplied point to the modern start/finish line on
 Boulevard Albert 1er, before spline generation.
@@ -40,7 +43,7 @@ licensed under MIT; the complete upstream license is included as
 `LICENSE.bacinger-MIT`. Longitude and latitude are projected to local metres
 about the ring's centroid and the duplicated closing point is removed. The
 projected ring measures 4,260.2 metres against the published 4,259, so the
-runtime scaling barely moves it. The source LineString already begins on the
+scaling barely moves it. The source LineString already begins on the
 start/finish straight, so unlike Monaco it needs no rotation. Width is
 assigned rather than sourced: twelve metres, which is a narrow permanent
 circuit and is what Zandvoort is.
@@ -51,7 +54,7 @@ circuit and is what Zandvoort is.
 license is included as `LICENSE.bacinger-MIT`. Longitude and latitude are
 projected to local metres about each ring's centroid and duplicated closing
 points are removed; projected lengths land within 1.1% of the published
-6,003, 7,004, 5,793 and 4,309 metres that the runtime scales them to. Baku
+6,003, 7,004, 5,793 and 4,309 metres that they are scaled to. Baku
 and Spa are rotated to start on a straight (source points 83 and 118). All
 widths are assigned rather than sourced: Baku carries 13 m on the seafront
 straight, 12 m elsewhere, 10 m through the old town and 7.6 m through the
