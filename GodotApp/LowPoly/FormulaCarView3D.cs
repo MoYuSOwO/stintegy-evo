@@ -16,9 +16,10 @@ public partial class FormulaCarView3D : Node3D
     private readonly Node3D[] _wheels = new Node3D[4];
     private CpuParticles3D _smoke = null!, _dust = null!;
 
-    // A car sliding this far is scrubbing rubber off; one this fast with
-    // wheels off the road is throwing up the verge.
-    private const float SmokeSlide = 0.085f, SmokeSpeed = 9f, DustSpeed = 7f;
+    // Tyres this far past their peak (a tenth: sliding, spinning up or
+    // locked) are scrubbing rubber off; a car this fast with wheels off
+    // the road is throwing up the verge.
+    private const float SmokeSlide = 0.1f, SmokeSpeed = 9f, DustSpeed = 7f;
     private static readonly StandardMaterial3D Rubber = new() { AlbedoColor = Color.FromHtml("#252a2b"), Roughness = 1 };
     private static readonly Mesh Tire = LowPolyMesh.Faceted(new CylinderMesh { TopRadius = 0.34f, BottomRadius = 0.34f, Height = 0.36f, RadialSegments = 10, Rings = 1, Material = Rubber });
     public void Bind(RaceCar car, TrackSurfaceGeometry surface, Color color, int number)
