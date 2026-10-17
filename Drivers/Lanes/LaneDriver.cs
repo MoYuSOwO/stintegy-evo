@@ -11,15 +11,18 @@ namespace StintegyEVO.Drivers.Lanes;
 public sealed record LaneDriverGains
 {
     /// <summary>
-    /// How far ahead the curvature feedforward is read, in seconds of travel.
-    /// 0.15 since the F1E car: lighter and driven at both ends, it answers
-    /// the wheel sooner than the car 0.20 was set on, and at 0.20 it turned
-    /// into Silverstone's fast left-right early enough to sit a metre wide
-    /// on the way out and put a wheel over. Swept on the relearned file:
-    /// 0.15 has the smallest worst error (0.70 m against 1.07); shorter
-    /// lowers the mean but lets the slow hairpin run wide.
+    /// How far ahead the curvature feedforward is read, in seconds of travel,
+    /// in place of the car's own turn-in delay (<see cref="TurnLag"/>), which
+    /// is what it reads ahead by when this is unset. Only for probes.
+    ///
+    /// It used to be a fixed 0.15 s, swept on a car that took that long to
+    /// answer the wheel. The car since answers in 0.05 to 0.07 s, and read
+    /// 0.15 s ahead every exit was steered as if it had already opened up:
+    /// the car ran half a metre wide of the line out of every corner, by as
+    /// much as the feedback needed to pull the difference back, and onto
+    /// the barrier out of Portier, where the wall stands on the kerb.
     /// </summary>
-    public float CurvaturePreviewSeconds { get; init; } = 0.15f;
+    public float? CurvaturePreviewSeconds { get; init; }
 
     /// <summary>
     /// Feedback is pure pursuit in the path's frame: aim at a point this many
@@ -152,6 +155,7 @@ public sealed class LaneDriver : IDriverController
     private float[]? _energyTable;
     private readonly CarConfig _car;
     private readonly TireConfig _tires;
+    private readonly TurnLag _turnLag;
     private readonly CarState _plan = new();
     private readonly float[][] _curvature = new float[3][];
     private readonly LaneRoad[][] _road = new LaneRoad[3][];
@@ -188,6 +192,7 @@ public sealed class LaneDriver : IDriverController
         _file = file ?? throw new ArgumentNullException(nameof(file));
         _car = car ?? new CarConfig();
         _tires = tires ?? new TireConfig();
+        _turnLag = TurnLag.Measure(_car, _tires);
     }
 
     public LaneDriverGains Gains { get; init; } = new();
@@ -340,7 +345,8 @@ public sealed class LaneDriver : IDriverController
         Vector2 toCar = car.Position - refPosition;
         float leftError = tangent.X * toCar.Y - tangent.Y * toCar.X;
         float headingError = MathHelper.NormalizeAngle(pathHeading - car.VelocityHeadingRadians);
-        float previewStation = station + MathF.Max(0f, speed) * Gains.CurvaturePreviewSeconds / _lanes.Spacing;
+        float turnIn = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(speed);
+        float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float feedforward = BlendedCurvature(previewStation) + BlendedSteer(previewStation);
         float here = BlendedCurvature(station);
 
