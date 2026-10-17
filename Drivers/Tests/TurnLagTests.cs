@@ -6,7 +6,7 @@ namespace StintegyEVO.Drivers.Tests;
 
 public sealed class TurnLagTests
 {
-    private static readonly TireConfig Warm = new() { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+    private static readonly TireConfig Warm = DevelopmentTyres.Super;
 
     /// <summary>
     /// The game's car answers the wheel within a few hundredths of a second

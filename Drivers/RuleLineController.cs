@@ -68,7 +68,7 @@ public class RuleLineController : IDriverController
             _plan,
             _car,
             _tires,
-            _tires.GetAccelerationUsage(context.Car.Strategy),
+            CarPhysics.GripUsage(context.Car.Strategy),
             CornerShare(),
             topSpeedMetersPerSecond: _active.TopSpeedMetersPerSecond,
             brakeUsage: _active.BrakeUsage
@@ -83,7 +83,7 @@ public class RuleLineController : IDriverController
         HydratePlan(car);
 
         float speed = car.SpeedMetersPerSecond;
-        float grip = _tires.GetAccelerationUsage(car.Strategy);
+        float grip = CarPhysics.GripUsage(car.Strategy);
         if (!_clearedLaunch)
         {
             if (speed < DynamicYawClearSpeed)

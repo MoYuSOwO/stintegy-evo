@@ -2,6 +2,7 @@ using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Track;
 using Xunit;
+using StintegyEVO.Drivers.Lanes;
 
 namespace StintegyEVO.Drivers.Tests;
 
@@ -107,7 +108,7 @@ public sealed class LineMpcTests
             windowMeters: 4f
         );
         var car = new CarConfig();
-        var tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+        var tires = DevelopmentTyres.Super;
         var state = new CarState { Energy = PowertrainState.Filled(0.9f) };
         foreach (TireState tire in new[] { state.FrontLeft, state.FrontRight, state.RearLeft, state.RearRight })
         {
@@ -115,7 +116,7 @@ public sealed class LineMpcTests
             tire.CoreTempC = 90f;
         }
 
-        profile.Recompute(state, car, tires, tires.GetAccelerationUsage(CarStrategy.Default), 0.88f);
+        profile.Recompute(state, car, tires, CarPhysics.GripUsage(CarStrategy.Default), 0.88f);
         return (track, line, profile, car, tires);
     }
 
@@ -128,7 +129,8 @@ public sealed class LineMpcTests
             Speed = speed,
             Energy = PowertrainState.Filled(0.9f)
         };
-        state.InstallFreshTires(tires);
+        state.InstallFreshTires();
+        state.WarmTires(90f, 90f);
         foreach (TireState tire in new[] { state.FrontLeft, state.FrontRight, state.RearLeft, state.RearRight })
         {
             tire.SurfaceTempC = 90f;

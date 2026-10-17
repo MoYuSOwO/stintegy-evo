@@ -19,7 +19,7 @@ public sealed class RungSweepProbe
     public void FiveTyreRungsOnTheShippedFile()
     {
         if (!LaneProbes.Enabled) return;
-        Sweep("shipped", new LaneDriverGains(), new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f });
+        Sweep("shipped", new LaneDriverGains(), DevelopmentTyres.Super);
     }
 
     private void Sweep(string label, LaneDriverGains gains, TireConfig tyresConfig)
