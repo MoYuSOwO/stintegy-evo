@@ -1989,7 +1989,7 @@ public sealed class CarPhysicsTests
                 state, car, tires, strategy, state.Speed, curvature: 0f
             );
             float curvature = phase < 2f
-                ? limits.LateralAccelerationLimit * use /
+                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * use /
                   (state.Speed * state.Speed)
                 : 0f;
             float accel = phase switch
@@ -2352,15 +2352,8 @@ public sealed class CarPhysicsTests
         float share
     )
     {
-        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
-            state,
-            car,
-            tires,
-            strategy,
-            state.Speed,
-            curvature: 0f
-        );
-        float lateral = limits.LateralAccelerationLimit * share;
+        float lateral = CarPhysics.EstimateCorneringLimit(
+            state, car, tires, strategy, state.Speed) * share;
         return lateral / MathF.Max(state.Speed * state.Speed, 1e-3f);
     }
 
@@ -2571,7 +2564,7 @@ public sealed class CarPhysicsTests
                 curvature: 0f
             );
             float curvature = phaseSeconds < 2f
-                ? limits.LateralAccelerationLimit * use /
+                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * use /
                   (state.Speed * state.Speed)
                 : 0f;
             float acceleration = phaseSeconds switch
