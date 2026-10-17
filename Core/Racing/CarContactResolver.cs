@@ -306,12 +306,12 @@ public static class CarContactResolver
         // being laid onto the direction of travel, not a rotation it carries,
         // and an impulse that took it as real would turn it into speed. Such
         // a car meets the contact as a body that translates only.
-        if (a.State.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        if (a.State.Speed <= a.Car.Spec.KinematicBelowSpeed)
         {
             yawA = 0f;
             invInertiaA = 0f;
         }
-        if (b.State.Speed <= CarPhysics.DynamicYawMinimumSpeed)
+        if (b.State.Speed <= b.Car.Spec.KinematicBelowSpeed)
         {
             yawB = 0f;
             invInertiaB = 0f;
@@ -413,12 +413,12 @@ public static class CarContactResolver
 
     private static float InverseMass(RaceCar car)
     {
-        return 1f / Math.Max(car.CarConfig.MassKg, Epsilon);
+        return 1f / Math.Max(car.Car.TotalMassKg(car.State), Epsilon);
     }
 
     private static float InverseInertia(RaceCar car)
     {
-        return 1f / Math.Max(car.CarConfig.YawInertiaKgM2, Epsilon);
+        return 1f / Math.Max(car.Car.Spec.YawInertiaKgM2, Epsilon);
     }
 
     /// <summary>

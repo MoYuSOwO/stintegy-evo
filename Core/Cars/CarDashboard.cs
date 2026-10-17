@@ -18,12 +18,27 @@ public readonly record struct DashboardResource(
 /// same problem as a tyre that is worn and the strategist has to tell them
 /// apart.
 /// </summary>
+/// <param name="Window">Where this tyre works, so a screen can say whether
+/// a temperature is good without knowing anything about the rubber.</param>
 public readonly record struct DashboardTire(
     string Label,
     float LifeFraction,
     float SurfaceTempC,
     float CoreTempC,
-    float LoadN
+    float LoadN,
+    TireWindow Window
+);
+
+/// <summary>
+/// The temperatures a tyre is happy between, and the core temperature past
+/// which it is cooking. Every car's tyre has one; what the numbers are is
+/// the tyre's to say.
+/// </summary>
+public readonly record struct TireWindow(
+    string Compound,
+    float IdealSurfaceLowC,
+    float IdealSurfaceHighC,
+    float CoreOverheatC
 );
 
 /// <summary>
@@ -74,58 +89,34 @@ public sealed class CarDashboard
     /// </summary>
     public float MassKg { get; private set; }
 
-    public void Refresh(CarConfig config, CarState state, CarStrategy strategy)
+    /// <summary>Asks the car to write itself out.</summary>
+    public void Refresh(ICar car, CarState state, CarStrategy strategy)
     {
-        IPowertrain powertrain = config.Powertrain;
-        PowertrainState energy = state.Energy;
+        Clear();
+        car.Describe(this, state, strategy);
+    }
 
+    /// <summary>Empties the instrument before a car writes into it.</summary>
+    public void Clear()
+    {
         _resources.Clear();
-        IReadOnlyList<PowertrainResourceInfo> declared = powertrain.Resources;
-        for (int i = 0; i < declared.Count && i < PowertrainState.Capacity; i++)
-        {
-            PowertrainResourceInfo info = declared[i];
-            float fraction = energy[i];
-            _resources.Add(
-                new DashboardResource(
-                    info.Id,
-                    info.Label,
-                    fraction,
-                    info.FullMassKg * fraction
-                )
-            );
-        }
-
         _tires.Clear();
-        AddTire("FL", state.FrontLeft);
-        AddTire("FR", state.FrontRight);
-        AddTire("RL", state.RearLeft);
-        AddTire("RR", state.RearRight);
-
         _modes.Clear();
-        AddMode(TireLadder.Usage, (int)strategy.TireMode);
-        AddMode(powertrain.OutputLadder, strategy.PowerRung);
-
-        OutputAvailability = powertrain.OutputAvailability(energy);
-        MassKg = CarPhysics.TotalMassKg(config, energy);
+        OutputAvailability = 1f;
+        MassKg = 0f;
     }
 
-    private void AddTire(string label, TireState tire)
-    {
-        _tires.Add(
-            new DashboardTire(
-                label,
-                1f - tire.Wear,
-                tire.SurfaceTempC,
-                tire.CoreTempC,
-                tire.LoadN
-            )
-        );
-    }
+    public void AddResource(DashboardResource resource) => _resources.Add(resource);
 
-    private void AddMode(ModeLadder ladder, int ordinal)
+    public void AddTire(DashboardTire tire) => _tires.Add(tire);
+
+    /// <summary>
+    /// One ladder and where it is set. Clamped, so a strategy carried over
+    /// from a car with a longer ladder reads out as the setting it will
+    /// actually get.
+    /// </summary>
+    public void AddMode(ModeLadder ladder, int ordinal)
     {
-        // Clamped, so a strategy carried over from a car with a longer
-        // ladder reads out as the setting it will actually get.
         ordinal = ladder.Clamp(ordinal);
         _modes.Add(
             new DashboardMode(
@@ -136,4 +127,8 @@ public sealed class CarDashboard
             )
         );
     }
+
+    public void SetOutputAvailability(float availability) => OutputAvailability = availability;
+
+    public void SetMass(float massKg) => MassKg = massKg;
 }

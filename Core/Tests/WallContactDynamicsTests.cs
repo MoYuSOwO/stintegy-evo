@@ -87,7 +87,7 @@ public sealed class WallContactDynamicsTests
         float energyBefore = KineticEnergy(state, car);
 
         TrackBoundaryContact? contact =
-            TrackBoundaryResolver.ResolveCurrent(Track, state, collision, car);
+            TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new SingleTrackCar(car, new TireConfig()));
 
         Assert.True(contact.HasValue);
         Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
@@ -165,7 +165,7 @@ public sealed class WallContactDynamicsTests
         CarCollisionConfig collision = new();
         Assert.False(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
 
-        TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new CarConfig());
+        TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new SingleTrackCar(new CarConfig(), new TireConfig()));
 
         Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
         Assert.InRange(state.Speed, 0f, 0.5f + 1e-4f);
@@ -352,6 +352,7 @@ public sealed class WallContactDynamicsTests
     public void ACarFlushWithTheWallThroughABendCanRunAlongIt()
     {
         var collision = new CarCollisionConfig();
+        ICar car = new SingleTrackCar(new CarConfig(), new TireConfig());
         int poses = 0;
         for (float s = 0f; s < Track.LengthMeters; s += 7f)
         {
@@ -363,13 +364,13 @@ public sealed class WallContactDynamicsTests
                 // the way the simulation does at the start of a step.
                 (Vector2 position, float heading) = NearLeftWall(s, collision.HalfWidthMeters - 0.01f, headingIntoWall);
                 CarState start = new() { Position = position, Heading = heading, Speed = 42f };
-                TrackBoundaryResolver.ResolveCurrent(Track, start, collision);
+                TrackBoundaryResolver.ResolveCurrent(Track, start, collision, car);
 
                 CarState target = new();
                 target.CopyFrom(start);
                 Vector2 forward = new(MathF.Cos(start.Heading), MathF.Sin(start.Heading));
                 target.Position = start.Position + forward * 0.35f;
-                TrackBoundaryResolver.ResolveSweep(Track, start, target, collision);
+                TrackBoundaryResolver.ResolveSweep(Track, start, target, collision, car);
 
                 float moved = Vector2.Distance(start.Position, target.Position);
                 Assert.True(moved > 0.25f, $"at {s} m, {headingIntoWall} rad into the wall: moved {moved:F4} m of 0.35");

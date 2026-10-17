@@ -14,6 +14,6 @@
     "centreline": "bacinger/f1-circuits (be-1925)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected, 13 m wide, scaled to 7,004 m, the line on the climb from the Bus Stop to La Source. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along be-1925 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m, scaled to the published 102.2 m highest to lowest."
+    "notes": "Projected, 13 m wide, scaled to 7,004 m, the line on the climb from the Bus Stop to La Source. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along be-1925 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m, scaled to the published 102.2 m highest to lowest, its steepest stretch drawn to the published 17%."
   }
 }

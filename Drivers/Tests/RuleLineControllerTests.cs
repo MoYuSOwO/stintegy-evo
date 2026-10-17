@@ -155,7 +155,7 @@ public sealed class RuleLineControllerTests
         bool flying = false;
         var planState = new CarState();
         LineSpeedProfile? profile = null;
-        float grip = car.TireConfig.GetAccelerationUsage(CarStrategy.Default);
+        float grip = TiresOf(car).GetAccelerationUsage(CarStrategy.Default);
 
         const int sectors = 12;
         float sectorLength = length / sectors;
@@ -192,8 +192,8 @@ public sealed class RuleLineControllerTests
                     );
                     profile.Recompute(
                         planState,
-                        car.CarConfig,
-                        car.TireConfig,
+                        ConfigOf(car),
+                        TiresOf(car),
                         grip,
                         RuleTrackPack.Silverstone.GgUsage,
                         topSpeedMetersPerSecond: RuleTrackPack.Silverstone.TopSpeedMetersPerSecond,
@@ -214,8 +214,8 @@ public sealed class RuleLineControllerTests
             float target = MathF.Max(profile!.At(track.WrapS, s), 0.5f);
             CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
                 planState,
-                car.CarConfig,
-                car.TireConfig,
+                ConfigOf(car),
+                TiresOf(car),
                 CarStrategy.Default,
                 speed,
                 curvature: 0f,
@@ -392,4 +392,10 @@ public sealed class RuleLineControllerTests
         Assert.NotNull(line);
         return line;
     }
+
+    // The rule controller plans on the game's own chassis; the race now holds
+    // the car as an ICar, so its numbers are read back off the chassis.
+    private static CarConfig ConfigOf(RaceCar car) => ((SingleTrackCar)car.Car).Config;
+
+    private static TireConfig TiresOf(RaceCar car) => ((StandardTire)((SingleTrackCar)car.Car).Tires.Front).Config;
 }

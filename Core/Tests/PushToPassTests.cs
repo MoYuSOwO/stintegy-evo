@@ -120,8 +120,8 @@ public sealed class PushToPassTests
         var powertrain = RangeExtenderPowertrain.Default;
         PowertrainState energy = PowertrainState.Filled(0.8f);
         // Fast enough that power, not the chassis, sets the limit.
-        float plain = powertrain.DriveAccelerationLimit(energy, CarStrategy.Default, 70f, 950f, 100f);
-        float pushed = powertrain.DriveAccelerationLimit(energy, CarStrategy.Default, 70f, 950f, 100f, pushToPass: true);
+        float plain = powertrain.DriveAccelerationLimit(energy, powertrain.OutputLadder.DefaultRung, 70f, 950f, 100f);
+        float pushed = powertrain.DriveAccelerationLimit(energy, powertrain.OutputLadder.DefaultRung, 70f, 950f, 100f, pushToPass: true);
         Near.Equal(1.12f, pushed / plain);
     }
 

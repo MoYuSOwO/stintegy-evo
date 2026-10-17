@@ -56,7 +56,7 @@ public sealed class WallSweepRecoveryTests
         float freeTranslation = Vector2.Distance(start.Position, target.Position);
 
         TrackBoundaryContact? contact =
-            TrackBoundaryResolver.ResolveSweep(track, start, target, Collision);
+            TrackBoundaryResolver.ResolveSweep(track, start, target, Collision, new SingleTrackCar(new CarConfig(), new TireConfig()));
 
         Assert.True(contact.HasValue, "the rotation did reach the wall");
         Assert.True(

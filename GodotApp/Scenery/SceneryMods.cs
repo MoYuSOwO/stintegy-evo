@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using StintegyEVO.GodotApp.Interop;
 
 namespace StintegyEVO.GodotApp.Scenery;
 
@@ -101,45 +102,6 @@ public static class SceneryMods
         }
     }
 
-    /// <summary>
-    /// A model read from disk rather than from the project: glTF through
-    /// the engine's runtime reader, Godot's own formats through the
-    /// ordinary loader. Null for a file that is neither, or that will not
-    /// parse — a bad model costs a mod its tree, not the player their
-    /// race.
-    /// </summary>
-    public static PackedScene? LoadModel(string path)
-    {
-        if (!Godot.FileAccess.FileExists(path))
-            return null;
-
-        string extension = path[(path.LastIndexOf('.') + 1)..].ToLowerInvariant();
-        if (extension is "tscn" or "scn" or "res")
-            return ResourceLoader.Load<PackedScene>(path);
-        if (extension is not ("glb" or "gltf"))
-        {
-            GD.PushWarning(
-                $"scenery: {path} is a .{extension}, which only the editor " +
-                "can import; a mod's models have to be glTF (.glb/.gltf)"
-            );
-            return null;
-        }
-
-        GltfDocument document = new();
-        GltfState state = new();
-        Error read = document.AppendFromFile(path, state);
-        if (read != Error.Ok)
-        {
-            GD.PushWarning($"scenery: {path} would not parse as glTF ({read})");
-            return null;
-        }
-        Node? scene = document.GenerateScene(state);
-        if (scene is null)
-            return null;
-        PackedScene packed = new();
-        if (packed.Pack(scene) != Error.Ok)
-            return null;
-        scene.QueueFree();
-        return packed;
-    }
+    /// <summary>A mod's model, read from its folder (<see cref="RuntimeModels"/>).</summary>
+    public static PackedScene? LoadModel(string path) => RuntimeModels.Load(path, "scenery");
 }

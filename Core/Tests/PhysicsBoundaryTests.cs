@@ -82,11 +82,11 @@ public sealed class PhysicsBoundaryTests
         CarPhysics.Step(limited, fitted, tires, StepInput(command, protect), 1f / 60f);
         CarPhysics.Step(free, unfitted, tires, StepInput(command, protect), 1f / 60f);
 
-        Assert.True(limited.Telemetry.CombinedGripLimiterCutAccel > 0f);
-        Assert.Equal(0f, free.Telemetry.CombinedGripLimiterCutAccel);
+        Assert.True(limited.Axles().CombinedGripLimiterCutAccel > 0f);
+        Assert.Equal(0f, free.Axles().CombinedGripLimiterCutAccel);
         Assert.True(
-            limited.Telemetry.FrontLongitudinalUse <
-            free.Telemetry.FrontLongitudinalUse
+            limited.Axles().FrontLongitudinalUse <
+            free.Axles().FrontLongitudinalUse
         );
     }
 
@@ -125,7 +125,7 @@ public sealed class PhysicsBoundaryTests
             Assert.Equal(idle.Heading, absent.Heading);
             Assert.Equal(idle.RearLeft.Wear, absent.RearLeft.Wear);
             Assert.Equal(idle.FrontRight.SurfaceTempC, absent.FrontRight.SurfaceTempC);
-            Assert.Equal(0f, absent.Telemetry.CombinedGripLimiterCutAccel);
+            Assert.Equal(0f, absent.Axles().CombinedGripLimiterCutAccel);
         }
     }
 
@@ -136,20 +136,21 @@ public sealed class PhysicsBoundaryTests
     [Fact]
     public void ThePublishedEnvelopeIsPublicAndReadsWithoutWriting()
     {
-        var method = typeof(CarPhysics).GetMethod(nameof(CarPhysics.EstimatePerformanceLimits));
+        // Published on the interface every car implements, so a driver can
+        // read it off any car.
+        var method = typeof(ICar).GetMethod(nameof(ICar.EstimatePerformanceLimits));
         Assert.NotNull(method);
         Assert.True(method!.IsPublic);
         Assert.True(typeof(CarPerformanceLimits).IsPublic);
 
-        CarConfig car = new();
         TireConfig tires = WarmTires();
+        ICar car = new SingleTrackCar(new CarConfig(), tires);
         CarState state = NewState(40f, tires);
         CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Normal);
         CarState before = state.Clone();
 
-        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
-            state, car, tires, strategy, state.Speed, 0.01f,
-            tires.GetAccelerationUsage(strategy)
+        CarPerformanceLimits limits = car.EstimatePerformanceLimits(
+            state, strategy, state.Speed, 0.01f, car.GripUsage(strategy)
         );
 
         Assert.True(limits.LateralAccelerationLimit > 0f);

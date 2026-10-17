@@ -14,34 +14,28 @@ public readonly record struct DriverInput(
 /// <summary>
 /// Everything the strategist sets, as opposed to everything the driver does.
 ///
-/// Two ladders, because a car has two things it spends: its tyres and
-/// whatever turns its wheels. The tyre ladder is universal - every car that
-/// has ever raced has had tyres to look after - while what the power ladder's
-/// rungs are called belongs to the powertrain fitted to the car. A third
-/// ladder belongs here the day a hybrid arrives, which needs an engine map
-/// and a deployment setting at the same time.
+/// The tyre ladder is the game's own: every car that has ever raced has had
+/// tyres to look after, and the driver reads it to know how hard to lean on
+/// them. Every other ladder is the car's (<see cref="ICar.Ladders"/>): an
+/// output setting on a pack, an engine map, a hybrid's deployment beside it.
+/// How many there are, how long each is and what its rungs are called are
+/// the car's to say, and this holds where each is set, in the car's order.
 /// </summary>
 public readonly record struct CarStrategy
 {
+    /// <summary>The most ladders of its own a car may declare.</summary>
+    public const int MaximumLadders = 4;
+
     public TireUsageMode TireMode { get; init; }
 
-    /// <summary>
-    /// Which rung of the fitted powertrain's output ladder, counted from one.
-    ///
-    /// A number rather than a named setting, and the asymmetry with the tyre
-    /// mode beside it is the point. The tyre ladder is the game's own: every
-    /// car has tyres, they are spent the same way, and the five names mean
-    /// the same thing on all of them. The output ladder belongs to whatever
-    /// is fitted, so how long it is and what its rungs are called are the
-    /// machinery's to say - five on the car that ships, seven on an engine
-    /// with seven maps, and nothing here counts on either.
-    ///
-    /// A rung past the end of the fitted ladder is not an error worth
-    /// throwing over. It is clamped where it is read, because a strategy
-    /// outlives the car it was written for: a setup saved against one engine
-    /// should load against another rather than refuse to start.
-    /// </summary>
-    public int PowerRung { get; init; }
+    // Where each of the car's ladders is set, counted from one; zero is a
+    // ladder nobody has touched, which sits where the ladder itself says
+    // (ModeLadder.DefaultRung). Held inline rather than in an array so a
+    // strategy compares by what it says and costs nothing to pass about.
+    private int R1 { get; init; }
+    private int R2 { get; init; }
+    private int R3 { get; init; }
+    private int R4 { get; init; }
 
     /// <summary>
     /// The push-to-pass button, held. Whether a push actually runs is the
@@ -50,55 +44,85 @@ public readonly record struct CarStrategy
     /// </summary>
     public bool PushToPass { get; init; }
 
+    /// <summary>A share of the tyres' grip to use in place of what the tyre rung allows.</summary>
     public float? TireGripUsageOverride { get; init; }
-    public float? DrivePowerLimitWattsOverride { get; init; }
 
-    public CarStrategy(TireUsageMode tireMode, int powerRung)
+    /// <param name="rungs">Where each of the car's ladders is set, in its order, counted from one.</param>
+    public CarStrategy(TireUsageMode tireMode, params int[] rungs)
     {
         TireMode = tireMode;
-        PowerRung = Math.Max(1, powerRung);
+        if (rungs.Length > MaximumLadders)
+            throw new ArgumentException($"A car has at most {MaximumLadders} ladders of its own.", nameof(rungs));
+        R1 = rungs.Length > 0 ? Math.Max(1, rungs[0]) : 0;
+        R2 = rungs.Length > 1 ? Math.Max(1, rungs[1]) : 0;
+        R3 = rungs.Length > 2 ? Math.Max(1, rungs[2]) : 0;
+        R4 = rungs.Length > 3 ? Math.Max(1, rungs[3]) : 0;
         TireGripUsageOverride = null;
-        DrivePowerLimitWattsOverride = null;
     }
 
     /// <summary>
-    /// The readable form, for the five-rung ladder the shipped car has.
+    /// The readable form, for a car whose first ladder is a five-rung
+    /// output ladder like the one the game's own car has.
     /// </summary>
     public CarStrategy(TireUsageMode tireMode, PowerOutputMode powerMode)
         : this(tireMode, (int)powerMode)
     {
     }
 
-    public static readonly CarStrategy Default = new(
-        TireUsageMode.Normal,
-        PowerOutputMode.Normal
-    );
+    /// <summary>
+    /// Where the car's <paramref name="index"/>th ladder is set, as that
+    /// ladder has it. A rung past its end is not an error worth throwing
+    /// over: a strategy outlives the car it was written for, and one saved
+    /// against an engine with seven maps loads against one with five.
+    /// </summary>
+    public int Rung(int index, ModeLadder ladder)
+    {
+        int set = Raw(index);
+        return set == 0 ? ladder.DefaultRung : ladder.Clamp(set);
+    }
+
+    /// <summary>The same strategy with the car's <paramref name="index"/>th ladder set to <paramref name="ordinal"/>.</summary>
+    public CarStrategy WithRung(int index, int ordinal)
+    {
+        int rung = Math.Max(1, ordinal);
+        return index switch
+        {
+            0 => this with { R1 = rung },
+            1 => this with { R2 = rung },
+            2 => this with { R3 = rung },
+            3 => this with { R4 = rung },
+            _ => throw new ArgumentOutOfRangeException(nameof(index))
+        };
+    }
+
+    /// <summary>The car's <paramref name="index"/>th ladder moved <paramref name="delta"/> rungs, stopping at its ends.</summary>
+    public CarStrategy Nudged(int index, ModeLadder ladder, int delta) =>
+        WithRung(index, ladder.Clamp(Rung(index, ladder) + delta));
+
+    /// <summary>The tyre ladder moved <paramref name="delta"/> rungs, stopping at its ends.</summary>
+    public CarStrategy NudgedTires(int delta) =>
+        this with { TireMode = (TireUsageMode)TireLadder.Usage.Clamp((int)TireMode + delta) };
+
+    private int Raw(int index) => index switch
+    {
+        0 => R1,
+        1 => R2,
+        2 => R3,
+        3 => R4,
+        _ => throw new ArgumentOutOfRangeException(nameof(index))
+    };
 
     /// <summary>
-    /// Where a car sets off when nobody has told it anything: the middle of
-    /// whatever ladder it happens to have, rather than the middle of ours.
+    /// Where a car sets off when nobody has told it anything: the tyres on
+    /// their middle rung and every ladder of the car's where it says.
     /// </summary>
-    public static CarStrategy DefaultFor(IPowertrain powertrain)
-    {
-        ArgumentNullException.ThrowIfNull(powertrain);
-        return new CarStrategy(
-            TireUsageMode.Normal,
-            powertrain.OutputLadder.DefaultRung
-        );
-    }
+    public static readonly CarStrategy Default = new(TireUsageMode.Normal);
 
     public CarStrategy WithTireGripUsage(float usage)
     {
         if (!float.IsFinite(usage) || usage <= 0f || usage > 1f)
             throw new ArgumentOutOfRangeException(nameof(usage));
         return this with { TireGripUsageOverride = usage };
-    }
-
-    public CarStrategy WithDrivePowerLimitWatts(float powerWatts)
-    {
-        if (!float.IsFinite(powerWatts) || powerWatts <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(powerWatts));
-        return this with { DrivePowerLimitWattsOverride = powerWatts };
     }
 }
 
