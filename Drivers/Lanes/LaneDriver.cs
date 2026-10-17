@@ -80,13 +80,6 @@ public sealed record LaneDriverGains
     /// <summary>Share of the axles' live grip the command may ask for: what a tyre holds, not its peak.</summary>
     public float AxleCapShare { get; init; } = 0.90f;
 
-    public float SpeedPreviewSeconds { get; init; } = 0.30f;
-
-    /// <summary>
-    /// The same look ahead while the plan is slowing. Kept apart because
-    /// reading the table early on the way into a corner is braking early.
-    /// </summary>
-    public float BrakePreviewSeconds { get; init; } = 0.35f;
     public float SpeedGain { get; init; } = 6f;
 
     /// <summary>Combined use (lateral and longitudinal together) the throttle may take the driven axle to.</summary>
@@ -431,10 +424,15 @@ public sealed class LaneDriver : IDriverController
         station += marker;
         AnchorBlendWindow(station);
         float hereSpeed = SpeedAt(station);
+        // The speed wanted is the plan's where the car is, as Simplix reads
+        // it: the pedals take hold within the step (CarPhysics applies the
+        // command as it is given), so there is no lag to read ahead for, and
+        // read 0.3 s ahead the car drove the plan a third of a second early:
+        // braked twenty or thirty metres before every marker. The margin a
+        // corner needs is the plan's and what the learner finds, not a
+        // look ahead that moves every braking point at once.
         float slowing = SpeedAt(station + 5f / _lanes.Spacing) < hereSpeed ? 1f : 0f;
-        float preview = slowing > 0f
-            ? Gains.BrakePreviewSeconds + (_performance?.ExtraBrakePreviewSeconds ?? 0f)
-            : Gains.SpeedPreviewSeconds;
+        float preview = MathF.Max(dt, 0f) + slowing * (_performance?.ExtraBrakePreviewSeconds ?? 0f);
         float target = SpeedAt(station + MathF.Max(0f, speed) * preview / _lanes.Spacing);
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
         target *= speedScale;
@@ -448,6 +446,10 @@ public sealed class LaneDriver : IDriverController
         float speedChange = target * slope + Gains.SpeedGain * (target - speed);
         float accel = (speedChange - att.AlongTrackGravity(StandardGravity, speed)) / att.LongitudinalDemandScale +
                       _envelope.Loss(speed);
+        // And brakes only over it, as Simplix does: under the plan the car
+        // has the braking curve still to reach.
+        if (accel < 0f && speed < target)
+            accel = 0f;
         // Flat out where the plan is. Where the speed wanted a moment ahead
         // is no less than full drive would bring, the plan is the motor's
         // own curve and the throttle is on the floor; read as a speed to

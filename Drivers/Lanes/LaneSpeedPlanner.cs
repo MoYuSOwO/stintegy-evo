@@ -376,27 +376,39 @@ internal static class LaneSpeedPlanner
     private static float BrakeFrom(in LaneEnvelope envelope, float vNext, float curvature, float ds, float factor, float brakeFactor, LaneRoad road, LaneShares shares)
     {
         LaneEnvelope e = envelope.ForTurn(curvature);
-        // Braking unloads the rear by as much as it brakes, not by the most it
-        // could: take the lateral limit part way to the full-braking one, in
-        // proportion to how hard the first guess brakes, and ask again.
-        (float ay, float load) = Corner(vNext, curvature, road);
-        float lateral = e.Lateral(vNext) + e.A * (load - 1f);
-        float brakingShare = e.LateralBraking(vNext) / MathF.Max(e.Lateral(vNext), 1f);
-        float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(vNext) + e.BrakeStatic * (load - 1f));
-        float coast = factor * shares.Lateral * lateral;
-        float full = shares.BrakingCoupling ? coast * brakingShare : coast;
-        float ax = brake * Ellipse(ay, coast);
-        for (int k = 0; k < 2; k++)
-        {
-            float limit = coast + (full - coast) * (ax / MathF.Max(brake, 1e-3f));
-            ax = brake * Ellipse(ay, limit);
-        }
-
-        // What the road does to the car along it, the physics' way round:
-        // the axles are scaled onto the slope, gravity is added on top.
         RoadAttitude att = road.Attitude;
-        float decel = (ax + e.Loss(vNext)) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, vNext);
-        return MathF.Sqrt(vNext * vNext + 2f * MathF.Max(0.1f, decel) * ds);
+        // The step is driven at every speed between the one it starts at and
+        // vNext, so the corner it carries and the grip it has are read at
+        // their middle, the start found by asking again, as Simplix does
+        // (TFixCarParam::CalcBraking). Read at vNext, the slower end, the
+        // corner was charged for less than the car was turning and the plan
+        // braked harder into it than the tyres would carry.
+        float v0 = vNext;
+        for (int pass = 0; pass < 3; pass++)
+        {
+            float v = 0.5f * (v0 + vNext);
+            // Braking unloads the rear by as much as it brakes, not by the most
+            // it could: take the lateral limit part way to the full-braking
+            // one, in proportion to how hard the first guess brakes, and ask again.
+            (float ay, float load) = Corner(v, curvature, road);
+            float lateral = e.Lateral(v) + e.A * (load - 1f);
+            float brakingShare = e.LateralBraking(v) / MathF.Max(e.Lateral(v), 1f);
+            float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(v) + e.BrakeStatic * (load - 1f));
+            float coast = factor * shares.Lateral * lateral;
+            float full = shares.BrakingCoupling ? coast * brakingShare : coast;
+            float ax = brake * Ellipse(ay, coast);
+            for (int k = 0; k < 2; k++)
+            {
+                float limit = coast + (full - coast) * (ax / MathF.Max(brake, 1e-3f));
+                ax = brake * Ellipse(ay, limit);
+            }
+
+            // What the road does to the car along it, the physics' way round:
+            // the axles are scaled onto the slope, gravity is added on top.
+            float decel = (ax + e.Loss(v)) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, v);
+            v0 = MathF.Sqrt(vNext * vNext + 2f * MathF.Max(0.1f, decel) * ds);
+        }
+        return v0;
     }
 
     private static float Ellipse(float used, float limit)
