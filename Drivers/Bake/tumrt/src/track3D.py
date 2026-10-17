@@ -578,6 +578,18 @@ class Track3D:
         opts = {"expand": False,
                 "verbose": False,
                 }
+        # Stintegy: the smoothed road only has to be right to a tenth or two
+        # of a metre, which is checked against the measured road below; the
+        # last digits of optimality buy nothing. Stop once the solve is good
+        # to that, and take whatever the caller adds.
+        opts.update({
+            "ipopt.acceptable_tol": 1e-4,
+            "ipopt.acceptable_iter": 5,
+            "ipopt.acceptable_constr_viol_tol": 1e-4,
+            "ipopt.acceptable_obj_change_tol": 1e-6,
+            "ipopt.max_iter": 3000,
+        })
+        opts.update(weights.get('ipopt', {}))
         solver = ca.nlpsol('solver', 'ipopt', nlp, opts)  # ipopt
 
         # Solve the NLP.
@@ -611,8 +623,12 @@ class Track3D:
         # trusting the solver -- the nearest distance from each smoothed edge
         # to the measured edge, which is what a car on it would see.
         if max_edge_dev:
+            # Stintegy: a solve that stopped short of full convergence is kept
+            # if the road it gives is within the tolerance of the measured one;
+            # the check below is what decides, not the solver's last digits.
+            status = solver.stats().get('return_status')
             if not solver.stats().get('success', False):
-                raise RuntimeError(f"Track smoothing did not converge: {solver.stats().get('return_status')}")
+                print(f"Track smoothing stopped at '{status}'; judging it by its edges.")
             worst_gaps = []
             for nb, wb in ((nl_opt, w_tr_left_m_raw), (nr_opt, w_tr_right_m_raw)):
                 measured = np.array([[x_m_raw[i], y_m_raw[i], z_m_raw[i]] for i in range(len(s_m_raw))]) + \
