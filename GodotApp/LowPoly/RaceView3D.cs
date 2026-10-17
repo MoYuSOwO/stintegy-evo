@@ -311,7 +311,11 @@ public partial class RaceView3D : Node3D
                             var car = simulation.Cars[i];
                             frame[i] = new CarPose(
                                 car.State.Position, car.State.Heading, car.State.SteerAngleRadians,
-                                MathF.Abs(car.State.SideslipAngleRadians), car.State.Speed,
+                                // How far past their grip the tyres are, not the
+                                // body's sideslip: round a hairpin a car carries
+                                // ten degrees of that from geometry alone, with
+                                // its tyres at half their peak and not sliding.
+                                car.State.Spinning ? 1f : car.State.Telemetry.OverLimit, car.State.Speed,
                                 car.Progress.Region != TrackRegion.RacingSurface);
                         }
                         frames[tick] = frame;
