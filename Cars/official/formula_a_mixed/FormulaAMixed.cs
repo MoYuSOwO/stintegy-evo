@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using StintegyEVO.Core.Cars;
 
 namespace Official.FormulaAMixed;
@@ -5,15 +6,17 @@ namespace Official.FormulaAMixed;
 /// <summary>
 /// Formula A, mixed: the game's own car. A near-future single-seater on the
 /// game's single-track chassis -- a range-extended electric powertrain, a
-/// floor that makes downforce far more cheaply than any built yet, and tyres
-/// whose grip falls with load -- set to corner like a Formula One car.
+/// floor that makes downforce far more cheaply than any built yet, on
+/// Formula A's tyres -- set to corner like a Formula One car.
 ///
 /// Every number is written here, none taken from a default: the chassis's
-/// defaults are the chassis's, and this car is this car.
+/// defaults are the chassis's, and this car is this car. The tyres' numbers
+/// are their pack's, not the car's.
 /// </summary>
 public sealed class FormulaAMixed : ICarDefinition
 {
-    public ICar Build() => new SingleTrackCar(Chassis(), TireSet.Of(Tyre()));
+    /// <summary>On the tyres its car.json declares: Formula A's (official:formula_a).</summary>
+    public ICar Build(IReadOnlyList<TireCompound> compounds) => new SingleTrackCar(Chassis(), compounds);
 
     private static CarConfig Chassis() => new()
     {
@@ -86,42 +89,5 @@ public sealed class FormulaAMixed : ICarDefinition
         LowVoltageOutputFraction = 0.85f,
         EmptyBand = 0.005f,
         LowSocPowerFloor = 0.08f,
-    };
-
-    private static TireConfig Tyre() => new()
-    {
-        CompoundId = "default",
-        StartingSurfaceTempC = 70f,
-        StartingCoreTempC = 70f,
-        AccelerationUsage = 0.977f,
-        BaseMu = 2.4f,
-        LoadSensitivity = 0.3f,
-        IdealSurfaceTempLowC = 85f,
-        IdealSurfaceTempHighC = 115f,
-        ColdGripLossPerCSquared = 8E-05f,
-        HotGripLossPerCSquared = 0.0001f,
-        CoreOverheatTempC = 112f,
-        CoreOverheatGripLossPerC = 0.03f,
-        WearLinearGripLoss = 0.04f,
-        WearCliffStart = 0.7f,
-        WearCliffGripLoss = 0.12f,
-        RollingSurfaceHeatRate = 0.64f,
-        RollingCoreHeatRate = 0.24f,
-        BrakeCoreHeatRate = 1.5f,
-        LateralHeatRate = 2.4f,
-        LongitudinalHeatRate = 0.33f,
-        NearLimitHeatRate = 1.2f,
-        NearLimitHeatStartShare = 0.97f,
-        LateralWearRate = 0.00048f,
-        LongitudinalWearRate = 5.46E-05f,
-        WearFromSlipWork = true,
-        SlipWorkWearRate = 0.0002064f,
-        NearLimitWearRate = 5.16E-05f,
-        OverLimitWearRate = 0.000473f,
-        ColdWearPerCSquared = 0.0015f,
-        HotWearPerCSquared = 0.0035f,
-        WearReferenceTempC = 100f,
-        WearTempScaleC = 10f,
-        MaximumHotWearFactor = 6f,
     };
 }
