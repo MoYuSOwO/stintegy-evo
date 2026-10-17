@@ -283,7 +283,7 @@ public partial class RaceView3D : Node3D
                 var car = Simulation.Cars[command.Car];
                 car.Strategy = new CarStrategy(
                     (TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, TireLadder.Usage.RungCount),
-                    car.CarConfig.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power)
+                    car.Car.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power)
                 );
             }
 

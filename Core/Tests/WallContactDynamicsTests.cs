@@ -87,7 +87,7 @@ public sealed class WallContactDynamicsTests
         float energyBefore = KineticEnergy(state, car);
 
         TrackBoundaryContact? contact =
-            TrackBoundaryResolver.ResolveCurrent(Track, state, collision, car);
+            TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new SingleTrackCar(car, new TireConfig()));
 
         Assert.True(contact.HasValue);
         Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
@@ -165,7 +165,7 @@ public sealed class WallContactDynamicsTests
         CarCollisionConfig collision = new();
         Assert.False(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
 
-        TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new CarConfig());
+        TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new SingleTrackCar(new CarConfig(), new TireConfig()));
 
         Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
         Assert.InRange(state.Speed, 0f, 0.5f + 1e-4f);

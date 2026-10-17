@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System;
 using System.Globalization;
 using System.IO;
@@ -23,19 +25,24 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             Directory.CreateDirectory(directory);
 
         _writer = new StreamWriter(path, false);
-        _writer.WriteLine(
-            "time_s,car_id,controller_status,lap,total_distance_m,s_m,d_m,x_m,y_m,heading_rad," +
-            "speed_mps,desired_curvature_1pm,desired_accel_mps2,front_brake_bias_offset," +
-            "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm," +
-            "front_lateral_use,rear_lateral_use,front_longitudinal_use,rear_longitudinal_use," +
-            "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw,grip_limiter_cut_mps2," +
-            "sideslip_angle_rad,rear_slide_severity,yaw_rate_radps,yaw_accel_radps2," +
-            "primary_energy,air_temp_c,track_temp_c,fl_surface_temp_c,fr_surface_temp_c," +
-            "rl_surface_temp_c,rr_surface_temp_c,fl_core_temp_c,fr_core_temp_c,rl_core_temp_c," +
-            "rr_core_temp_c,fl_wear,fr_wear,rl_wear,rr_wear,fl_load_n,fr_load_n,rl_load_n,rr_load_n," +
-            "boundary_contact,hit_car"
-        );
     }
+
+    private const string CommonColumns =
+        "time_s,car_id,controller_status,lap,total_distance_m,s_m,d_m,x_m,y_m,heading_rad," +
+        "speed_mps,desired_curvature_1pm,desired_accel_mps2,front_brake_bias_offset," +
+        "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm," +
+        "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw," +
+        "sideslip_angle_rad,yaw_rate_radps,yaw_accel_radps2," +
+        "primary_energy,air_temp_c,track_temp_c,fl_surface_temp_c,fr_surface_temp_c," +
+        "rl_surface_temp_c,rr_surface_temp_c,fl_core_temp_c,fr_core_temp_c,rl_core_temp_c," +
+        "rr_core_temp_c,fl_wear,fr_wear,rl_wear,rr_wear,fl_load_n,fr_load_n,rl_load_n,rr_load_n," +
+        "boundary_contact,hit_car";
+
+    // The car's own instruments follow the common columns, named by the
+    // first car written; another kind of car fills the ones it shares by
+    // name and leaves the rest empty.
+    private string[]? _channelIds;
+    private float[] _readings = [];
 
     public void Write(
         float raceTimeSeconds,
@@ -44,6 +51,25 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
         RaceEnvironment environment
     )
     {
+        ICar model = car.Car;
+        if (_channelIds is null)
+        {
+            _channelIds = model.TelemetryChannels.Select(c => c.Id).ToArray();
+            _writer.WriteLine(CommonColumns + string.Concat(_channelIds.Select(id => "," + id)));
+        }
+        IReadOnlyList<TelemetryChannel> channels = model.TelemetryChannels;
+        if (_readings.Length < channels.Count)
+            _readings = new float[channels.Count];
+        model.ReadTelemetry(car.State, _readings.AsSpan(0, channels.Count));
+        var own = new object[_channelIds.Length];
+        for (int i = 0; i < own.Length; i++)
+        {
+            own[i] = "";
+            for (int k = 0; k < channels.Count; k++)
+                if (channels[k].Id == _channelIds[i])
+                    own[i] = _readings[k];
+        }
+
         TrackPose pose = track.Project(car.State.Position);
         CarTelemetry telemetry = car.State.Telemetry;
         DriverInput input = telemetry.Input;
@@ -67,17 +93,11 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             telemetry.ActualLongitudinalAccel,
             telemetry.ActualLateralAccel,
             telemetry.ActualCurvature,
-            telemetry.FrontLateralUse,
-            telemetry.RearLateralUse,
-            telemetry.FrontLongitudinalUse,
-            telemetry.RearLongitudinalUse,
             telemetry.OverLimit,
             telemetry.LossAccel,
             telemetry.DrivePowerWatts * 0.001f,
             telemetry.RegenPowerWatts * 0.001f,
-            telemetry.CombinedGripLimiterCutAccel,
             telemetry.SideslipAngleRadians,
-            telemetry.RearSlideSeverity,
             telemetry.YawRateRadiansPerSecond,
             telemetry.YawAccelerationRadiansPerSecondSquared,
             state.Energy.Primary,
@@ -102,9 +122,23 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             car.LastBoundaryContact.HasValue ? 1 : 0,
             car.HitCarThisStep ? 1 : 0
         );
+        WriteOwn(own);
     }
 
-    private void WriteValues(params object[] values)
+    private void WriteOwn(object[] values)
+    {
+        if (values.Length == 0)
+        {
+            _writer.WriteLine();
+            return;
+        }
+        _writer.Write(',');
+        WriteRow(values, endLine: true);
+    }
+
+    private void WriteValues(params object[] values) => WriteRow(values, endLine: false);
+
+    private void WriteRow(object[] values, bool endLine)
     {
         for (int i = 0; i < values.Length; i++)
         {
@@ -122,7 +156,8 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
                     _writer.Write(text);
             }
         }
-        _writer.WriteLine();
+        if (endLine)
+            _writer.WriteLine();
     }
 
     public void Dispose() => _writer.Dispose();

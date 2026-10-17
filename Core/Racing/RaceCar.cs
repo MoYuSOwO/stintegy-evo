@@ -8,8 +8,7 @@ public sealed class RaceCar
 {
     public RaceCar(
         string id,
-        CarConfig carConfig,
-        TireConfig tireConfig,
+        ICar car,
         Driver? driver = null,
         CarState? state = null,
         CarCollisionConfig? collision = null,
@@ -17,20 +16,33 @@ public sealed class RaceCar
     )
     {
         Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("Car id is required.", nameof(id)) : id;
-        CarConfig = carConfig ?? throw new ArgumentNullException(nameof(carConfig));
-        TireConfig = tireConfig ?? throw new ArgumentNullException(nameof(tireConfig));
+        Car = car ?? throw new ArgumentNullException(nameof(car));
         Driver = driver;
         State = state ?? new CarState();
         Collision = collision ?? new CarCollisionConfig();
 
         if (installFreshTires)
-            State.InstallFreshTires(TireConfig);
+            Car.InstallFreshTires(State);
+    }
+
+    /// <summary>A car on the game's own chassis, made of these numbers.</summary>
+    public RaceCar(
+        string id,
+        CarConfig carConfig,
+        TireConfig tireConfig,
+        Driver? driver = null,
+        CarState? state = null,
+        CarCollisionConfig? collision = null,
+        bool installFreshTires = true
+    ) : this(id, new SingleTrackCar(carConfig, tireConfig), driver, state, collision, installFreshTires)
+    {
     }
 
     public string Id { get; }
     public CarState State { get; }
-    public CarConfig CarConfig { get; }
-    public TireConfig TireConfig { get; private set; }
+
+    /// <summary>The kind of car this is: everything the race knows about how it moves.</summary>
+    public ICar Car { get; }
     public CarStrategy Strategy { get; set; } = CarStrategy.Default;
     public Driver? Driver { get; }
 
@@ -73,11 +85,7 @@ public sealed class RaceCar
     internal bool TouchedBoundaryThisSubstep { get; set; }
     public bool HitCarThisStep { get; internal set; }
 
-    public void InstallFreshTires(TireConfig tireConfig)
-    {
-        TireConfig = tireConfig ?? throw new ArgumentNullException(nameof(tireConfig));
-        State.InstallFreshTires(TireConfig);
-    }
+    public void InstallFreshTires() => Car.InstallFreshTires(State);
 }
 
 public sealed class CarCollisionConfig

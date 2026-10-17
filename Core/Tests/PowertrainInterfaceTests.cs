@@ -101,7 +101,7 @@ public sealed class PowertrainInterfaceTests
         state.InstallFreshTires(WarmTires());
 
         dashboard.Refresh(
-            FuelCar(),
+            new SingleTrackCar(FuelCar(), WarmTires()),
             state,
             new CarStrategy(TireUsageMode.Push, PowerOutputMode.Save)
         );
@@ -136,7 +136,7 @@ public sealed class PowertrainInterfaceTests
         CarState state = new() { Energy = PowertrainState.Filled(0.62f) };
         state.InstallFreshTires(WarmTires());
 
-        dashboard.Refresh(config, state, CarStrategy.Default);
+        dashboard.Refresh(new SingleTrackCar(config, WarmTires()), state, CarStrategy.Default);
 
         // The range extender: a pack to drive from and fuel to refill it.
         var powertrain = (RangeExtenderPowertrain)config.Powertrain;
@@ -163,7 +163,7 @@ public sealed class PowertrainInterfaceTests
         CarState state = new() { Energy = PowertrainState.Filled(0.02f) };
         state.InstallFreshTires(WarmTires());
 
-        dashboard.Refresh(config, state, CarStrategy.Default);
+        dashboard.Refresh(new SingleTrackCar(config, WarmTires()), state, CarStrategy.Default);
 
         // Two per cent is two fifths of the way up the sag at the bottom of
         // the usable window, so the gauge shows the sag's floor plus two
@@ -216,7 +216,7 @@ public sealed class PowertrainInterfaceTests
         CarState state = new() { Energy = PowertrainState.Filled(1f) };
         state.InstallFreshTires(WarmTires());
         dashboard.Refresh(
-            config,
+            new SingleTrackCar(config, WarmTires()),
             state,
             new CarStrategy(TireUsageMode.Normal, 7)
         );

@@ -192,7 +192,7 @@ public partial class RaceView : Node2D
             1,
             TireLadder.Usage.RungCount
         );
-        int power = _playerCar.CarConfig.Powertrain.OutputLadder.Clamp(
+        int power = _playerCar.Car.Powertrain.OutputLadder.Clamp(
             _playerCar.Strategy.PowerRung + powerDelta
         );
         _playerCar.Strategy = new CarStrategy((TireUsageMode)tire, power);
@@ -303,10 +303,10 @@ public partial class RaceView : Node2D
         CarTelemetry telemetry = state.Telemetry;
         float frontTemp = Average(state.FrontLeft.SurfaceTempC, state.FrontRight.SurfaceTempC);
         float rearTemp = Average(state.RearLeft.SurfaceTempC, state.RearRight.SurfaceTempC);
-        _dashboard.Refresh(_playerCar.CarConfig, state, _playerCar.Strategy);
+        _dashboard.Refresh(_playerCar.Car, state, _playerCar.Strategy);
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
-            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.CarConfig.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
+            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.Car.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
             $"Input curvature/accel {telemetry.Input.DesiredCurvature:+0.000;-0.000;0.000} 1/m  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
             $"Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}  Longitudinal use {telemetry.FrontLongitudinalUse:0.00}/{telemetry.RearLongitudinalUse:0.00}  Over-limit {telemetry.OverLimit:0.00}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
