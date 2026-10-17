@@ -599,7 +599,10 @@ internal static class Layouts
         builder.WithSurface(CrossSections.RoadCircuit);
         return builder.Build(new TrackGridConfig
         {
-            StartingLineIdx = 0,
+            // On the climb from the Bus Stop to La Source, which is where
+            // the line is; the source line starts on the run to Blanchimont,
+            // and a grid there stood its back rows in the bend.
+            StartingLineIdx = 1580,
             GridCount = 30,
             IsFirstGridLeft = true,
             GridOffset = 5f
