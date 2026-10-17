@@ -127,6 +127,43 @@ public sealed class TrackSurfaceGeometry
         return (s, Vector2.Dot(point - sample.Center, sample.Normal));
     }
 
+    /// <summary>
+    /// How far out from the barrier at (s, d) the verge may reach, at most
+    /// <see cref="VergeMeters"/>: only as far as this stretch of road is
+    /// still the nearest one. On the inside of a hairpin tighter than the
+    /// verge is wide the band would sweep past the centre of the bend and
+    /// over the road on its far side, and where two parts of the lap run
+    /// close it would lie across the other road; stopping where the
+    /// nearest station is somewhere else on the lap stops it at the line
+    /// halfway between them, both cases at once, and the two verges meet
+    /// there.
+    /// </summary>
+    public float VergeReach(float s, float d, int side)
+    {
+        var sample = Track.Sample(s);
+        float lap = Track.LengthMeters;
+        float reach = 0f;
+        for (float probe = VergeProbeMeters; probe <= VergeMeters + 1e-3f; probe += VergeProbeMeters)
+        {
+            Vector2 point = sample.Center + sample.Normal * (d + side * probe);
+            float along = MathF.Abs(NearestStation(point).S - Track.WrapS(s));
+            if (MathF.Min(along, lap - along) > ElsewhereMeters)
+                break;
+            reach = probe;
+        }
+        return reach;
+    }
+
+    /// <summary>The step the verge's reach is measured in.</summary>
+    private const float VergeProbeMeters = 1f;
+
+    /// <summary>
+    /// How far along the lap the nearest station may be from the verge's own
+    /// before that is another part of the circuit: a couple of station
+    /// steps, which the inside of an ordinary bend never reaches.
+    /// </summary>
+    private const float ElsewhereMeters = 2.5f * StationStepMeters;
+
     public Vector3 Point(float s, float d)
     {
         var sample = Track.Sample(s);

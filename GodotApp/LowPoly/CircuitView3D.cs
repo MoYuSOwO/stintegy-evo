@@ -221,8 +221,8 @@ public partial class CircuitView3D : Node3D
     private void Verge(LowPolyMesh mesh, float a, float b, float da, float db, int side)
     {
         Vector3 p = Point(a, da), q = Point(b, db);
-        Vector3 r = Point(b, db + side * TrackSurfaceGeometry.VergeMeters);
-        Vector3 t = Point(a, da + side * TrackSurfaceGeometry.VergeMeters);
+        Vector3 r = Point(b, db + side * Surface.VergeReach(b, db, side));
+        Vector3 t = Point(a, da + side * Surface.VergeReach(a, da, side));
         r.Y = Surface.MeadowHeight(r.X, r.Z);
         t.Y = Surface.MeadowHeight(t.X, t.Z);
         mesh.GroundQuad(p, q, r, t, Look.Grass);
