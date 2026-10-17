@@ -91,7 +91,7 @@ internal static class Program
             tyre.Wear = 0f;
             tyre.SurfaceGrip = 1f;
         }
-        float grip = tires.GetAccelerationUsage(CarStrategy.Default);
+        float grip = CarPhysics.GripUsage(CarStrategy.Default);
 
         CarPerformanceLimits Coast(float v) => CarPhysics.EstimatePerformanceLimits(
             state, car, tires, CarStrategy.Default, v, curvature: 0f, grip);

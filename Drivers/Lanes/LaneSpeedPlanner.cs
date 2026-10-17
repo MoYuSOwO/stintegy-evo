@@ -82,7 +82,7 @@ internal readonly struct LaneEnvelope
     /// </summary>
     private static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy, float sign, LaneEnvelope straight)
     {
-        float cornerGrip = tires.GetAccelerationUsage(strategy);
+        float cornerGrip = CarPhysics.GripUsage(strategy);
         var lateral = new float[Anchors.Length];
         var lateralBraking = new float[Anchors.Length];
         for (int i = 0; i < Anchors.Length; i++)
@@ -116,7 +116,7 @@ internal readonly struct LaneEnvelope
         // corner is read at no more than the Normal rung, and the rung's own
         // allowance only moves the longitudinal figures. Below Normal the
         // corner comes down with it, which is what the wall asked for.
-        float grip = tires.GetAccelerationUsage(strategy);
+        float grip = CarPhysics.GripUsage(strategy);
         // The tyre rung is the driver's authority over the circle; the plan
         // spends what the rung allows, corner included.
         float cornerGrip = grip;

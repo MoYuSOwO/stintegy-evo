@@ -43,7 +43,7 @@ public partial class LaneDriverDemo : Node
         System.Numerics.Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
 
         var config = new CarConfig();
-        var tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+        var tires = DevelopmentTyres.Super;
         var driver = new LaneDriver(file, config, tires);
         var car = new RaceCar(
             "lanes",

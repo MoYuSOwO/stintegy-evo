@@ -2,6 +2,7 @@ using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Track;
 using Xunit;
 using Xunit.Abstractions;
+using StintegyEVO.Drivers.Lanes;
 
 namespace StintegyEVO.Drivers.Tests;
 
@@ -17,7 +18,7 @@ public sealed class SilverstonePaceProbe
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
         GeometricRacingLine line = RuleLineAssets.LoadOrBake(RuleTrackPack.Silverstone, track, 0.95f);
         var car = new CarConfig();
-        var tires = new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+        var tires = DevelopmentTyres.Super;
         var state = new CarState { Energy = PowertrainState.Filled(0.8f) };
         foreach (TireState tire in new[] { state.FrontLeft, state.FrontRight, state.RearLeft, state.RearRight })
         {
@@ -25,7 +26,7 @@ public sealed class SilverstonePaceProbe
             tire.CoreTempC = 90f;
         }
 
-        float grip = tires.GetAccelerationUsage(CarStrategy.Default);
+        float grip = CarPhysics.GripUsage(CarStrategy.Default);
         foreach (float v in new[] { 12f, 40f, 70f })
         {
             CarPerformanceLimits lim = CarPhysics.EstimatePerformanceLimits(

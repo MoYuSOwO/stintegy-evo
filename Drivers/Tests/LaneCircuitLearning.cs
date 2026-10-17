@@ -51,7 +51,7 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         _output.WriteLine($"saved {path}");
         _output.WriteLine($"hot      {LaneLapRunner.Run(track, file, gains, flyingLaps: 3)}");
         _output.WriteLine($"attack   {LaneLapRunner.Run(track, file, gains, strategy: new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal), flyingLaps: 3)}");
-        _output.WriteLine($"standing {LaneLapRunner.Run(track, file, gains, startSpeed: 0f, tireConfig: new TireConfig())}");
+        _output.WriteLine($"standing {LaneLapRunner.Run(track, file, gains, startSpeed: 0f, tireTempC: Tire.BlanketTempC)}");
         foreach (float side in new[] { -1f, 0f, 1f })
             _output.WriteLine($"hold range 1 side {side:+0;-0}: {LaneLapRunner.Run(track, file, gains, onStep: (car, d, t) => { d.TargetRange = 1f; d.TargetSide = side; })}");
         _output.WriteLine($"switch every 8 s: {LaneLapRunner.Run(track, file, gains, onStep: (car, d, t) => { int phase = (int)(t / 8f) % 4; d.TargetRange = phase == 0 ? 0f : 1f; d.TargetSide = phase == 1 ? 1f : phase == 2 ? 0f : -1f; })}");

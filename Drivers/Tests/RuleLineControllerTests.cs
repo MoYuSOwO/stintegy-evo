@@ -4,6 +4,7 @@ using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
 using Xunit.Abstractions;
+using StintegyEVO.Drivers.Lanes;
 
 namespace StintegyEVO.Drivers.Tests;
 
@@ -155,7 +156,7 @@ public sealed class RuleLineControllerTests
         bool flying = false;
         var planState = new CarState();
         LineSpeedProfile? profile = null;
-        float grip = TiresOf(car).GetAccelerationUsage(CarStrategy.Default);
+        float grip = CarPhysics.GripUsage(CarStrategy.Default);
 
         const int sectors = 12;
         float sectorLength = length / sectors;
@@ -353,11 +354,7 @@ public sealed class RuleLineControllerTests
     {
         TrackSample start = track.Sample(track.StartingLineS);
         var carConfig = new CarConfig();
-        var tires = new TireConfig
-        {
-            StartingSurfaceTempC = 90f,
-            StartingCoreTempC = 90f
-        };
+        var tires = DevelopmentTyres.Super;
         var controller = track.LengthMeters > 3_000f
             ? (RuleLineController)new SilverstoneRuleController(carConfig, tires)
             : new SimpleCircuitRuleController(carConfig, tires);
@@ -397,5 +394,5 @@ public sealed class RuleLineControllerTests
     // the car as an ICar, so its numbers are read back off the chassis.
     private static CarConfig ConfigOf(RaceCar car) => ((SingleTrackCar)car.Car).Config;
 
-    private static TireConfig TiresOf(RaceCar car) => ((StandardTire)((SingleTrackCar)car.Car).Tires.Front).Config;
+    private static TireConfig TiresOf(RaceCar car) => car.Car.Compounds.First(c => c.Id == car.State.Compound).Front;
 }

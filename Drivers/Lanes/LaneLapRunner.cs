@@ -80,7 +80,8 @@ public static class LaneLapRunner
         float roadGrip = 1f,
         float startingWear = 0f,
         float startingCharge = 0.8f,
-        CarConfig? carConfig = null
+        CarConfig? carConfig = null,
+        float tireTempC = 90f
     )
     {
         LaneSet lanes = file.LanesFor(track);
@@ -92,7 +93,9 @@ public static class LaneLapRunner
         float heading = MathF.Atan2(next.Y - here.Y, next.X - here.X);
 
         carConfig ??= new CarConfig();
-        var tires = tireConfig ?? new TireConfig { StartingSurfaceTempC = 90f, StartingCoreTempC = 90f };
+        // The development compound unless a run asks for another: a lap that
+        // goes wrong should have gone wrong in the driving.
+        var tires = tireConfig ?? DevelopmentTyres.Super;
         var driver = new LaneDriver(file, carConfig, tires)
         {
             Gains = gains ?? new LaneDriverGains(),
@@ -115,6 +118,7 @@ public static class LaneLapRunner
         {
             Strategy = strategy ?? CarStrategy.Default
         };
+        car.State.WarmTires(tireTempC, tireTempC);
         if (startingWear > 0f)
         {
             foreach (TireState tyre in new[] { car.State.FrontLeft, car.State.FrontRight, car.State.RearLeft, car.State.RearRight })

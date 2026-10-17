@@ -707,7 +707,7 @@ public sealed class LaneDriver : IDriverController
     {
         PlanState.Hydrate(_plan, car);
         _tyreAuthority = Gains.TyreRungAuthority
-            ? _tires.GetAccelerationUsage(car.Strategy) / MathF.Max(_tires.AccelerationUsage, 0.5f)
+            ? CarPhysics.GripUsage(car.Strategy) / MathF.Max(CarPhysics.GripUsage(CarStrategy.Default), 0.5f)
             : 1f;
         _style = Gains.TyreRungStyles
             ? Gains.TyreStyleTable[Math.Clamp((int)car.Strategy.TireMode - 1, 0, Gains.TyreStyleTable.Length - 1)]
