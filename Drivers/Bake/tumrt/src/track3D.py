@@ -560,9 +560,16 @@ class Track3D:
                 ubg += [max_edge_dev ** 2] * 2
 
         # Boundary constraint: start states = final states.
+        # Stintegy: the heading closes on the lap's own whole turn, exactly.
+        # TUM's bound let it close anywhere within a turn either way, so the
+        # smoother was free to leave a step in the heading at the seam and
+        # straighten the road either side of it: on Spa a 3.5 degree step in
+        # the middle of Blanchimont, which the solve never saw as a corner
+        # and every line baked on it carried as a kink.
+        lap_turn = 2.0 * np.pi * np.round((theta_rad_raw[-1] - theta_rad_raw[0]) / (2.0 * np.pi))
         g += [w[0] - Xk]
-        lbg += [0.0, 0.0, 0.0, -2.0*np.pi, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        ubg += [0.0, 0.0, 0.0, 2.0*np.pi, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        lbg += [0.0, 0.0, 0.0, -lap_turn / theta_s, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        ubg += [0.0, 0.0, 0.0, -lap_turn / theta_s, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         # Concatenate NLP vectors.
         w = ca.vertcat(*w)
