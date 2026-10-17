@@ -69,13 +69,17 @@ public partial class CircuitView3D : Node3D
                     // The white line is the last of the racing surface, not
                     // the first of the run-off: painted inside its own edge.
                     Strip(mesh, a, b, ea - side * 0.12f, ea, eb - side * 0.12f, eb, LowPolyMesh.Ivory, 0.03f);
-                    Wall(mesh, a, b, side * wa, side * wb, BarrierFace(track, i, a, side, wa));
+                    // Where the pit lane runs through the barrier's line, at
+                    // its two ends, there is no barrier: there is a road.
+                    if (!OnPitLane(a, side * wa) && !OnPitLane(b, side * wb))
+                        Wall(mesh, a, b, side * wa, side * wb, BarrierFace(track, i, a, side, wa));
                 }
             }
             AddChild(mesh.Instance($"Road_{begin}"));
         }
         BuildKerbs();
         BuildMarkings();
+        BuildPitLane();
         var dressing = new TrackDressing3D { Name = "Dressing" };
         AddChild(dressing);
         dressing.Initialize(this, Plan?.Furniture ?? new Scenery.SceneryFurniture());
@@ -171,6 +175,104 @@ public partial class CircuitView3D : Node3D
             AddChild(mesh.Instance($"Kerb_{begin}"));
         }
     }
+    /// <summary>Whether the point <paramref name="d"/> to the side of the track at <paramref name="s"/> is on the pit lane.</summary>
+    public bool OnPitLane(float s, float d)
+    {
+        if (Surface.Pit is not { } pit)
+            return false;
+        TrackSample sample = Surface.Track.Sample(s);
+        return pit.Contains(sample.Center + sample.Normal * d);
+    }
+
+    /// <summary>Whether a point of the world, in the view's axes, is on the pit lane.</summary>
+    public bool OnPitLane(Vector3 point) => Surface.Pit?.Contains(new NVector2(point.X, point.Z)) ?? false;
+
+    /// <summary>
+    /// The pit lane: its surface, out of the road at one end and back into
+    /// it at the other, edged in white; the limit lines across it; a box
+    /// painted where each car stops; and a garage behind each box.
+    /// </summary>
+    private void BuildPitLane()
+    {
+        if (Surface.Pit is not { } pit)
+            return;
+        var mesh = new LowPolyMesh();
+        Vector3 At(float u, float d, float lift) => LowPolyMesh.V(Surface.PitPoint(u, d)) + Vector3.Up * lift;
+        void Band(float u0, float u1, float d0, float d1, Color color, float lift) =>
+            mesh.GroundQuad(At(u0, d0, lift), At(u0, d1, lift), At(u1, d1, lift), At(u1, d0, lift), color);
+
+        // Under the track's own road where the two overlap, so the lane
+        // seems to come out of the track's edge rather than lie across it.
+        const float surface = 0.018f, paint = 0.022f;
+        int pieces = (int)MathF.Ceiling(pit.LengthMeters / 2f);
+        float step = pit.LengthMeters / pieces;
+        for (int i = 0; i < pieces; i++)
+        {
+            float a = i * step, b = (i + 1) * step;
+            float ha = pit.Sample(a).HalfWidth, hb = pit.Sample(b).HalfWidth;
+            for (int lane = 0; lane < 4; lane++)
+            {
+                float f0 = lane / 4f, f1 = (lane + 1) / 4f;
+                mesh.GroundQuad(
+                    At(a, Mathf.Lerp(-ha, ha, f0), surface), At(a, Mathf.Lerp(-ha, ha, f1), surface),
+                    At(b, Mathf.Lerp(-hb, hb, f1), surface), At(b, Mathf.Lerp(-hb, hb, f0), surface),
+                    Look.Road);
+            }
+            foreach (int side in new[] { -1, 1 })
+                mesh.GroundQuad(
+                    At(a, side * ha, paint), At(a, side * (ha - 0.15f), paint),
+                    At(b, side * (hb - 0.15f), paint), At(b, side * hb, paint),
+                    LowPolyMesh.Ivory);
+        }
+
+        // The limit lines, the whole width across.
+        foreach (float u in new[] { pit.SpeedLimitFromU, pit.SpeedLimitToU })
+        {
+            float h = pit.Sample(u).HalfWidth;
+            Band(u - 0.3f, u + 0.3f, -h, h, LowPolyMesh.Ivory, paint);
+        }
+
+        // Each box: its outline in the working lane, and its garage behind it.
+        var garages = new LowPolyMesh();
+        Color wall = Color.FromHtml("#c9c4b4"), door = Color.FromHtml("#39444a"), roof = Color.FromHtml("#8d969a");
+        foreach (PitBox box in pit.Boxes)
+        {
+            PitLaneSample at = pit.Sample(box.U);
+            float d = NVector2.Dot(box.Position - at.Center, at.Normal);
+            float across = 1.4f, along = 2.8f;
+            Band(box.U - along, box.U + along, d - across, d - across + 0.12f, LowPolyMesh.Vermilion, paint);
+            Band(box.U - along, box.U + along, d + across - 0.12f, d + across, LowPolyMesh.Vermilion, paint);
+            Band(box.U + along - 0.12f, box.U + along, d - across, d + across, LowPolyMesh.Vermilion, paint);
+
+            // The garage stands back from the lane's edge on the boxes' side.
+            float side = MathF.Sign(d), front = at.HalfWidth + 1f, back = front + 14f;
+            float half = 6.6f, height = 6f;
+            Vector3 p0 = At(box.U - half, side * front, 0f), p1 = At(box.U + half, side * front, 0f);
+            Vector3 p2 = At(box.U + half, side * back, 0f), p3 = At(box.U - half, side * back, 0f);
+            float floor = MathF.Min(MathF.Min(p0.Y, p1.Y), MathF.Min(p2.Y, p3.Y)) - 0.5f;
+            Vector3 b0 = new(p0.X, floor, p0.Z), b1 = new(p1.X, floor, p1.Z), b2 = new(p2.X, floor, p2.Z), b3 = new(p3.X, floor, p3.Z);
+            float top = MathF.Max(p0.Y, p1.Y) + height;
+            Vector3 t0 = new(p0.X, top, p0.Z), t1 = new(p1.X, top, p1.Z), t2 = new(p2.X, top, p2.Z), t3 = new(p3.X, top, p3.Z);
+            Vector3 middle = (t0 + t1 + t2 + t3 + b0 + b1 + b2 + b3) / 8f;
+            // Wound so every face looks outward, whichever side of the lane the garages are on.
+            void Face(Vector3 a, Vector3 b, Vector3 c, Vector3 e, Color color)
+            {
+                if ((b - a).Cross(c - a).Dot((a + c) * 0.5f - middle) < 0f) garages.Quad(e, c, b, a, color);
+                else garages.Quad(a, b, c, e, color);
+            }
+            // The front: the door to the lane, and the wall above it.
+            Vector3 d0 = new(p0.X, MathF.Max(p0.Y, p1.Y) + 4.2f, p0.Z), d1 = new(p1.X, d0.Y, p1.Z);
+            Face(b0, b1, d1, d0, door);
+            Face(d0, d1, t1, t0, wall);
+            Face(b0, b3, t3, t0, wall);
+            Face(b3, b2, t2, t3, wall);
+            Face(b2, b1, t1, t2, wall);
+            garages.GroundQuad(t0, t1, t2, t3, roof);
+        }
+        AddChild(mesh.Instance("PitLane"));
+        AddChild(garages.Instance("PitGarages"));
+    }
+
     public Vector3 Point(float s, float d, float lift = 0f) => LowPolyMesh.V(Surface.Point(s, d)) + Vector3.Up * lift;
     private void Strip(LowPolyMesh mesh, float a, float b, float a0, float a1, float b0, float b1, Color color, float lift)
         => mesh.GroundQuad(Point(a, a0, lift), Point(a, a1, lift), Point(b, b1, lift), Point(b, b0, lift), color);

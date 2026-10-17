@@ -10,6 +10,21 @@
     "firstLeft": true,
     "offsetMeters": 4.25
   },
+  "pitLane": {
+    "track": "pitlane.csv",
+    "lengthMeters": 645,
+    "entryMeters": 5211,
+    "exitMeters": 400,
+    "speedLimitKph": 80,
+    "speedLimitFromMeters": 45,
+    "speedLimitToMeters": 600,
+    "boxes": {
+      "count": 15,
+      "firstMeters": 224.5,
+      "spacingMeters": 14,
+      "offsetMeters": -3
+    }
+  },
   "source": {
     "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",
     "license": "LGPL-3.0",

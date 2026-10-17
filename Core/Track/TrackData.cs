@@ -254,6 +254,9 @@ public class TrackData
     }
     public readonly StartingGridAccessor Grids;
 
+    /// <summary>The circuit's pit lane, or null where none is written down.</summary>
+    public PitLane? PitLane { get; internal set; }
+
     internal TrackData(IReadOnlyList<TrackNode> nodes, TrackGridConfig gridConfig)
     {
         Nodes = [.. nodes];

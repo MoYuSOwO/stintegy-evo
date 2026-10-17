@@ -82,7 +82,8 @@ public static class TerrainMesh
     /// <summary>
     /// Barrier to barrier, as one region: a quad for each stretch the road
     /// is built in (the same stretches, so the outline runs through the
-    /// very points the run-off's outer edge does), unioned.
+    /// very points the run-off's outer edge does), and the pit lane's the
+    /// same way, unioned.
     /// </summary>
     public static Paths64 RoadRegion(TrackSurfaceGeometry surface)
     {
@@ -103,6 +104,25 @@ public static class TerrainMesh
             if (Clipper.Area(quad) < 0)
                 quad.Reverse();
             quads.Add(quad);
+        }
+        // The pit lane is road too: the ground stops at its edges.
+        if (surface.Pit is { } pit)
+        {
+            int pieces = (int)MathF.Ceiling(pit.LengthMeters / 3f);
+            float length = pit.LengthMeters / pieces;
+            for (int i = 0; i < pieces; i++)
+            {
+                float a = i * length, b = (i + 1) * length;
+                float ha = pit.Sample(a).HalfWidth, hb = pit.Sample(b).HalfWidth;
+                var quad = new Path64
+                {
+                    Plan(surface.PitPoint(a, -ha)), Plan(surface.PitPoint(b, -hb)),
+                    Plan(surface.PitPoint(b, hb)), Plan(surface.PitPoint(a, ha)),
+                };
+                if (Clipper.Area(quad) < 0)
+                    quad.Reverse();
+                quads.Add(quad);
+            }
         }
         return Clipper.Union(quads, FillRule.NonZero);
     }

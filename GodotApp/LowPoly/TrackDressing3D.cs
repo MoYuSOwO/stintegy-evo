@@ -72,6 +72,8 @@ public partial class TrackDressing3D : Node3D
             foreach (int side in new[] { -1, 1 })
             {
                 Vector3 foot = Behind(s, side, 2.6f);
+                if (_circuit.OnPitLane(foot))
+                    continue;
                 poles.Box(foot + Vector3.Up * 3.5f, new Vector3(0.1f, 7f, 0.1f), Post);
                 var flagMesh = new LowPolyMesh();
                 Color colour = colours[k++ % colours.Length];
@@ -138,6 +140,9 @@ public partial class TrackDressing3D : Node3D
                 foreach (int side in new[] { -1, 1 })
                 {
                     Vector3 p = Behind(a, side, 0.9f), q = Behind(b, side, 0.9f);
+                    // Open where the pit lane comes through.
+                    if (_circuit.OnPitLane(p) || _circuit.OnPitLane(q))
+                        continue;
                     mesh.Box(p + Vector3.Up * height * 0.5f, new Vector3(0.12f, height, 0.12f), Post);
                     foreach (float h in new[] { 1.4f, height - 0.1f })
                         Beam(mesh, p + Vector3.Up * h, q + Vector3.Up * h, 0.07f, Rail);
@@ -164,6 +169,8 @@ public partial class TrackDressing3D : Node3D
         foreach ((float s, int side) in posts)
         {
             Vector3 at = Behind(s, side, 4.5f);
+            if (_circuit.OnPitLane(at) || _circuit.OnPitLane(Behind(s, side, 2.5f)))
+                continue;
             mesh.Box(at + Vector3.Up * 1.2f, new Vector3(2.2f, 2.4f, 2.2f), Hut);
             mesh.Box(at + Vector3.Up * 2.5f, new Vector3(2.6f, 0.25f, 2.6f), MarshalOrange);
             Vector3 pole = at + (Behind(s, side, 2.5f) - at);
@@ -191,6 +198,8 @@ public partial class TrackDressing3D : Node3D
             {
                 float s = corner - bars * 50f;
                 (Vector3 foot, float raise) = BoardSpot(s, side);
+                if (_circuit.OnPitLane(foot))
+                    continue;
                 Vector3 at = foot + Vector3.Up * raise;
                 Vector3 along = (_circuit.Point(s + 1f, 0) - _circuit.Point(s, 0)).Normalized();
                 Vector3 across = along.Cross(Vector3.Up).Normalized();

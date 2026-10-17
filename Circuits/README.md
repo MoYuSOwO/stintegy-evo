@@ -7,6 +7,7 @@ driver lives in its folder; the game reads it as it is and changes nothing.
 Circuits/silverstone/
   circuit.json      name, start line, grid, where the data came from
   track.csv         the road, one row a metre
+  pitlane.csv       the pit lane, one row a metre, where the circuit has one
   scenery.json      which props stand where (see SCENERY.md)
   props/            models this circuit brings of its own
   LICENSE.*         the terms of the source data, where it has any
@@ -55,6 +56,40 @@ start/finish line crosses. The grid has `count` boxes, pole on the left
 when `firstLeft`, alternating sides `offsetMeters` from the middle of the
 road. The size of a box and the distance between them are the series'
 rules, the same at every circuit, and are not written here.
+
+## The pit lane
+
+Every real circuit has a pit lane; one with none, such as the test
+layouts, simply has no `pitLane` in its `circuit.json`. Where there is one:
+
+```json
+"pitLane": {
+  "track": "pitlane.csv",
+  "lengthMeters": 456,
+  "entryMeters": 5809,
+  "exitMeters": 368,
+  "speedLimitKph": 80,
+  "speedLimitFromMeters": 45,
+  "speedLimitToMeters": 411,
+  "boxes": { "count": 12, "firstMeters": 151, "spacingMeters": 14, "offsetMeters": -3 }
+}
+```
+
+`entryMeters` and `exitMeters` are the rows of `track.csv` where the lane
+leaves the track and comes back; the lane's first and last rows lie on the
+road there, and the game refuses a lane that does not. The limit holds
+between the two lines, measured along the lane. A box is where a car
+stops: `count` of them from `firstMeters` along the lane, `spacingMeters`
+apart, `offsetMeters` to the left of the lane's middle (negative is right).
+
+`pitlane.csv` is the lane from end to end, `lengthMeters` + 1 rows a metre
+apart, in the same plane as the track:
+
+| column | meaning |
+|---|---|
+| `x_m`, `y_m` | the middle of the lane, metres, as in `track.csv` |
+| `z_m` | height, metres |
+| `width_m` | edge to edge |
 
 ## Making one
 
