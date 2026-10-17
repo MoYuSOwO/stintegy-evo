@@ -241,7 +241,10 @@ public sealed class WallContactDynamicsTests
             car.Progress.TotalDistance > 10f || furthest > 3f,
             $"covered {car.Progress.TotalDistance:F1} m and never more than {furthest:F2} m from the wall"
         );
-        Assert.True(car.State.Speed > 3f, $"speed {car.State.Speed:F2}");
+        // Under way, not quick: held on full lock into the barrier, the car
+        // that understeers along it rubs it as it goes, and the barrier's
+        // friction holds it near walking pace.
+        Assert.True(car.State.Speed > 1.5f, $"speed {car.State.Speed:F2}");
     }
 
     /// <summary>
@@ -304,6 +307,36 @@ public sealed class WallContactDynamicsTests
             );
         }
         return (car, firstContactYaw);
+    }
+
+    /// <summary>
+    /// A car its own tyres hold pressed against the barrier, rubbing along
+    /// it, is slowed by it: the wall pushes back every step, and every push
+    /// brings friction with it. The same car alongside the same wall, not
+    /// steered into it, loses only what the air takes.
+    /// </summary>
+    [Fact]
+    public void RubbingAlongTheBarrierScrubsSpeed()
+    {
+        float Final(float curvatureIntoWall, out int contactFrames)
+        {
+            (RaceCar car, _) = Run(
+                s: 100f,
+                offsetFromLeftWall: 1.2f,
+                headingIntoWall: 0f,
+                speed: 30f,
+                command: _ => new DriverInput(TowardsLeftWall(100f) * curvatureIntoWall, 0f),
+                seconds: 1.5f,
+                out contactFrames
+            );
+            return car.State.Speed;
+        }
+
+        float rubbing = Final(0.01f, out int rubbed);
+        float alongside = Final(0f, out int touched);
+        Assert.True(rubbed > 60, $"pressed on the wall for only {rubbed} frames");
+        Assert.Equal(0, touched);
+        Assert.True(alongside - rubbing > 1f, $"rubbing the wall ended at {rubbing:F1} m/s, running alongside it at {alongside:F1}");
     }
 
     /// <summary>
