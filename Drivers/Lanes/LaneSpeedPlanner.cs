@@ -405,6 +405,16 @@ internal static class LaneSpeedPlanner
         return MathF.Sqrt(MathF.Max(0f, 1f - share * share));
     }
 
+    /// <summary>
+    /// The speed full drive brings the car to over <paramref name="ds"/>
+    /// from <paramref name="v"/> on this road: the plan's own forward step,
+    /// so a driver can tell a stretch the plan drives flat out -- where its
+    /// speed is the motor's curve, rising or, up a climb, falling -- from one
+    /// it holds back on.
+    /// </summary>
+    internal static float FlatOutSpeed(in LaneEnvelope envelope, float v, float curvature, float ds, float factor, LaneRoad road, LaneShares shares) =>
+        DriveFrom(envelope, v, curvature, ds, factor, road, shares);
+
     private static float DriveFrom(in LaneEnvelope envelope, float v, float curvature, float ds, float factor, LaneRoad road, LaneShares shares)
     {
         LaneEnvelope e = envelope.ForTurn(curvature);

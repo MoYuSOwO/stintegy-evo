@@ -440,7 +440,26 @@ public sealed class LaneDriver : IDriverController
         target *= speedScale;
         ahead *= speedScale;
         float slope = (ahead - target) / 5f;
-        float accel = target * slope + Gains.SpeedGain * (target - speed) + _envelope.Loss(speed);
+        // The road's part, the planner's way round (LaneSpeedPlanner.DriveFrom):
+        // the axles are scaled onto the slope and gravity comes on top. Left
+        // out, the pedals asked a climb for what the air took and no more,
+        // and up Raidillon, power-limited and losing speed, the car ran on
+        // eight tenths of a throttle it had to give.
+        float speedChange = target * slope + Gains.SpeedGain * (target - speed);
+        float accel = (speedChange - att.AlongTrackGravity(StandardGravity, speed)) / att.LongitudinalDemandScale +
+                      _envelope.Loss(speed);
+        // Flat out where the plan is. Where the speed wanted a moment ahead
+        // is no less than full drive would bring, the plan is the motor's
+        // own curve and the throttle is on the floor; read as a speed to
+        // track, a plan falling away up a power-limited climb looked like
+        // one to slow for, and the car lifted on it. The traction cap below
+        // still holds the pedal to what the tyres have.
+        int at = (int)MathF.Round(station);
+        float flatOut = speedScale * LaneSpeedPlanner.FlatOutSpeed(
+            _envelope, speed, here, MathF.Max(0f, speed) * preview, FactorFor(at, Range, Side),
+            RoadAt(at, car.TrackD), _planShares);
+        if (target >= flatOut - FlatOutToleranceMps)
+            accel = MathF.Max(accel, car.Capabilities.AvailableDriveAcceleration);
 
         // Lift and coast: off the throttle this long before a braking zone.
         // The speed given up would have gone into the brakes a moment later,
@@ -788,6 +807,9 @@ public sealed class LaneDriver : IDriverController
     }
 
     private const float StandardGravity = 9.80665f;
+
+    /// <summary>How close to full drive's speed the plan must ask for to be driven flat out.</summary>
+    private const float FlatOutToleranceMps = 0.3f;
 
     /// <summary>How the road lies under a station at this offset, as the physics reads it.</summary>
     private LaneRoad RoadAt(int station, float offset)
