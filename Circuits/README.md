@@ -24,7 +24,7 @@ are not.
 
 | column | meaning |
 |---|---|
-| `x_m`, `y_m` | the middle of the road, metres |
+| `x_m`, `y_m` | the middle of the road, metres: x to the east, **y to the south** (the game's plane, as Godot's 2D one); a map's y, to the north, goes in negated, or the circuit comes out mirrored |
 | `z_m` | height, metres; the gradient is read off it |
 | `width_m` | edge to edge |
 | `runoff_left_m`, `runoff_right_m` | run-off beyond each edge, to the wall |

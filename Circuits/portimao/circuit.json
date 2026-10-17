@@ -14,6 +14,6 @@
     "centreline": "bacinger/f1-circuits (pt-2008)",
     "license": "MIT",
     "licenseFile": "LICENSE.bacinger-MIT",
-    "notes": "Projected, 14 m wide, scaled to 4,653 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along pt-2008 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
+    "notes": "Projected, 14-18 m wide from OpenStreetMap (ODbL), scaled to 4,653 m. Heights: SRTM 30 m (public domain) through Open Topo Data, sampled every 20 m along pt-2008 from bacinger/f1-circuits, lined up by curvature and smoothed over about 200 m."
   }
 }
