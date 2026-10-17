@@ -130,7 +130,21 @@ public sealed class TireConfig
         return Math.Clamp(strategy.TireGripUsageOverride.Value, 0.05f, AccelerationUsage);
     }
 
+    /// <summary>The tyre's friction at <see cref="ReferenceLoadN"/>, at its best temperature, new.</summary>
     public float BaseMu { get; init; } = 1.72f;
+
+    /// <summary>
+    /// The load <see cref="BaseMu"/> is measured at: about what one wheel
+    /// of the car carries standing still.
+    /// </summary>
+    public float ReferenceLoadN { get; init; } = 2000f;
+
+    /// <summary>
+    /// How fast friction falls as the load rises: it goes as the load to
+    /// the minus this. Zero is a tyre whose grip is exactly proportional
+    /// to its load.
+    /// </summary>
+    public float LoadSensitivity { get; init; } = 0f;
     public float IdealSurfaceTempLowC { get; init; } = 85f;
     public float IdealSurfaceTempHighC { get; init; } = 115f;
     // Grip is flat inside the working window, then falls smoothly with the
