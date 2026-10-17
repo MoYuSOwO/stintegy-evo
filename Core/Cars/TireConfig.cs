@@ -15,8 +15,6 @@ namespace StintegyEVO.Core.Cars;
 /// </summary>
 public sealed class TireConfig
 {
-    public static readonly TireConfig Default = new();
-
     // Constants of the tyre model; no compound sets them.
     public const float TireWorkReferenceSpeedMps = 30f;
     public const float MaximumTireWorkSpeedMultiplier = 1.5f;
