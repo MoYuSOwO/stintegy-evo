@@ -61,6 +61,41 @@ public sealed class CarInterfaceTests
         Assert.InRange(readings[0], 19f, 21f);
     }
 
+    /// <summary>
+    /// A car's own electronics on the game's chassis: built on it, with one
+    /// thing done its own way, and nothing in the race able to tell.
+    /// </summary>
+    [Fact]
+    public void ACarOnTheChassisCanBringItsOwnElectronics()
+    {
+        float SpeedAfter(ICar model)
+        {
+            var state = new CarState { Speed = 5f, Energy = PowertrainState.Filled(0.9f) };
+            model.InstallFreshTires(state);
+            var input = new CarPhysicsStepInput(new DriverInput(0f, 12f), CarStrategy.Default, 25f, 35f);
+            for (int i = 0; i < 60; i++)
+                model.Step(state, input, 1f / 60f);
+            return state.Speed;
+        }
+
+        float plain = SpeedAfter(new SingleTrackCar(new CarConfig(), new TireConfig()));
+        float governed = SpeedAfter(new LaunchControlledCar());
+        Assert.True(plain > 10f, $"the plain car reached only {plain:F1} m/s");
+        // Three metres a second squared for the second from five: eight.
+        Assert.InRange(governed, 7f, 8.5f);
+    }
+
+    /// <summary>Holds a launch to three metres a second squared below twenty metres a second.</summary>
+    private sealed class LaunchControlledCar() : SingleTrackCar(new CarConfig(), new TireConfig())
+    {
+        public override void Step(CarState state, CarPhysicsStepInput input, float dt)
+        {
+            if (state.Speed < 20f && input.DriverInput.DesiredAccel > 3f)
+                input = input with { DriverInput = input.DriverInput with { DesiredAccel = 3f } };
+            base.Step(state, input, dt);
+        }
+    }
+
     /// <summary>An engine with two settings and a tank that never empties.</summary>
     private sealed class BoxEngine : IPowertrain
     {

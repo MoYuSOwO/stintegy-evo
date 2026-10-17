@@ -7,8 +7,10 @@ namespace StintegyEVO.Core.Cars;
 /// The chassis the game offers every car: a single-track model with load
 /// transfer, slip-angle tyres that heat and wear, a combined-grip limiter and
 /// whatever powertrain is fitted (<see cref="CarPhysics"/>). A car built on
-/// it is this plus its numbers; a car that wants something else implements
-/// <see cref="ICar"/> itself.
+/// it is this plus its numbers and the parts it fits -- tyres
+/// (<see cref="ITireModel"/>), aero (<see cref="IAero"/>), powertrain
+/// (<see cref="IPowertrain"/>) -- and may override any of it; a car that
+/// wants something else entirely implements <see cref="ICar"/> itself.
 /// </summary>
 public class SingleTrackCar : ICar
 {
@@ -48,12 +50,12 @@ public class SingleTrackCar : ICar
     public CarSpec Spec { get; }
     public IPowertrain Powertrain => Config.Powertrain;
 
-    public float TotalMassKg(CarState state) => CarPhysics.TotalMassKg(Config, state.Energy);
+    public virtual float TotalMassKg(CarState state) => CarPhysics.TotalMassKg(Config, state.Energy);
 
-    public void Step(CarState state, CarPhysicsStepInput input, float dt) =>
+    public virtual void Step(CarState state, CarPhysicsStepInput input, float dt) =>
         CarPhysics.Step(state, Config, Tires, input, dt);
 
-    public CarPerformanceLimits EstimatePerformanceLimits(
+    public virtual CarPerformanceLimits EstimatePerformanceLimits(
         CarState state,
         CarStrategy strategy,
         float speed,
@@ -65,16 +67,16 @@ public class SingleTrackCar : ICar
         state, Config, Tires, strategy, speed, curvature, gripUsage,
         assumedLongitudinalAcceleration, frontBrakeBiasOffset);
 
-    public float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) =>
+    public virtual float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) =>
         CarPhysics.EstimateCorneringLimit(state, Config, Tires, strategy, speed, gripUsage);
 
-    public float GripUsage(CarStrategy strategy) => Tires.Front.GripUsage(strategy);
+    public virtual float GripUsage(CarStrategy strategy) => Tires.Front.GripUsage(strategy);
 
-    public TireWindow TireWindow(WheelId wheel) => Tires.For(wheel).Window;
+    public virtual TireWindow TireWindow(WheelId wheel) => Tires.For(wheel).Window;
 
-    public void InstallFreshTires(CarState state) => Tires.Install(state);
+    public virtual void InstallFreshTires(CarState state) => Tires.Install(state);
 
-    public CarCapabilities Capabilities(CarState state, CarStrategy strategy)
+    public virtual CarCapabilities Capabilities(CarState state, CarStrategy strategy)
     {
         float mass = TotalMassKg(state);
         return new CarCapabilities(
@@ -89,9 +91,9 @@ public class SingleTrackCar : ICar
             Tires.Front.Window.Compound);
     }
 
-    public float PushToPassRemainingSeconds(CarState state) => state.PushToPass.RemainingSeconds(Config.PushToPass);
+    public virtual float PushToPassRemainingSeconds(CarState state) => state.PushToPass.RemainingSeconds(Config.PushToPass);
 
-    public void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
+    public virtual void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
     {
         PowertrainState energy = state.Energy;
         IReadOnlyList<PowertrainResourceInfo> declared = Powertrain.Resources;
@@ -125,9 +127,9 @@ public class SingleTrackCar : ICar
         new("rear_slide_severity", "Rear slide severity", "share"),
     ];
 
-    public IReadOnlyList<TelemetryChannel> TelemetryChannels => Channels;
+    public virtual IReadOnlyList<TelemetryChannel> TelemetryChannels => Channels;
 
-    public void ReadTelemetry(CarState state, Span<float> values)
+    public virtual void ReadTelemetry(CarState state, Span<float> values)
     {
         AxleTelemetry t = state.Axles();
         ReadOnlySpan<float> readings =
