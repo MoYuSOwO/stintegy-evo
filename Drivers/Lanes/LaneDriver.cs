@@ -429,6 +429,7 @@ public sealed class LaneDriver : IDriverController
         // than the plan, not merely allowed more wheel.
         float speedScale = 1f + (_performance?.SpeedError ?? 0f) + (_performance?.CornerOverstep ?? 0f);
         station += marker;
+        AnchorBlendWindow(station);
         float hereSpeed = SpeedAt(station);
         float slowing = SpeedAt(station + 5f / _lanes.Spacing) < hereSpeed ? 1f : 0f;
         float preview = slowing > 0f
@@ -701,9 +702,14 @@ public sealed class LaneDriver : IDriverController
             return Interpolate(_speed[0], station);
 
         // Off the free lane: plan the blend actually in force over a window,
-        // ending on the slower of the pure lanes it lies between.
+        // ending on the slower of the pure lanes it lies between. The window
+        // starts at the car (AnchorBlendWindow) and every look ahead reads
+        // the same one. Started at whichever station was asked about, it was
+        // planned again for every look in a step, three or four times over,
+        // and a lap held on a side lane took four times as long to drive.
         int start = (int)MathF.Floor(station);
-        if (start != _windowStart || MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f)
+        if (start < _windowStart || start > _windowStart + _windowSpeed.Length - 2 ||
+            MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f)
             PlanBlendWindow(start);
         float local = station - _windowStart;
         int i0 = Math.Clamp((int)MathF.Floor(local), 0, _windowSpeed.Length - 2);
@@ -711,6 +717,16 @@ public sealed class LaneDriver : IDriverController
         float planned = _windowSpeed[i0] + (_windowSpeed[i0 + 1] - _windowSpeed[i0]) * u;
         // A blend that is still moving is planned at both ends of its travel.
         return MathF.Min(planned, BlendTargetCeiling(station));
+    }
+
+    /// <summary>The blend's window, planned from the car's own station once a station.</summary>
+    private void AnchorBlendWindow(float station)
+    {
+        if (Range <= 1e-3f && TargetRange <= 1e-3f)
+            return;
+        int start = (int)MathF.Floor(station);
+        if (start != _windowStart || MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f)
+            PlanBlendWindow(start);
     }
 
     private float BlendTargetCeiling(float station)
