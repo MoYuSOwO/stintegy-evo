@@ -78,6 +78,8 @@ def calc_global_raceline(
         neglect_V_omega: bool,
         sol_opt: dict,
         out_path: str,
+        init_line=None,
+        smooth_ellipse: bool = False,
 ):
     track_handler = Track3D(
         path=os.path.join(track_path, track_name)
@@ -171,6 +173,28 @@ def calc_global_raceline(
     # Function to integrate derivative and costs.
     F = ca.Function('F', [X0, U, S0], [X, Q_t, Q_reg], ['x0', 'u', 's0'], ['xf', 'q_t', 'q_reg'])
 
+    # Stintegy: start from a line already solved on the same stations when
+    # one is given -- another lane's, which is feasible here or nearly so,
+    # its offset clipped into this lane's road. From 30 m/s down the middle
+    # the long fast circuits sat at a point that broke a constraint by a
+    # metre for the whole time budget; from a line that already holds,
+    # the solve only has to make it faster.
+    def guess_state(k):
+        lo = track_handler.w_tr_right[k] + vehicle_params['total_width'] / 2.0 + safety_distance
+        hi = track_handler.w_tr_left[k] - vehicle_params['total_width'] / 2.0 - safety_distance
+        if init_line is None:
+            return [V_guess, (track_handler.w_tr_left[k] + track_handler.w_tr_right[k]) / 2.0, 0.0, 1e-6, 1e-6]
+        row = init_line.iloc[min(k, len(init_line) - 1)]
+        margin = min(0.05, max(0.0, (hi - lo) / 4.0))
+        return [float(row['v_opt']), float(np.clip(row['n_opt'], lo + margin, hi - margin)),
+                float(row['chi_opt']), float(row['ax_opt']), float(row['ay_opt'])]
+
+    def guess_control(k):
+        if init_line is None:
+            return [0.0] * nu
+        row = init_line.iloc[min(k, len(init_line) - 1)]
+        return [float(row['jx_opt']), float(row['jy_opt'])]
+
     # Empty NLP
     w = []
     w0 = []
@@ -181,13 +205,15 @@ def calc_global_raceline(
     g = []
     lbg = []
     ubg = []
+    # Stintegy: what each constraint is and where, so a refused solve can say.
+    g_tag = []
 
     # Initial conditions
     Xk = ca.MX.sym('X0', nx)
     w += [Xk]
     lbw += [0.0, track_handler.w_tr_right[0] + vehicle_params['total_width'] / 2.0 + safety_distance, -np.pi / 2.0, -np.inf, -np.inf]
     ubw += [gg_handler.V_max, track_handler.w_tr_left[0] - vehicle_params['total_width'] / 2.0 - safety_distance, np.pi / 2.0, np.inf, np.inf]
-    w0 += [V_guess, (track_handler.w_tr_left[0] + track_handler.w_tr_right[0]) / 2.0, 0.0, 1e-6, 1e-6]
+    w0 += guess_state(0)
 
     # Formulate the NLP
     for k in range(0, track_handler.s.size):
@@ -219,27 +245,54 @@ def calc_global_raceline(
         elif gg_mode == 'diamond':
             gg_exponent, ax_min, ax_max, ay_max = ca.vertsplit(gg_handler.acc_interpolator(ca.vertcat(Xk[0], g_tilde)))  # positive
 
-            g += [ay_max - ca.fabs(ay_tilde)]
-            lbg += [0.0]
-            ubg += [np.inf]
+            if smooth_ellipse:
+                # Stintegy: with the exponent at two the diamond's combined
+                # limit is the ellipse (ax / ax_min)^2 + (ay / ay_max)^2 <= 1,
+                # and written that way it is smooth everywhere. TUM's form,
+                # |ax| <= |ax_min| (1 - (|ay| / ay_max)^e)^(1/e) under fabs,
+                # fmin and fmax, has a kink at every edge and a slope that
+                # runs to infinity as the corner fills the circle; at speed,
+                # braking into a fast sweeper, IPOPT stepped back and forth
+                # across it for the whole time budget (Silverstone at 1266 m,
+                # 66 m/s). Scaled by |ax_min| so the violation is still in
+                # metres per second squared.
+                #
+                # It stands alone: |ay| <= ay_max is already inside it, and
+                # kept as a second constraint the two are active together
+                # wherever the line rides the lateral limit (every fast
+                # sweeper), with gradients exactly parallel there. That
+                # breaks IPOPT's constraint qualification, the multipliers
+                # have no unique value, and the steps swing the iterate in
+                # and out of feasibility round an unchanging lap time.
+                g += [ca.fabs(ax_min) * (1.0 - (ax_tilde / ax_min) ** 2 - (ay_tilde / ay_max) ** 2)]
+                lbg += [0.0]
+                ubg += [np.inf]
+                g_tag += [(k, 'brake')]
+            else:
+                g += [ay_max - ca.fabs(ay_tilde)]
+                lbg += [0.0]
+                ubg += [np.inf]
+                g_tag += [(k, 'ay')]
 
-            g += [ca.fabs(ax_min) * ca.power(
-                    ca.fmax(
-                        (1.0 - ca.power(
-                            ca.fmin(ca.fabs(ay_tilde) / ay_max, 1.0),
-                            gg_exponent
-                        ))
-                        , 1e-3
-                    ),
-                    1.0 / gg_exponent
-                ) - ca.fabs(ax_tilde)
-            ]
-            lbg += [0.0]
-            ubg += [np.inf]
+                g += [ca.fabs(ax_min) * ca.power(
+                        ca.fmax(
+                            (1.0 - ca.power(
+                                ca.fmin(ca.fabs(ay_tilde) / ay_max, 1.0),
+                                gg_exponent
+                            ))
+                            , 1e-3
+                        ),
+                        1.0 / gg_exponent
+                    ) - ca.fabs(ax_tilde)
+                ]
+                lbg += [0.0]
+                ubg += [np.inf]
+                g_tag += [(k, 'brake')]
 
             g += [ax_max - ax_tilde]
             lbg += [0.0]
             ubg += [np.inf]
+            g_tag += [(k, 'drive')]
         else:
             raise RuntimeError('Unknown gg_mode.')
 
@@ -252,7 +305,7 @@ def calc_global_raceline(
         w += [Uk]
         lbw += [-np.inf] * nu
         ubw += [np.inf] * nu
-        w0 += [0.0] * nu
+        w0 += guess_control(k)
 
         # Integrate till the end of the interval.
         Fk = F(x0=Xk, u=Uk, s0=k * track_handler.ds)
@@ -265,12 +318,13 @@ def calc_global_raceline(
         w += [Xk]
         lbw += [0.0, track_handler.w_tr_right[k+1] + vehicle_params['total_width'] / 2.0 + safety_distance, -np.pi / 2.0, -np.inf, -np.inf]
         ubw += [gg_handler.V_max, track_handler.w_tr_left[k+1] - vehicle_params['total_width'] / 2.0 - safety_distance, np.pi / 2.0, np.inf, np.inf]
-        w0 += [V_guess, (track_handler.w_tr_left[k+1] + track_handler.w_tr_right[k+1]) / 2.0, 0.0, 1e-6, 1e-6]
+        w0 += guess_state(k + 1)
 
         # Add equality constraint for continuity.
         g += [Xk_end - Xk]
         lbg += [0.0] * nx
         ubg += [0.0] * nx
+        g_tag += [(k, c) for c in ('cont V', 'cont n', 'cont chi', 'cont ax', 'cont ay')]
 
     # Boundary constraint: start states = final states.
     g += [w[0] - Xk]
@@ -307,6 +361,17 @@ def calc_global_raceline(
             float(np.max(np.maximum(lbg_a - g_val, 0.0) + np.maximum(g_val - ubg_a, 0.0), initial=0.0)),
         )
         status = stats.get('return_status')
+        viol = np.maximum(lbg_a - g_val, 0.0) + np.maximum(g_val - ubg_a, 0.0)
+        tags = g_tag + [('end', f'periodic {i}') for i in range(len(viol) - len(g_tag))]
+        worst_rows = np.argsort(viol)[::-1][:6]
+        print("Worst constraints: " + "; ".join(
+            f"{tags[i][1]} at s={tags[i][0] * track_handler.ds if isinstance(tags[i][0], int) else 'end'} "
+            f"by {viol[i]:.3g} (V {x[(nx + nu) * tags[i][0]] if isinstance(tags[i][0], int) else 0:.1f}, "
+            f"n {x[(nx + nu) * tags[i][0] + 1] if isinstance(tags[i][0], int) else 0:.2f})" for i in worst_rows))
+        xviol = np.maximum(lbx_a - x, 0.0) + np.maximum(x - ubx_a, 0.0)
+        if xviol.size and xviol.max() > 0:
+            i = int(np.argmax(xviol))
+            print(f"Worst bound: variable {i % (nx + nu)} at s={(i // (nx + nu)) * track_handler.ds} by {xviol[i]:.3g}")
         if worst > ACCEPT_UNCONVERGED_VIOLATION:
             raise RuntimeError(
                 f"IPOPT failed to bake a racing line: {status} (worst violation {worst:.3g})"

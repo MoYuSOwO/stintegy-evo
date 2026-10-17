@@ -46,8 +46,10 @@ SMOOTHING = {
     # metres; this holds them to 0.2 m with the straights as smooth as before.
     # The same limit as a hard constraint on the solve (edge_constraint) was
     # tried and fought the smoothness for over half an hour; it is not needed.
+    # Half a metre: a few tenths off the measured edge is well inside what
+    # the driver notices; holding the solve to a quarter cost convergence.
     "kappa_ref": 1.0 / 160.0, "kappa_window_m": 10.0,
-    "max_edge_dev": 0.25, "edge_constraint": False,
+    "max_edge_dev": 0.5, "edge_constraint": False,
 }
 
 # How much slower than the free lane a side lane may be and still be a
@@ -146,6 +148,8 @@ def bake(track_id: str, args: argparse.Namespace) -> None:
     ggr.gg_diagram_path = os.path.join(args.out, "gg")
     rows = []
     free_lap = None
+    solved = {}
+    refused = []
     for lane in args.lanes:
         frame = base.copy()
         # The bake's n is positive to the left of travel. Our "left" lane is
@@ -164,32 +168,54 @@ def bake(track_id: str, args: argparse.Namespace) -> None:
             print(f"{track_id} {lane}: reusing {line_path}", flush=True)
         else:
             try:
-                line = solve(name, line_path, args)
-            except RuntimeError as refused:
+                start = None
+                if args.warm and solved:
+                    start = solved.get("free") if lane != "free" and "free" in solved else next(iter(solved.values()))
+                line = solve(name, line_path, args, init_line=start)
+            except RuntimeError as why:
                 # One lane that will not bake is not a reason to lose the
-                # others: the file goes out without it, and the driver takes
-                # that lane from its own geometric bake.
-                print(f"{track_id} {lane}: refused, {refused}", flush=True)
+                # others; it is tried again below from a lane that did.
+                print(f"{track_id} {lane}: refused, {why}", flush=True)
+                refused.append((lane, name, line_path))
                 continue
-        lap = float(line["laptime"].iloc[0])
-        if lane == "free":
-            free_lap = lap
-        elif free_lap is not None and lap > free_lap * SIDE_LANE_MAX_SLOWDOWN:
+        solved[lane] = line
+        rows += lane_rows(track_id, lane, line, smoothed_dir, name, started)
+
+    # A lane that would not bake from a cold start is tried again from a
+    # lane that did: free first, which is feasible for either side once
+    # clipped, else whichever side baked.
+    for lane, name, line_path in refused:
+        start = solved.get("free") if lane != "free" else None
+        if start is None:
+            start = next((solved[k] for k in ("free", "left", "right") if k in solved and k != lane), None)
+        if start is None:
+            print(f"{track_id} {lane}: no baked lane to start from; left to the driver's own bake", flush=True)
+            continue
+        try:
+            line = solve(name, line_path, args, init_line=start)
+        except RuntimeError as why:
+            print(f"{track_id} {lane}: refused again from a baked start, {why}", flush=True)
+            continue
+        solved[lane] = line
+        rows += lane_rows(track_id, lane, line, smoothed_dir, name, started)
+
+    free_lap = float(solved["free"]["laptime"].iloc[0]) if "free" in solved else None
+    kept = []
+    for row in rows:
+        lane, lap = row[0], row[7]
+        if lane != "free" and free_lap is not None and lap > free_lap * SIDE_LANE_MAX_SLOWDOWN:
+            continue
+        kept.append(row)
+    for lane in ("left", "right"):
+        if lane in solved and free_lap is not None and float(solved[lane]["laptime"].iloc[0]) > free_lap * SIDE_LANE_MAX_SLOWDOWN:
             # A side lane gives up a strip of road, not a tenth of the lap.
             # One this much slower never got away from its starting guess
-            # (Monaco's left lane sat at the guessed 30 m/s for the whole
-            # lap and was nearly feasible doing it), so it is refused, and
-            # its line is removed so that a --reuse run does not pick it up.
-            print(f"{track_id} {lane}: refused, {lap:.2f}s against the free lane's {free_lap:.2f}s", flush=True)
-            os.remove(line_path)
-            continue
-        track = Track3D(path=os.path.join(smoothed_dir, name))
-        xyz = track.sn2cartesian(line["s_opt"].to_numpy(), line["n_opt"].to_numpy())
-        for k in range(len(line)):
-            rows.append((lane, line["s_opt"].iloc[k], xyz[k, 0], xyz[k, 1], xyz[k, 2],
-                         line["n_opt"].iloc[k], line["v_opt"].iloc[k], lap))
-        print(f"{track_id} {lane}: bake lap {lap:.2f}s  n [{line['n_opt'].min():.2f}, {line['n_opt'].max():.2f}]"
-              f"  v [{line['v_opt'].min():.1f}, {line['v_opt'].max():.1f}]  ({time.time() - started:.0f}s)", flush=True)
+            # (Monaco's left lane once sat at the guessed 30 m/s for the
+            # whole lap), so it is refused, and its line is removed so that
+            # a --reuse run does not pick it up.
+            print(f"{track_id} {lane}: refused, {float(solved[lane]['laptime'].iloc[0]):.2f}s against the free lane's {free_lap:.2f}s", flush=True)
+            os.remove(os.path.join(work, "lines", f"{track_id}_{lane}.csv"))
+    rows = kept
 
     out = pd.DataFrame(rows, columns=["lane", "s_m", "x_m", "y_m", "z_m", "n_bake_m", "v_bake_mps", "bake_lap_s"])
     out_path = os.path.join(args.out, f"{track_id}.lanes3d.csv")
@@ -197,9 +223,22 @@ def bake(track_id: str, args: argparse.Namespace) -> None:
     print(f"{track_id}: wrote {out_path}", flush=True)
 
 
-def solve(name: str, line_path: str, args: argparse.Namespace) -> pd.DataFrame:
+def lane_rows(track_id, lane, line, smoothed_dir, name, started):
+    lap = float(line["laptime"].iloc[0])
+    track = Track3D(path=os.path.join(smoothed_dir, name))
+    xyz = track.sn2cartesian(line["s_opt"].to_numpy(), line["n_opt"].to_numpy())
+    print(f"{track_id} {lane}: bake lap {lap:.2f}s  n [{line['n_opt'].min():.2f}, {line['n_opt'].max():.2f}]"
+          f"  v [{line['v_opt'].min():.1f}, {line['v_opt'].max():.1f}]  ({time.time() - started:.0f}s)", flush=True)
+    return [(lane, line["s_opt"].iloc[k], xyz[k, 0], xyz[k, 1], xyz[k, 2],
+             line["n_opt"].iloc[k], line["v_opt"].iloc[k], lap) for k in range(len(line))]
+
+
+
+def solve(name: str, line_path: str, args: argparse.Namespace, init_line=None) -> pd.DataFrame:
     options = dict(SOLVER)
     options["ipopt.max_wall_time"] = float(args.max_minutes) * 60.0
+    if args.line_search:
+        options["ipopt.line_search_method"] = args.line_search
     return ggr.calc_global_raceline(
             track_name=name,
             vehicle_params={"total_width": args.width, "h": 0.32},
@@ -211,7 +250,7 @@ def solve(name: str, line_path: str, args: argparse.Namespace) -> pd.DataFrame:
             w_jy=1e-2,
             w_dOmega_z=0.0,
             RK4_steps=1,
-            V_guess=30.0,
+            V_guess=args.v_guess,
             neglect_w_omega_x=True,
             neglect_w_omega_y=True,
             neglect_euler=True,
@@ -220,6 +259,10 @@ def solve(name: str, line_path: str, args: argparse.Namespace) -> pd.DataFrame:
             neglect_V_omega=False,
             sol_opt=options,
             out_path=line_path,
+            init_line=init_line,
+            # The friction circle is an ellipse of exponent two; say it the
+            # smooth way (see gen_global_racing_line).
+            smooth_ellipse=args.exponent == 2.0,
         )
 
 
@@ -238,6 +281,11 @@ def main() -> None:
     parser.add_argument("--reuse", action="store_true", help="keep lines already baked in the work directory")
     parser.add_argument("--max-minutes", type=float, default=30.0, help="give up on a lane after this long")
     parser.add_argument("--exponent", type=float, default=2.0, help="friction ellipse; the physics combines as a circle")
+    # A lane that sits at a nearly feasible point for the whole time budget
+    # (Spa's free lane, from 30 m/s) can be started differently.
+    parser.add_argument("--warm", action="store_true", help="start each lane from one already baked, when there is one")
+    parser.add_argument("--v-guess", type=float, default=30.0, help="speed the solve starts from, m/s")
+    parser.add_argument("--line-search", default="", help="IPOPT line search; empty keeps cg-penalty, 'filter' is IPOPT's default")
     args = parser.parse_args()
 
     write_gg(os.path.join(args.raw, "stintegy_gg.csv"), os.path.join(args.out, "gg"), args.exponent)
