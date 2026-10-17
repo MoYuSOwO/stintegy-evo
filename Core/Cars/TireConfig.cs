@@ -43,12 +43,16 @@ public sealed class TireConfig
     // harder, and the warm-up was tuned against that. Without it the tyres
     // ran three degrees cooler and a cold car at 80 per cent use never
     // reached its window; 0.8 puts both back where they were measured.
-    public const float RollingSurfaceHeatRate = 0.8f;
-    public const float RollingCoreHeatRate = 0.3f;
+    //
+    // Four fifths of that since the car took a Formula One car's downforce:
+    // rolling heat goes with the load, and a fast lap now presses the tyres
+    // about 1.6 times as hard (see LateralHeatRate for the split).
+    public float RollingSurfaceHeatRate { get; init; } = 0.64f;
+    public float RollingCoreHeatRate { get; init; } = 0.24f;
     // A small share of the work done by the brakes reaches the tyre through
     // the disc, wheel and enclosed air. It enters the slow carcass mass, not
     // the tread, and follows the axle that actually supplied the braking.
-    public const float BrakeCoreHeatRate = 1.5f;
+    public float BrakeCoreHeatRate { get; init; } = 1.5f;
     public const float RollingHeatReferenceSpeedMps = 30f;
     public const float SurfaceCoolingRate = 0.012f;
     public const float TrackSurfaceTransferRate = 0.004f;
@@ -89,8 +93,16 @@ public sealed class TireConfig
     /// </summary>
     public const float ThermalTimeScale = 0.20f;
     public const float CoreAirCoolingRate = 0.0057f;
-    public const float SpeedCoolingReferenceMps = 60f;
-    public const float MaximumSpeedCoolingMultiplier = 2.4f;
+    // Air cooling grows with speed as forced convection does, as the speed
+    // to the power 0.8, from what it is at SpeedCoolingReferenceMps. It used
+    // to level off (at 2.4 times, half of it by 60 m/s), so the fast part of
+    // a lap cooled hardly better than the slow part, and with a Formula One
+    // car's downforce heating the tyres harder the faster it goes, a stint
+    // at Silverstone ran its carcass past its threshold on Normal while an
+    // out lap was still cold. Set where it was at the warm-up's 55 m/s.
+    public const float SpeedCoolingReferenceMps = 55f;
+    public const float SpeedCoolingAtReference = 1.67f;
+    public const float SpeedCoolingExponent = 0.8f;
 
     public string CompoundId { get; init; } = "default";
     /// <summary>
@@ -130,7 +142,21 @@ public sealed class TireConfig
         return Math.Clamp(strategy.TireGripUsageOverride.Value, 0.05f, AccelerationUsage);
     }
 
-    public float BaseMu { get; init; } = 1.72f;
+    /// <summary>
+    /// The tyre's friction at the load it was sized for, its own wheel's
+    /// share of the car standing still: at its best temperature, new.
+    /// </summary>
+    public float BaseMu { get; init; } = 2.4f;
+
+    /// <summary>
+    /// How fast friction falls as the load rises: it goes as the load to
+    /// the minus this. Zero is a tyre whose grip is exactly proportional
+    /// to its load. 0.3 is a racing slick's: at the load of a fast corner,
+    /// five times what it was sized for, it has two fifths less friction than
+    /// standing still. It is why a car with this much downforce corners at
+    /// under 6 g rather than 8.
+    /// </summary>
+    public float LoadSensitivity { get; init; } = 0.3f;
     public float IdealSurfaceTempLowC { get; init; } = 85f;
     public float IdealSurfaceTempHighC { get; init; } = 115f;
     // Grip is flat inside the working window, then falls smoothly with the
@@ -180,8 +206,19 @@ public sealed class TireConfig
     public float WearCliffStart { get; init; } = 0.70f;
     public float WearCliffGripLoss { get; init; } = 0.12f;
 
-    public float LateralHeatRate { get; init; } = 4.0f;
-    public float LongitudinalHeatRate { get; init; } = 0.55f;
+    // Heat from work: what the tread carries times how fast it is dragged.
+    // It is counted against the force the tyre gives, which with friction
+    // falling with load grows more slowly than the load. Three fifths of
+    // the rates the car had before its Formula One downforce, with the
+    // rolling heat below at four fifths: the split between the two is what
+    // puts both a stint at the limit and an out lap where they were (with
+    // the air cooling below). A Silverstone stint on Normal holds its
+    // carcass at 108 C; held at nine tenths of its grip at 55 m/s a tyre
+    // settles at about 114 C; ordinary running at forty-odd metres a second
+    // holds the tread near 79 C; a cold set is in its window inside two and
+    // a half laps.
+    public float LateralHeatRate { get; init; } = 2.4f;
+    public float LongitudinalHeatRate { get; init; } = 0.33f;
     /// <summary>
     /// Extra tread heat at the edge of what the car can hold.
     ///
@@ -197,7 +234,7 @@ public sealed class TireConfig
     /// never stands on. It is additive: reaching the edge must not multiply
     /// all of the ordinary cornering and traction heat.
     /// </summary>
-    public float NearLimitHeatRate { get; init; } = 2f;
+    public float NearLimitHeatRate { get; init; } = 1.2f;
 
     /// <summary>
     /// Where the partial-sliding heat begins, as a share of the limit the

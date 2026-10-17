@@ -408,7 +408,11 @@ public sealed class CarPhysicsTests
     [Fact]
     public void RearCombinedSaturationScalesLateralAndDriveTogether()
     {
-        CarConfig car = new() { CombinedGripLimiterStrength = 0f };
+        // Drive the rear cannot take on top of the corner. At this speed
+        // what the rear has left after the corner is more than the stock
+        // car's 12 m/s^2 of drive, so its pedal never reaches the circle;
+        // the limiter is under test, not the motor's ceiling.
+        CarConfig car = new() { CombinedGripLimiterStrength = 0f, MaxDriveAcceleration = UncappedDriveAcceleration };
         TireConfig tires = WarmTires();
         CarState cornering = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState powered = CreateState(speed: 36f, batterySoc: 0.9f, tires);
@@ -704,8 +708,12 @@ public sealed class CarPhysicsTests
     {
         // On a rear-driven car, where all the drive meets the rear's corner
         // on one axle: the limiter is what is under test, not the drivetrain.
-        CarConfig controlledCar = new() { FrontDriveShare = 0f };
-        CarConfig uncontrolledCar = new() { FrontDriveShare = 0f, CombinedGripLimiterStrength = 0f };
+        // Drive the rear cannot take on top of the corner. At this speed
+        // what the rear has left after the corner is more than the stock
+        // car's 12 m/s^2 of drive, so its pedal never reaches the circle;
+        // the limiter is under test, not the motor's ceiling.
+        CarConfig controlledCar = new() { FrontDriveShare = 0f, MaxDriveAcceleration = UncappedDriveAcceleration };
+        CarConfig uncontrolledCar = new() { FrontDriveShare = 0f, CombinedGripLimiterStrength = 0f, MaxDriveAcceleration = UncappedDriveAcceleration };
         TireConfig tires = WarmTires();
         CarState controlled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState uncontrolled = CreateState(speed: 36f, batterySoc: 0.9f, tires);
@@ -740,12 +748,18 @@ public sealed class CarPhysicsTests
     [Fact]
     public void SideslipDissipatesSpeedAndHeatsRearTiresWhileTheLimiterIntervenes()
     {
-        CarConfig car = new();
+        // Drive the rear cannot take on top of the corner. At this speed
+        // what the rear has left after the corner is more than the stock
+        // car's 12 m/s^2 of drive, so its pedal never reaches the circle;
+        // the limiter is under test, not the motor's ceiling.
+        CarConfig car = new() { MaxDriveAcceleration = UncappedDriveAcceleration };
         TireConfig tires = WarmTires();
         CarState aligned = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarState sliding = CreateState(speed: 36f, batterySoc: 0.9f, tires);
-        sliding.Heading = -0.1f;
-        sliding.SideslipAngleRadians = 0.1f;
+        // Most of the way to the rear's peak slip angle (0.14), so the
+        // corner already takes nearly all of its circle.
+        sliding.Heading = -0.12f;
+        sliding.SideslipAngleRadians = 0.12f;
         CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
         float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
@@ -1220,7 +1234,11 @@ public sealed class CarPhysicsTests
         };
         CarState slow = CreateState(speed: 15f, batterySoc: 0.8f, tires);
         CarState fast = CreateState(speed: 45f, batterySoc: 0.8f, tires);
-        const float targetLateralAccel = 6f;
+        // Two fifths of the car's corner, the share six m/s^2 was when this
+        // was written: much less and the steering's slip compensation fades
+        // and the faster car falls short of what it was asked for.
+        float targetLateralAccel = 0.4f * CarPhysics.EstimateCorneringLimit(
+            slow, car, tires, CarStrategy.Default, slow.Speed);
         float slowCurvature = targetLateralAccel / (slow.Speed * slow.Speed);
         float fastCurvature = targetLateralAccel / (fast.Speed * fast.Speed);
         SetSteadyCorner(slow, car, tires, slowCurvature);
@@ -1434,6 +1452,12 @@ public sealed class CarPhysicsTests
         CarState state = CreateState(speed: 36f, batterySoc: 0.8f, tires);
         const float dt = 1f / 60f;
 
+        // A lap's worth of ordinary running, as shares of what this car has:
+        // a corner at under half its grip, a straight with a quarter of the
+        // drive, a braking zone at a fifth of the brakes into a corner at
+        // two fifths. The shares are what the old fixture's numbers came to
+        // on the car they were written for.
+        CarStrategy strategy = CarStrategy.Default;
         for (int step = 0; step < 120 * 60; step++)
         {
             int phase = step % (10 * 60);
@@ -1441,17 +1465,19 @@ public sealed class CarPhysicsTests
             if (phase < 4 * 60)
             {
                 state.Speed = 36f;
-                input = new DriverInput(0.0075f, 0f);
+                input = new DriverInput(CurvatureForGripShare(state, car, tires, 0.46f), 0f);
             }
             else if (phase < 7 * 60)
             {
                 state.Speed = 48f;
-                input = new DriverInput(0.001f, 3f);
+                float curvature = CurvatureForGripShare(state, car, tires, 0.09f);
+                input = new DriverInput(curvature, DriveForShare(state, car, tires, strategy, curvature, 0.25f));
             }
             else
             {
                 state.Speed = 42f;
-                input = new DriverInput(0.005f, -5f);
+                float curvature = CurvatureForGripShare(state, car, tires, 0.38f);
+                input = new DriverInput(curvature, BrakeForShare(state, car, tires, strategy, curvature, 0.19f));
             }
 
             state.Energy = PowertrainState.Filled(0.8f);
@@ -1878,6 +1904,12 @@ public sealed class CarPhysicsTests
             for (int step = 0; step < 60 * 60; step++)
             {
                 state.Speed = 55f;
+                // Nine tenths of what the car can hold now, read again
+                // each step as a driver reads it: a carcass past its
+                // threshold takes grip away, and nine tenths of the grip
+                // it had at the start is soon more than it has.
+                curvature = CurvatureForGripShare(state, car, tires, share: 0.90f);
+                input = input with { DriverInput = new DriverInput(curvature, 0f) };
                 CarPhysics.Step(state, car, tires, input, 1f / 60f);
                 // The heat balance is what this gate is about. Sixteen
                 // kilometres of cornering at nine tenths wears a set of
@@ -1989,7 +2021,7 @@ public sealed class CarPhysicsTests
                 state, car, tires, strategy, state.Speed, curvature: 0f
             );
             float curvature = phase < 2f
-                ? limits.LateralAccelerationLimit * use /
+                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * use /
                   (state.Speed * state.Speed)
                 : 0f;
             float accel = phase switch
@@ -2320,6 +2352,9 @@ public sealed class CarPhysicsTests
         int steps = 120
     ) => EnterCorner(state, car, tires, input, CarStrategy.Default, steps);
 
+    /// <summary>A drive ceiling high enough that the tyres, not the motor, are what limits it.</summary>
+    private const float UncappedDriveAcceleration = 30f;
+
     private static CarState CreateState(float speed, float batterySoc, TireConfig tires)
     {
         CarState state = new()
@@ -2352,15 +2387,8 @@ public sealed class CarPhysicsTests
         float share
     )
     {
-        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
-            state,
-            car,
-            tires,
-            strategy,
-            state.Speed,
-            curvature: 0f
-        );
-        float lateral = limits.LateralAccelerationLimit * share;
+        float lateral = CarPhysics.EstimateCorneringLimit(
+            state, car, tires, strategy, state.Speed) * share;
         return lateral / MathF.Max(state.Speed * state.Speed, 1e-3f);
     }
 
@@ -2571,7 +2599,7 @@ public sealed class CarPhysicsTests
                 curvature: 0f
             );
             float curvature = phaseSeconds < 2f
-                ? limits.LateralAccelerationLimit * use /
+                ? CarPhysics.EstimateCorneringLimit(state, car, tires, strategy, state.Speed) * use /
                   (state.Speed * state.Speed)
                 : 0f;
             float acceleration = phaseSeconds switch

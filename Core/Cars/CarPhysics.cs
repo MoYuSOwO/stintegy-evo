@@ -77,6 +77,34 @@ public static class CarPhysics
     }
 
     /// <summary>
+    /// The steady corner this car can hold at this speed, read with that
+    /// corner's own load on the outside wheels.
+    ///
+    /// The envelope read at no curvature has every wheel evenly loaded,
+    /// and a tyre whose friction falls with load grips more that way than
+    /// it ever will in a bend; asking for a share of that figure asks for
+    /// more than the car has. This settles the corner on itself: the limit
+    /// read at the curvature the limit implies, a few times over.
+    /// </summary>
+    public static float EstimateCorneringLimit(
+        CarState state,
+        CarConfig config,
+        TireConfig tires,
+        CarStrategy strategy,
+        float speed,
+        float gripUsage = 1f
+    )
+    {
+        float v = MathF.Max(speed, MinimumSlipAngleSpeed);
+        float lateral = EstimatePerformanceLimits(
+            state, config, tires, strategy, v, 0f, gripUsage).LateralAccelerationLimit;
+        for (int i = 0; i < 6; i++)
+            lateral = EstimatePerformanceLimits(
+                state, config, tires, strategy, v, lateral / (v * v), gripUsage).LateralAccelerationLimit;
+        return lateral;
+    }
+
+    /// <summary>
     /// The published performance envelope: what this car can do right now,
     /// computed only from its public parameters (<paramref name="config"/>,
     /// <paramref name="tires"/>), the team's strategy, and physical state.
@@ -111,12 +139,12 @@ public static class CarPhysics
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
-            loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
-            loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
+            WheelGripForce(config, tires, state.FrontLeft, loads.FrontLeft, front: true) +
+            WheelGripForce(config, tires, state.FrontRight, loads.FrontRight, front: true)
         ) / Math.Max(massKg, Epsilon) * usage;
         float rearGrip = (
-            loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
-            loads.RearRight * CalculateTireMu(tires, state.RearRight)
+            WheelGripForce(config, tires, state.RearLeft, loads.RearLeft, front: false) +
+            WheelGripForce(config, tires, state.RearRight, loads.RearRight, front: false)
         ) / Math.Max(massKg, Epsilon) * usage;
 
         // What the car can hold, not what it can touch. See
@@ -228,12 +256,12 @@ public static class CarPhysics
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float mass = Math.Max(massKg, Epsilon);
         float frontGrip = (
-            loads.FrontLeft * CalculateTireMu(tires, state.FrontLeft) +
-            loads.FrontRight * CalculateTireMu(tires, state.FrontRight)
+            WheelGripForce(config, tires, state.FrontLeft, loads.FrontLeft, front: true) +
+            WheelGripForce(config, tires, state.FrontRight, loads.FrontRight, front: true)
         ) / mass * usage;
         float rearGrip = (
-            loads.RearLeft * CalculateTireMu(tires, state.RearLeft) +
-            loads.RearRight * CalculateTireMu(tires, state.RearRight)
+            WheelGripForce(config, tires, state.RearLeft, loads.RearLeft, front: false) +
+            WheelGripForce(config, tires, state.RearRight, loads.RearRight, front: false)
         ) / mass * usage;
 
         return MathF.Max(
@@ -301,8 +329,8 @@ public static class CarPhysics
         );
         ApplyWheelLoads(state, loads);
 
-        float frontGrip = CalculateAxleGripAccel(massKg, tires, state.FrontLeft, state.FrontRight);
-        float rearGrip = CalculateAxleGripAccel(massKg, tires, state.RearLeft, state.RearRight);
+        float frontGrip = CalculateAxleGripAccel(massKg, config, tires, state.FrontLeft, state.FrontRight, front: true);
+        float rearGrip = CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false);
         float totalGrip = Math.Max(Epsilon, frontGrip + rearGrip);
 
         float desiredCurvature = Math.Clamp(
@@ -500,6 +528,7 @@ public static class CarPhysics
             CalculateAxleLateralWorkScales(
                 state,
                 config,
+                tires,
                 front,
                 rear,
                 frontLateralSlipWork,
@@ -626,6 +655,7 @@ public static class CarPhysics
             EffectiveTireWakeDownforceLoss(state, config);
         UpdateTires(
             state.FrontLeft,
+            true,
             config,
             tires,
             frontLateralUse,
@@ -645,6 +675,7 @@ public static class CarPhysics
         );
         UpdateTires(
             state.FrontRight,
+            true,
             config,
             tires,
             frontLateralUse,
@@ -664,6 +695,7 @@ public static class CarPhysics
         );
         UpdateTires(
             state.RearLeft,
+            false,
             config,
             tires,
             rearLateralUse,
@@ -683,6 +715,7 @@ public static class CarPhysics
         );
         UpdateTires(
             state.RearRight,
+            false,
             config,
             tires,
             rearLateralUse,
@@ -930,10 +963,10 @@ public static class CarPhysics
         float tireWakeDownforceLoss =
             EffectiveTireWakeDownforceLoss(state, config);
         float frontSpinGrip = CalculateAxleGripAccel(
-            massKg, tires, state.FrontLeft, state.FrontRight
+            massKg, config, tires, state.FrontLeft, state.FrontRight, front: true
         );
         float rearSpinGrip = CalculateAxleGripAccel(
-            massKg, tires, state.RearLeft, state.RearRight
+            massKg, config, tires, state.RearLeft, state.RearRight, front: false
         );
         foreach (WheelId wheel in Wheels)
         {
@@ -958,6 +991,7 @@ public static class CarPhysics
             float spinSlip = state.SideslipAngleRadians;
             UpdateTires(
                 state.GetTire(wheel),
+                front,
                 config,
                 tires,
                 scrubForce * ScrubWeight(spinSlip, 1f),
@@ -1005,8 +1039,8 @@ public static class CarPhysics
             actualLongitudinalAccel,
             0f,
             0f,
-            CalculateAxleGripAccel(massKg, tires, state.FrontLeft, state.FrontRight),
-            CalculateAxleGripAccel(massKg, tires, state.RearLeft, state.RearRight),
+            CalculateAxleGripAccel(massKg, config, tires, state.FrontLeft, state.FrontRight, front: true),
+            CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false),
             0f,
             0f,
             0f,
@@ -1386,10 +1420,15 @@ public static class CarPhysics
 
         for (int i = 0; i < substeps; i++)
         {
-            frontSlip = FrontSlipAngle(
+            // Below DynamicYawMinimumSpeed a slip angle means nothing (it is
+            // read off a floored speed) and the body turns as its wheels
+            // point, so it fades out with the dynamic model. Read anyway, a
+            // car crawling round in a circle measured its rear at the peak
+            // and the grip limiter took all of its drive away.
+            frontSlip = dynamicYawBlend * FrontSlipAngle(
                 config, steerAngle, sideslip, yawRate, speed
             );
-            rearSlip = RearSlipAngle(config, sideslip, yawRate, speed);
+            rearSlip = dynamicYawBlend * RearSlipAngle(config, sideslip, yawRate, speed);
             front = ResolveAxleSlip(
                 config,
                 frontGrip,
@@ -2036,6 +2075,7 @@ public static class CarPhysics
 
     private static void UpdateTires(
         TireState tire,
+        bool front,
         CarConfig config,
         TireConfig tires,
         float lateralUse,
@@ -2054,7 +2094,12 @@ public static class CarPhysics
         float dt
     )
     {
-        float loadScale = CalculateTireWorkLoadScale(tire, config);
+        float loadScale = CalculateTireWorkLoadScale(tire, config, front);
+        // Work is force times sliding, and with friction falling with load
+        // the force grows more slowly than the load does; heat and wear
+        // from work go with the force. Rolling heat is the carcass flexing
+        // under the load itself, and stays with the load.
+        float forceScale = CalculateTireForceScale(tire, config, tires, front);
         float thermalOverLimit = Math.Min(overLimit, MaximumThermalOverLimit);
         float normalizedLateralUse = Math.Clamp(Math.Abs(lateralUse), 0f, 1f);
         float normalizedLongitudinalUse = Math.Clamp(
@@ -2086,7 +2131,7 @@ public static class CarPhysics
                                            Math.Max(0f, speed) +
                                            TireConfig.RollingHeatReferenceSpeedMps
                                        );
-        float rollingSurfaceHeat = TireConfig.RollingSurfaceHeatRate *
+        float rollingSurfaceHeat = tires.RollingSurfaceHeatRate *
                                    loadScale * rollingHeatSpeedFactor;
 
         // Lateral tread heat is the rubber's own dissipation: the force it
@@ -2172,7 +2217,7 @@ public static class CarPhysics
             (directionalHeat + lateralSlipHeat + nearLimitHeat) +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             wakeCorneringHeat;
-        surfaceHeat *= loadScale;
+        surfaceHeat *= forceScale;
         surfaceHeat += rollingSurfaceHeat;
 
         float airCoolingMultiplier = CalculateAirCoolingMultiplier(
@@ -2182,12 +2227,12 @@ public static class CarPhysics
         float surfaceToTrack = TireConfig.TrackSurfaceTransferRate *
                                (tire.SurfaceTempC - trackTempC);
         float surfaceToCore = TireConfig.SurfaceCoreTransferRate * (tire.SurfaceTempC - tire.CoreTempC);
-        float rollingCoreHeat = TireConfig.RollingCoreHeatRate *
+        float rollingCoreHeat = tires.RollingCoreHeatRate *
                                 loadScale * rollingHeatSpeedFactor;
-        float brakeCoreHeat = TireConfig.BrakeCoreHeatRate *
+        float brakeCoreHeat = tires.BrakeCoreHeatRate *
                               normalizedBrakeUse *
                               tireWorkSpeedMultiplier *
-                              loadScale;
+                              forceScale;
 
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
@@ -2250,7 +2295,7 @@ public static class CarPhysics
             ? Math.Max(0f, speed) / TireConfig.TireWorkReferenceSpeedMps
             : tireWorkSpeedMultiplier;
         float wearDelta = tireWorkWear * wearSpeed *
-                          tempWearFactor * loadScale * dt;
+                          tempWearFactor * forceScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
     }
@@ -2258,6 +2303,7 @@ public static class CarPhysics
     private static AxleLateralWorkScales CalculateAxleLateralWorkScales(
         CarState state,
         CarConfig config,
+        TireConfig tires,
         AxleResult front,
         AxleResult rear,
         float frontSlipWork,
@@ -2265,11 +2311,11 @@ public static class CarPhysics
     )
     {
         float frontLoadWeight =
-            CalculateTireWorkLoadScale(state.FrontLeft, config) +
-            CalculateTireWorkLoadScale(state.FrontRight, config);
+            CalculateTireForceScale(state.FrontLeft, config, tires, front: true) +
+            CalculateTireForceScale(state.FrontRight, config, tires, front: true);
         float rearLoadWeight =
-            CalculateTireWorkLoadScale(state.RearLeft, config) +
-            CalculateTireWorkLoadScale(state.RearRight, config);
+            CalculateTireForceScale(state.RearLeft, config, tires, front: false) +
+            CalculateTireForceScale(state.RearRight, config, tires, front: false);
 
         // Lateral rubber work is force times deformation. In this reduced
         // model deformation is not a state of its own, so use the small-angle
@@ -2341,19 +2387,46 @@ public static class CarPhysics
 
     private static float CalculateTireWorkLoadScale(
         TireState tire,
-        CarConfig config
+        CarConfig config,
+        bool front
     )
     {
-        // Chassis mass on purpose, not what the car weighs at this moment.
-        // This is the reference a tyre's work is counted against, and a
-        // reference that fell with the fuel load would cancel the very effect
-        // it is there to show: a car that has burned half its fuel presses
-        // its tyres less hard and should be recorded as working them less.
+        // Against the load the tyre was sized for (WheelGripForce), so the
+        // wider tyres of the heavier axle are not charged for carrying the
+        // weight they were chosen to carry. Chassis mass on purpose, not
+        // what the car weighs at this moment: a reference that fell with
+        // the fuel load would cancel the very effect it is there to show,
+        // a car that has burned half its fuel pressing its tyres less hard.
         return Math.Max(
             MinimumTireHeatLoadScale,
-            tire.LoadN /
-            Math.Max(config.MassKg * Gravity * 0.25f, Epsilon)
+            tire.LoadN / Math.Max(SizedWheelLoad(config, front), Epsilon)
         );
+    }
+
+    /// <summary>
+    /// The force a tyre can give at its load, against what it gives at the
+    /// load it was sized for: the load scale with load sensitivity taken
+    /// off (WheelGripForce). What a tyre's work is counted against.
+    /// </summary>
+    private static float CalculateTireForceScale(
+        TireState tire,
+        CarConfig config,
+        TireConfig tires,
+        bool front
+    )
+    {
+        float scale = CalculateTireWorkLoadScale(tire, config, front);
+        return MathF.Pow(
+            MathF.Max(scale, MinimumLoadSensitivityRatio),
+            1f - Math.Clamp(tires.LoadSensitivity, 0f, 1f)
+        );
+    }
+
+    /// <summary>What one wheel of this axle carries with the car standing: the load its tyre is sized for.</summary>
+    private static float SizedWheelLoad(CarConfig config, bool front)
+    {
+        float axleShare = Math.Clamp(config.FrontStaticLoadShare, 0.05f, 0.95f);
+        return config.MassKg * Gravity * 0.5f * (front ? axleShare : 1f - axleShare);
     }
 
     private static float CalculateTemperatureWearFactor(
@@ -2385,13 +2458,15 @@ public static class CarPhysics
 
     private static float CalculateAirCoolingMultiplier(float speed)
     {
-        float speedFactor = Math.Max(0f, speed) /
-                            (
-                                Math.Max(0f, speed) +
-                                TireConfig.SpeedCoolingReferenceMps
-                            );
-        return 1f +
-               (TireConfig.MaximumSpeedCoolingMultiplier - 1f) * speedFactor;
+        // Still air cools the tyre at the base rate; past the speed where
+        // the flow outdoes it, forced convection takes over.
+        return MathF.Max(
+            1f,
+            TireConfig.SpeedCoolingAtReference * MathF.Pow(
+                Math.Max(0f, speed) / TireConfig.SpeedCoolingReferenceMps,
+                TireConfig.SpeedCoolingExponent
+            )
+        );
     }
 
     private static WheelLoads CalculateWheelLoads(
@@ -2456,7 +2531,7 @@ public static class CarPhysics
         float rearLoad = totalLoad - frontLoad;
         float lateralTransfer = massKg * lateralAcceleration * config.CenterOfGravityHeightMeters /
                                 Math.Max(config.TrackWidthMeters, Epsilon);
-        float frontTransfer = lateralTransfer * frontLoad / Math.Max(totalLoad, Epsilon);
+        float frontTransfer = lateralTransfer * Math.Clamp(config.FrontLateralLoadTransferShare, 0f, 1f);
         float rearTransfer = lateralTransfer - frontTransfer;
 
         float fl = frontLoad * 0.5f - frontTransfer * 0.5f;
@@ -2522,9 +2597,11 @@ public static class CarPhysics
 
     private static float CalculateAxleGripAccel(
         float massKg,
+        CarConfig config,
         TireConfig tires,
         TireState left,
-        TireState right
+        TireState right,
+        bool front
     )
     {
         // Each wheel brings its own road with it. A car straddling the
@@ -2532,12 +2609,45 @@ public static class CarPhysics
         // grass, and the axle is worth the sum of the two rather than the
         // better of them - so half a car off the road is half an axle's
         // grip gone, and the cost of running wide scales with how far.
-        float leftForce = left.LoadN * CalculateTireMu(tires, left) *
+        float leftForce = WheelGripForce(config, tires, left, left.LoadN, front) *
                           MathF.Max(0f, left.SurfaceGrip);
-        float rightForce = right.LoadN * CalculateTireMu(tires, right) *
+        float rightForce = WheelGripForce(config, tires, right, right.LoadN, front) *
                            MathF.Max(0f, right.SurfaceGrip);
         return (leftForce + rightForce) / Math.Max(massKg, Epsilon);
     }
+
+    /// <summary>
+    /// The most force a tyre can give at this load: the load times its
+    /// friction, and the friction falls as the load rises (load
+    /// sensitivity). A tyre pressed twice as hard grips less than twice as
+    /// hard, which is why a car's cornering grows more slowly than its
+    /// downforce, and why moving load from the inside wheels to the
+    /// outside ones in a corner costs the axle grip.
+    ///
+    /// Measured from the load the tyre was sized for: what its own wheel
+    /// carries with the car standing. The axle carrying more of the car
+    /// runs wider tyres, as the rear of a racing car does, so standing
+    /// still front and rear grip in proportion to the weight each holds
+    /// and the car is balanced; with one size all round the heavier axle
+    /// would be the weaker one in every corner, and a car with its weight
+    /// behind the middle would oversteer at the limit and spin.
+    /// </summary>
+    private static float WheelGripForce(CarConfig config, TireConfig tires, TireState tire, float loadN, bool front)
+    {
+        float ratio = MathF.Max(
+            loadN / MathF.Max(SizedWheelLoad(config, front), Epsilon),
+            MinimumLoadSensitivityRatio
+        );
+        return loadN * CalculateTireMu(tires, tire) *
+               MathF.Pow(ratio, -Math.Max(0f, tires.LoadSensitivity));
+    }
+
+    /// <summary>
+    /// The lightest load, as a share of the one its tyre was sized for, whose friction still
+    /// rises as it lightens. A wheel all but off the ground gives next to
+    /// nothing anyway; without a floor its friction would run to infinity.
+    /// </summary>
+    private const float MinimumLoadSensitivityRatio = 0.2f;
 
     private static float CalculateTireMu(TireConfig tires, TireState tire)
     {
