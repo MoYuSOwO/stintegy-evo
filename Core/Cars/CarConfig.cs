@@ -35,6 +35,16 @@ public sealed class CarConfig
     public float TrackWidthMeters { get; init; } = 1.65f;
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
     public float FrontStaticLoadShare { get; init; } = 0.47f;
+
+    /// <summary>
+    /// The front axle's share of the load a corner moves from the inside
+    /// wheels to the outside ones: the roll stiffness split, set with the
+    /// anti-roll bars. With tyres whose grip falls with load, the axle that
+    /// takes more of it loses more grip, so a front share above the
+    /// weight's makes the front the end that runs out first at the limit,
+    /// and a car that runs wide rather than spinning when its tyres fade.
+    /// </summary>
+    public float FrontLateralLoadTransferShare { get; init; } = 0.55f;
     /// <summary>
     /// How much lateral deformation the front axle needs for the same force,
     /// relative to the rear axle. One means equal compliance; a larger value
@@ -159,15 +169,12 @@ public sealed class CarConfig
     /// What the brakes themselves can do, before the tyres are asked whether
     /// they will take it.
     ///
-    /// Raised from 1.2g when downforce arrived, because it had quietly become
-    /// the thing that stopped the car. With wings the tyres will bear five g at
-    /// speed, and a cap below that means the model brakes like a road car at
-    /// the one moment a racing car does not. Calibrated with the wings and the
-    /// drag together against published lap times: the three test circuits land
-    /// within one per cent, cornering settles at 3.5g, braking at 4.1g and top
-    /// speed at 301 km/h, all of which is where a Formula 2 car lives.
+    /// It is not what stops the car, the tyres are: set where a Formula One
+    /// car's heaviest stops peak in Brembo's figures (5.5 to 5.9 g, from
+    /// above 300 km/h), so at the top of the speed range the brakes and the
+    /// tyres run out together and everywhere else the tyres go first.
     /// </summary>
-    public float MaxBrakeAccel { get; init; } = 40f;
+    public float MaxBrakeAccel { get; init; } = 57f;
     /// <summary>
     /// The combined-grip limiter: an electronic stability device on the car,
     /// which this class of racing permits. It trims each axle's longitudinal
@@ -215,20 +222,27 @@ public sealed class CarConfig
 
     /// <summary>
     /// Downforce, in newtons per squared metre per second: half the air's
-    /// density times the lift area.
+    /// density times the lift area. A force, the wings and floor against the
+    /// air, the same whatever the car weighs.
     ///
-    /// A force for the same reason as the drag: it is the wings and floor
-    /// against the air, the same whatever the car weighs. Written once as an
-    /// acceleration to set beside gravity, it was multiplied back up by the
-    /// car's whole mass, so fuel aboard bought downforce. 3.15 is a lift area
-    /// of about 5.1 m² and a lift to drag ratio of about 3.9, a high-downforce
-    /// single-seater, and the 0.0035 per kilogram the car had at 900 kg dry.
+    /// 5.6 is a lift area of about 9 m²: downforce equal to the car's own
+    /// weight at about 145 km/h, the rule of thumb for a Formula One car.
+    /// Set with the tyres' load sensitivity against what such a car
+    /// corners at: about 2 g in Monaco's hairpin, 3.3 g through Tabac at
+    /// 160 km/h (Pirelli), 5 to 6 g through Maggotts and Becketts at
+    /// 300 km/h.
+    ///
+    /// The drag was left where it was, so the lift to drag ratio is about
+    /// 6.9, twice a Formula One car's 2.5 to 3.5: a near-future car, whose
+    /// floor makes downforce far more cheaply than any built yet. That is a
+    /// setting, not an oversight; it is what keeps the straights quick on
+    /// this powertrain.
     ///
     /// Zero is a car with no wings at all: grip that does not care how fast
     /// the car is going, so a fast corner is worth no more than a slow one of
     /// the same radius.
     /// </summary>
-    public float DownforcePerSpeedSquared { get; init; } = 3.15f;
+    public float DownforcePerSpeedSquared { get; init; } = 5.6f;
 
     /// <summary>
     /// How much of its own speed the air is still carrying directly behind

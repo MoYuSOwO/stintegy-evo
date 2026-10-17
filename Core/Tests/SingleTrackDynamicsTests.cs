@@ -34,9 +34,9 @@ public sealed class SingleTrackDynamicsTests
     ///
     /// This is the constraint the tyre curve was solved against. The peak of
     /// the curve is one by construction, so an axle at its best slip angle
-    /// delivers exactly the grip it has, and the car's limit is the same
-    /// three and a half g it was before any of this - which is what makes
-    /// every lap time on record still comparable.
+    /// delivers exactly the grip it has. At 216 km/h a Formula One car
+    /// corners at about four and a quarter g, between Tabac's 3.3 at 160
+    /// and Maggotts' five to six at 300.
     /// </summary>
     [Fact]
     public void SteadyCorneringStillFindsTheCarsOwnEnvelope()
@@ -69,15 +69,13 @@ public sealed class SingleTrackDynamicsTests
             $"({grip / 9.80665f:0.00} g), used {best / grip * 100f:0.0}%"
         );
         Assert.True(
-            best > 3.0f * 9.80665f && best < 3.9f * 9.80665f,
-            $"steady cornering should land in the Formula 2 band the chassis " +
-            $"was calibrated to; got {best / 9.80665f:0.00} g"
+            best > 3.8f * 9.80665f && best < 4.8f * 9.80665f,
+            $"steady cornering at 216 km/h should land in a Formula One car's " +
+            $"band; got {best / 9.80665f:0.00} g"
         );
         // Short of the whole circle, because a tyre's peak is a peak: sit
         // exactly on it and the next disturbance takes force away rather
-        // than adding it. The old model could spend the whole circle, and
-        // spent 96.6% of it on this same manoeuvre, so the envelope has not
-        // moved - which is what keeps every lap time on record comparable.
+        // than adding it.
         Assert.InRange(best / grip, 0.85f, 0.99f);
     }
 
@@ -528,8 +526,11 @@ public sealed class SingleTrackDynamicsTests
         // Sliding is where tread heat comes from since the heat balance was
         // moved towards it (TireConfig.LateralHeatRate), so a spin heats the
         // fronts by tens of degrees -- to where a spun tyre smokes -- and the
-        // cap on sliding heat keeps it there rather than at a melt.
-        Assert.InRange(heatRise, 30f, 60f);
+        // cap on sliding heat keeps it there rather than at a melt. About 28
+        // on tyres sized for a Formula One car's loads, whose heat for the
+        // same work is three fifths of what the old car's was: the general
+        // calibration moved, and the spin moved with it.
+        Assert.InRange(heatRise, 25f, 60f);
         // And the thing that must not come back: a spin has to cost
         // something well above ordinary cornering, or the referee is
         // declaring an event the car does not feel.

@@ -209,8 +209,10 @@ public sealed class CorneringDragTests
         CarConfig car = new();
         TireConfig tires = WarmTires();
         CarState state = Rolling(2f);
+        float crawlingDrag = 0f;
         for (int i = 0; i < 30; i++)
         {
+            bool crawling = state.Speed < CarPhysics.DynamicYawMinimumSpeed;
             CarPhysics.Step(
                 state,
                 car,
@@ -223,9 +225,13 @@ public sealed class CorneringDragTests
                 ),
                 Dt
             );
+            // Charged nothing while it crawls; past the crawl it is a
+            // car turning, and pays as one.
+            if (crawling)
+                crawlingDrag = MathF.Max(crawlingDrag, state.Telemetry.InducedDragAccel);
         }
 
-        Near.Equal(0f, state.Telemetry.InducedDragAccel);
+        Near.Equal(0f, crawlingDrag);
         Assert.True(
             state.Speed > 2f,
             $"a car at walking pace on full lock lost speed ({state.Speed:0.00} m/s)"
