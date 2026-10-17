@@ -90,8 +90,12 @@ internal static class Sources
                     $"Track centerline row has {fields.Length} fields; four are required."
                 );
 
+            // The sources are drawn as a map is, y to the north; the game's
+            // plane has y to the south (Godot's, and what Core's left and
+            // right are defined against), so y turns over here, once,
+            // or every circuit comes out as its mirror image.
             float x = Parse(fields[0]);
-            float y = Parse(fields[1]);
+            float y = -Parse(fields[1]);
             float rightWidth = Parse(fields[2]);
             float leftWidth = Parse(fields[3]);
             points.Add(

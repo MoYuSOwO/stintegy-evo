@@ -587,7 +587,9 @@ internal static class Centreline
             tangent = tangent.LengthSquared() <= 1e-8f
                 ? Vector2.UnitX
                 : Vector2.Normalize(tangent);
-            Vector2 rightNormal = new(tangent.Y, -tangent.X);
+            // Right of travel with y to the south, the opposite of Core's
+            // left-positive normal.
+            Vector2 rightNormal = new(-tangent.Y, tangent.X);
             TrackCenterlinePoint control = controls[i];
             Vector2 center = control.Center + rightNormal *
                 ((control.RightWidth - control.LeftWidth) * 0.5f);
