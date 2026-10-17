@@ -15,11 +15,18 @@ public static class CarPhysics
     private const float MinimumWearGripFactor = 0.45f;
     /// <summary>
     /// Below this speed the lateral model is kinematic: sideslip is not
-    /// carried and the body follows its path. Contact resolvers read it to
+    /// carried and the body turns as its wheels point, speed times the
+    /// tangent of the lock over the wheelbase. Contact resolvers read it to
     /// know where an attitude they hand over would simply be discarded.
+    ///
+    /// It is where the slip-angle model has to stop, not anywhere it could
+    /// carry on: a slip angle divides by speed, and the lateral pair's time
+    /// constants shrink with it until a physics step cut into its most
+    /// pieces cannot follow them, which for this car is about 2.5 m/s. Any
+    /// racing corner, the slowest hairpin included, is well above it.
     /// </summary>
-    internal const float DynamicYawMinimumSpeed = 5f;
-    private const float DynamicYawBlendRange = 5f;
+    internal const float DynamicYawMinimumSpeed = 3f;
+    private const float DynamicYawBlendRange = 2f;
 
     /// <summary>
     /// Speed below which a slip angle stops meaning anything, because the
@@ -1336,10 +1343,10 @@ public static class CarPhysics
     /// relative to where it is going, and how fast that is changing - and
     /// report what the axles did on the way.
     ///
-    /// Below walking pace the slip angles are meaningless, so the same
-    /// kinematic blend the model has always used takes over: the body
-    /// simply follows the path. Above it the car is free to be out of
-    /// shape, and there is no clamp anywhere that says how far.
+    /// Below DynamicYawMinimumSpeed the slip angles are meaningless, so the
+    /// kinematic blend takes over: the body turns as its wheels point and
+    /// carries no sideslip. Above it the car is free to be out of shape,
+    /// and there is no clamp anywhere that says how far.
     /// </summary>
     private static LateralIntegration IntegrateLateral(
         CarState state,
@@ -1413,6 +1420,14 @@ public static class CarPhysics
             // two, and it grows whenever the body is turning faster than
             // the car is actually going round.
             float velocityYawRate = speed > 0.5f ? pathStep / speed : 0f;
+            // Kinematic, the body turns as the wheels point. Not from the
+            // tyre force over the speed: the force is read off a slip angle
+            // floored at MinimumSlipAngleSpeed, so it does not shrink as the
+            // car slows, and divided by a speed that does it turned a
+            // degree of lock at walking pace into the body spinning round,
+            // which the driver then fought to full lock off the line.
+            float kinematicYawRate = speed *
+                MathF.Tan(steerAngle) / MathF.Max(config.WheelBaseMeters, Epsilon);
             float dynamicYawRate = Math.Clamp(
                 yawRate + yawStep * h,
                 -SingleTrackDynamicsLimits.MaximumYawRateRadiansPerSecond,
@@ -1420,8 +1435,9 @@ public static class CarPhysics
             );
             float dynamicSideslip = sideslip + (velocityYawRate - yawRate) * h;
             float nextYawRate = Lerp(
-                velocityYawRate, dynamicYawRate, dynamicYawBlend
+                kinematicYawRate, dynamicYawRate, dynamicYawBlend
             );
+            pathStep = Lerp(speed * kinematicYawRate, pathStep, dynamicYawBlend);
             float nextSideslip = dynamicSideslip * dynamicYawBlend;
 
             headingDelta += (yawRate + nextYawRate) * 0.5f * h;
