@@ -2458,13 +2458,15 @@ public static class CarPhysics
 
     private static float CalculateAirCoolingMultiplier(float speed)
     {
-        float speedFactor = Math.Max(0f, speed) /
-                            (
-                                Math.Max(0f, speed) +
-                                TireConfig.SpeedCoolingReferenceMps
-                            );
-        return 1f +
-               (TireConfig.MaximumSpeedCoolingMultiplier - 1f) * speedFactor;
+        // Still air cools the tyre at the base rate; past the speed where
+        // the flow outdoes it, forced convection takes over.
+        return MathF.Max(
+            1f,
+            TireConfig.SpeedCoolingAtReference * MathF.Pow(
+                Math.Max(0f, speed) / TireConfig.SpeedCoolingReferenceMps,
+                TireConfig.SpeedCoolingExponent
+            )
+        );
     }
 
     private static WheelLoads CalculateWheelLoads(
