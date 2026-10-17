@@ -306,6 +306,47 @@ public sealed class WallContactDynamicsTests
         return (car, firstContactYaw);
     }
 
+    /// <summary>
+    /// Flush against the wall through a bend and moving along it, a step
+    /// gets the car most of its move, wherever on the lap and whether it
+    /// points a shade into the wall or a shade away. The slide along the
+    /// wall is straight and the wall curves into it: a car put back a tenth
+    /// of a millimetre clear met the wall again a few centimetres down every
+    /// slide, and stood still against the barrier at full speed for as long
+    /// as it pressed on it.
+    /// </summary>
+    [Fact]
+    public void ACarFlushWithTheWallThroughABendCanRunAlongIt()
+    {
+        var collision = new CarCollisionConfig();
+        int poses = 0;
+        for (float s = 0f; s < Track.LengthMeters; s += 7f)
+        {
+            if (MathF.Abs(Track.Sample(s).Curvature) < 1e-3f)
+                continue;
+            foreach (float headingIntoWall in new[] { -0.003f, 0f, 0.003f, 0.009f })
+            {
+                // Pressed a centimetre into the wall, and put back out of it
+                // the way the simulation does at the start of a step.
+                (Vector2 position, float heading) = NearLeftWall(s, collision.HalfWidthMeters - 0.01f, headingIntoWall);
+                CarState start = new() { Position = position, Heading = heading, Speed = 42f };
+                TrackBoundaryResolver.ResolveCurrent(Track, start, collision);
+
+                CarState target = new();
+                target.CopyFrom(start);
+                Vector2 forward = new(MathF.Cos(start.Heading), MathF.Sin(start.Heading));
+                target.Position = start.Position + forward * 0.35f;
+                TrackBoundaryResolver.ResolveSweep(Track, start, target, collision);
+
+                float moved = Vector2.Distance(start.Position, target.Position);
+                Assert.True(moved > 0.25f, $"at {s} m, {headingIntoWall} rad into the wall: moved {moved:F4} m of 0.35");
+                Assert.True(TrackBoundaryResolver.IsInsideTrackWalls(Track, target, collision), $"through the wall at {s} m");
+                poses++;
+            }
+        }
+        Assert.True(poses > 50, $"only {poses} poses in bends");
+    }
+
     private static float KineticEnergy(CarState state, CarConfig car) =>
         0.5f * car.MassKg * state.Speed * state.Speed +
         0.5f * car.YawInertiaKgM2 *
