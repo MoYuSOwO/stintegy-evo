@@ -19,8 +19,8 @@
     "speedLimitFromMeters": 45,
     "speedLimitToMeters": 411,
     "boxes": {
-      "count": 19,
-      "firstMeters": 97,
+      "count": 12,
+      "firstMeters": 151,
       "spacingMeters": 14,
       "offsetMeters": -3
     }

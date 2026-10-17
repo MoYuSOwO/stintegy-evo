@@ -221,31 +221,50 @@ static class CircuitSpecs
     [
         new("silverstone", "Silverstone (Arena Grand Prix)", Layouts.SilverstoneStyleTestTrack,
             FromTum("TUM smoothed OpenStreetMap centreline with surveyed widths, scaled to the FIA 5,891 m. " + Authored), TumLicense,
-            // Behind the pit wall along the Hamilton straight, from the exit of Club to before Abbey.
-            new PitSpec(EntryFromLine: -180, ExitFromLine: 270, Side: -1, SpeedLimitKph: 80f)),
+            // The Wing: inside the Hamilton straight, from the exit of Club to before Abbey.
+            new PitSpec(EntryRow: -82, ExitRow: 368, Side: -1, SpeedLimitKph: 80f)),
         new("shanghai", "Shanghai International Circuit", Layouts.ShanghaiStyleTestTrack,
-            FromTum("TUM centreline and satellite widths, scaled from 5,445.25 m to the FIA 5,451 m. " + Authored), TumLicense),
+            FromTum("TUM centreline and satellite widths, scaled from 5,445.25 m to the FIA 5,451 m. " + Authored), TumLicense,
+            // Inside the start straight, from the exit of the last hairpin to before the first corner.
+            new PitSpec(EntryRow: -240, ExitRow: 400, Side: -1, SpeedLimitKph: 80f)),
         new("sepang", "Sepang International Circuit", Layouts.SepangStyleTestTrack,
-            FromTum("TUM centreline scaled to 5,543 m; widths normalised to the operator's 16-22 m. " + Authored), TumLicense),
+            FromTum("TUM centreline scaled to 5,543 m; widths normalised to the operator's 16-22 m. " + Authored), TumLicense,
+            // Inside the start straight, from the exit of the last hairpin to before the first corner.
+            new PitSpec(EntryRow: -300, ExitRow: 450, Side: -1, SpeedLimitKph: 80f)),
         new("monaco", "Circuit de Monaco", Layouts.MonacoStyleTestTrack,
-            FromBacinger("mc-1929 @ b8c7e17c", "Projected to local metres, rotated to start on Boulevard Albert 1er, 8-15.5 m wide by section from OpenStreetMap (ODbL), walled at the kerb, scaled to the FIA 3,337 m. " + Authored), BacingerLicense),
+            FromBacinger("mc-1929 @ b8c7e17c", "Projected to local metres, rotated to start on Boulevard Albert 1er, 8-15.5 m wide by section from OpenStreetMap (ODbL), walled at the kerb, scaled to the FIA 3,337 m. " + Authored), BacingerLicense,
+            // Inside Boulevard Albert 1er, from Anthony Noghes to before Sainte Devote; sixty, as at Monaco.
+            new PitSpec(EntryRow: -245, ExitRow: 195, Side: -1, SpeedLimitKph: 60f)),
         new("zandvoort", "Circuit Zandvoort", Layouts.ZandvoortStyleTestTrack,
-            FromBacinger("nl-1948", "Projected to local metres, about 10 m wide from OpenStreetMap (ODbL), scaled to 4,259 m; Hugenholtz and Arie Luyendijk banked at 18 degrees. " + Authored), BacingerLicense),
+            FromBacinger("nl-1948", "Projected to local metres, about 10 m wide from OpenStreetMap (ODbL), scaled to 4,259 m; Hugenholtz and Arie Luyendijk banked at 18 degrees. " + Authored), BacingerLicense,
+            // Outside the start straight, from Arie Luyendijk to before Tarzan (Hugenholtz is
+            // inside it); sixty, as at Zandvoort.
+            new PitSpec(EntryRow: -270, ExitRow: 300, Side: 1, SpeedLimitKph: 60f)),
         new("baku", "Baku City Circuit", Layouts.BakuStyleTestTrack,
-            FromBacinger("az-2016", "Projected, rotated to start on a straight, scaled to 6,003 m; widths by section from OpenStreetMap (ODbL), 7.6 m at the castle, walled at the kerb. " + Authored), BacingerLicense),
+            FromBacinger("az-2016", "Projected, rotated to start on a straight, scaled to 6,003 m; widths by section from OpenStreetMap (ODbL), 7.6 m at the castle, walled at the kerb. " + Authored), BacingerLicense,
+            // Beside the long run down Neftchilar Avenue, either side of the line, to before the first corner.
+            new PitSpec(EntryRow: -350, ExitRow: 400, Side: 1, SpeedLimitKph: 80f)),
         new("spa", "Circuit de Spa-Francorchamps", Layouts.SpaStyleTestTrack,
             FromBacinger("be-1925", "Projected, rotated to start on a straight, 13 m wide, scaled to 7,004 m. " + Authored), BacingerLicense,
-            // Along the straight the line is on, either side of it.
-            new PitSpec(EntryFromLine: -250, ExitFromLine: 250, Side: -1, SpeedLimitKph: 80f)),
+            // Inside the climb from the Bus Stop to La Source, where the line really is (row 1580).
+            new PitSpec(EntryRow: 1300, ExitRow: 1805, Side: -1, SpeedLimitKph: 80f)),
         new("monza", "Autodromo Nazionale Monza", Layouts.MonzaStyleTestTrack,
-            FromBacinger("it-1922", "Projected, 12 m wide, scaled to 5,793 m. " + Authored), BacingerLicense),
+            FromBacinger("it-1922", "Projected, 12 m wide, scaled to 5,793 m. " + Authored), BacingerLicense,
+            // Inside the main straight, from the tail of the Parabolica to before the Rettifilo.
+            new PitSpec(EntryRow: -560, ExitRow: 300, Side: -1, SpeedLimitKph: 80f)),
         new("interlagos", "Autodromo Jose Carlos Pace", Layouts.InterlagosStyleTestTrack,
-            FromBacinger("br-1940", "Projected, 12 m wide, scaled to 4,309 m. " + Authored), BacingerLicense),
+            FromBacinger("br-1940", "Projected, 12 m wide, scaled to 4,309 m. " + Authored), BacingerLicense,
+            // On the left, from the climb out of Junção to before the Senna S.
+            new PitSpec(EntryRow: -450, ExitRow: 240, Side: 1, SpeedLimitKph: 80f)),
         new("singapore", "Marina Bay Street Circuit", Layouts.SingaporeStyleTestTrack,
             FromBacinger("sg-2008", "Projected, rotated to start on a straight, 9-16 m wide by section from OpenStreetMap (ODbL), walled at the kerb, scaled to 4,928 m. " + Authored +
-                " (SRTM reads the tower blocks along it; the published figure is 5 m, which the authored profile keeps.)"), BacingerLicense),
+                " (SRTM reads the tower blocks along it; the published figure is 5 m, which the authored profile keeps.)"), BacingerLicense,
+            // Beside the start straight, from the last corner to past the first kink; sixty, as at Marina Bay.
+            new PitSpec(EntryRow: 136 - 240, ExitRow: 136 + 380, Side: -1, SpeedLimitKph: 60f)),
         new("portimao", "Autodromo Internacional do Algarve", Layouts.PortimaoStyleTestTrack,
-            FromBacinger("pt-2008", "Projected, 14-18 m wide from OpenStreetMap (ODbL), scaled to 4,653 m. " + Authored), BacingerLicense),
+            FromBacinger("pt-2008", "Projected, 14-18 m wide from OpenStreetMap (ODbL), scaled to 4,653 m. " + Authored), BacingerLicense,
+            // Inside the start straight, from the last corner to before the first.
+            new PitSpec(EntryRow: -450, ExitRow: 300, Side: -1, SpeedLimitKph: 80f)),
         new("simple", "Simple test layout", () => Layouts.SimpleTestTrack(),
             Project("Hairpin, esses, a 30 m climb and two banked corners, turning right.")),
         new("simple-left", "Simple test layout, mirrored", () => Layouts.SimpleTestTrack(isLeft: true),

@@ -9,7 +9,12 @@ namespace StintegyEVO.Core.Tests;
 
 public sealed class PitLaneTests
 {
-    public static TheoryData<string> CircuitsWithPits => new() { "silverstone", "spa" };
+    /// <summary>Every real circuit has its pit lane.</summary>
+    public static TheoryData<string> CircuitsWithPits => new()
+    {
+        "baku", "interlagos", "monaco", "monza", "portimao", "sepang", "shanghai",
+        "silverstone", "singapore", "spa", "zandvoort",
+    };
 
     private static (TrackData Track, PitLane Lane) Load(string id)
     {
@@ -118,8 +123,8 @@ public sealed class PitLaneTests
     [Fact]
     public void ACircuitWithoutOneLoadsWithout()
     {
-        Assert.Null(CircuitLibrary.Manifest("monza").PitLane);
-        Assert.Null(CircuitLibrary.Load("monza").PitLane);
+        Assert.Null(CircuitLibrary.Manifest("banked-sweeper").PitLane);
+        Assert.Null(CircuitLibrary.Load("banked-sweeper").PitLane);
         Assert.Null(CircuitLibrary.Load("simple").PitLane);
     }
 

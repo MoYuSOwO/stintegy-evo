@@ -5,12 +5,14 @@ namespace StintegyEVO.Circuits;
 
 /// <summary>
 /// Where a circuit's pit lane is, as far as anyone authoring it has to say:
-/// how far before the line it leaves the track, how far after it comes
-/// back, on which side (+1 left, -1 right, looking along the lap), and
-/// the limit. The shape follows from the road; the rest is the same at
-/// every circuit.
+/// the row of the track file where it leaves the track and the row where
+/// it comes back (a negative row counts back from the end of the lap), on
+/// which side (+1 left, -1 right, looking along the lap), and the limit.
+/// Rows, not distances from the line, because the pit lane is where the
+/// pit lane is: moving the line does not move it. The shape follows from
+/// the road; the rest is the same at every circuit.
 /// </summary>
-internal sealed record PitSpec(int EntryFromLine, int ExitFromLine, int Side, float SpeedLimitKph);
+internal sealed record PitSpec(int EntryRow, int ExitRow, int Side, float SpeedLimitKph);
 
 /// <summary>
 /// Draws a pit lane beside the road it belongs to: out of the road's edge
@@ -44,10 +46,9 @@ internal static class Pits
     public static (CircuitPitLane Lane, PitLaneFile.Row[] Rows) Build(PitSpec spec, TrackData track, float[] heights)
     {
         int n = heights.Length;
-        int line = (int)MathF.Round(track.StartingLineS / TrackData.StepLength);
-        int entry = (line + spec.EntryFromLine + n) % n;
-        int exit = (line + spec.ExitFromLine + n) % n;
-        int span = spec.ExitFromLine - spec.EntryFromLine;
+        int entry = (spec.EntryRow % n + n) % n;
+        int exit = (spec.ExitRow % n + n) % n;
+        int span = (exit - entry + n) % n;
         if (span <= 2 * RampMeters)
             throw new InvalidOperationException($"A pit lane of {span} m along the track has no room to move off it and back.");
 
@@ -69,8 +70,11 @@ internal static class Pits
         PitLaneFile.Row[] rows = Respace(shape);
 
         int length = rows.Length - 1;
-        float garagesFrom = RampMeters + BoxSpacingMeters * 0.5f;
-        int boxes = (int)MathF.Floor((length - 2f * garagesFrom) / BoxSpacingMeters) + 1;
+        // A box for each team, two cars to a team, as many as the grid
+        // holds and the lane has room for behind the wall; in the middle.
+        float room = length - 2f * RampMeters - BoxSpacingMeters;
+        int boxes = Math.Min((int)MathF.Floor(room / BoxSpacingMeters) + 1, (track.StartingGridCount + 1) / 2);
+        float garagesFrom = (length - (boxes - 1) * BoxSpacingMeters) * 0.5f;
         var lane = new CircuitPitLane
         {
             LengthMeters = length,

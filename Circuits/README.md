@@ -59,8 +59,8 @@ rules, the same at every circuit, and are not written here.
 
 ## The pit lane
 
-A circuit may have a pit lane; one with none simply has no `pitLane` in
-its `circuit.json`. Where there is one:
+Every real circuit has a pit lane; one with none, such as the test
+layouts, simply has no `pitLane` in its `circuit.json`. Where there is one:
 
 ```json
 "pitLane": {
@@ -71,7 +71,7 @@ its `circuit.json`. Where there is one:
   "speedLimitKph": 80,
   "speedLimitFromMeters": 45,
   "speedLimitToMeters": 411,
-  "boxes": { "count": 19, "firstMeters": 97, "spacingMeters": 14, "offsetMeters": -3 }
+  "boxes": { "count": 12, "firstMeters": 151, "spacingMeters": 14, "offsetMeters": -3 }
 }
 ```
 
