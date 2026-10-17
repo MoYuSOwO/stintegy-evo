@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
@@ -62,6 +63,30 @@ public sealed class CarInterfaceTests
     }
 
     /// <summary>
+    /// A car with two ladders of its own -- an engine map and a hybrid's
+    /// deployment -- has each set on its own, shown on the screen under its
+    /// own names, and a strategy that never touched one leaves it where the
+    /// ladder sits.
+    /// </summary>
+    [Fact]
+    public void ACarDeclaresAsManyLaddersAsItHas()
+    {
+        var maps = new ModeLadder("engine_map", "Engine map", ["Lean", "Rich", "Qualifying"]);
+        var deploy = new ModeLadder("deployment", "Deployment", ["Harvest", "Balanced", "Deploy", "Overtake"]);
+
+        CarStrategy strategy = CarStrategy.Default.WithRung(1, 4);
+        Assert.Equal(2, strategy.Rung(0, maps));
+        Assert.Equal(4, strategy.Rung(1, deploy));
+        Assert.Equal(3, strategy.WithRung(0, 9).Rung(0, maps));
+        Assert.Equal(CarStrategy.Default.WithRung(1, 4), strategy);
+
+        var dashboard = new CarDashboard();
+        foreach ((ModeLadder ladder, int i) in new[] { (maps, 0), (deploy, 1) })
+            dashboard.AddMode(ladder, strategy.Rung(i, ladder));
+        Assert.Equal(["Rich", "Overtake"], dashboard.Modes.Select(m => m.Rung));
+    }
+
+    /// <summary>
     /// A car's own electronics on the game's chassis: built on it, with one
     /// thing done its own way, and nothing in the race able to tell.
     /// </summary>
@@ -104,7 +129,7 @@ public sealed class CarInterfaceTests
 
         public ModeLadder OutputLadder { get; } = new("Box ladder", "Slow", "Fast");
 
-        public float DriveAccelerationLimit(in PowertrainState energy, in CarStrategy strategy, float speed,
+        public float DriveAccelerationLimit(in PowertrainState energy, int outputRung, float speed,
             float massKg, float chassisForceCeiling, bool pushToPass = false) => 5f;
 
         public PowertrainSettlement Settle(in PowertrainState energy, float driveAccel, float brakeAccel,
@@ -138,6 +163,8 @@ public sealed class CarInterfaceTests
 
         public IPowertrain Powertrain { get; } = new BoxEngine();
 
+        public IReadOnlyList<ModeLadder> Ladders => [Powertrain.OutputLadder];
+
         public float TotalMassKg(CarState state) => 800f;
 
         public void Step(CarState state, CarPhysicsStepInput input, float dt)
@@ -166,7 +193,7 @@ public sealed class CarInterfaceTests
         {
             foreach (string label in new[] { "FL", "FR", "RL", "RR" })
                 dashboard.AddTire(new DashboardTire(label, 1f, 70f, 70f, 2000f, Window));
-            dashboard.AddMode(Powertrain.OutputLadder, strategy.PowerRung);
+            dashboard.AddMode(Powertrain.OutputLadder, strategy.Rung(0, Powertrain.OutputLadder));
             dashboard.SetMass(800f);
         }
 

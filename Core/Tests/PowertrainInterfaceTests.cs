@@ -242,9 +242,10 @@ public sealed class PowertrainInterfaceTests
             Powertrain = new TankAndBatteryPowertrain(ThreeMaps)
         };
 
+        // Nobody has set it, so it sits in the middle of the ladder it has.
         Assert.Equal(
             2,
-            CarStrategy.DefaultFor(config.Powertrain).PowerRung
+            CarStrategy.Default.Rung(0, config.Powertrain.OutputLadder)
         );
         Assert.True(
             SpeedAfterAStint(config, 3) > SpeedAfterAStint(config, 1),
@@ -427,7 +428,7 @@ public sealed class PowertrainInterfaceTests
 
         public float DriveAccelerationLimit(
             in PowertrainState energy,
-            in CarStrategy strategy,
+            int outputRung,
             float speed,
             float massKg,
             float chassisForceCeiling,
@@ -439,7 +440,7 @@ public sealed class PowertrainInterfaceTests
 
             // Each map up the ladder is worth a little more power, whatever
             // length the ladder happens to be.
-            float watts = 300000f + 15000f * _maps.Clamp(strategy.PowerRung);
+            float watts = 300000f + 15000f * _maps.Clamp(outputRung);
             float powerLimited = watts / (massKg * MathF.Max(speed, 8f));
             return MathF.Min(chassisForceCeiling, powerLimited);
         }

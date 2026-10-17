@@ -38,6 +38,15 @@ public static class CarPhysics
     /// </summary>
     private const float FullSlipCompensationShare = 0.35f;
 
+    /// <summary>
+    /// The chassis's own ladders are its powertrain's output ladder and
+    /// nothing else, so that is the first one a strategy sets for it.
+    /// </summary>
+    internal const int OutputLadderIndex = 0;
+
+    private static int OutputRung(CarConfig config, in CarStrategy strategy) =>
+        strategy.Rung(OutputLadderIndex, config.Powertrain.OutputLadder);
+
     private static readonly WheelId[] Wheels =
     {
         WheelId.FrontLeft,
@@ -169,7 +178,7 @@ public static class CarPhysics
 
         float powertrainDriveLimit = config.Powertrain.DriveAccelerationLimit(
             state.Energy,
-            strategy,
+            OutputRung(config, strategy),
             speed,
             massKg,
             config.MaxDriveAcceleration,
@@ -414,7 +423,7 @@ public static class CarPhysics
         {
             float available = config.Powertrain.DriveAccelerationLimit(
                 state.Energy,
-                input.Strategy,
+                OutputRung(config, input.Strategy),
                 state.Speed,
                 massKg,
                 config.MaxDriveAcceleration,

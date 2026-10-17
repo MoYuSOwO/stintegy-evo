@@ -281,10 +281,10 @@ public partial class RaceView3D : Node3D
             while (_commands.TryDequeue(out var command))
             {
                 var car = Simulation.Cars[command.Car];
-                car.Strategy = new CarStrategy(
-                    (TireUsageMode)Math.Clamp((int)car.Strategy.TireMode + command.Tire, 1, TireLadder.Usage.RungCount),
-                    car.Car.Powertrain.OutputLadder.Clamp(car.Strategy.PowerRung + command.Power)
-                );
+                CarStrategy strategy = car.Strategy.NudgedTires(command.Tire);
+                if (car.Car.Ladders.Count > 0)
+                    strategy = strategy.Nudged(0, car.Car.Ladders[0], command.Power);
+                car.Strategy = strategy;
             }
 
             if (_hudDirty || _hudElapsed >= 0.2)

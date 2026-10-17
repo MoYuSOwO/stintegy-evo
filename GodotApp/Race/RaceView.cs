@@ -187,15 +187,11 @@ public partial class RaceView : Node2D
         if (tireDelta == 0 && powerDelta == 0)
             return;
 
-        int tire = Math.Clamp(
-            (int)_playerCar.Strategy.TireMode + tireDelta,
-            1,
-            TireLadder.Usage.RungCount
-        );
-        int power = _playerCar.Car.Powertrain.OutputLadder.Clamp(
-            _playerCar.Strategy.PowerRung + powerDelta
-        );
-        _playerCar.Strategy = new CarStrategy((TireUsageMode)tire, power);
+        // A/D move the first of the car's own ladders, whatever it is called.
+        CarStrategy strategy = _playerCar.Strategy.NudgedTires(tireDelta);
+        if (_playerCar.Car.Ladders.Count > 0)
+            strategy = strategy.Nudged(0, _playerCar.Car.Ladders[0], powerDelta);
+        _playerCar.Strategy = strategy;
         RefreshTelemetry();
         GetViewport().SetInputAsHandled();
     }
@@ -306,7 +302,7 @@ public partial class RaceView : Node2D
         _dashboard.Refresh(_playerCar.Car, state, _playerCar.Strategy);
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
-            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.Car.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
+            $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {(_playerCar.Car.Ladders.Count > 0 ? _playerCar.Car.Ladders[0].Label.ToLowerInvariant() : "-")}\n" +
             $"Input curvature/accel {telemetry.Input.DesiredCurvature:+0.000;-0.000;0.000} 1/m  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
             $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout()}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +

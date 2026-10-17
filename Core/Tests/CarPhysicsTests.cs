@@ -939,12 +939,6 @@ public sealed class CarPhysicsTests
 
         Assert.InRange(between, MathF.Min(eco, normal), MathF.Max(eco, normal));
         Assert.Equal((eco + normal) * 0.5f, between, precision: 1);
-        Assert.Equal(
-            407000f,
-            powertrain.GetDrivePowerLimitWatts(
-                CarStrategy.Default.WithDrivePowerLimitWatts(407000f)
-            )
-        );
     }
 
     [Fact]

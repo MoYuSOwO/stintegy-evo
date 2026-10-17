@@ -50,6 +50,9 @@ public class SingleTrackCar : ICar
     public CarSpec Spec { get; }
     public IPowertrain Powertrain => Config.Powertrain;
 
+    /// <summary>The powertrain's output ladder, and nothing else.</summary>
+    public virtual IReadOnlyList<ModeLadder> Ladders => [Config.Powertrain.OutputLadder];
+
     public virtual float TotalMassKg(CarState state) => CarPhysics.TotalMassKg(Config, state.Energy);
 
     public virtual void Step(CarState state, CarPhysicsStepInput input, float dt) =>
@@ -86,7 +89,8 @@ public class SingleTrackCar : ICar
             Config.SteerRateLimitRadiansPerSecond,
             Config.MaxDriveAcceleration,
             Powertrain.DriveAccelerationLimit(
-                state.Energy, strategy, state.Speed, mass, Config.MaxDriveAcceleration, state.PushToPass.Active),
+                state.Energy, strategy.Rung(CarPhysics.OutputLadderIndex, Powertrain.OutputLadder), state.Speed, mass,
+                Config.MaxDriveAcceleration, state.PushToPass.Active),
             Powertrain.OutputAvailability(state.Energy),
             Tires.Front.Window.Compound);
     }
@@ -109,7 +113,9 @@ public class SingleTrackCar : ICar
         AddTire(dashboard, "RR", state.RearRight, TireWindow(WheelId.RearRight));
 
         dashboard.AddMode(TireLadder.Usage, (int)strategy.TireMode);
-        dashboard.AddMode(Powertrain.OutputLadder, strategy.PowerRung);
+        IReadOnlyList<ModeLadder> ladders = Ladders;
+        for (int i = 0; i < ladders.Count; i++)
+            dashboard.AddMode(ladders[i], strategy.Rung(i, ladders[i]));
         dashboard.SetOutputAvailability(Powertrain.OutputAvailability(energy));
         dashboard.SetMass(TotalMassKg(state));
     }

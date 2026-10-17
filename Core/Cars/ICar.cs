@@ -25,6 +25,14 @@ public interface ICar
     /// </summary>
     IPowertrain Powertrain { get; }
 
+    /// <summary>
+    /// The settings the strategist chooses between on this car, beside the
+    /// tyre ladder every car has: an output ladder, an engine map, a
+    /// hybrid's deployment. A strategy sets them in this order, and there are
+    /// at most <see cref="CarStrategy.MaximumLadders"/>.
+    /// </summary>
+    IReadOnlyList<ModeLadder> Ladders { get; }
+
     /// <summary>What the car weighs at this moment, stores included.</summary>
     float TotalMassKg(CarState state);
 
