@@ -21,7 +21,10 @@ public partial class LaneDriverDemo : Node
         string id = System.Environment.GetEnvironmentVariable("STINTEGY_CIRCUIT") is { Length: > 0 } named ? named : "silverstone";
         GodotCircuits.Use();
         TrackData track = CircuitLibrary.Load(id);
-        LaneTrackFile file = LaneTrackFile.ForCircuit(id, track);
+        // STINTEGY_LANES_FOLDER: a learned folder not yet shipped, to watch it drive.
+        LaneTrackFile file = System.Environment.GetEnvironmentVariable("STINTEGY_LANES_FOLDER") is { Length: > 0 } folder
+            ? LaneTrackFile.LoadCircuit(folder, track)
+            : LaneTrackFile.ForCircuit(id, track);
         if (!file.IsCurrent)
             GD.PushWarning($"{id} was learned on another car ({file.LearnedFor?.Date ?? "unstamped"}); it drives on old notes until relearned");
         LaneSet lanes = file.LanesFor(track);
