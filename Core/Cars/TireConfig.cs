@@ -93,8 +93,16 @@ public sealed class TireConfig
     /// </summary>
     public const float ThermalTimeScale = 0.20f;
     public const float CoreAirCoolingRate = 0.0057f;
-    public const float SpeedCoolingReferenceMps = 60f;
-    public const float MaximumSpeedCoolingMultiplier = 2.4f;
+    // Air cooling grows with speed as forced convection does, as the speed
+    // to the power 0.8, from what it is at SpeedCoolingReferenceMps. It used
+    // to level off (at 2.4 times, half of it by 60 m/s), so the fast part of
+    // a lap cooled hardly better than the slow part, and with a Formula One
+    // car's downforce heating the tyres harder the faster it goes, a stint
+    // at Silverstone ran its carcass past its threshold on Normal while an
+    // out lap was still cold. Set where it was at the warm-up's 55 m/s.
+    public const float SpeedCoolingReferenceMps = 55f;
+    public const float SpeedCoolingAtReference = 1.67f;
+    public const float SpeedCoolingExponent = 0.8f;
 
     public string CompoundId { get; init; } = "default";
     /// <summary>
