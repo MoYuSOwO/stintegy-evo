@@ -29,6 +29,9 @@ namespace StintegyEVO.GodotApp.LowPoly;
 /// </remarks>
 public partial class RaceView3D : Node3D
 {
+    /// <summary>The car a view puts out when nobody has composed a race for it.</summary>
+    private const string DisplayCar = "official:formula_a_mixed";
+
     public RaceSimulation Simulation { get; private set; } = null!;
     public TrackSurfaceGeometry Surface => _circuit.Surface;
 
@@ -191,12 +194,7 @@ public partial class RaceView3D : Node3D
         TrackSample sample = track.Sample(start.S);
         var car = new RaceCar(
             "display-01",
-            new CarConfig(),
-            new TireConfig
-            {
-                StartingSurfaceTempC = 86f,
-                StartingCoreTempC = 84f
-            },
+            CarLibrary.Load(DisplayCar).Car,
             state: new CarState
             {
                 Position = sample.Center,
@@ -205,6 +203,7 @@ public partial class RaceView3D : Node3D
                 Energy = PowertrainState.Filled(0.82f)
             }
         );
+        car.State.WarmTires(86f, 84f);
         Simulation.AddCar(car);
         // Off the grid: no push until the line.
         car.LockPushToPassUntilLine();

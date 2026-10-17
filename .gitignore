@@ -33,3 +33,10 @@ gdunit4_testadapter_v5/
 TestResults/
 *.trx
 *.coverage
+
+# Car packs are built into their folders under data/; the build output is
+# not source. A pack's car.json and models are.
+/data/**/*.dll
+/data/**/*.pdb
+/data/**/*.runtimeconfig.json
+/data/**/*.deps.json

@@ -23,6 +23,9 @@ namespace StintegyEVO.GodotApp.Race;
 /// </summary>
 public partial class RaceView : Node2D
 {
+    /// <summary>The car a view puts out when nobody has composed a race for it.</summary>
+    private const string DisplayCar = "official:formula_a_mixed";
+
     [Export] public TrackView? TrackRenderer { get; set; }
     [Export] public Camera2D? Camera { get; set; }
     [Export] public bool ShowFrameStats { get; set; } = true;
@@ -217,12 +220,7 @@ public partial class RaceView : Node2D
             TrackSample sample = track.Sample(start.S);
             RaceCar car = new(
                 $"display-{gridPosition:D2}",
-                new CarConfig(),
-                new TireConfig
-                {
-                    StartingSurfaceTempC = 86f,
-                    StartingCoreTempC = 84f
-                },
+                CarLibrary.Load(DisplayCar).Car,
                 state: new CarState
                 {
                     Position = sample.Center,
@@ -231,6 +229,7 @@ public partial class RaceView : Node2D
                     Energy = PowertrainState.Filled(0.82f)
                 }
             );
+            car.State.WarmTires(86f, 84f);
             _simulation!.AddCar(car);
             // Off the grid: no push until the line.
             car.LockPushToPassUntilLine();
@@ -304,7 +303,7 @@ public partial class RaceView : Node2D
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
             $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {(_playerCar.Car.Ladders.Count > 0 ? _playerCar.Car.Ladders[0].Label.ToLowerInvariant() : "-")}\n" +
             $"Input curvature/accel {telemetry.Input.DesiredCurvature:+0.000;-0.000;0.000} 1/m  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
-            $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout()}\n" +
+            $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
             $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
             $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
@@ -313,13 +312,13 @@ public partial class RaceView : Node2D
     private float[] _channelReadings = [];
 
     /// <summary>The car's own instruments, by the names it gives them.</summary>
-    private string ChannelsReadout()
+    private string ChannelsReadout(RaceCar raceCar)
     {
-        ICar car = _playerCar.Car;
+        ICar car = raceCar.Car;
         IReadOnlyList<TelemetryChannel> channels = car.TelemetryChannels;
         if (_channelReadings.Length < channels.Count)
             _channelReadings = new float[channels.Count];
-        car.ReadTelemetry(_playerCar.State, _channelReadings.AsSpan(0, channels.Count));
+        car.ReadTelemetry(raceCar.State, _channelReadings.AsSpan(0, channels.Count));
         var text = new System.Text.StringBuilder();
         for (int i = 0; i < channels.Count; i++)
             text.Append(i == 0 ? "" : "  ").Append(channels[i].Label).Append(' ').Append(_channelReadings[i].ToString("0.00"));

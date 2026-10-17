@@ -165,6 +165,21 @@ public sealed class CarState
         RearRight.Reset(config);
     }
 
+    /// <summary>
+    /// Off the blankets: every tyre brought to these temperatures, as a team
+    /// does before the car leaves the garage. Which tyres are on and how worn
+    /// they are is the car's (<see cref="ICar.InstallFreshTires"/>); how warm
+    /// they start is the paddock's.
+    /// </summary>
+    public void WarmTires(float surfaceTempC, float coreTempC)
+    {
+        foreach (TireState tire in new[] { FrontLeft, FrontRight, RearLeft, RearRight })
+        {
+            tire.SurfaceTempC = surfaceTempC;
+            tire.CoreTempC = coreTempC;
+        }
+    }
+
     /// <summary>The car's own state, which only that car reads (<see cref="ICarStateExtension"/>).</summary>
     public ICarStateExtension? Own { get; set; }
 
