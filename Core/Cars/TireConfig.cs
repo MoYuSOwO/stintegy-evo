@@ -43,12 +43,12 @@ public sealed class TireConfig
     // harder, and the warm-up was tuned against that. Without it the tyres
     // ran three degrees cooler and a cold car at 80 per cent use never
     // reached its window; 0.8 puts both back where they were measured.
-    public const float RollingSurfaceHeatRate = 0.8f;
-    public const float RollingCoreHeatRate = 0.3f;
+    public float RollingSurfaceHeatRate { get; init; } = 0.8f;
+    public float RollingCoreHeatRate { get; init; } = 0.3f;
     // A small share of the work done by the brakes reaches the tyre through
     // the disc, wheel and enclosed air. It enters the slow carcass mass, not
     // the tread, and follows the axle that actually supplied the braking.
-    public const float BrakeCoreHeatRate = 1.5f;
+    public float BrakeCoreHeatRate { get; init; } = 1.5f;
     public const float RollingHeatReferenceSpeedMps = 30f;
     public const float SurfaceCoolingRate = 0.012f;
     public const float TrackSurfaceTransferRate = 0.004f;

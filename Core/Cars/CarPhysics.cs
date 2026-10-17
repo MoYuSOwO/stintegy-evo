@@ -2120,7 +2120,7 @@ public static class CarPhysics
                                            Math.Max(0f, speed) +
                                            TireConfig.RollingHeatReferenceSpeedMps
                                        );
-        float rollingSurfaceHeat = TireConfig.RollingSurfaceHeatRate *
+        float rollingSurfaceHeat = tires.RollingSurfaceHeatRate *
                                    loadScale * rollingHeatSpeedFactor;
 
         // Lateral tread heat is the rubber's own dissipation: the force it
@@ -2216,9 +2216,9 @@ public static class CarPhysics
         float surfaceToTrack = TireConfig.TrackSurfaceTransferRate *
                                (tire.SurfaceTempC - trackTempC);
         float surfaceToCore = TireConfig.SurfaceCoreTransferRate * (tire.SurfaceTempC - tire.CoreTempC);
-        float rollingCoreHeat = TireConfig.RollingCoreHeatRate *
+        float rollingCoreHeat = tires.RollingCoreHeatRate *
                                 loadScale * rollingHeatSpeedFactor;
-        float brakeCoreHeat = TireConfig.BrakeCoreHeatRate *
+        float brakeCoreHeat = tires.BrakeCoreHeatRate *
                               normalizedBrakeUse *
                               tireWorkSpeedMultiplier *
                               loadScale;
