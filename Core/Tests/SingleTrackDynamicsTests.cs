@@ -526,8 +526,11 @@ public sealed class SingleTrackDynamicsTests
         // Sliding is where tread heat comes from since the heat balance was
         // moved towards it (TireConfig.LateralHeatRate), so a spin heats the
         // fronts by tens of degrees -- to where a spun tyre smokes -- and the
-        // cap on sliding heat keeps it there rather than at a melt.
-        Assert.InRange(heatRise, 30f, 60f);
+        // cap on sliding heat keeps it there rather than at a melt. About 28
+        // on tyres sized for a Formula One car's loads, whose heat for the
+        // same work is three fifths of what the old car's was: the general
+        // calibration moved, and the spin moved with it.
+        Assert.InRange(heatRise, 25f, 60f);
         // And the thing that must not come back: a spin has to cost
         // something well above ordinary cornering, or the referee is
         // declaring an event the car does not feel.

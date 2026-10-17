@@ -528,6 +528,7 @@ public static class CarPhysics
             CalculateAxleLateralWorkScales(
                 state,
                 config,
+                tires,
                 front,
                 rear,
                 frontLateralSlipWork,
@@ -1419,10 +1420,15 @@ public static class CarPhysics
 
         for (int i = 0; i < substeps; i++)
         {
-            frontSlip = FrontSlipAngle(
+            // Below DynamicYawMinimumSpeed a slip angle means nothing (it is
+            // read off a floored speed) and the body turns as its wheels
+            // point, so it fades out with the dynamic model. Read anyway, a
+            // car crawling round in a circle measured its rear at the peak
+            // and the grip limiter took all of its drive away.
+            frontSlip = dynamicYawBlend * FrontSlipAngle(
                 config, steerAngle, sideslip, yawRate, speed
             );
-            rearSlip = RearSlipAngle(config, sideslip, yawRate, speed);
+            rearSlip = dynamicYawBlend * RearSlipAngle(config, sideslip, yawRate, speed);
             front = ResolveAxleSlip(
                 config,
                 frontGrip,
@@ -2089,6 +2095,11 @@ public static class CarPhysics
     )
     {
         float loadScale = CalculateTireWorkLoadScale(tire, config, front);
+        // Work is force times sliding, and with friction falling with load
+        // the force grows more slowly than the load does; heat and wear
+        // from work go with the force. Rolling heat is the carcass flexing
+        // under the load itself, and stays with the load.
+        float forceScale = CalculateTireForceScale(tire, config, tires, front);
         float thermalOverLimit = Math.Min(overLimit, MaximumThermalOverLimit);
         float normalizedLateralUse = Math.Clamp(Math.Abs(lateralUse), 0f, 1f);
         float normalizedLongitudinalUse = Math.Clamp(
@@ -2206,7 +2217,7 @@ public static class CarPhysics
             (directionalHeat + lateralSlipHeat + nearLimitHeat) +
             TireConfig.OverLimitHeatRate * thermalOverLimit * thermalOverLimit +
             wakeCorneringHeat;
-        surfaceHeat *= loadScale;
+        surfaceHeat *= forceScale;
         surfaceHeat += rollingSurfaceHeat;
 
         float airCoolingMultiplier = CalculateAirCoolingMultiplier(
@@ -2221,7 +2232,7 @@ public static class CarPhysics
         float brakeCoreHeat = tires.BrakeCoreHeatRate *
                               normalizedBrakeUse *
                               tireWorkSpeedMultiplier *
-                              loadScale;
+                              forceScale;
 
         tire.SurfaceTempC += (
             surfaceHeat - surfaceToAir - surfaceToTrack - surfaceToCore
@@ -2284,7 +2295,7 @@ public static class CarPhysics
             ? Math.Max(0f, speed) / TireConfig.TireWorkReferenceSpeedMps
             : tireWorkSpeedMultiplier;
         float wearDelta = tireWorkWear * wearSpeed *
-                          tempWearFactor * loadScale * dt;
+                          tempWearFactor * forceScale * dt;
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
     }
@@ -2292,6 +2303,7 @@ public static class CarPhysics
     private static AxleLateralWorkScales CalculateAxleLateralWorkScales(
         CarState state,
         CarConfig config,
+        TireConfig tires,
         AxleResult front,
         AxleResult rear,
         float frontSlipWork,
@@ -2299,11 +2311,11 @@ public static class CarPhysics
     )
     {
         float frontLoadWeight =
-            CalculateTireWorkLoadScale(state.FrontLeft, config, front: true) +
-            CalculateTireWorkLoadScale(state.FrontRight, config, front: true);
+            CalculateTireForceScale(state.FrontLeft, config, tires, front: true) +
+            CalculateTireForceScale(state.FrontRight, config, tires, front: true);
         float rearLoadWeight =
-            CalculateTireWorkLoadScale(state.RearLeft, config, front: false) +
-            CalculateTireWorkLoadScale(state.RearRight, config, front: false);
+            CalculateTireForceScale(state.RearLeft, config, tires, front: false) +
+            CalculateTireForceScale(state.RearRight, config, tires, front: false);
 
         // Lateral rubber work is force times deformation. In this reduced
         // model deformation is not a state of its own, so use the small-angle
@@ -2388,6 +2400,25 @@ public static class CarPhysics
         return Math.Max(
             MinimumTireHeatLoadScale,
             tire.LoadN / Math.Max(SizedWheelLoad(config, front), Epsilon)
+        );
+    }
+
+    /// <summary>
+    /// The force a tyre can give at its load, against what it gives at the
+    /// load it was sized for: the load scale with load sensitivity taken
+    /// off (WheelGripForce). What a tyre's work is counted against.
+    /// </summary>
+    private static float CalculateTireForceScale(
+        TireState tire,
+        CarConfig config,
+        TireConfig tires,
+        bool front
+    )
+    {
+        float scale = CalculateTireWorkLoadScale(tire, config, front);
+        return MathF.Pow(
+            MathF.Max(scale, MinimumLoadSensitivityRatio),
+            1f - Math.Clamp(tires.LoadSensitivity, 0f, 1f)
         );
     }
 
