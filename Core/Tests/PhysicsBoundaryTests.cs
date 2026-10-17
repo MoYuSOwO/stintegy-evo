@@ -136,20 +136,21 @@ public sealed class PhysicsBoundaryTests
     [Fact]
     public void ThePublishedEnvelopeIsPublicAndReadsWithoutWriting()
     {
-        var method = typeof(CarPhysics).GetMethod(nameof(CarPhysics.EstimatePerformanceLimits));
+        // Published on the interface every car implements, so a driver can
+        // read it off any car.
+        var method = typeof(ICar).GetMethod(nameof(ICar.EstimatePerformanceLimits));
         Assert.NotNull(method);
         Assert.True(method!.IsPublic);
         Assert.True(typeof(CarPerformanceLimits).IsPublic);
 
-        CarConfig car = new();
         TireConfig tires = WarmTires();
+        ICar car = new SingleTrackCar(new CarConfig(), tires);
         CarState state = NewState(40f, tires);
         CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Normal);
         CarState before = state.Clone();
 
-        CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
-            state, car, tires, strategy, state.Speed, 0.01f,
-            tires.GetAccelerationUsage(strategy)
+        CarPerformanceLimits limits = car.EstimatePerformanceLimits(
+            state, strategy, state.Speed, 0.01f, car.GripUsage(strategy)
         );
 
         Assert.True(limits.LateralAccelerationLimit > 0f);

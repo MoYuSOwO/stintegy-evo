@@ -12,7 +12,13 @@ namespace StintegyEVO.Core.Cars;
 /// </summary>
 public class SingleTrackCar : ICar
 {
+    /// <summary>The game's own tyre, built to <paramref name="tires"/>, all round.</summary>
     public SingleTrackCar(CarConfig config, TireConfig tires)
+        : this(config, TireSet.Of(tires ?? throw new ArgumentNullException(nameof(tires))))
+    {
+    }
+
+    public SingleTrackCar(CarConfig config, TireSet tires)
     {
         Config = config ?? throw new ArgumentNullException(nameof(config));
         Tires = tires ?? throw new ArgumentNullException(nameof(tires));
@@ -38,7 +44,7 @@ public class SingleTrackCar : ICar
     }
 
     public CarConfig Config { get; }
-    public TireConfig Tires { get; }
+    public TireSet Tires { get; }
     public CarSpec Spec { get; }
     public IPowertrain Powertrain => Config.Powertrain;
 
@@ -62,12 +68,11 @@ public class SingleTrackCar : ICar
     public float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) =>
         CarPhysics.EstimateCorneringLimit(state, Config, Tires, strategy, speed, gripUsage);
 
-    public float GripUsage(CarStrategy strategy) => Tires.GetAccelerationUsage(strategy);
+    public float GripUsage(CarStrategy strategy) => Tires.Front.GripUsage(strategy);
 
-    public TireWindow TireWindow(WheelId wheel) =>
-        new(Tires.CompoundId, Tires.IdealSurfaceTempLowC, Tires.IdealSurfaceTempHighC, Tires.CoreOverheatTempC);
+    public TireWindow TireWindow(WheelId wheel) => Tires.For(wheel).Window;
 
-    public void InstallFreshTires(CarState state) => state.InstallFreshTires(Tires);
+    public void InstallFreshTires(CarState state) => Tires.Install(state);
 
     public CarCapabilities Capabilities(CarState state, CarStrategy strategy)
     {
@@ -81,7 +86,7 @@ public class SingleTrackCar : ICar
             Powertrain.DriveAccelerationLimit(
                 state.Energy, strategy, state.Speed, mass, Config.MaxDriveAcceleration, state.PushToPass.Active),
             Powertrain.OutputAvailability(state.Energy),
-            Tires.CompoundId);
+            Tires.Front.Window.Compound);
     }
 
     public float PushToPassRemainingSeconds(CarState state) => state.PushToPass.RemainingSeconds(Config.PushToPass);
