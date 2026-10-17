@@ -308,10 +308,26 @@ public partial class RaceView : Node2D
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
             $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {_playerCar.Car.Powertrain.OutputLadder.Label.ToLowerInvariant()}\n" +
             $"Input curvature/accel {telemetry.Input.DesiredCurvature:+0.000;-0.000;0.000} 1/m  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
-            $"Lateral use {telemetry.FrontLateralUse:0.00}/{telemetry.RearLateralUse:0.00}  Longitudinal use {telemetry.FrontLongitudinalUse:0.00}/{telemetry.RearLongitudinalUse:0.00}  Over-limit {telemetry.OverLimit:0.00}\n" +
+            $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout()}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
             $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
-            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  Slide {telemetry.RearSlideSeverity:0.00}  GL {telemetry.CombinedGripLimiterCutAccel:0.00}  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
+    }
+
+    private float[] _channelReadings = [];
+
+    /// <summary>The car's own instruments, by the names it gives them.</summary>
+    private string ChannelsReadout()
+    {
+        ICar car = _playerCar.Car;
+        IReadOnlyList<TelemetryChannel> channels = car.TelemetryChannels;
+        if (_channelReadings.Length < channels.Count)
+            _channelReadings = new float[channels.Count];
+        car.ReadTelemetry(_playerCar.State, _channelReadings.AsSpan(0, channels.Count));
+        var text = new System.Text.StringBuilder();
+        for (int i = 0; i < channels.Count; i++)
+            text.Append(i == 0 ? "" : "  ").Append(channels[i].Label).Append(' ').Append(_channelReadings[i].ToString("0.00"));
+        return text.ToString();
     }
 
     private static string ControllerStatus(RaceCar car) =>
