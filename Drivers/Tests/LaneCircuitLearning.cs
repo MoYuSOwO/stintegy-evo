@@ -21,7 +21,8 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
     /// Every lane at every grip level, on a circuit's baked lanes, and the
     /// result saved under <see cref="LaneProbes.Dir"/>. Set
     /// STINTEGY_LANE_PROBES=1, STINTEGY_LEARN_CIRCUIT=&lt;id&gt; and, for a
-    /// bake not shipped, STINTEGY_LANES3D=&lt;the bake's out folder&gt;.
+    /// bake not shipped, STINTEGY_LANES3D=&lt;the bake's out folder&gt;;
+    /// STINTEGY_LEARN_TOP_ONLY=1 learns the full-grip level alone.
     /// </summary>
     [Fact]
     public void LearnBakedCircuit()
@@ -36,7 +37,10 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         var learner = new LaneLearner { Reward = 0.02f, FlyingLaps = 3, CapBoundIsTrouble = true };
         var watch = System.Diagnostics.Stopwatch.StartNew();
         _output.WriteLine($"{id} from {(File.Exists(baked) ? baked : "the geometric bake")}: {LaneLapRunner.Run(track, file, gains)}");
-        for (int level = LaneTrackFile.TopLevel; level >= 0; level--)
+        // STINTEGY_LEARN_TOP_ONLY=1: full grip only, for comparing two ways of
+        // driving, where the lower levels would only say the same again.
+        int lowest = Environment.GetEnvironmentVariable("STINTEGY_LEARN_TOP_ONLY") == "1" ? LaneTrackFile.TopLevel : 0;
+        for (int level = LaneTrackFile.TopLevel; level >= lowest; level--)
         {
             foreach (LaneId lane in new[] { LaneId.Free, LaneId.Left, LaneId.Right })
             {
