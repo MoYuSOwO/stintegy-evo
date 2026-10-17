@@ -190,9 +190,11 @@ internal static class Elevation
         return ring;
     }
 
+    // Onto the game's plane, y to the south like the centrelines (Sources),
+    // so the two lines turn the same way when they are lined up.
     private static Vector2 Project(double lat, double lon, double lat0, double lon0) => new(
         (float)((lon - lon0) * Math.PI / 180.0 * EarthRadius * Math.Cos(lat0 * Math.PI / 180.0)),
-        (float)((lat - lat0) * Math.PI / 180.0 * EarthRadius));
+        (float)(-(lat - lat0) * Math.PI / 180.0 * EarthRadius));
 
     private static List<(double Lat, double Lon, double S)> Resample(List<(double Lat, double Lon)> ring, float step)
     {
