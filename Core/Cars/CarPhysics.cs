@@ -39,6 +39,16 @@ public static class CarPhysics
     private const float FullSlipCompensationShare = 0.35f;
 
     /// <summary>
+    /// The most of an axle's grip the steering inverts the slip curve for.
+    /// Above it the curve is too flat near its peak to say which slip angle
+    /// a share wants: a few hundredths of share invert to twice the angle.
+    /// Asked for more, the steering asks both ends for this and lets the
+    /// tyres and the curvature feedback find the rest, which on the skidpad
+    /// is nearly all of it (<see cref="TireSlipCurve.SustainablePeakShare"/>).
+    /// </summary>
+    private const float SteeringInversionShare = 0.9f;
+
+    /// <summary>
     /// The chassis's own ladders are its powertrain's output ladder and
     /// nothing else, so that is the first one a strategy sets for it.
     /// </summary>
@@ -1250,10 +1260,26 @@ public static class CarPhysics
         // inverse runs
         // out, which is the point at which no amount of lock buys any more
         // corner - understeer, arrived at honestly.
-        float frontShare = rearArm / wheelBase * requestedLateralAccel;
-        float rearShare = frontArm / wheelBase * requestedLateralAccel;
+        //
+        // The inversion is of a corner the axles can hold. Near its peak the
+        // slip curve is so flat that a share a few hundredths apart inverts
+        // to an angle twice the size, so asked for more than both ends had,
+        // the end nearer its peak read as a slip angle far larger than the
+        // other's, and "front minus rear" turned the wheel off: braking into
+        // a fast corner at 65 m/s, 52 m/s^2 asked unwound the lock from 2.4
+        // to 0.3 degrees with the tyres at half their grip, and the car took
+        // 15. So the corner inverted is the one each axle can sustain, its
+        // moment-arm share of it no more than SteeringInversionShare of its
+        // grip; asked for more, the same balance is asked of both ends there,
+        // and the tyres give what they give.
         float frontCapacity = MathF.Max(frontGrip, Epsilon);
         float rearCapacity = MathF.Max(rearGrip, Epsilon);
+        float holdable = SteeringInversionShare * MathF.Min(
+            frontCapacity * wheelBase / MathF.Max(rearArm, Epsilon),
+            rearCapacity * wheelBase / MathF.Max(frontArm, Epsilon));
+        float corner = Math.Clamp(requestedLateralAccel, -holdable, holdable);
+        float frontShare = rearArm / wheelBase * corner;
+        float rearShare = frontArm / wheelBase * corner;
         float slipCompensation =
             TireSlipCurve.InverseEvaluate(
                 frontShare / frontCapacity,

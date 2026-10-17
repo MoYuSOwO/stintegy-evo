@@ -68,15 +68,18 @@ public sealed class SingleTrackDynamicsTests
             $"at curvature {bestCurvature:0.0000}, axle grip sum {grip:0.00} " +
             $"({grip / 9.80665f:0.00} g), used {best / grip * 100f:0.0}%"
         );
+        // The top of the band is 5.2 g, not the 4.8 it was: the car held a
+        // tenth of its grip back until the steering stopped winding itself
+        // off near the limit, and the tenth is the tyres', not a new car's.
         Assert.True(
-            best > 3.8f * 9.80665f && best < 4.8f * 9.80665f,
+            best > 3.8f * 9.80665f && best < 5.2f * 9.80665f,
             $"steady cornering at 216 km/h should land in a Formula One car's " +
             $"band; got {best / 9.80665f:0.00} g"
         );
         // Short of the whole circle, because a tyre's peak is a peak: sit
         // exactly on it and the next disturbance takes force away rather
         // than adding it.
-        Assert.InRange(best / grip, 0.85f, 0.99f);
+        Assert.InRange(best / grip, 0.85f, 0.995f);
     }
 
     /// <summary>
