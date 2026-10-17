@@ -23,8 +23,11 @@ namespace StintegyEVO.GodotApp.Race;
 /// </summary>
 public partial class RaceView : Node2D
 {
-    /// <summary>The car a view puts out when nobody has composed a race for it.</summary>
-    private const string DisplayCar = "official:formula_a_mixed";
+    /// <summary>
+    /// Which car fills the grid when nobody has composed a race, by its
+    /// pack's id (<see cref="CarLibrary"/>). The default is the game's own.
+    /// </summary>
+    public string CarId { get; set; } = "official:formula_a_mixed";
 
     [Export] public TrackView? TrackRenderer { get; set; }
     [Export] public Camera2D? Camera { get; set; }
@@ -220,7 +223,7 @@ public partial class RaceView : Node2D
             TrackSample sample = track.Sample(start.S);
             RaceCar car = new(
                 $"display-{gridPosition:D2}",
-                CarLibrary.Load(DisplayCar).Car,
+                GodotCars.Load(CarId).Car,
                 state: new CarState
                 {
                     Position = sample.Center,

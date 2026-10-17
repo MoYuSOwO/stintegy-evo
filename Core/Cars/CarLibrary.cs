@@ -95,6 +95,17 @@ public static class CarLibrary
         }
     }
 
+    /// <summary>
+    /// The pack <paramref name="car"/> was built by, for whoever draws it or
+    /// files what was learned on it; none for a car made some other way, as
+    /// a test makes one.
+    /// </summary>
+    public static LoadedCar? Origin(ICar car)
+    {
+        lock (Gate)
+            return Loaded.Values.FirstOrDefault(loaded => ReferenceEquals(loaded.Car, car));
+    }
+
     /// <summary>Every car pack the roots hold, by id, unloaded.</summary>
     public static IEnumerable<ResourceId> Available()
     {

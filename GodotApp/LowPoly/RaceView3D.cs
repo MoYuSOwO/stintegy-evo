@@ -29,9 +29,6 @@ namespace StintegyEVO.GodotApp.LowPoly;
 /// </remarks>
 public partial class RaceView3D : Node3D
 {
-    /// <summary>The car a view puts out when nobody has composed a race for it.</summary>
-    private const string DisplayCar = "official:formula_a_mixed";
-
     public RaceSimulation Simulation { get; private set; } = null!;
     public TrackSurfaceGeometry Surface => _circuit.Surface;
 
@@ -41,6 +38,13 @@ public partial class RaceView3D : Node3D
     /// before the view enters the tree; the default is the practice circuit.
     /// </summary>
     public string CircuitId { get; set; } = "silverstone";
+
+    /// <summary>
+    /// Which car the view puts out when nobody has composed a race for it,
+    /// by its pack's id (<see cref="CarLibrary"/>). Set it before the view
+    /// enters the tree; the default is the game's own.
+    /// </summary>
+    public string CarId { get; set; } = "official:formula_a_mixed";
 
     /// <summary>The circuit's name for the screen: the plan's, or the id if the plan gives none.</summary>
     public string CircuitName => _circuit.Plan?.Name is { Length: > 0 } name
@@ -194,7 +198,7 @@ public partial class RaceView3D : Node3D
         TrackSample sample = track.Sample(start.S);
         var car = new RaceCar(
             "display-01",
-            CarLibrary.Load(DisplayCar).Car,
+            GodotCars.Load(CarId).Car,
             state: new CarState
             {
                 Position = sample.Center,

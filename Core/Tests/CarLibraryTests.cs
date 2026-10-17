@@ -24,6 +24,8 @@ public sealed class CarLibraryTests
         // A bare name is the game's own, and the same pack is loaded once.
         Assert.Same(car, CarLibrary.Load("formula_a_mixed"));
         Assert.Contains(car.Id, CarLibrary.Available());
+        Assert.Same(car, CarLibrary.Origin(car.Car));
+        Assert.Null(CarLibrary.Origin(new SingleTrackCar(new CarConfig(), new TireConfig())));
     }
 
     [Fact]
