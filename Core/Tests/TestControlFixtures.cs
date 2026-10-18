@@ -1,4 +1,6 @@
+using System;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 
 namespace StintegyEVO.Core.Tests;
@@ -32,6 +34,67 @@ internal static class TestControlFixtures
     public static TestTires WarmTires() => new(new TireConfig
     {
     }, 90f, 90f);
+
+    /// <summary>
+    /// A car driven by <paramref name="command"/>: a curvature and an
+    /// acceleration each step, the wheels turned for the curvature as a
+    /// driver who knew the car would turn them (<see cref="SteeringEstimate"/>).
+    /// </summary>
+    public static RaceCar CurvatureCar(
+        string id,
+        CarState state,
+        Func<RaceCarSnapshot, (float Curvature, float Accel)> command,
+        CarConfig? config = null,
+        TireConfig? tires = null,
+        CarCollisionConfig? collision = null
+    ) => new(
+        id,
+        config ?? new CarConfig(),
+        tires ?? WarmTires(),
+        new Driver(new DriverProfile(id, new(), 42), new CurvatureDriver(command)),
+        state,
+        collision: collision
+    );
+}
+
+/// <summary>
+/// Steering for a test that asks for a curvature: the road-wheel angle a
+/// driver who knew the car exactly would turn to, read off the car as it is.
+/// </summary>
+internal static class TestSteering
+{
+    public static float For(CarState state, CarConfig car, TireConfig tires, float curvature, RoadAttitude? road = null) =>
+        CarPhysics.EstimateSteering(state, car, tires, road ?? RoadAttitude.Flat).AngleFor(curvature);
+
+    /// <summary>For a car in a simulation, on a level road.</summary>
+    public static DriverInput For(RaceCar car, Ask ask) =>
+        new(car.Car.EstimateSteering(car.State, RoadAttitude.Flat).AngleFor(ask.Curvature), ask.Accel, ask.FrontBrakeBiasOffset);
+
+    /// <summary>The pedals as given, the wheels turned for <paramref name="curvature"/>.</summary>
+    public static DriverInput Holding(CarState state, CarConfig car, TireConfig tires, float curvature, float accel, RoadAttitude? road = null) =>
+        new(For(state, car, tires, curvature, road), accel);
+}
+
+/// <summary>
+/// What a test asks a car for: a curvature and the pedals. The car is given
+/// a wheel angle, so this is steered each step (<see cref="For"/>) as a
+/// driver who knew the car would steer it.
+/// </summary>
+internal readonly record struct Ask(float Curvature, float Accel, float FrontBrakeBiasOffset = 0f)
+{
+    public DriverInput For(CarState state, CarConfig car, TireConfig tires, RoadAttitude? road = null) =>
+        new(TestSteering.For(state, car, tires, Curvature, road), Accel, FrontBrakeBiasOffset);
+}
+
+/// <summary>Holds what <paramref name="command"/> says each step, steering for its curvature.</summary>
+internal sealed class CurvatureDriver(Func<RaceCarSnapshot, (float Curvature, float Accel)> command) : IDriverController
+{
+    public DriverInput GetControl(in DriverContext context, float dt)
+    {
+        RaceCarSnapshot car = context.Car;
+        (float curvature, float accel) = command(car);
+        return new DriverInput(car.Steering.AngleFor(curvature), accel);
+    }
 }
 
 /// <summary>

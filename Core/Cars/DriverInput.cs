@@ -1,7 +1,17 @@
 namespace StintegyEVO.Core.Cars;
 
+/// <summary>
+/// What a driver does with the car this step: where it turns the road
+/// wheels and what it asks of the pedals.
+/// </summary>
+/// <param name="SteerAngleRadians">The angle to turn the front road wheels
+/// to, signed as the curvature it turns the car onto. The physics turns
+/// them there as fast as the rack moves and no further than full lock, and
+/// does not second-guess it: the lock a corner wants is the driver's to judge
+/// (<see cref="SteeringEstimate"/> is what a driver who knew the car
+/// exactly would choose).</param>
 public readonly record struct DriverInput(
-    float DesiredCurvature,
+    float SteerAngleRadians,
     float DesiredAccel,
     // Signed fraction of total braking demand. Positive values move braking
     // toward the front axle; zero retains the dynamically optimal split.

@@ -183,7 +183,7 @@ public sealed class RaceSimulation
                     _stepInputs[i] = car.Driver.Controller.GetControl(in context, dt);
                 }
                 DriverInput input = _stepInputs[i];
-                if (!float.IsFinite(input.DesiredCurvature) || !float.IsFinite(input.DesiredAccel) ||
+                if (!float.IsFinite(input.SteerAngleRadians) || !float.IsFinite(input.DesiredAccel) ||
                     !float.IsFinite(input.FrontBrakeBiasOffset))
                     throw new InvalidOperationException($"Non-finite control for car '{car.Id}'.");
             }
@@ -492,9 +492,12 @@ public sealed class RaceSimulation
         );
     }
 
-    private RoadAttitude SampleRoadAttitude(RaceCar car)
+    private RoadAttitude SampleRoadAttitude(RaceCar car) =>
+        RoadAttitudeAt(Track.Sample(car.Progress.CurrentS), car.Progress.CurrentD);
+
+    /// <summary>How the road lies under a car at <paramref name="sample"/>, <paramref name="d"/> off the centre line.</summary>
+    internal static RoadAttitude RoadAttitudeAt(TrackSample sample, float d)
     {
-        TrackSample sample = Track.Sample(car.Progress.CurrentS);
         if (sample.Grade == 0f &&
             sample.BankSlope == 0f &&
             sample.BankCurvature == 0f &&
@@ -504,7 +507,7 @@ public sealed class RaceSimulation
         }
         return new RoadAttitude(
             sample.Grade,
-            sample.BankSlopeAt(car.Progress.CurrentD),
+            sample.BankSlopeAt(d),
             sample.VerticalRate
         );
     }

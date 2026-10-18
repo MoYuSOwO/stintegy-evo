@@ -72,7 +72,9 @@ public sealed class ReadmeExampleTests
                 );
             float target = MathF.Min(60f, MathF.Sqrt(14f / MathF.Max(tightest, 1e-4f)));
             float accel = Math.Clamp(2f * (target - car.SpeedMetersPerSecond), -20f, 8f);
-            return new DriverInput(curvature, accel);
+
+            // The wheels turned for that arc, as a driver who knew the car would.
+            return new DriverInput(car.Steering.AngleFor(curvature), accel);
         }
     }
     // --- end of README example ---

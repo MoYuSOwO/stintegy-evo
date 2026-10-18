@@ -113,7 +113,7 @@ public sealed class WallContactDynamicsTests
             offsetFromLeftWall: 1.2f,
             headingIntoWall: 0.02f,
             speed: 30f,
-            command: _ => new DriverInput(0.01f * TowardsLeftWall(100f), 2f),
+            command: _ => new Ask(0.01f * TowardsLeftWall(100f), 2f),
             seconds: 4f,
             out int contactFrames
         );
@@ -134,7 +134,7 @@ public sealed class WallContactDynamicsTests
             offsetFromLeftWall: 2.2f,
             headingIntoWall: 0.08f,
             speed: 35f,
-            command: _ => new DriverInput(0f, 2f),
+            command: _ => new Ask(0f, 2f),
             seconds: 3f,
             out int contactFrames
         );
@@ -187,8 +187,8 @@ public sealed class WallContactDynamicsTests
             headingIntoWall: 0.6f,
             speed: 25f,
             command: hit => hit
-                ? new DriverInput(-0.15f * TowardsLeftWall(100f), 3f)
-                : new DriverInput(0f, 0f),
+                ? new Ask(-0.15f * TowardsLeftWall(100f), 3f)
+                : new Ask(0f, 0f),
             seconds: 8f,
             out int contactFrames
         );
@@ -219,7 +219,7 @@ public sealed class WallContactDynamicsTests
             offsetFromLeftWall: 2.3f,
             headingIntoWall: 0.6f,
             speed: 0f,
-            command: _ => new DriverInput(curvature, 3f),
+            command: _ => new Ask(curvature, 3f),
             seconds: 10f,
             out _,
             observe: c =>
@@ -258,7 +258,7 @@ public sealed class WallContactDynamicsTests
         float offsetFromLeftWall,
         float headingIntoWall,
         float speed,
-        Func<bool, DriverInput> command,
+        Func<bool, Ask> command,
         float seconds,
         out int contactFrames,
         CarConfig? config = null,
@@ -275,9 +275,10 @@ public sealed class WallContactDynamicsTests
                 Speed = speed,
                 Energy = PowertrainState.Filled(0.9f)
             },
-            command(false),
+            default,
             config
         );
+        car.ExternalInput = TestSteering.For(car, command(false));
         var simulation = new RaceSimulation(Track);
         simulation.AddCar(car);
 
@@ -294,7 +295,7 @@ public sealed class WallContactDynamicsTests
                 hit = true;
                 contactFrames++;
             }
-            car.ExternalInput = command(hit);
+            car.ExternalInput = TestSteering.For(car, command(hit));
             observe?.Invoke(car);
 
             Assert.True(float.IsFinite(car.State.Speed), $"speed at frame {i}");
@@ -325,7 +326,7 @@ public sealed class WallContactDynamicsTests
                 offsetFromLeftWall: 1.2f,
                 headingIntoWall: 0f,
                 speed: 30f,
-                command: _ => new DriverInput(TowardsLeftWall(100f) * curvatureIntoWall, 0f),
+                command: _ => new Ask(TowardsLeftWall(100f) * curvatureIntoWall, 0f),
                 seconds: 1.5f,
                 out contactFrames
             );

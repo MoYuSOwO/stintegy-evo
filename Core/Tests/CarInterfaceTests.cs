@@ -180,6 +180,9 @@ public sealed class CarInterfaceTests
             new(10f, 5f, Brake, 0f);
 
         public float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) => 10f;
+        public SteeringEstimate EstimateSteering(CarState state, RoadAttitude road) =>
+            new(state.Speed, Spec.WheelBaseMeters, Spec.FrontAxleOffsetMeters, Spec.RearAxleOffsetMeters,
+                10f, 10f, 1f, 0f, SteerLock, 0f, 0f, road.CurvatureDemandScale, 0f);
         public float GripUsage(CarStrategy strategy) => 1f;
         public IReadOnlyList<TireCompound> Compounds { get; } = [TireCompound.Of(new TireConfig(), "hard")];
         public void FitTires(CarState state, string compound) => state.Compound = compound;
