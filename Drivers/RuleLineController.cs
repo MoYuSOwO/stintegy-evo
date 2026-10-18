@@ -90,7 +90,7 @@ public class RuleLineController : IDriverController
             {
                 TrackSample road = track.Sample(car.TrackS);
                 return new DriverInput(
-                    road.Curvature,
+                    car.Steering.AngleFor(road.Curvature),
                     Math.Clamp(4.5f, 0f, car.Capabilities.AvailableDriveAcceleration)
                 );
             }
@@ -196,7 +196,7 @@ public class RuleLineController : IDriverController
         accel = Math.Clamp(accel, -now.MaximumBrakeDeceleration, now.MaximumDriveAcceleration);
         if (slip > 0.28f)
             accel = MathF.Min(accel, 0f);
-        return new DriverInput(kappa, accel);
+        return new DriverInput(car.Steering.AngleFor(kappa), accel);
     }
 
     private float CornerShare() => _active.GgUsage * _execution.PaceEfficiency;
@@ -234,7 +234,7 @@ public class RuleLineController : IDriverController
             grip
         );
         return new DriverInput(
-            curvature,
+            car.Steering.AngleFor(curvature),
             Math.Clamp(
                 MathF.Min(now.MaximumDriveAcceleration, 2.8f),
                 0f,
