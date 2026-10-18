@@ -84,6 +84,7 @@ To watch it, open the project in Godot. The main scene, `Levels/lowpoly.tscn`, i
 
 - **World and physics:** vehicle state, slip-angle tyres, powertrain resources, heat and wear, grip, road attitude and banking, collisions, wakes, track limits and walls, deterministic stepping.
 - **Domain contracts:** stable identities, driver profiles with 0..100 ratings, car capabilities, typed resource slots, track geometry, immutable frame snapshots, and the controller interface.
+- **Content as data:** cars are namespaced packs (`data/<namespace>/cars/<name>/`: a `car.json` and an assembly built on the game's own chassis, see [`Cars/MODDING.md`](Cars/MODDING.md)); compounds come in tyre packs (`data/<namespace>/tyres/<name>/tyres.json`) that a car declares, on one tyre model shared by every car; circuits are folders (`Circuits/<id>/`: `circuit.json`, a `track.csv` with one row a metre, scenery), written by the offline tool `Tools/Circuits` from the surveyed sources, see [`Circuits/README.md`](Circuits/README.md).
 - **Presentation:** Godot 3D views, cameras, HUD and CSV recording of physical state. The old 2D `RaceView` / `Levels/root.tscn` is retained for compatibility only.
 
 What is **not** here: rule-based or learned drivers, racing-line solvers, observation vectors, neural networks, training programs and model files. The world does not prefer a line, and it does not hide a driver model in its physics.
@@ -93,15 +94,15 @@ What is **not** here: rule-based or learned drivers, racing-line solvers, observ
 - **Controllers.** `IDriverController.GetControl` reads a `DriverContext` (the driver's profile, a read-only track view and a frozen frame) and returns a `DriverInput`: the angle to turn the front wheels to, desired longitudinal acceleration and an optional brake-bias offset. The car turns its wheels where it is told and does not correct the driver; `RaceCarSnapshot.Steering` says what angle a driver who knew the car exactly would choose for a given curvature. A car may also have no driver; the host then sets `RaceCar.ExternalInput`, and a zero command coasts rather than freezing the car.
 - **Freeze, collect, advance.** In every substep all controllers read the same frozen frame, every command is collected and validated, and only then does physics advance. No controller sees a world another controller has already changed.
 - **Devices on the car.** Everything between a command and the tyres is a published device with its parameters on `CarConfig`. A car without a device has that device's parameters at zero; the interface does not change.
-  - The **combined-grip limiter** is the electronic stability device this class of racing permits. It trims each axle's drive and braking so that the tyre's combined use stays inside the share of the friction circle the team's tyre rung authorises, and above 10 m/s it cuts drive on an axle that is past its peak slip angle. It never steers. `CombinedGripLimiterStrength = 0` means the device is not fitted.
-  - **Drag reduction** removes part of the aero drag and restores part of the downforce lost in a leading car's wake. An external race host sets its activation; Core does not decide eligibility.
+  - The **combined-grip limiter** is the electronic stability device this class of racing permits. It trims each axle's drive and braking so that the tyre's combined use stays inside a fixed share of the friction circle, the same at every tyre rung, and above 10 m/s it cuts drive on an axle that is past its peak slip angle. It never steers. `CombinedGripLimiterStrength = 0` means the device is not fitted.
+  - **Push-to-pass** adds power while the button is held, within the series' allowance (`PushToPassRules`: seconds for the race, a cap on one push, a wait after each), which Core enforces; when to press it is the host's or the driver's. **Active aero** restores part of the downforce lost in a leading car's wake.
 - **Tracks are geometry.** A track provides a centreline, widths, run-off, curvature, elevation and banking, surfaces and a starting grid. It does not provide a racing line.
 
 The contracts are stated in the XML documentation on these types and are held by the tests in `Core/Tests`.
 
 ## History
 
-This is a narrower product boundary than the project's earlier prototype, which carried its own analytic and learned drivers and a training stack. That history remains in Git: baseline `d85e164` and the `era/world-v2` line. Current behaviour differs from it on purpose. Driver-efficiency inputs are gone. The old traction control and anti-lock are replaced by the combined-grip limiter. Drag reduction is activated by the host instead of by a one-second gap at the line. Old results are evidence about an old contract; do not read them as claims about this one.
+This is a narrower product boundary than the project's earlier prototype, which carried its own analytic and learned drivers and a training stack. That history remains in Git: baseline `d85e164` and the `era/world-v2` line. Current behaviour differs from it on purpose. Driver-efficiency inputs are gone. The old traction control and anti-lock are replaced by the combined-grip limiter. Drag reduction is gone, replaced by push-to-pass and active aero. Old results are evidence about an old contract; do not read them as claims about this one.
 
 ## Verification
 
