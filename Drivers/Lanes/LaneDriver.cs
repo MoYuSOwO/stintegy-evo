@@ -539,8 +539,12 @@ public sealed class LaneDriver : IDriverController
         float flatOut = speedScale * LaneSpeedPlanner.FlatOutSpeed(
             _envelope, speed, here, MathF.Max(0f, speed) * preview, FactorFor(at, Range, Side),
             RoadAt(at, car.TrackD), _planShares);
+        // Flat out is the pedal on the floor, not the drive the car reported
+        // a step ago: the motor gives what it has this step. Asked for the
+        // last step's figure, the step a push began asked for the power
+        // without it, a tenth less, and the throttle trace dipped.
         if (target >= flatOut - FlatOutToleranceMps)
-            accel = MathF.Max(accel, car.Capabilities.AvailableDriveAcceleration);
+            accel = MathF.Max(accel, _car.MaxDriveAcceleration);
 
         // Lift and coast: off the throttle this long before a braking zone.
         // The speed given up would have gone into the brakes a moment later,
@@ -557,7 +561,8 @@ public sealed class LaneDriver : IDriverController
         // already carrying. Hot, that is more than the motor can use; cold,
         // it is less, and the throttle comes in only as fast as it is taken.
         AxleTelemetry tyres = _axles;
-        float driveLimit = car.Capabilities.AvailableDriveAcceleration;
+        // The pedal's whole travel: the motor takes what it can of it.
+        float driveLimit = _car.MaxDriveAcceleration;
         // What the tyres will carry of the coming corner on this road: a bank
         // takes its share off them, so the throttle is not held back on
         // banking by load the banking is carrying. The corner is the one the
@@ -595,7 +600,7 @@ public sealed class LaneDriver : IDriverController
             // The car shares drive between its motors by the grip each axle
             // has left, so the room is the two together, each held to what
             // its own motor can give.
-            float drive = car.Capabilities.AvailableDriveAcceleration;
+            float drive = _car.MaxDriveAcceleration;
             tractionRoom = MathF.Min(frontRoom, drive * motorShare) +
                            MathF.Min(rearRoom, drive * (1f - motorShare));
         }
