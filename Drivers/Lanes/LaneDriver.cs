@@ -919,9 +919,14 @@ public sealed class LaneDriver : IDriverController
             float[] speed = _speed[lane];
             // Driving on from what the last step planned here, so a corner's
             // exit stays the one its apex allows; the first step has none.
+            // Or from the car, where it is already faster: the envelope's
+            // drive is the motor without push-to-pass, and on a push the car
+            // ran a km/h or two ahead of a plan drawn on less power, read
+            // that as too fast, and lifted for a step every few, the length
+            // of the straight. The corners ahead still cap it as before.
             LaneSpeedPlanner.PlanAhead(
                 _envelope, _aheadCurvature, _aheadStep, _aheadFactor, _aheadBrake, _aheadRoad, _planShares,
-                startSpeed: _planned[lane] ? speed[_lanes.Wrap(start)] : float.PositiveInfinity,
+                startSpeed: _planned[lane] ? MathF.Max(speed[_lanes.Wrap(start)], car.SpeedMetersPerSecond) : float.PositiveInfinity,
                 terminalSpeed: float.PositiveInfinity,
                 _aheadSpeed);
             for (int k = 0; k < n; k++)
