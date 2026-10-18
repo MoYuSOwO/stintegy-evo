@@ -25,7 +25,7 @@ public sealed class LaneLapResult
     /// <summary>Per station: worst |lateral error| on the flying lap.</summary>
     public float[] StationError { get; init; } = [];
 
-    /// <summary>Per station: worst body sideslip on the flying lap.</summary>
+    /// <summary>Per station: worst body sideslip on the flying lap, beyond what the bend's own geometry gives at the centre of mass.</summary>
     public float[] StationSlip { get; init; } = [];
 
     /// <summary>Per station: mean speed on the flying lap.</summary>
@@ -198,7 +198,12 @@ public static class LaneLapRunner
                 signedSum[k] += tel.LateralErrorMeters;
                 speedSum[k] += car.State.Speed;
                 signedCount[k]++;
-                stationSlip[k] = MathF.Max(stationSlip[k], MathF.Abs(car.State.SideslipAngleRadians));
+                // The slide, not the geometry: round a tight bend slowly the
+                // car's centre already moves at an angle to where it points,
+                // the rear axle's offset over the radius, and at Monaco's
+                // hairpin that alone is past what a slide is counted from.
+                float geometric = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Telemetry.ActualCurvature);
+                stationSlip[k] = MathF.Max(stationSlip[k], MathF.Abs(car.State.SideslipAngleRadians - geometric));
                 float plan = driver.PlannedSpeedAt(car.Progress.CurrentS);
                 stationShortfall[k] = MathF.Max(stationShortfall[k], plan - car.State.Speed);
                 if (tel.CommandAccel < -3f)
