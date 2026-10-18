@@ -358,7 +358,7 @@ public sealed class LaneDriver : IDriverController
                   Gains.UseVertical ? under.VerticalRate : 0f)
             : RoadAttitude.Flat;
         float load = att.NormalGravity(StandardGravity, speed, curvature) / StandardGravity;
-        float available = Gains.CommandLateralShare * MathF.Max(1f, lateralLimit + turn.A * (load - 1f));
+        float available = Gains.CommandLateralShare * MathF.Max(1f, LaneEnvelope.WithLoad(lateralLimit, turn.A, load, turn.LoadExponent));
 
         // Better than any estimate: what the axles have this instant, as the
         // physics reports it, with the brakes' share of each circle taken out
@@ -475,8 +475,13 @@ public sealed class LaneDriver : IDriverController
         float driveLimit = car.Capabilities.AvailableDriveAcceleration;
         // What the tyres will carry of the coming corner on this road: a bank
         // takes its share off them, so the throttle is not held back on
-        // banking by load the banking is carrying.
-        float tyreCorner = MathF.Abs(att.CurvatureDemandScale * speed * speed * curvature +
+        // banking by load the banking is carrying. The corner is the one the
+        // line wants, not the one the cap above lets the wheel ask for: read
+        // off the capped one, a car whose drive was already eating the rear's
+        // circle found room for more drive in the corner the drive had cut,
+        // and out of a corner on full power it ran two metres wide and off.
+        float lineCurvature = Math.Clamp(wanted, -maxRequest, maxRequest);
+        float tyreCorner = MathF.Abs(att.CurvatureDemandScale * speed * speed * lineCurvature +
                                      att.LateralGravityDemand(StandardGravity, speed));
         float circle = (_style is { } throttleStyle
                 ? throttleStyle.Traction + (_performance?.LimitOveruse ?? 0f)

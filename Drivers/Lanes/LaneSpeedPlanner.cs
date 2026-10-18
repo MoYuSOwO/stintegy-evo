@@ -26,9 +26,10 @@ internal readonly struct LaneEnvelope
     // temperature and wear, not by an average of all four.
     private readonly LaneEnvelope[]? _turns;
 
-    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss, LaneEnvelope[]? turns = null)
+    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss, float loadExponent, LaneEnvelope[]? turns = null)
     {
         _turns = turns;
+        LoadExponent = loadExponent;
         _lateral = lateral;
         _lateralBraking = lateralBraking;
         _brake = brake;
@@ -55,6 +56,42 @@ internal readonly struct LaneEnvelope
     public float BrakeStatic { get; }
 
     /// <summary>
+    /// How a tyre's grip grows with what presses it into the road: as the
+    /// load to this power, one less the tyre's load sensitivity, as the
+    /// physics has it (<see cref="Tire.GripForce"/>).
+    /// </summary>
+    public float LoadExponent { get; }
+
+    /// <summary>
+    /// The corner the tyres hold at <paramref name="v"/> where the road
+    /// presses the car down <paramref name="load"/> times its weight.
+    /// </summary>
+    public float Lateral(float v, float load) => WithLoad(Lateral(v), A, load, LoadExponent);
+
+    /// <summary>The braking the tyres hold where the road presses the car down <paramref name="load"/> times its weight.</summary>
+    public float Brake(float v, float load) => WithLoad(Brake(v), BrakeStatic, load, LoadExponent);
+
+    /// <summary>
+    /// Grip read on the level, <paramref name="level"/>, of which the
+    /// weight gives <paramref name="weight"/>, where the road presses the car
+    /// down <paramref name="load"/> times its weight instead of once. A tyre
+    /// does not grip in proportion to its load: each extra newton is worth
+    /// less than the one before (load sensitivity), so the load the level
+    /// grip stands for is found by undoing the power, the road's share is
+    /// added to it in weights, and the power is put back. Counted straight,
+    /// a steep bank's load grew the grip as fast as the corner grew the
+    /// demand, and on Zandvoort's 19 degree Hugenholtz the plan found no
+    /// speed the corner could not be taken at.
+    /// </summary>
+    public static float WithLoad(float level, float weight, float load, float exponent)
+    {
+        if (load == 1f || weight <= 0f || level <= 0f || exponent <= 0f)
+            return level + weight * (load - 1f);
+        float loads = MathF.Pow(level / weight, 1f / exponent) + load - 1f;
+        return loads <= 0f ? 0f : weight * MathF.Pow(loads, exponent);
+    }
+
+    /// <summary>
     /// This envelope for a corner turning the way <paramref name="curvature"/>
     /// does: the outside tyres' figures where they have been built, the
     /// four-tyre average on a straight or where they have not.
@@ -72,7 +109,7 @@ internal readonly struct LaneEnvelope
         if (!turnAware)
             return straight;
         var turns = new[] { From(plan, car, tires, strategy, +1f, straight), From(plan, car, tires, strategy, -1f, straight) };
-        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, turns);
+        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent, turns);
     }
 
     /// <summary>
@@ -106,7 +143,7 @@ internal readonly struct LaneEnvelope
             lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
             lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
         }
-        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss);
+        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent);
     }
 
     public static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy)
@@ -145,7 +182,7 @@ internal readonly struct LaneEnvelope
             loss[i] = MathF.Max(0f, coast.LossAcceleration);
         }
 
-        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss);
+        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss, 1f - Math.Clamp(tires.LoadSensitivity, 0f, 1f));
     }
 
     /// <summary>
@@ -163,6 +200,7 @@ internal readonly struct LaneEnvelope
             _brake.Select(x => x * s).ToArray(),
             _drive,
             _loss,
+            LoadExponent,
             _turns?.Select(e => e.WithRoadGrip(scale)).ToArray());
     }
 
@@ -276,7 +314,7 @@ internal static class LaneSpeedPlanner
                 : new RoadAttitude(road.Grade, 0f, road.Vertical).NormalGravity(Gravity, v, curvature) / Gravity;
             // The envelope read on the level, with the weight's share moved
             // by how hard the road presses the car into it.
-            return demand <= factor * (env.Lateral(v) + env.A * (load - 1f));
+            return demand <= factor * env.Lateral(v, load);
         }
         return Solve(Holds);
     }
@@ -391,9 +429,9 @@ internal static class LaneSpeedPlanner
             // it could: take the lateral limit part way to the full-braking
             // one, in proportion to how hard the first guess brakes, and ask again.
             (float ay, float load) = Corner(v, curvature, road);
-            float lateral = e.Lateral(v) + e.A * (load - 1f);
+            float lateral = e.Lateral(v, load);
             float brakingShare = e.LateralBraking(v) / MathF.Max(e.Lateral(v), 1f);
-            float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(v) + e.BrakeStatic * (load - 1f));
+            float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(v, load));
             float coast = factor * shares.Lateral * lateral;
             float full = shares.BrakingCoupling ? coast * brakingShare : coast;
             float ax = brake * Ellipse(ay, coast);
@@ -431,7 +469,7 @@ internal static class LaneSpeedPlanner
     {
         LaneEnvelope e = envelope.ForTurn(curvature);
         (float ay, float load) = Corner(v, curvature, road);
-        float lateralLimit = factor * shares.Lateral * (e.Lateral(v) + e.A * (load - 1f));
+        float lateralLimit = factor * shares.Lateral * e.Lateral(v, load);
         // The motor's drive or what the tyres have left beside the corner,
         // whichever is less. Scaling the motor by the ellipse charged it for
         // grip it never asked for: up a fast bend at 240 km/h the motor gives
