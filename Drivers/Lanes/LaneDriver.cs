@@ -86,8 +86,18 @@ public sealed record LaneDriverGains
         new(Corner: 1.0000f, Brake: 1.0000f, Traction: 0.9000f, Cap: 1.0000f),
     ];
 
-    /// <summary>Share of the axles' live grip the command may ask for: what a tyre holds, not its peak.</summary>
-    public float AxleCapShare { get; init; } = 0.90f;
+    /// <summary>
+    /// Share of the axles' live grip the command may ask for: what a tyre
+    /// holds, not its peak, so the physics' own figure for it. It was 0.90,
+    /// set when a tyre held nine tenths of its peak, and stayed there when
+    /// the steering stopped winding itself off and the tyre came to hold
+    /// 0.98 (TireSlipCurve.SustainablePeakShare). The envelope the plan is
+    /// drawn on moved with the physics and the hands did not: the plan asked
+    /// 93% of the peak of hands that would give 90, and with nothing over to
+    /// steer back with, a car a little late into a long corner ran wider all
+    /// the way round it, at Zandvoort's Scheivlak off the road.
+    /// </summary>
+    public float AxleCapShare { get; init; } = TireSlipCurve.SustainablePeakShare;
 
     public float SpeedGain { get; init; } = 6f;
 
