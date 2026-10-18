@@ -28,6 +28,13 @@ public sealed class Tire
     /// </summary>
     public const float BlanketTempC = 70f;
 
+    /// <summary>
+    /// The share of its peak grip a tyre holds in a steady corner, as the
+    /// physics has it (the slip curve's own figure): what a driver can lean
+    /// on without the tyre letting go.
+    /// </summary>
+    public const float SustainablePeakShare = TireSlipCurve.SustainablePeakShare;
+
     private const float Epsilon = 1e-5f;
     private const float MinimumTireHeatLoadScale = 0.2f;
     private const float MaximumThermalOverLimit = 1f;
