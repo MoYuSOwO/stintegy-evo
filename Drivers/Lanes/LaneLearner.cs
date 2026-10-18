@@ -18,6 +18,15 @@ public sealed class LaneLearner
     public float LookAheadMeters { get; init; } = 20f;
     public float Penalty { get; init; } = 0.03f;
     public float SpinPenalty { get; init; } = 0.06f;
+    /// <summary>
+    /// What a station off the road, or this far off its lane, gives up in
+    /// one round, from both the corner and the braking. Zandvoort's left lane
+    /// ran 10 m wide out of a corner it braked into and needed the corner 20
+    /// to 30% slower, and at the 3% of a small miss it took longer than the
+    /// learning had; giving up only the braking there spun the car.
+    /// </summary>
+    public float SeverePenalty { get; init; } = 0.1f;
+    public float SevereErrorMeters { get; init; } = 2f;
     public float Reward { get; init; } = 0.01f;
     public float MaximumFactor { get; init; } = 1.2f;
     public float MinimumFactor { get; init; } = 0.6f;
@@ -209,6 +218,7 @@ public sealed class LaneLearner
         float bestTime = Clean(lap) && TroubleFree(lap) ? Pace(lap) : float.PositiveInfinity;
         float step = 1f;
         int stale = 0;
+        int stillFor = 0;
 
         for (int iteration = 1; iteration <= iterations; iteration++)
         {
@@ -238,9 +248,15 @@ public sealed class LaneLearner
                     int next = (k + 1) % sectors;
                     var before = SectorTrouble(lap, k, length, n);
                     var after = SectorTrouble(tried, k, length, n);
-                    // The sector after is where a faster exit arrives: it may
-                    // not be made worse for this one's sake.
-                    if (SectorTrouble(tried, next, length, n).Stations > SectorTrouble(lap, next, length, n).Stations)
+                    int nextBefore = SectorTrouble(lap, next, length, n).Stations;
+                    int nextAfter = SectorTrouble(tried, next, length, n).Stations;
+                    // The sector after is where a faster exit arrives: a clean
+                    // sector may not make it worse for its own sake. One in
+                    // trouble may hand it on, no more of it than it sheds: a
+                    // car slowed for a corner it left the road at can still
+                    // go off a little further on, and that one is learned next
+                    // round, where vetoing it kept the first for good.
+                    if (before.Stations == 0 ? nextAfter > nextBefore : after.Stations + nextAfter > before.Stations + nextBefore)
                         continue;
                     bool take = before.Stations == 0
                         // Clean: stays clean, and is quicker.
@@ -285,10 +301,20 @@ public sealed class LaneLearner
             }
             stale = kept > 0 ? 0 : stale + 1;
             history.Add(new Step(iteration, lap, better));
+            // The same lap again and again: the sectors still being kept
+            // change nothing the car does. Rounds past that are time spent
+            // learning nothing, and the next phase is where the change is.
+            int steady = history.Count >= 2 && SameLap(history[^2].Result, lap) ? stillFor + 1 : 0;
+            stillFor = steady;
             Progress?.Invoke(
                 $"{lane} pace {iteration}/{iterations}: sectors kept {kept}/{sectors}, " +
                 $"lap {(lap.Finished ? Pace(lap).ToString("F2") : "unfinished")} err {lap.WorstErrorMeters:F2} " +
                 $"{(TroubleFree(lap) ? "clean" : "trouble " + TroubleCauses(lap))}, best {(float.IsFinite(bestTime) ? bestTime.ToString("F2") : "none")}");
+            if (stillFor >= SteadyRounds)
+            {
+                Progress?.Invoke($"{lane} pace: the lap has not changed for {SteadyRounds} rounds, done");
+                break;
+            }
         }
 
         return (best, bestLap, history);
@@ -307,6 +333,14 @@ public sealed class LaneLearner
         }
         return $"(error {error}, slip {slip}, off {off}, lock {cap})";
     }
+
+    /// <summary>Rounds in a row the lap may come back the same before a phase stops.</summary>
+    public int SteadyRounds { get; init; } = 3;
+
+    private static bool SameLap(LaneLapResult a, LaneLapResult b) =>
+        a.Finished == b.Finished &&
+        MathF.Abs(a.FlyingLapSeconds - b.FlyingLapSeconds) < 0.005f &&
+        MathF.Abs(a.WorstErrorMeters - b.WorstErrorMeters) < 0.005f;
 
     /// <summary>Stations in trouble, every one if the lap did not get round on the road, then the pace.</summary>
     private (int Trouble, float Time) Score(LaneLapResult lap)
@@ -429,7 +463,10 @@ public sealed class LaneLearner
                 if (lap.StationError[i] > TroubleErrorMeters || lap.StationSlip[i] > TroubleSlipRadians ||
                     (lap.StationOff.Length == n && lap.StationOff[i]) ||
                     (CapBoundIsTrouble && lap.StationCapBound.Length == n && lap.StationCapBound[i]))
-                    Punish(i, Penalty * step, both: !LearnBraking);
+                {
+                    bool severe = lap.StationError[i] > SevereErrorMeters || (lap.StationOff.Length == n && lap.StationOff[i]);
+                    Punish(i, (severe ? SeverePenalty : Penalty) * step, both: severe || !LearnBraking);
+                }
             }
             for (int i = 0; i < n; i++)
             {
@@ -504,6 +541,7 @@ public sealed class LaneLearner
         // rest of the lap is not held back by it.
         var local = new float[n];
         Array.Fill(local, gain);
+        int dropped = 0;
 
         for (int iteration = 1; iteration <= iterations; iteration++)
         {
@@ -565,6 +603,14 @@ public sealed class LaneLearner
             Progress?.Invoke(
                 $"{lane} steer {iteration}/{iterations}: err {lap.MeanAbsErrorMeters:F2}/{lap.WorstErrorMeters:F2} " +
                 $"{(kept ? "kept" : "dropped")}, best {bestLap.MeanAbsErrorMeters:F2}/{bestLap.WorstErrorMeters:F2}");
+            // Corrections no longer taken: each step is smaller than the
+            // last, so a few in a row dropped is the table settled.
+            dropped = kept ? 0 : dropped + 1;
+            if (dropped >= SteadyRounds + 1)
+            {
+                Progress?.Invoke($"{lane} steer: {dropped} corrections in a row dropped, done");
+                break;
+            }
         }
 
         return (best, bestLap, history);

@@ -89,12 +89,18 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
                 // pace changed. The steering is one table a lane, learned at
                 // full grip.
                 int rounds = lane == LaneId.Free ? 20 : 15;
-                file = Pace(track, file, gains, learner, lane, level, rounds, watch);
+                (file, bool paceLearned) = Pace(track, file, gains, learner, lane, level, rounds, watch);
                 if (level == LaneTrackFile.TopLevel)
                 {
-                    file = Steer(track, file, gains, lane, 15, "steer");
-                    file = Pace(track, file, gains, learner, lane, level, rounds, watch);
-                    file = Steer(track, file, gains, lane, 10, "steer again");
+                    (file, bool steerLearned) = Steer(track, file, gains, lane, 15, "steer");
+                    // Learning is deterministic: from the factors and steering
+                    // the first pace began with, the second would drive every
+                    // round of it again.
+                    if (paceLearned || steerLearned)
+                        (file, _) = Pace(track, file, gains, learner, lane, level, rounds, watch);
+                    else
+                        _progress?.Invoke($"{lane} pace again skipped: it would begin where the first did");
+                    (file, _) = Steer(track, file, gains, lane, 10, "steer again");
                 }
             }
         }
@@ -110,17 +116,17 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         _output.WriteLine($"switch every 8 s: {LaneLapRunner.Run(track, file, gains, onStep: (car, d, t) => { int phase = (int)(t / 8f) % 4; d.TargetRange = phase == 0 ? 0f : 1f; d.TargetSide = phase == 1 ? 1f : phase == 2 ? 0f : -1f; })}");
     }
 
-    private LaneTrackFile Pace(TrackData track, LaneTrackFile file, LaneDriverGains gains, LaneLearner learner, LaneId lane, int level, int rounds, System.Diagnostics.Stopwatch watch)
+    private (LaneTrackFile, bool Learned) Pace(TrackData track, LaneTrackFile file, LaneDriverGains gains, LaneLearner learner, LaneId lane, int level, int rounds, System.Diagnostics.Stopwatch watch)
     {
         var (paced, lap, history) = learner.LearnSectors(track, file, rounds, gains, lane: lane, level: level);
         _output.WriteLine($"{lane} @ {LaneTrackFile.GripLevels[level]:F2} pace: first {history[0].Result.FlyingLapSeconds:F2} better {history.Count(h => h.Kept)}/{history.Count} best {lap}  [{watch.Elapsed.TotalMinutes:F0} min]");
-        return paced;
+        return (paced, history.Skip(1).Any(h => h.Kept));
     }
 
-    private LaneTrackFile Steer(TrackData track, LaneTrackFile file, LaneDriverGains gains, LaneId lane, int iterations, string label)
+    private (LaneTrackFile, bool Learned) Steer(TrackData track, LaneTrackFile file, LaneDriverGains gains, LaneId lane, int iterations, string label)
     {
         var (steered, lap, history) = new LaneLearner { Progress = _progress }.LearnSteering(track, file, iterations, gains, lane);
         _output.WriteLine($"{lane} {label}: error {history[0].Result.MeanAbsErrorMeters:F2}/{history[0].Result.WorstErrorMeters:F2} -> {lap.MeanAbsErrorMeters:F2}/{lap.WorstErrorMeters:F2} kept {history.Count(h => h.Kept)}/{history.Count}");
-        return steered;
+        return (steered, history.Skip(1).Any(h => h.Kept));
     }
 }
