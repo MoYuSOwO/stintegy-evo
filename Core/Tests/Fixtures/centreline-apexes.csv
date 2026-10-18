@@ -27,7 +27,10 @@ sepang,4013,0.014680
 sepang,4086,0.009200
 sepang,4251,0.036010
 sepang,5205,-0.036230
-silverstone,394,0.026160
+# Abbey: the source drew it as a kink (0.02616 here, a 38 m radius at
+# 285 km/h); Tools/Circuits spreads it (SourceRepairs.SpreadBend) to
+# the 57 degrees over about 100 m the bacinger survey has.
+silverstone,394,0.013830
 silverstone,642,-0.011740
 silverstone,893,0.041710
 silverstone,1043,-0.063650
