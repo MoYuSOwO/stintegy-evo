@@ -203,8 +203,16 @@ internal static class Layouts
     // 5.891 km centreline length.
     public static TrackData SilverstoneStyleTestTrack()
     {
+        // The source draws Abbey as a kink: some 35 degrees of its 57 in
+        // 25 m, a 33 m radius in a corner taken at 285 km/h, where the
+        // bacinger/f1-circuits survey turns the same 57 degrees over about
+        // 100 m. Free to use the whole road, a line cut it; a lane kept to
+        // the inside strip could not, and the racing line bake circled
+        // there until it ran out of time. The turn is spread over 50 m
+        // either side, which moves the centre by 1.5 m at most and opens
+        // the tightest of the corner to a 69 m radius.
         TrackBuilder builder = Centreline.FromClosedCenterline(
-            Sources.Silverstone,
+            SourceRepairs.SpreadBend(Sources.Silverstone, 320f, 520f, 50f),
             5_891f,
             PermanentCircuitRunoffMeters,
             PermanentCircuitRunoffMeters
