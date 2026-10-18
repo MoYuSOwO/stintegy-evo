@@ -43,12 +43,12 @@ public sealed class LineMpcTests
         {
             CarPhysics.Step(
                 hold, car, tires,
-                new CarPhysicsStepInput(new DriverInput(at.PathCurvature, 0f), CarStrategy.Default, 25f),
+                new CarPhysicsStepInput(new DriverInput(CarPhysics.EstimateSteering(hold, car, tires, RoadAttitude.Flat).AngleFor(at.PathCurvature), 0f), CarStrategy.Default, 25f),
                 1f / 60f
             );
             CarPhysics.Step(
                 follow, car, tires,
-                new CarPhysicsStepInput(new DriverInput(cmd.Curvature, cmd.Accel), CarStrategy.Default, 25f),
+                new CarPhysicsStepInput(new DriverInput(CarPhysics.EstimateSteering(follow, car, tires, RoadAttitude.Flat).AngleFor(cmd.Curvature), cmd.Accel), CarStrategy.Default, 25f),
                 1f / 60f
             );
         }

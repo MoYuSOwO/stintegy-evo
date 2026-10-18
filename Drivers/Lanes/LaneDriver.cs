@@ -543,7 +543,9 @@ public sealed class LaneDriver : IDriverController
 
         LastTelemetry = new LaneDriverTelemetry(
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
-        return new DriverInput(curvature, accel, FrontBrakeBiasOffset: _performance?.FrontBrakeBiasOffset ?? 0f);
+        // The wheels turned for that curvature as a driver who knew the car
+        // would turn them (SteeringEstimate); the hands are this driver's.
+        return new DriverInput(car.Steering.AngleFor(curvature), accel, FrontBrakeBiasOffset: _performance?.FrontBrakeBiasOffset ?? 0f);
     }
 
     // What the car's own instruments say of its two axles this step.

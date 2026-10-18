@@ -209,7 +209,7 @@ internal sealed class LineMpc
                 _scratch,
                 car,
                 tires,
-                PhysicsInput(kappa, ax, strategy, car, project, _scratch),
+                PhysicsInput(kappa, ax, strategy, car, tires, project, _scratch),
                 Dt
             );
             if (_scratch.Spinning || _scratch.SpinEvents > spins0)
@@ -255,23 +255,21 @@ internal sealed class LineMpc
         float ax,
         CarStrategy strategy,
         CarConfig car,
+        TireConfig tires,
         Func<Vector2, TrackPose> project,
         CarState state
     )
     {
         TrackPose pose = project(state.Position);
         TrackSample here = pose.Sample;
+        RoadAttitude road = new(here.Grade, here.BankSlopeAt(pose.D), here.VerticalRate);
         return new CarPhysicsStepInput(
-            new DriverInput(kappa, ax),
+            new DriverInput(CarPhysics.EstimateSteering(state, car, tires, road).AngleFor(kappa), ax),
             strategy,
             AirTempC: 25f
         )
         {
-            RoadAttitude = new RoadAttitude(
-                here.Grade,
-                here.BankSlopeAt(pose.D),
-                here.VerticalRate
-            ),
+            RoadAttitude = road,
             SurfaceGrip = WheelGrips(car, here, pose, state.Heading)
         };
     }

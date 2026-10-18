@@ -79,7 +79,10 @@ public sealed class TurnLag
         for (int i = 0; i < settle + window; i++)
         {
             bool stepped = i >= settle;
-            var input = new CarPhysicsStepInput(new DriverInput(settled + (stepped ? ask : 0f), 0f), CarStrategy.Default, 25f);
+            float wanted = settled + (stepped ? ask : 0f);
+            var input = new CarPhysicsStepInput(
+                new DriverInput(CarPhysics.EstimateSteering(state, car, tires, RoadAttitude.Flat).AngleFor(wanted), 0f),
+                CarStrategy.Default, 25f);
             Vector2 from = state.Position;
             CarPhysics.Step(state, car, tires, input, Dt);
             Vector2 move = state.Position - from;
