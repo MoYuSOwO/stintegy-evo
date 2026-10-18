@@ -55,6 +55,14 @@ public readonly record struct RaceCarSnapshot(
     public TireSnapshot RearRight { get; init; }
     public ImmutableArray<PowertrainResourceSnapshot> Resources { get; init; }
     public CarCapabilities Capabilities { get; init; }
+
+    /// <summary>
+    /// The road-wheel angle for any curvature, read off the car before the
+    /// step: what a driver who knew the car exactly would turn the wheels
+    /// to (<see cref="SteeringEstimate.AngleFor"/>). The car obeys the angle
+    /// a driver gives it, not this.
+    /// </summary>
+    public SteeringEstimate Steering { get; init; }
     public CarTelemetry Telemetry { get; init; }
 
     /// <summary>
@@ -149,6 +157,7 @@ public readonly record struct RaceCarSnapshot(
             RearRight = TireSnapshot.Capture(state.RearRight, model.TireWindow(state, WheelId.RearRight)),
             Resources = resources.ToImmutable(),
             Capabilities = model.Capabilities(state, car.Strategy),
+            Steering = model.EstimateSteering(state, RaceSimulation.RoadAttitudeAt(pose.Sample, pose.D)),
             Telemetry = state.Telemetry,
             InstrumentChannels = model.TelemetryChannels,
             Instruments = ReadInstruments(model, state),

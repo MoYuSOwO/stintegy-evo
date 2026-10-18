@@ -50,7 +50,9 @@ sealed class CentrelineFollower : IDriverController
             );
         float target = MathF.Min(60f, MathF.Sqrt(14f / MathF.Max(tightest, 1e-4f)));
         float accel = Math.Clamp(2f * (target - car.SpeedMetersPerSecond), -20f, 8f);
-        return new DriverInput(curvature, accel);
+
+        // The wheels turned for that arc, as a driver who knew the car would.
+        return new DriverInput(car.Steering.AngleFor(curvature), accel);
     }
 }
 ```
@@ -88,7 +90,7 @@ for (int i = 0; i < 60 * 240; i++)   // four simulated minutes
 
 ## 各部分如何衔接
 
-- **控制器。** `IDriverController.GetControl` 读取 `DriverContext`（车手档案、只读赛道视图和一帧冻结快照），返回 `DriverInput`：期望曲率、期望纵向加速度和可选的刹车配比偏移。车也可以没有车手，此时由宿主设置 `RaceCar.ExternalInput`；零命令意味着滑行，不会把车冻住。
+- **控制器。** `IDriverController.GetControl` 读取 `DriverContext`（车手档案、只读赛道视图和一帧冻结快照），返回 `DriverInput`：前轮要打到的角度、期望纵向加速度和可选的刹车配比偏移。车只把轮子打到车手给的角度，不会替车手修正；`RaceCarSnapshot.Steering` 给出一个完全了解这辆车的车手为某个曲率会选的角度。车也可以没有车手，此时由宿主设置 `RaceCar.ExternalInput`；零命令意味着滑行，不会把车冻住。
 - **冻结、收集、推进。** 每个子步里，所有控制器读同一帧冻结快照，全部命令收集并校验完之后物理才推进。没有哪个控制器会看到被其他控制器改过的世界。
 - **车上的装置。** 命令与轮胎之间的一切都是公示的装置，参数在 `CarConfig` 上。没装某个装置的车，该装置参数为零；接口不变。
   - **合成抓地限制器**（combined-grip limiter）是本系别允许的电子稳定装置。它裁剪每根轴的驱动与制动，使轮胎合成用量不超过车队轮胎档位授权的摩擦圆份额；车速高于 10 m/s 时，滑移角过峰的那根轴驱动清零。它不碰转向。`CombinedGripLimiterStrength = 0` 即未装机。

@@ -123,7 +123,7 @@ public sealed class SurfaceGripTests
         CarConfig config = new();
         float half = sample.HalfWidth;
 
-        RaceCar car = TestControlFixtures.ExternalCar(
+        RaceCar car = TestControlFixtures.CurvatureCar(
             "straddle",
             new CarState
             {
@@ -133,7 +133,7 @@ public sealed class SurfaceGripTests
                 Speed = 40f,
                 Energy = PowertrainState.Filled(0.8f)
             },
-            new DriverInput(sample.Curvature, 0f),
+            _ => (sample.Curvature, 0f),
             config
         );
         RaceSimulation simulation = new(track);
@@ -221,7 +221,7 @@ public sealed class SurfaceGripTests
                     car,
                     tires,
                     new CarPhysicsStepInput(
-                        new DriverInput(curvature, 1.5f),
+                        new Ask(curvature, 1.5f).For(probe, car, tires),
                         CarStrategy.Default,
                         25f,
                         35f

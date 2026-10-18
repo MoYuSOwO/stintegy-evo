@@ -24,7 +24,7 @@ public sealed class PhysicsBoundaryTests
         TestTires tires = WarmTires();
         CarState protect = NewState(45f, tires);
         CarState attack = NewState(45f, tires);
-        DriverInput command = new(0.006f, -12f);
+        Ask command = new(0.006f, -12f);
         CarStrategy protectStrategy = new(
             TireUsageMode.Protect,
             PowerOutputMode.Normal
@@ -40,14 +40,14 @@ public sealed class PhysicsBoundaryTests
                 protect,
                 car,
                 tires,
-                StepInput(command, protectStrategy),
+                StepInput(command.For(protect, car, tires), protectStrategy),
                 1f / 60f
             );
             CarPhysics.Step(
                 attack,
                 car,
                 tires,
-                StepInput(command, attackStrategy),
+                StepInput(command.For(attack, car, tires), attackStrategy),
                 1f / 60f
             );
         }
@@ -77,10 +77,10 @@ public sealed class PhysicsBoundaryTests
         // number that was one for the car of the day.
         float brake = CarPhysics.EstimatePerformanceLimits(
             limited, fitted, tires, protect, 45f, curvature: 0f).MaximumBrakeDeceleration;
-        DriverInput command = new(0.006f, -1.1f * brake);
+        Ask command = new(0.006f, -1.1f * brake);
 
-        CarPhysics.Step(limited, fitted, tires, StepInput(command, protect), 1f / 60f);
-        CarPhysics.Step(free, unfitted, tires, StepInput(command, protect), 1f / 60f);
+        CarPhysics.Step(limited, fitted, tires, StepInput(command.For(limited, fitted, tires), protect), 1f / 60f);
+        CarPhysics.Step(free, unfitted, tires, StepInput(command.For(free, unfitted, tires), protect), 1f / 60f);
 
         Assert.True(limited.Axles().CombinedGripLimiterCutAccel > 0f);
         Assert.Equal(0f, free.Axles().CombinedGripLimiterCutAccel);
@@ -114,9 +114,9 @@ public sealed class PhysicsBoundaryTests
         for (int i = 0; i < 240; i++)
         {
             float pedal = i % 80 < 40 ? 12f : -30f;
-            DriverInput command = new(0.008f * MathF.Sin(i * 0.05f), pedal);
-            CarPhysics.Step(idle, unfitted, tires, StepInput(command, attack), 1f / 60f);
-            CarPhysics.Step(absent, unfitted, tires, StepInput(command, rung), 1f / 60f);
+            Ask command = new(0.008f * MathF.Sin(i * 0.05f), pedal);
+            CarPhysics.Step(idle, unfitted, tires, StepInput(command.For(idle, unfitted, tires), attack), 1f / 60f);
+            CarPhysics.Step(absent, unfitted, tires, StepInput(command.For(absent, unfitted, tires), rung), 1f / 60f);
 
             Assert.Equal(idle.Speed, absent.Speed);
             Assert.Equal(idle.SideslipAngleRadians, absent.SideslipAngleRadians);

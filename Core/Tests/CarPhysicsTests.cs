@@ -51,7 +51,7 @@ public sealed class CarPhysicsTests
             new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default,
                 AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
         CarPhysics.Step(corner, car, tires,
-            new CarPhysicsStepInput(new DriverInput(curvature, 0f), CarStrategy.Default,
+            new CarPhysicsStepInput(new Ask(curvature, 0f).For(corner, car, tires), CarStrategy.Default,
                 AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
 
         Assert.True(corner.Axles().RearLateralUse > 0.1f);
@@ -142,7 +142,7 @@ public sealed class CarPhysicsTests
                 state,
                 car,
                 tires,
-                PhysicsInput(new DriverInput(curvature, accel), strategy),
+                PhysicsInput(state, car, tires, new Ask(curvature, accel), strategy),
                 1f / 60f
             );
             AxleTelemetry telemetry = state.Axles();
@@ -233,7 +233,7 @@ public sealed class CarPhysicsTests
                 state,
                 car,
                 tires,
-                PhysicsInput(new DriverInput(curvature, 0f), strategy),
+                PhysicsInput(state, car, tires, new Ask(curvature, 0f), strategy),
                 1f / 60f
             );
             AxleTelemetry telemetry = state.Axles();
@@ -329,16 +329,16 @@ public sealed class CarPhysicsTests
         CarConfig car = new();
         TestTires tires = WarmTires();
         CarState state = CreateState(speed: 46f, batterySoc: 0.8f, tires);
-        DriverInput input = new(0.03f, 0f);
+        Ask input = new(0.03f, 0f);
 
-        CarPhysics.Step(state, car, tires, PhysicsInput(input), 1f / 60f);
+        CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, input), 1f / 60f);
 
         Assert.True(
             Math.Abs(state.Telemetry.RequestedLateralAccel) > Math.Abs(state.Telemetry.ActualLateralAccel),
             "actual lateral accel should be clipped when requested curvature exceeds grip"
         );
         Assert.True(
-            Math.Abs(state.Telemetry.ActualCurvature) < Math.Abs(input.DesiredCurvature),
+            Math.Abs(state.Telemetry.ActualCurvature) < Math.Abs(input.Curvature),
             "delivered curvature should be below requested curvature under front grip limit"
         );
     }
@@ -350,7 +350,7 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState state = CreateState(speed: 55f, batterySoc: 0.8f, tires);
 
-        DriverInput absurd = new(car.MaxCurvatureRequest, 0f);
+        Ask absurd = new(car.MaxCurvatureRequest, 0f);
         // Held for a second, because the wheels now take time to reach the
         // lock stops and an absurd request is only absurd once they have.
         // The over-limit reading is taken along the way rather than at the
@@ -360,7 +360,7 @@ public sealed class CarPhysicsTests
         float worstOverLimit = 0f;
         for (int i = 0; i < 60; i++)
         {
-            CarPhysics.Step(state, car, tires, PhysicsInput(absurd), 1f / 60f);
+            CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, absurd), 1f / 60f);
             worstOverLimit = Math.Max(worstOverLimit, state.Telemetry.OverLimit);
         }
 
@@ -382,10 +382,10 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState state = CreateState(speed: 36f, batterySoc: 0.9f, tires);
         CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Attack);
-        DriverInput input = new(0.018f, 7f);
+        Ask input = new(0.018f, 7f);
         SetSteadyCorner(state, car, tires, 0.018f);
 
-        CarPhysics.Step(state, car, tires, PhysicsInput(input, strategy), 1f / 60f);
+        CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, input, strategy), 1f / 60f);
 
         Assert.True(
             state.Axles().RearLongitudinalUse > 0.2f,
@@ -416,12 +416,12 @@ public sealed class CarPhysicsTests
         SetSteadyCorner(powered, car, tires, curvature);
         float drive = DriveForShare(powered, car, tires, attack, curvature, 1.5f);
 
-        DriverInput coasting = new(curvature, 0f);
-        DriverInput driving = new(curvature, drive);
+        Ask coasting = new(curvature, 0f);
+        Ask driving = new(curvature, drive);
         SetSteadyCorner(cornering, car, tires, curvature);
         SetSteadyCorner(powered, car, tires, curvature);
-        CarPhysics.Step(cornering, car, tires, PhysicsInput(coasting, attack), 1f / 60f);
-        CarPhysics.Step(powered, car, tires, PhysicsInput(driving, attack), 1f / 60f);
+        CarPhysics.Step(cornering, car, tires, PhysicsInput(cornering, car, tires, coasting, attack), 1f / 60f);
+        CarPhysics.Step(powered, car, tires, PhysicsInput(powered, car, tires, driving, attack), 1f / 60f);
 
         Assert.True(powered.Axles().RearLongitudinalUse > 0.5f);
         Assert.True(
@@ -444,7 +444,7 @@ public sealed class CarPhysicsTests
             state,
             car,
             tires,
-            PhysicsInput(new DriverInput(0.006f, -2f)),
+            PhysicsInput(state, car, tires, new Ask(0.006f, -2f)),
             1f / 60f
         );
 
@@ -492,12 +492,12 @@ public sealed class CarPhysicsTests
         float brake = BrakeForShare(
             optimal, car, tires, CarStrategy.Default, curvature, 1.0f);
 
-        DriverInput balanced = new(curvature, brake);
-        DriverInput biased = new(curvature, brake, 0.07f);
+        Ask balanced = new(curvature, brake);
+        Ask biased = new(curvature, brake, 0.07f);
         SetSteadyCorner(optimal, car, tires, curvature);
         SetSteadyCorner(frontBiased, car, tires, curvature);
-        CarPhysics.Step(optimal, car, tires, PhysicsInput(balanced), 1f / 60f);
-        CarPhysics.Step(frontBiased, car, tires, PhysicsInput(biased), 1f / 60f);
+        CarPhysics.Step(optimal, car, tires, PhysicsInput(optimal, car, tires, balanced), 1f / 60f);
+        CarPhysics.Step(frontBiased, car, tires, PhysicsInput(frontBiased, car, tires, biased), 1f / 60f);
 
         // The combined-grip limiter holds each axle's braking inside the
         // share of the circle the tyre rung authorises, so neither car drives
@@ -529,7 +529,7 @@ public sealed class CarPhysicsTests
             state,
             car,
             tires,
-            PhysicsInput(new DriverInput(0.008f, 3f)),
+            PhysicsInput(state, car, tires, new Ask(0.008f, 3f)),
             1f / 60f
         );
 
@@ -568,7 +568,7 @@ public sealed class CarPhysicsTests
         float curvature = CurvatureForGripShare(state, car, tires, attack, 1.25f);
         float drive = car.MaxDriveAcceleration;
 
-        StepMany(state, car, tires, new DriverInput(curvature, drive), attack, steps: 60);
+        StepMany(state, car, tires, new Ask(curvature, drive), attack, steps: 60);
 
         float builtSideslip = Math.Abs(state.SideslipAngleRadians);
         // The direction, not the size. How far the tail comes round is a
@@ -627,7 +627,7 @@ public sealed class CarPhysicsTests
             state,
             car,
             tires,
-            new DriverInput(0.006f, 1f),
+            new Ask(0.006f, 1f),
             CarStrategy.Default,
             steps: 120
         );
@@ -665,7 +665,7 @@ public sealed class CarPhysicsTests
                 state,
                 car,
                 tires,
-                PhysicsInput(new DriverInput(overdriven, 0f)),
+                PhysicsInput(state, car, tires, new Ask(overdriven, 0f)),
                 1f / 60f
             );
             maximumSideslip = MathF.Max(
@@ -717,8 +717,8 @@ public sealed class CarPhysicsTests
         SetSteadyCorner(controlled, controlledCar, tires, curvature);
         SetSteadyCorner(uncontrolled, uncontrolledCar, tires, curvature);
         float drive = controlledCar.MaxDriveAcceleration;
-        DriverInput asked = new(curvature, drive);
-        CarPhysicsStepInput input = PhysicsInput(asked, attack);
+        Ask asked = new(curvature, drive);
+        CarPhysicsStepInput input = PhysicsInput(asked.For(controlled, controlledCar, tires), attack);
         SetSteadyCorner(controlled, controlledCar, tires, curvature);
         SetSteadyCorner(uncontrolled, uncontrolledCar, tires, curvature);
 
@@ -756,7 +756,7 @@ public sealed class CarPhysicsTests
         float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
         float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
         CarPhysicsStepInput input =
-            PhysicsInput(new DriverInput(curvature, drive), attack);
+            PhysicsInput(new Ask(curvature, drive).For(aligned, car, tires), attack);
 
         CarPhysics.Step(aligned, car, tires, input, 1f / 60f);
         CarPhysics.Step(sliding, car, tires, input, 1f / 60f);
@@ -784,7 +784,7 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState protect = CreateState(speed: 37f, batterySoc: 0.8f, tires);
         CarState attack = CreateState(speed: 37f, batterySoc: 0.8f, tires);
-        DriverInput input = new(0.014f, 0f);
+        Ask input = new(0.014f, 0f);
 
         StepMany(protect, car, tires, input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal), steps: 240);
         StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal), steps: 240);
@@ -843,7 +843,7 @@ public sealed class CarPhysicsTests
             CarState state = CreateState(speed: 30f, batterySoc: 0.8f, tires);
             float curvature = CurvatureForGripShare(state, car, tires, 0.8f);
             SetSteadyCorner(state, car, tires, curvature);
-            CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(curvature, 3f)), 1f / 60f);
+            CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, new Ask(curvature, 3f)), 1f / 60f);
             AxleTelemetry tel = state.Axles();
             return MathF.Max(AxleUse(tel.FrontLateralUse, tel.FrontLongitudinalUse),
                 AxleUse(tel.RearLateralUse, tel.RearLongitudinalUse));
@@ -997,10 +997,10 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState protect = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         CarState attack = CreateState(speed: 42f, batterySoc: 0.8f, tires);
-        DriverInput input = new(0.018f, 0f);
+        Ask input = new(0.018f, 0f);
 
-        CarPhysics.Step(protect, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal)), 1f / 60f);
-        CarPhysics.Step(attack, car, tires, PhysicsInput(input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal)), 1f / 60f);
+        CarPhysics.Step(protect, car, tires, PhysicsInput(protect, car, tires, input, new CarStrategy(TireUsageMode.Protect, PowerOutputMode.Normal)), 1f / 60f);
+        CarPhysics.Step(attack, car, tires, PhysicsInput(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal)), 1f / 60f);
 
         Near.Equal(
             protect.Telemetry.ActualCurvature,
@@ -1018,10 +1018,10 @@ public sealed class CarPhysicsTests
         CarState fresh = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         CarState worn = CreateState(speed: 42f, batterySoc: 0.8f, tires);
         MakeTiresHotAndWorn(worn);
-        DriverInput input = new(0.018f, 0f);
+        Ask input = new(0.018f, 0f);
 
-        CarPhysics.Step(fresh, car, tires, PhysicsInput(input), 1f / 60f);
-        CarPhysics.Step(worn, car, tires, PhysicsInput(input), 1f / 60f);
+        CarPhysics.Step(fresh, car, tires, PhysicsInput(fresh, car, tires, input), 1f / 60f);
+        CarPhysics.Step(worn, car, tires, PhysicsInput(worn, car, tires, input), 1f / 60f);
 
         Assert.True(worn.Axles().FrontGripAccel < fresh.Axles().FrontGripAccel, "hot worn front tires should have less grip");
         Assert.True(worn.Axles().RearGripAccel < fresh.Axles().RearGripAccel, "hot worn rear tires should have less grip");
@@ -1155,14 +1155,14 @@ public sealed class CarPhysicsTests
             moderate,
             car,
             tires,
-            PhysicsInput(new DriverInput(moderateCurvature, 0f)),
+            PhysicsInput(moderate, car, tires, new Ask(moderateCurvature, 0f)),
             1f / 60f
         );
         CarPhysics.Step(
             nearLimit,
             car,
             tires,
-            PhysicsInput(new DriverInput(nearLimitCurvature, 0f)),
+            PhysicsInput(nearLimit, car, tires, new Ask(nearLimitCurvature, 0f)),
             1f / 60f
         );
 
@@ -1215,7 +1215,7 @@ public sealed class CarPhysicsTests
             car,
             tires,
             new CarPhysicsStepInput(
-                new DriverInput(slowCurvature, 0f),
+                new Ask(slowCurvature, 0f).For(slow, car, tires),
                 CarStrategy.Default,
                 AirTempC: 90f,
                 TrackTempC: 90f
@@ -1227,7 +1227,7 @@ public sealed class CarPhysicsTests
             car,
             tires,
             new CarPhysicsStepInput(
-                new DriverInput(fastCurvature, 0f),
+                new Ask(fastCurvature, 0f).For(fast, car, tires),
                 CarStrategy.Default,
                 AirTempC: 90f,
                 TrackTempC: 90f
@@ -1379,7 +1379,7 @@ public sealed class CarPhysicsTests
         CarState cornering = CreateState(speed: 38f, batterySoc: 0.8f, tires);
 
         StepMany(straight, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 120);
-        StepMany(cornering, car, tires, new DriverInput(0.01f, 0f), CarStrategy.Default, steps: 120);
+        StepMany(cornering, car, tires, new Ask(0.01f, 0f), CarStrategy.Default, steps: 120);
 
         Assert.True(cornering.Speed < straight.Speed, "cornering scrub should cost more speed than straight coasting");
         Assert.True(cornering.Telemetry.LossAccel > straight.Telemetry.LossAccel, "cornering should report higher loss accel");
@@ -1419,27 +1419,27 @@ public sealed class CarPhysicsTests
         for (int step = 0; step < 120 * 60; step++)
         {
             int phase = step % (10 * 60);
-            DriverInput input;
+            Ask input;
             if (phase < 4 * 60)
             {
                 state.Speed = 36f;
-                input = new DriverInput(CurvatureForGripShare(state, car, tires, 0.46f), 0f);
+                input = new Ask(CurvatureForGripShare(state, car, tires, 0.46f), 0f);
             }
             else if (phase < 7 * 60)
             {
                 state.Speed = 48f;
                 float curvature = CurvatureForGripShare(state, car, tires, 0.09f);
-                input = new DriverInput(curvature, DriveForShare(state, car, tires, strategy, curvature, 0.25f));
+                input = new Ask(curvature, DriveForShare(state, car, tires, strategy, curvature, 0.25f));
             }
             else
             {
                 state.Speed = 42f;
                 float curvature = CurvatureForGripShare(state, car, tires, 0.38f);
-                input = new DriverInput(curvature, BrakeForShare(state, car, tires, strategy, curvature, 0.19f));
+                input = new Ask(curvature, BrakeForShare(state, car, tires, strategy, curvature, 0.19f));
             }
 
             state.Energy = PowertrainState.Filled(0.8f);
-            CarPhysics.Step(state, car, tires, PhysicsInput(input), dt);
+            CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, input), dt);
         }
 
         float surface = AverageSurfaceTemp(state);
@@ -1483,14 +1483,14 @@ public sealed class CarPhysicsTests
         SetSteadyCorner(equal, equalCompliance, tires, curvature);
         SetSteadyCorner(frontWorkingHarder, softerFront, tires, curvature);
         CarPhysicsStepInput input = new(
-            new DriverInput(curvature, 0f),
+            new Ask(curvature, 0f).For(equal, equalCompliance, tires),
             CarStrategy.Default,
             AirTempC: 100f,
             TrackTempC: 100f
         );
 
         CarPhysics.Step(equal, equalCompliance, tires, input, 1f / 60f);
-        CarPhysics.Step(frontWorkingHarder, softerFront, tires, input, 1f / 60f);
+        CarPhysics.Step(frontWorkingHarder, softerFront, tires, input with { DriverInput = new Ask(curvature, 0f).For(frontWorkingHarder, softerFront, tires) }, 1f / 60f);
 
         float equalFrontTemp = AverageFrontSurfaceTemp(equal);
         float equalRearTemp = AverageRearSurfaceTemp(equal);
@@ -1564,7 +1564,7 @@ public sealed class CarPhysicsTests
         SetSteadyCorner(ordinary, ordinaryCompliance, tires, curvature);
         SetSteadyCorner(extreme, extremeCompliance, tires, curvature);
         CarPhysicsStepInput input = new(
-            new DriverInput(curvature, 0f),
+            new Ask(curvature, 0f).For(ordinary, ordinaryCompliance, tires),
             CarStrategy.Default,
             AirTempC: 100f,
             TrackTempC: 100f
@@ -1581,7 +1581,7 @@ public sealed class CarPhysicsTests
             extreme,
             extremeCompliance,
             tires,
-            input,
+            input with { DriverInput = new Ask(curvature, 0f).For(extreme, extremeCompliance, tires) },
             1f / 60f
         );
 
@@ -1725,13 +1725,13 @@ public sealed class CarPhysicsTests
         // of the two layers changing at all. Holding the surroundings level
         // leaves only the heat going in.
         CarPhysicsStepInput input = new(
-            new DriverInput(curvature, 0f),
+            default,
             CarStrategy.Default,
             AirTempC: 70f,
             TrackTempC: 70f
         );
         for (int i = 0; i < 120; i++)
-            CarPhysics.Step(state, car, tires, input, 1f / 60f);
+            CarPhysics.Step(state, car, tires, input with { DriverInput = new Ask(curvature, 0f).For(state, car, tires) }, 1f / 60f);
 
         float surfaceRise = AverageSurfaceTemp(state) - 70f;
         float coreRise = AverageCoreTemp(state) - 70f;
@@ -1813,7 +1813,7 @@ public sealed class CarPhysicsTests
         SetSteadyCorner(state, car, tires, curvature);
 
         CarPhysicsStepInput input = new(
-            new DriverInput(curvature, 0f),
+            default,
             CarStrategy.Default,
             AirTempC: 35f,
             TrackTempC: 45f
@@ -1831,7 +1831,7 @@ public sealed class CarPhysicsTests
                 // threshold takes grip away, and nine tenths of the grip
                 // it had at the start is soon more than it has.
                 curvature = CurvatureForGripShare(state, car, tires, share: CalibratedCornerUse(0.90f));
-                input = input with { DriverInput = new DriverInput(curvature, 0f) };
+                input = input with { DriverInput = new Ask(curvature, 0f).For(state, car, tires) };
                 CarPhysics.Step(state, car, tires, input, 1f / 60f);
                 // The heat balance is what this gate is about. Sixteen
                 // kilometres of cornering at nine tenths wears a set of
@@ -1955,7 +1955,7 @@ public sealed class CarPhysicsTests
                 car,
                 tires,
                 new CarPhysicsStepInput(
-                    new DriverInput(curvature, accel),
+                    new Ask(curvature, accel).For(state, car, tires),
                     strategy,
                     AirTempC: 25f,
                     TrackTempC: 30f
@@ -2107,10 +2107,10 @@ public sealed class CarPhysicsTests
         CarState dirtyStraight = cleanStraight.Clone();
         dirtyStraight.WakeDownforceLoss = 0.08f;
         CarPhysicsStepInput cleanCornerInput = PhysicsInput(
-            new DriverInput(cleanCurvature, 0f)
+            new DriverInput(0f, 0f)
         );
         CarPhysicsStepInput dirtyCornerInput = PhysicsInput(
-            new DriverInput(dirtyCurvature, 0f)
+            new DriverInput(0f, 0f)
         );
         CarPhysicsStepInput straightInput = PhysicsInput(
             new DriverInput(0f, 0f)
@@ -2126,14 +2126,14 @@ public sealed class CarPhysicsTests
                 cleanCorner,
                 car,
                 tires,
-                cleanCornerInput,
+                cleanCornerInput with { DriverInput = new Ask(cleanCurvature, 0f).For(cleanCorner, car, tires) },
                 1f / 60f
             );
             CarPhysics.Step(
                 dirtyCorner,
                 car,
                 tires,
-                dirtyCornerInput,
+                dirtyCornerInput with { DriverInput = new Ask(dirtyCurvature, 0f).For(dirtyCorner, car, tires) },
                 1f / 60f
             );
             CarPhysics.Step(cleanStraight, car, tires, straightInput, 1f / 60f);
@@ -2160,7 +2160,7 @@ public sealed class CarPhysicsTests
         CarState cornering = CreateState(speed: 44f, batterySoc: 0.6f, tires);
 
         CarPhysics.Step(straight, car, tires, PhysicsInput(new DriverInput(0f, -10f)), 1f / 60f);
-        CarPhysics.Step(cornering, car, tires, PhysicsInput(new DriverInput(0.018f, -10f)), 1f / 60f);
+        CarPhysics.Step(cornering, car, tires, PhysicsInput(cornering, car, tires, new Ask(0.018f, -10f)), 1f / 60f);
 
         Assert.True(
             cornering.Telemetry.RegenPowerWatts < straight.Telemetry.RegenPowerWatts,
@@ -2185,13 +2185,13 @@ public sealed class CarPhysicsTests
         // Enough brake that the axles cannot hold it, which is now the
         // only way to be past the circle: cornering force comes from slip
         // angles and can never exceed it.
-        DriverInput heavy = new(0.03f, -35f);
+        Ask heavy = new(0.03f, -35f);
         // Into the corner first, then the brake demand that is past what
         // the axles hold. Held rather than applied, the car would simply
         // spin - which is the model working, and not what this measures.
         SetSteadyCorner(state, car, tires, 0.03f);
 
-        CarPhysics.Step(state, car, tires, PhysicsInput(heavy), 1f / 60f);
+        CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, heavy), 1f / 60f);
 
         Assert.True(
             state.Telemetry.OverLimit > 0f,
@@ -2202,7 +2202,7 @@ public sealed class CarPhysicsTests
         Assert.True(state.Telemetry.RegenPowerWatts > 0f, "brake request should still produce some braking work");
         Assert.True(state.Telemetry.ActualLongitudinalAccel < 0f, "net acceleration should be braking, not coasting");
         Assert.True(
-            Math.Abs(state.Telemetry.ActualCurvature) < Math.Abs(state.Telemetry.Input.DesiredCurvature),
+            Math.Abs(state.Telemetry.ActualCurvature) < Math.Abs(heavy.Curvature),
             "front axle clipping should turn excess trail braking into understeer"
         );
     }
@@ -2294,7 +2294,7 @@ public sealed class CarPhysicsTests
             float asked = 0f, got = 0f;
             for (int i = 0; i < 30; i++)
             {
-                CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(curvature, -25f)), 1f / 60f);
+                CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, new Ask(curvature, -25f)), 1f / 60f);
                 if (i >= 10)
                 {
                     asked += curvature * state.Speed * state.Speed;
@@ -2429,7 +2429,7 @@ public sealed class CarPhysicsTests
                 rehearsal,
                 car,
                 tires,
-                PhysicsInput(new DriverInput(curvature, 0f)),
+                PhysicsInput(rehearsal, car, tires, new Ask(curvature, 0f)),
                 1f / 60f
             );
             // The corner is rehearsed on the tyres the caller built, not on
@@ -2469,7 +2469,7 @@ public sealed class CarPhysicsTests
             car,
             tires,
             new CarPhysicsStepInput(
-                new DriverInput(curvature, 0f),
+                new Ask(curvature, 0f).For(state, car, tires),
                 CarStrategy.Default,
                 AirTempC: temperature,
                 TrackTempC: temperature
@@ -2579,7 +2579,7 @@ public sealed class CarPhysicsTests
                 car,
                 tires,
                 new CarPhysicsStepInput(
-                    new DriverInput(curvature, acceleration),
+                    new Ask(curvature, acceleration).For(state, car, tires),
                     strategy,
                     AirTempC: TestAirTempC,
                     TrackTempC: TestTrackTempC
@@ -2618,6 +2618,19 @@ public sealed class CarPhysicsTests
         const float dt = 1f / 60f;
         for (int i = 0; i < steps; i++)
             CarPhysics.Step(state, car, tires, PhysicsInput(input, strategy), dt);
+    }
+
+    private static CarPhysicsStepInput PhysicsInput(CarState state, CarConfig car, TireConfig tires, Ask ask) =>
+        PhysicsInput(ask.For(state, car, tires), CarStrategy.Default);
+
+    private static CarPhysicsStepInput PhysicsInput(CarState state, CarConfig car, TireConfig tires, Ask ask, CarStrategy strategy) =>
+        PhysicsInput(ask.For(state, car, tires), strategy);
+
+    private static void StepMany(CarState state, CarConfig car, TireConfig tires, Ask ask, CarStrategy strategy, int steps)
+    {
+        const float dt = 1f / 60f;
+        for (int i = 0; i < steps; i++)
+            CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, ask, strategy), dt);
     }
 
     private static CarPhysicsStepInput PhysicsInput(DriverInput input)

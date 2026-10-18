@@ -141,18 +141,17 @@ public sealed class SingleTrackDynamicsTests
         TestTires tires = WarmTires();
 
         CarState reasonable = CreateState(60f, tires);
-        HoldSpeed(reasonable, car, tires, 0.004f, 60f, 180);
-        float gentleShare =
-            MathF.Abs(reasonable.Telemetry.ActualLateralAccel) /
-            MathF.Abs(reasonable.Telemetry.RequestedLateralAccel);
+        const float gentle = 0.004f;
+        HoldSpeed(reasonable, car, tires, gentle, 60f, 180);
+        float asked = 60f * 60f * gentle;
+        float gentleShare = MathF.Abs(reasonable.Telemetry.ActualLateralAccel) / asked;
         _output.WriteLine(
-            $"gentle: asked {reasonable.Telemetry.RequestedLateralAccel:0.00} " +
-            $"got {reasonable.Telemetry.ActualLateralAccel:0.00}"
+            $"gentle: asked {asked:0.00} got {reasonable.Telemetry.ActualLateralAccel:0.00}"
         );
 
-        // Inside the envelope the driver gets the corner they asked for:
-        // the wheels are turned the extra the tyres take, which is what a
-        // driver does and what keeps a curvature request meaning something.
+        // Inside the envelope a driver who steers as SteeringEstimate does
+        // gets the corner they asked for: the wheels turned the extra the
+        // tyres take, which is what a good driver does.
         Assert.InRange(gentleShare, 0.95f, 1.05f);
 
         // Beyond it, more lock buys less and less corner, and eventually
@@ -244,7 +243,7 @@ public sealed class SingleTrackDynamicsTests
         CarConfig car = new();
         TestTires tires = WarmTires();
         CarState state = CreateState(50f, tires);
-        DriverInput input = new(0.004f, 0f);
+        const float curvature = 0.004f;
 
         float peak = 0f;
         float firstSecond = 0f;
@@ -252,7 +251,7 @@ public sealed class SingleTrackDynamicsTests
         float settled = 0f;
         for (int i = 0; i < 240; i++)
         {
-            StepHoldingSpeed(state, car, tires, input.DesiredCurvature, 50f);
+            StepHoldingSpeed(state, car, tires, curvature, 50f);
             float yawRate = state.YawRateRadiansPerSecond;
             if (i < 60)
                 peak = MathF.Max(peak, yawRate);
@@ -305,8 +304,8 @@ public sealed class SingleTrackDynamicsTests
     {
         CarConfig car = new();
         TestTires tires = WarmTires();
-        DriverInput coasting = new(0.005f, 0f);
-        DriverInput trailing = new(0.005f, -18f);
+        Ask coasting = new(0.005f, 0f);
+        Ask trailing = new(0.005f, -18f);
 
         CarState free = CreateState(60f, tires);
         Settle(free, car, tires, coasting, 60);
@@ -340,9 +339,9 @@ public sealed class SingleTrackDynamicsTests
         CarConfig car = new();
         TestTires tires = WarmTires();
         CarState state = CreateState(40f, tires);
-        DriverInput hard = new(car.MaxCurvatureRequest, 0f);
+        Ask hard = new(car.MaxCurvatureRequest, 0f);
 
-        CarPhysics.Step(state, car, tires, PhysicsInput(hard), Dt);
+        CarPhysics.Step(state, car, tires, PhysicsInput(hard.For(state, car, tires)), Dt);
         float afterOne = state.SteerAngleRadians;
 
         Assert.True(afterOne > 0f, "the wheels should have started moving");
@@ -358,7 +357,7 @@ public sealed class SingleTrackDynamicsTests
         // choreography that takes over then owns the steering: that is a
         // statement about spinning, not about how fast the wheels turn.
         for (int i = 0; i < 14; i++)
-            CarPhysics.Step(state, car, tires, PhysicsInput(hard), Dt);
+            CarPhysics.Step(state, car, tires, PhysicsInput(hard.For(state, car, tires)), Dt);
         Assert.True(
             state.SteerAngleRadians > afterOne,
             "held there, the wheels should keep going"
@@ -560,12 +559,12 @@ public sealed class SingleTrackDynamicsTests
         Assert.Equal(1, gone.SpinEvents);
 
         int steps = 0;
-        DriverInput desperate = new(car.MaxCurvatureRequest, car.MaxDriveAcceleration);
+        Ask desperate = new(car.MaxCurvatureRequest, car.MaxDriveAcceleration);
         float entrySpeed = gone.Speed;
         while (gone.Spinning && steps < 30 * 60)
         {
             float before = gone.Speed;
-            CarPhysics.Step(gone, car, tires, PhysicsInput(desperate), Dt);
+            CarPhysics.Step(gone, car, tires, PhysicsInput(desperate.For(gone, car, tires)), Dt);
             Assert.True(
                 gone.Speed <= before + 1e-4f,
                 "a spinning car must not accelerate on the driver's throttle"
@@ -661,7 +660,7 @@ public sealed class SingleTrackDynamicsTests
             state,
             car,
             tires,
-            PhysicsInput(new DriverInput(curvature, throttle)),
+            PhysicsInput(new Ask(curvature, throttle).For(state, car, tires)),
             Dt
         );
         if (!state.Spinning)
@@ -697,6 +696,12 @@ public sealed class SingleTrackDynamicsTests
     {
         for (int i = 0; i < steps; i++)
             CarPhysics.Step(state, car, tires, PhysicsInput(input), Dt);
+    }
+
+    private static void Settle(CarState state, CarConfig car, TireConfig tires, Ask ask, int steps)
+    {
+        for (int i = 0; i < steps; i++)
+            CarPhysics.Step(state, car, tires, PhysicsInput(ask.For(state, car, tires)), Dt);
     }
 
     private static CarState CreateState(float speed, TireConfig tires)

@@ -50,7 +50,9 @@ sealed class CentrelineFollower : IDriverController
             );
         float target = MathF.Min(60f, MathF.Sqrt(14f / MathF.Max(tightest, 1e-4f)));
         float accel = Math.Clamp(2f * (target - car.SpeedMetersPerSecond), -20f, 8f);
-        return new DriverInput(curvature, accel);
+
+        // The wheels turned for that arc, as a driver who knew the car would.
+        return new DriverInput(car.Steering.AngleFor(curvature), accel);
     }
 }
 ```
@@ -88,7 +90,7 @@ What is **not** here: rule-based or learned drivers, racing-line solvers, observ
 
 ## How the pieces meet
 
-- **Controllers.** `IDriverController.GetControl` reads a `DriverContext` (the driver's profile, a read-only track view and a frozen frame) and returns a `DriverInput`: desired curvature, desired longitudinal acceleration and an optional brake-bias offset. A car may also have no driver; the host then sets `RaceCar.ExternalInput`, and a zero command coasts rather than freezing the car.
+- **Controllers.** `IDriverController.GetControl` reads a `DriverContext` (the driver's profile, a read-only track view and a frozen frame) and returns a `DriverInput`: the angle to turn the front wheels to, desired longitudinal acceleration and an optional brake-bias offset. The car turns its wheels where it is told and does not correct the driver; `RaceCarSnapshot.Steering` says what angle a driver who knew the car exactly would choose for a given curvature. A car may also have no driver; the host then sets `RaceCar.ExternalInput`, and a zero command coasts rather than freezing the car.
 - **Freeze, collect, advance.** In every substep all controllers read the same frozen frame, every command is collected and validated, and only then does physics advance. No controller sees a world another controller has already changed.
 - **Devices on the car.** Everything between a command and the tyres is a published device with its parameters on `CarConfig`. A car without a device has that device's parameters at zero; the interface does not change.
   - The **combined-grip limiter** is the electronic stability device this class of racing permits. It trims each axle's drive and braking so that the tyre's combined use stays inside the share of the friction circle the team's tyre rung authorises, and above 10 m/s it cuts drive on an axle that is past its peak slip angle. It never steers. `CombinedGripLimiterStrength = 0` means the device is not fitted.

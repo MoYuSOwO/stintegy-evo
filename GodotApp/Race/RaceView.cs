@@ -76,14 +76,14 @@ public partial class RaceView : Node2D
     /// </summary>
     public void SetExternalInput(
         int carIndex,
-        float desiredCurvature,
+        float steerAngleRadians,
         float desiredAccel,
         float frontBrakeBiasOffset = 0f
     )
     {
         RaceCar car = GetCar(carIndex);
         car.ExternalInput = new DriverInput(
-            desiredCurvature,
+            steerAngleRadians,
             desiredAccel,
             frontBrakeBiasOffset
         );
@@ -305,7 +305,7 @@ public partial class RaceView : Node2D
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
             $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {(_playerCar.Car.Ladders.Count > 0 ? _playerCar.Car.Ladders[0].Label.ToLowerInvariant() : "-")}\n" +
-            $"Input curvature/accel {telemetry.Input.DesiredCurvature:+0.000;-0.000;0.000} 1/m  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
+            $"Input steer/accel {telemetry.Input.SteerAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
             $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
             $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
