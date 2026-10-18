@@ -1,3 +1,4 @@
+using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Drivers.Lanes;
@@ -11,9 +12,18 @@ namespace StintegyEVO.Drivers.Lanes;
 public sealed class LaneLearner
 {
     public float TroubleErrorMeters { get; init; } = 1.2f;
-    public float TroubleSlipRadians { get; init; } = 0.09f;
+    /// <summary>
+    /// A slide: the car's sideslip, net of the turn's geometry, past the
+    /// angle a tyre's grip peaks at. It was 0.09 rad, set when the hands
+    /// held the tyres to nine tenths and a car at its limit stood at three
+    /// or four degrees; held to what the physics says a tyre holds, the
+    /// rear stands at five to seven in every fast corner with no slide at
+    /// all (RearSlideSeverity nought), and the learning slowed them.
+    /// </summary>
+    public float TroubleSlipRadians { get; init; } = Tire.PeakSlipAngleRadians;
     public float CleanErrorMeters { get; init; } = 0.6f;
-    public float CleanSlipRadians { get; init; } = 0.05f;
+    /// <summary>Under the angle a tyre gives what it holds at: room left to go faster.</summary>
+    public float CleanSlipRadians { get; init; } = Tire.SlipAngleAtShare(Tire.SustainablePeakShare);
     public float LookBackMeters { get; init; } = 150f;
     public float LookAheadMeters { get; init; } = 20f;
     public float Penalty { get; init; } = 0.03f;
