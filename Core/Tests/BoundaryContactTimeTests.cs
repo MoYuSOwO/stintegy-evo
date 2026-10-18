@@ -114,7 +114,8 @@ public sealed class BoundaryContactTimeTests
     {
         TrackData track = TrackFactory.SimpleTestTrack();
         TrackSample at = track.Sample(275f);
-        RaceCar car = TestControlFixtures.ExternalCar(
+        float wanted = curvature;
+        RaceCar car = TestControlFixtures.CurvatureCar(
             "leaner",
             new CarState
             {
@@ -123,7 +124,7 @@ public sealed class BoundaryContactTimeTests
                 Speed = 25f,
                 Energy = PowertrainState.Filled(0.9f)
             },
-            new DriverInput(curvature, 2f)
+            _ => (wanted, 2f)
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
@@ -136,7 +137,7 @@ public sealed class BoundaryContactTimeTests
             simulation.Step(0.1f);
             float seconds = car.BoundaryContactSeconds;
             if (steerOffAfterContact && seconds > 0f)
-                car.ExternalInput = new DriverInput(-curvature, 2f);
+                wanted = -curvature;
             total += seconds;
             most = MathF.Max(most, seconds);
             if (seconds > 0f)
@@ -152,7 +153,7 @@ public sealed class BoundaryContactTimeTests
     )
     {
         TrackSample at = track.Sample(s);
-        return TestControlFixtures.ExternalCar(
+        return TestControlFixtures.CurvatureCar(
             "clean",
             new CarState
             {
@@ -161,7 +162,7 @@ public sealed class BoundaryContactTimeTests
                 Speed = speed,
                 Energy = PowertrainState.Filled(0.9f)
             },
-            new DriverInput(at.Curvature, 0f)
+            _ => (at.Curvature, 0f)
         );
     }
 }

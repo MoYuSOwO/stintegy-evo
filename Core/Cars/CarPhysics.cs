@@ -31,24 +31,6 @@ public static class CarPhysics
     private const float MinimumSlipAngleSpeed = 3f;
 
     /// <summary>
-    /// How loaded the car has to be, as a share of what its tyres can give
-    /// laterally, before the slip-angle compensation is fully applied. Below
-    /// it the extra fades away, so a curvature command from a straight line
-    /// starts with the geometric angle and converges as the tyres load.
-    /// </summary>
-    private const float FullSlipCompensationShare = 0.35f;
-
-    /// <summary>
-    /// The most of an axle's grip the steering inverts the slip curve for.
-    /// Above it the curve is too flat near its peak to say which slip angle
-    /// a share wants: a few hundredths of share invert to twice the angle.
-    /// Asked for more, the steering asks both ends for this and lets the
-    /// tyres and the curvature feedback find the rest, which on the skidpad
-    /// is nearly all of it (<see cref="TireSlipCurve.SustainablePeakShare"/>).
-    /// </summary>
-    private const float SteeringInversionShare = 0.9f;
-
-    /// <summary>
     /// The chassis's own ladders are its powertrain's output ladder and
     /// nothing else, so that is the first one a strategy sets for it.
     /// </summary>
@@ -387,11 +369,6 @@ public static class CarPhysics
         float rearGrip = CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false);
         float totalGrip = Math.Max(Epsilon, frontGrip + rearGrip);
 
-        float desiredCurvature = Math.Clamp(
-            input.DriverInput.DesiredCurvature,
-            -config.MaxCurvatureRequest,
-            config.MaxCurvatureRequest
-        );
         float desiredAccel = Math.Clamp(
             input.DriverInput.DesiredAccel,
             -config.MaxBrakeAccel,
@@ -407,21 +384,16 @@ public static class CarPhysics
         // for and what the telemetry reports against. Nothing downstream
         // obeys it any more: the tyres deliver what their slip angles say,
         // and the difference between the two is understeer.
+        float steerAngle = UpdateSteerAngle(state, config, input.DriverInput.SteerAngleRadians, dt);
+        // The corner the wheels point the car round, by geometry alone: what
+        // the angle the driver chose asks of the car, for the telemetry to
+        // set what it did against.
+        float steerCurvature = MathF.Tan(steerAngle) / MathF.Max(config.WheelBaseMeters, Epsilon);
         float requestedLateralAccel =
-            curvatureDemandScale * state.Speed * state.Speed * desiredCurvature +
+            curvatureDemandScale * state.Speed * state.Speed * steerCurvature +
             roadLateralDemand;
-        float referenceYawRate = state.Speed * desiredCurvature;
+        float referenceYawRate = state.Speed * steerCurvature;
         float dynamicYawBlend = CalculateDynamicYawBlend(state.Speed);
-
-        float steerAngle = UpdateSteerAngle(
-            state,
-            config,
-            desiredCurvature,
-            requestedLateralAccel,
-            frontGrip,
-            rearGrip,
-            dt
-        );
 
         // What each axle is giving laterally right now with its whole
         // circle available. The brake allocator needs to know how much of
@@ -629,7 +601,7 @@ public static class CarPhysics
             ? lateral.PathLateralAccel /
               Math.Max(averageSpeed * averageSpeed, Epsilon)
             : 0f;
-        referenceYawRate = averageSpeed * desiredCurvature;
+        referenceYawRate = averageSpeed * steerCurvature;
 
         float velocityHeading = state.VelocityHeading;
         float nextBodyHeading = MathHelper.NormalizeAngle(
@@ -1229,98 +1201,64 @@ public static class CarPhysics
     /// <summary>
     /// Where the front wheels end up this step.
     ///
-    /// DriverInput carries curvature rather than a wheel angle. Geometry gives
-    /// the actuator's starting angle, while the physical slip-angle estimate
-    /// and curvature feedback close the tracking error.
+    /// DriverInput carries the angle the driver turns the road wheels to.
     ///
-    /// Then the wheels have to get there, and they can only move so fast.
+    /// The wheels have to get there, and they can only move so fast.
     /// That rate limit is the whole reason this is a state: a slide is
     /// caught by lock that arrives in time and not caught by the same lock
     /// arriving late, and a policy deciding fifteen times a second now has
     /// to live with the difference.
     /// </summary>
-    private static float UpdateSteerAngle(
-        CarState state,
-        CarConfig config,
-        float desiredCurvature,
-        float requestedLateralAccel,
-        float frontGrip,
-        float rearGrip,
-        float dt
-    )
+    private static float UpdateSteerAngle(CarState state, CarConfig config, float requestedAngle, float dt)
     {
-        float wheelBase = MathF.Max(config.WheelBaseMeters, Epsilon);
+        // The wheels go where the driver turns them, within full lock and as
+        // fast as the rack moves. How much lock a corner wants is the driver's
+        // call (SteeringEstimate is what a driver who knew the car would
+        // choose); the physics does not correct it. Too much and the front
+        // runs past its peak and the car washes wide; too little and it
+        // does not turn; the wrong way on a slide and it spins.
         float maximum = MathF.Max(config.MaxSteerAngleRadians, 0f);
-        float frontArm = FrontMomentArm(config);
-        float rearArm = RearMomentArm(config);
-
-        // Geometry is the start of the answer and not the whole of it. The
-        // wheels have to be turned further than the corner's own angle by
-        // the difference between the two ends' slip angles. Past the peak the
-        // inverse runs
-        // out, which is the point at which no amount of lock buys any more
-        // corner - understeer, arrived at honestly.
-        //
-        // The inversion is of a corner the axles can hold. Near its peak the
-        // slip curve is so flat that a share a few hundredths apart inverts
-        // to an angle twice the size, so asked for more than both ends had,
-        // the end nearer its peak read as a slip angle far larger than the
-        // other's, and "front minus rear" turned the wheel off: braking into
-        // a fast corner at 65 m/s, 52 m/s^2 asked unwound the lock from 2.4
-        // to 0.3 degrees with the tyres at half their grip, and the car took
-        // 15. So the corner inverted is the one each axle can sustain, its
-        // moment-arm share of it no more than SteeringInversionShare of its
-        // grip; asked for more, the same balance is asked of both ends there,
-        // and the tyres give what they give.
-        float frontCapacity = MathF.Max(frontGrip, Epsilon);
-        float rearCapacity = MathF.Max(rearGrip, Epsilon);
-        float holdable = SteeringInversionShare * MathF.Min(
-            frontCapacity * wheelBase / MathF.Max(rearArm, Epsilon),
-            rearCapacity * wheelBase / MathF.Max(frontArm, Epsilon));
-        float corner = Math.Clamp(requestedLateralAccel, -holdable, holdable);
-        float frontShare = rearArm / wheelBase * corner;
-        float rearShare = frontArm / wheelBase * corner;
-        float slipCompensation =
-            TireSlipCurve.InverseEvaluate(
-                frontShare / frontCapacity,
-                config.FrontPeakSlipAngleRatio
-            ) -
-            TireSlipCurve.InverseEvaluate(rearShare / rearCapacity);
-
-        // Faded in with the load, because the inversion above is a steady
-        // state and the car is not in one yet.
-        //
-        // Turning into a corner from a straight line, none of those slip
-        // angles exist: the tyres are pointed where the car is going, and
-        // the extra lock they will want is a thing to add as they take up
-        // load. Applied in full from the first frame it is worse than useless
-        // - a car with a worn rear
-        // under fresh fronts wants a smaller angle than geometry, and on a
-        // strong enough asymmetry it wants a negative one, so the
-        // arithmetic asks for opposite lock before any slide exists and
-        // then makes one the other way.
-        // Measured against what the tyres can give rather than against what
-        // was asked for. Against the request it would never quite reach one
-        // - at the limit the car is always a little short of what it wanted
-        // - and the compensation would be permanently under-applied, which
-        // costs real cornering. Against the car's own capability it is one
-        // through any corner worth the name and zero only on the straight.
-        float loadedShare = FullSlipCompensationShare *
-                            MathF.Max(frontGrip + rearGrip, Epsilon);
-        float lateralLoad = Math.Clamp(
-            MathF.Abs(state.Telemetry.ActualLateralAccel) / loadedShare,
-            0f,
-            1f
-        );
-        float kinematic = MathF.Atan(wheelBase * desiredCurvature);
-        float feedforward = kinematic + slipCompensation * lateralLoad;
-        float feedback = config.SteerCurvatureFeedbackGain * wheelBase *
-                         (desiredCurvature - state.Telemetry.ActualCurvature);
-        float target = Math.Clamp(feedforward + feedback, -maximum, maximum);
-
+        float target = float.IsFinite(requestedAngle) ? Math.Clamp(requestedAngle, -maximum, maximum) : state.SteerAngleRadians;
         float step = MathF.Max(config.SteerRateLimitRadiansPerSecond, 0f) * dt;
         float change = Math.Clamp(target - state.SteerAngleRadians, -step, step);
         return Math.Clamp(state.SteerAngleRadians + change, -maximum, maximum);
+    }
+
+    /// <summary>
+    /// The angle that turns this car onto a curvature, as it is now, on this
+    /// road: the steering a driver who knew the car exactly would do. Read
+    /// off the loads the coming step will put on the tyres and the path the
+    /// car is on.
+    /// </summary>
+    public static SteeringEstimate EstimateSteering(CarState state, CarConfig config, TireConfig tires, RoadAttitude road) =>
+        EstimateSteering(state, config, TireSet.Of(tires), road);
+
+    /// <inheritdoc cref="EstimateSteering(CarState, CarConfig, TireConfig, RoadAttitude)"/>
+    public static SteeringEstimate EstimateSteering(CarState state, CarConfig config, TireSet tires, RoadAttitude road)
+    {
+        // The axles' grip at the loads this step will put on them, as the
+        // step itself reads it, not at whatever the tyres last carried.
+        float massKg = TotalMassKg(config, state.Energy);
+        WheelLoads loads = CalculateWheelLoads(
+            state, config, massKg, road.NormalGravity(Gravity, state.Speed, state.Telemetry.ActualCurvature));
+        float Axle(TireState left, float leftLoad, TireState right, float rightLoad, bool front) =>
+            (WheelGripForce(config, tires, left, leftLoad, front) * MathF.Max(0f, left.SurfaceGrip) +
+             WheelGripForce(config, tires, right, rightLoad, front) * MathF.Max(0f, right.SurfaceGrip)) /
+            Math.Max(massKg, Epsilon);
+        return new SteeringEstimate(
+            state.Speed,
+            config.WheelBaseMeters,
+            FrontMomentArm(config),
+            RearMomentArm(config),
+            Axle(state.FrontLeft, loads.FrontLeft, state.FrontRight, loads.FrontRight, front: true),
+            Axle(state.RearLeft, loads.RearLeft, state.RearRight, loads.RearRight, front: false),
+            config.FrontPeakSlipAngleRatio,
+            config.SteerCurvatureFeedbackGain,
+            config.MaxSteerAngleRadians,
+            state.Telemetry.ActualLateralAccel,
+            state.Telemetry.ActualCurvature,
+            road.CurvatureDemandScale,
+            road.LateralGravityDemand(Gravity, state.Speed));
     }
 
     /// <summary>

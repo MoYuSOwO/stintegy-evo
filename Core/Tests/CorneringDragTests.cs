@@ -43,7 +43,7 @@ public sealed class CorneringDragTests
             car,
             tires,
             new CarPhysicsStepInput(
-                new DriverInput(curvature, 0f),
+                new Ask(curvature, 0f).For(state, car, tires),
                 CarStrategy.Default,
                 AirTempC: 25f,
                 TrackTempC: 35f
@@ -216,7 +216,7 @@ public sealed class CorneringDragTests
                 car,
                 tires,
                 new CarPhysicsStepInput(
-                    new DriverInput(car.MaxCurvatureRequest, 3f),
+                    new Ask(car.MaxCurvatureRequest, 3f).For(state, car, tires),
                     CarStrategy.Default,
                     AirTempC: 25f,
                     TrackTempC: 35f

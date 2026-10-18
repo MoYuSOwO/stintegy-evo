@@ -66,7 +66,7 @@ public sealed class TrackProjectionTests
         for (float start = 0f; start < track.LengthMeters; start += 150f)
         {
             TrackSample at = track.Sample(start);
-            RaceCar car = TestControlFixtures.ExternalCar(
+            RaceCar car = TestControlFixtures.CurvatureCar(
                 "turning",
                 new CarState
                 {
@@ -75,7 +75,7 @@ public sealed class TrackProjectionTests
                     Speed = 20f,
                     Energy = PowertrainState.Filled(0.9f)
                 },
-                new DriverInput(0.0096f, 12f)
+                _ => (0.0096f, 12f)
             );
             var simulation = new RaceSimulation(track);
             simulation.AddCar(car);

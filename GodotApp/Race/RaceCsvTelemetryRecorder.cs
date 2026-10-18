@@ -29,7 +29,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
 
     private const string CommonColumns =
         "time_s,car_id,controller_status,lap,total_distance_m,s_m,d_m,x_m,y_m,heading_rad," +
-        "speed_mps,desired_curvature_1pm,desired_accel_mps2,front_brake_bias_offset," +
+        "speed_mps,desired_steer_angle_rad,desired_accel_mps2,front_brake_bias_offset," +
         "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm,front_steer_angle_rad," +
         "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw," +
         "sideslip_angle_rad,yaw_rate_radps,yaw_accel_radps2," +
@@ -87,7 +87,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             state.Position.Y,
             state.Heading,
             state.Speed,
-            input.DesiredCurvature,
+            input.SteerAngleRadians,
             input.DesiredAccel,
             input.FrontBrakeBiasOffset,
             telemetry.ActualLongitudinalAccel,
