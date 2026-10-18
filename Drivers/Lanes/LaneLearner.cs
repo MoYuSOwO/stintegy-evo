@@ -52,7 +52,21 @@ public sealed class LaneLearner
     /// </summary>
     public bool CapBoundIsTrouble { get; init; } = false;
 
+    /// <summary>
+    /// Keep a candidate only if its lap is nowhere in trouble, by the same
+    /// measure Adjust punishes (an error past TroubleErrorMeters, a slip past
+    /// TroubleSlipRadians), not merely on the road. Kept on the road alone,
+    /// the fastest lap was the one that ran three metres off its lane where
+    /// the tracker had nothing left: quick alone, and in traffic a car that
+    /// is not where it says it is. Held to the trouble line, the margin a
+    /// corner needs is learned there, corner by corner.
+    /// </summary>
+    public bool BestMustBeTroubleFree { get; init; } = false;
+
     public sealed record Step(int Iteration, LaneLapResult Result, bool Kept);
+
+    /// <summary>Told one line after every lap the learner drives, for a log to follow it by.</summary>
+    public Action<string>? Progress { get; init; }
 
     public (LaneTrackFile Best, LaneLapResult BestLap, List<Step> History) Learn(
         TrackData track,
@@ -142,9 +156,214 @@ public sealed class LaneLearner
         return (best, bestLap, history);
     }
 
+    /// <summary>How long a stretch of road is judged on its own by <see cref="LearnSectors"/>.</summary>
+    public float SectorMeters { get; init; } = 200f;
+
+    /// <summary>
+    /// The same lessons as <see cref="Learn"/>, kept stretch by stretch
+    /// rather than lap by lap, as the autonomous racing teams that learn a
+    /// pace map do (a performance level per sector, raised, held or lowered
+    /// on what the car did there). Learn kept a candidate only if the whole
+    /// lap was better, so one corner in trouble threw away what every other
+    /// corner had learned that lap, and of 121 laps it kept two to twenty.
+    /// Here each sector keeps the candidate's factors if it and the sector
+    /// after it (where a faster exit arrives) are out of trouble and it is
+    /// quicker, or if it was in trouble and no longer is; the rest go back.
+    /// The combination is then driven, so what the next lessons are drawn
+    /// from is a lap the factors really make, and the best of those that is
+    /// nowhere in trouble is what is returned.
+    /// </summary>
+    public (LaneTrackFile Best, LaneLapResult BestLap, List<Step> History) LearnSectors(
+        TrackData track,
+        LaneTrackFile start,
+        int iterations,
+        LaneDriverGains? gains = null,
+        LaneShares? shares = null,
+        LaneId lane = LaneId.Free,
+        int level = -1
+    )
+    {
+        if (level < 0)
+            level = LaneTrackFile.TopLevel;
+        float roadGrip = LaneTrackFile.GripLevels[level];
+        Action<Core.Racing.RaceCar, LaneDriver, float>? hold = lane == LaneId.Free
+            ? null
+            : (car, driver, t) =>
+            {
+                driver.TargetRange = 1f;
+                driver.TargetSide = lane == LaneId.Left ? 1f : -1f;
+            };
+        LaneLapResult Drive(LaneTrackFile file) => LaneLapRunner.Run(track, file, gains, shares, onStep: hold, roadGrip: roadGrip, flyingLaps: FlyingLaps);
+
+        LaneTrackFile current = start.Clone();
+        LaneSet lanes = current.LanesFor(track);
+        int n = lanes.Count;
+        int length = Math.Max(1, (int)MathF.Round(SectorMeters / lanes.Spacing));
+        int sectors = (n + length - 1) / length;
+
+        LaneLapResult lap = Drive(current);
+        var history = new List<Step> { new(0, lap, Clean(lap) && TroubleFree(lap)) };
+        LaneTrackFile best = current.Clone();
+        LaneLapResult bestLap = lap;
+        (int Trouble, float Time) bestScore = Score(lap);
+        float bestTime = Clean(lap) && TroubleFree(lap) ? Pace(lap) : float.PositiveInfinity;
+        float step = 1f;
+        int stale = 0;
+
+        for (int iteration = 1; iteration <= iterations; iteration++)
+        {
+            if (stale >= Patience)
+            {
+                step *= StepDecay;
+                stale = 0;
+            }
+            LaneTrackFile candidate = current.Clone();
+            Adjust(lanes, candidate, lap, null, step, lane, level);
+            LaneLapResult tried = Drive(candidate);
+
+            int kept = 0;
+            if (tried.Finished && !lap.Finished)
+            {
+                // Round at all is better than not round: the whole candidate,
+                // and its lessons from then on.
+                current = candidate;
+                kept = sectors;
+            }
+            else if (tried.Finished && tried.StationError.Length == n && lap.StationError.Length == n)
+            {
+                float[] lateral = current.Factors(lane, level), brake = current.BrakeFactors(lane, level);
+                float[] newLateral = candidate.Factors(lane, level), newBrake = candidate.BrakeFactors(lane, level);
+                for (int k = 0; k < sectors; k++)
+                {
+                    int next = (k + 1) % sectors;
+                    var before = SectorTrouble(lap, k, length, n);
+                    var after = SectorTrouble(tried, k, length, n);
+                    // The sector after is where a faster exit arrives: it may
+                    // not be made worse for this one's sake.
+                    if (SectorTrouble(tried, next, length, n).Stations > SectorTrouble(lap, next, length, n).Stations)
+                        continue;
+                    bool take = before.Stations == 0
+                        // Clean: stays clean, and is quicker.
+                        ? after.Stations == 0 &&
+                          SectorSeconds(lanes, tried, k, length, n) < SectorSeconds(lanes, lap, k, length, n)
+                        // In trouble: less of it. A step that only eases the
+                        // trouble is kept, or the next one starts from where
+                        // this one did and the sector never gets out of it.
+                        : after.Stations < before.Stations ||
+                          (after.Stations == before.Stations && after.Worst < before.Worst - 0.05f);
+                    if (!take)
+                        continue;
+                    for (int i = k * length; i < Math.Min(n, (k + 1) * length); i++)
+                    {
+                        lateral[i] = newLateral[i];
+                        brake[i] = newBrake[i];
+                    }
+                    kept++;
+                }
+            }
+            else if (!tried.Finished)
+            {
+                // A lap that did not get round says where it went wrong, not
+                // what was right: take its lesson onto the current factors.
+                Adjust(lanes, current, tried, null, step, lane, level);
+            }
+
+            lap = Drive(current);
+            // Best is the lap with the fewest stations in trouble, then the
+            // quickest: a run that never gets wholly clean still keeps the
+            // closest it came rather than going back to where it started.
+            (int Trouble, float Time) score = Score(lap);
+            bool better = score.Trouble < bestScore.Trouble ||
+                          (score.Trouble == bestScore.Trouble && score.Time < bestScore.Time);
+            if (better)
+            {
+                bestScore = score;
+                best = current.Clone();
+                bestLap = lap;
+                if (score.Trouble == 0)
+                    bestTime = score.Time;
+            }
+            stale = kept > 0 ? 0 : stale + 1;
+            history.Add(new Step(iteration, lap, better));
+            Progress?.Invoke(
+                $"{lane} pace {iteration}/{iterations}: sectors kept {kept}/{sectors}, " +
+                $"lap {(lap.Finished ? Pace(lap).ToString("F2") : "unfinished")} err {lap.WorstErrorMeters:F2} " +
+                $"{(TroubleFree(lap) ? "clean" : "trouble " + TroubleCauses(lap))}, best {(float.IsFinite(bestTime) ? bestTime.ToString("F2") : "none")}");
+        }
+
+        return (best, bestLap, history);
+    }
+
+    /// <summary>How many stations each kind of trouble was found at, for the log.</summary>
+    private string TroubleCauses(LaneLapResult lap)
+    {
+        int error = 0, slip = 0, off = 0, cap = 0;
+        for (int i = 0; i < lap.StationError.Length; i++)
+        {
+            if (lap.StationError[i] > TroubleErrorMeters) error++;
+            if (lap.StationSlip.Length > i && lap.StationSlip[i] > TroubleSlipRadians) slip++;
+            if (lap.StationOff.Length > i && lap.StationOff[i]) off++;
+            if (CapBoundIsTrouble && lap.StationCapBound.Length > i && lap.StationCapBound[i]) cap++;
+        }
+        return $"(error {error}, slip {slip}, off {off}, lock {cap})";
+    }
+
+    /// <summary>Stations in trouble, every one if the lap did not get round on the road, then the pace.</summary>
+    private (int Trouble, float Time) Score(LaneLapResult lap)
+    {
+        if (!OnTheRoad(lap) || lap.StationError.Length == 0)
+            return (int.MaxValue, float.PositiveInfinity);
+        int trouble = 0;
+        for (int i = 0; i < lap.StationError.Length; i++)
+            if (StationInTrouble(lap, i))
+                trouble++;
+        return (trouble, Pace(lap));
+    }
+
+    private bool StationInTrouble(LaneLapResult lap, int i) =>
+        lap.StationError[i] > TroubleErrorMeters ||
+        (lap.StationSlip.Length > i && lap.StationSlip[i] > TroubleSlipRadians) ||
+        (lap.StationOff.Length > i && lap.StationOff[i]) ||
+        (CapBoundIsTrouble && lap.StationCapBound.Length > i && lap.StationCapBound[i]);
+
+    /// <summary>How many of a sector's stations are in trouble, and its worst error.</summary>
+    private (int Stations, float Worst) SectorTrouble(LaneLapResult lap, int sector, int length, int n)
+    {
+        int stations = 0;
+        float worst = 0f;
+        for (int i = sector * length; i < Math.Min(n, (sector + 1) * length); i++)
+        {
+            if (StationInTrouble(lap, i))
+                stations++;
+            worst = MathF.Max(worst, lap.StationError[i]);
+        }
+        return (stations, worst);
+    }
+
+    private static float SectorSeconds(LaneSet lanes, LaneLapResult lap, int sector, int length, int n)
+    {
+        float seconds = 0f;
+        for (int i = sector * length; i < Math.Min(n, (sector + 1) * length); i++)
+            seconds += lanes.Spacing / MathF.Max(lap.StationSpeed.Length > i ? lap.StationSpeed[i] : 0f, 1f);
+        return seconds;
+    }
+
     /// <summary>Every lap driven, round without a spin and on the road.</summary>
     private bool Clean(LaneLapResult lap) =>
+        OnTheRoad(lap) && (!BestMustBeTroubleFree || TroubleFree(lap));
+
+    private bool OnTheRoad(LaneLapResult lap) =>
         lap.Finished && lap.OffTrackSeconds == 0f && lap.LapTimes.Count >= FlyingLaps;
+
+    private bool TroubleFree(LaneLapResult lap)
+    {
+        if (lap.WorstErrorMeters > TroubleErrorMeters)
+            return false;
+        for (int i = 0; i < lap.StationError.Length; i++)
+            if (StationInTrouble(lap, i))
+                return false;
+        return true;
+    }
 
     /// <summary>What a candidate is timed on: the mean of its flying laps.</summary>
     private static float Pace(LaneLapResult lap) =>
@@ -343,6 +562,9 @@ public sealed class LaneLearner
                     local[i] *= 0.8f;
             }
             history.Add(new Step(iteration, lap, kept));
+            Progress?.Invoke(
+                $"{lane} steer {iteration}/{iterations}: err {lap.MeanAbsErrorMeters:F2}/{lap.WorstErrorMeters:F2} " +
+                $"{(kept ? "kept" : "dropped")}, best {bestLap.MeanAbsErrorMeters:F2}/{bestLap.WorstErrorMeters:F2}");
         }
 
         return (best, bestLap, history);
