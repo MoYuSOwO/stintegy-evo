@@ -148,25 +148,11 @@ internal static class Elevation
         string path = Path.Combine(Folder, id + ".csv");
         if (!File.Exists(path) || Unusable.Contains(id))
             return null;
-        var points = new List<Vector2>();
-        var raw = new List<double>();
-        double lat0 = 0, lon0 = 0;
-        var rows = File.ReadAllLines(path).Where(l => l.Length > 0 && !l.StartsWith('#')).Skip(1)
-            .Select(l => l.Split(',').Select(f => double.Parse(f, CultureInfo.InvariantCulture)).ToArray()).ToList();
-        lat0 = rows.Average(r => r[1]);
-        lon0 = rows.Average(r => r[2]);
-        foreach (double[] r in rows)
-        {
-            points.Add(Project(r[1], r[2], lat0, lon0));
-            raw.Add(r[3]);
-        }
+        (List<Vector2> points, List<double> raw, _, _) = ReadSurvey(path);
         double[] heights = Smooth(FillGaps(raw.ToArray()));
 
         // Line the survey's line up with ours by where they turn.
-        const int bins = 2000;
-        float[] ours = TurnProfile(centre, bins);
-        float[] theirs = TurnProfile(points, bins);
-        (int shift, bool reversed, float score) = Align(ours, theirs);
+        (int shift, bool reversed, float score) = Align(centre, points);
 
         int n = centre.Count;
         int m = heights.Length;
@@ -174,7 +160,7 @@ internal static class Elevation
         for (int i = 0; i < n; i++)
         {
             double f = (double)i / n;
-            double g = reversed ? (shift / (double)bins - f) : (f + shift / (double)bins);
+            double g = reversed ? (shift / (double)AlignBins - f) : (f + shift / (double)AlignBins);
             g -= Math.Floor(g);
             z[i] = (float)CatmullRom(heights, g * m);
         }
@@ -198,10 +184,63 @@ internal static class Elevation
         }
 
         float maxGrade = SteepestGrade(z);
-        report = $"survey {raw.Min():F0}..{raw.Max():F0} m, aligned {(reversed ? "reversed" : "forward")} at {shift * 100f / bins:F1}% (match {score:F2}), " +
+        report = $"survey {raw.Min():F0}..{raw.Max():F0} m, aligned {(reversed ? "reversed" : "forward")} at {shift * 100f / AlignBins:F1}% (match {score:F2}), " +
                  $"climb {z.Max() - z.Min():F1} m{scaled}, steepest {maxGrade * 100f:F1}%";
         return z;
     }
+
+    /// <summary>
+    /// The real circuit's line, from bacinger/f1-circuits as the survey
+    /// sampled it, on the game's plane about its own middle; and where on it
+    /// each row of our centreline is, found by lining the two up by where
+    /// they turn. Null when the circuit has no survey file.
+    /// </summary>
+    public static SurveyLine? Line(string id, IReadOnlyList<Vector2> centre)
+    {
+        string path = Path.Combine(Folder, id + ".csv");
+        if (!File.Exists(path))
+            return null;
+        (List<Vector2> points, _, double lat0, double lon0) = ReadSurvey(path);
+        (int shift, bool reversed, _) = Align(centre, points);
+        var along = new double[points.Count + 1];
+        for (int i = 0; i < points.Count; i++)
+            along[i + 1] = along[i] + Vector2.Distance(points[i], points[(i + 1) % points.Count]);
+        int n = centre.Count;
+        var at = new Vector2[n];
+        for (int i = 0; i < n; i++)
+        {
+            double f = (double)i / n;
+            double g = reversed ? (shift / (double)AlignBins - f) : (f + shift / (double)AlignBins);
+            double s = (g - Math.Floor(g)) * along[^1];
+            int k = Array.BinarySearch(along, s);
+            if (k < 0)
+                k = ~k - 1;
+            k = Math.Clamp(k, 0, points.Count - 1);
+            float t = (float)((s - along[k]) / Math.Max(along[k + 1] - along[k], 1e-9));
+            at[i] = Vector2.Lerp(points[k], points[(k + 1) % points.Count], t);
+        }
+        return new SurveyLine(lat0, lon0, at);
+    }
+
+    /// <summary>The real line about (<see cref="Lat0"/>, <see cref="Lon0"/>), and where each of our rows is on it.</summary>
+    public sealed record SurveyLine(double Lat0, double Lon0, Vector2[] AtRow)
+    {
+        public Vector2 Project(double lat, double lon) => Elevation.Project(lat, lon, Lat0, Lon0);
+    }
+
+    private static (List<Vector2> Points, List<double> Heights, double Lat0, double Lon0) ReadSurvey(string path)
+    {
+        var rows = File.ReadAllLines(path).Where(l => l.Length > 0 && !l.StartsWith('#')).Skip(1)
+            .Select(l => l.Split(',').Select(f => double.Parse(f, CultureInfo.InvariantCulture)).ToArray()).ToList();
+        double lat0 = rows.Average(r => r[1]);
+        double lon0 = rows.Average(r => r[2]);
+        return (rows.Select(r => Project(r[1], r[2], lat0, lon0)).ToList(), rows.Select(r => r[3]).ToList(), lat0, lon0);
+    }
+
+    private const int AlignBins = 2000;
+
+    private static (int Shift, bool Reversed, float Score) Align(IReadOnlyList<Vector2> ours, IReadOnlyList<Vector2> theirs) =>
+        Align(TurnProfile(ours, AlignBins), TurnProfile(theirs, AlignBins));
 
     private static float SteepestGrade(float[] z)
     {
@@ -300,7 +339,7 @@ internal static class Elevation
 
     // Onto the game's plane, y to the south like the centrelines (Sources),
     // so the two lines turn the same way when they are lined up.
-    private static Vector2 Project(double lat, double lon, double lat0, double lon0) => new(
+    internal static Vector2 Project(double lat, double lon, double lat0, double lon0) => new(
         (float)((lon - lon0) * Math.PI / 180.0 * EarthRadius * Math.Cos(lat0 * Math.PI / 180.0)),
         (float)(-(lat - lat0) * Math.PI / 180.0 * EarthRadius));
 

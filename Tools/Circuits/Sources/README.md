@@ -88,3 +88,24 @@ point takes the median of what was found within twelve metres of it,
 rounded to half a metre; points where nothing believable was found are
 filled in from their neighbours. A street circuit's barriers stand on the
 kerb line (`Layouts.StreetBarrierMeters`).
+
+## Pit lanes
+
+`pitlanes/<id>.csv` is each real circuit's Grand Prix pit lane, latitude
+and longitude from end to end, from the OpenStreetMap ways named in its
+header (and in `Tools/Circuits/Program.cs`), joined end to end. Map data
+(c) OpenStreetMap contributors, available under the Open Database License
+(ODbL). Fetched with `dotnet run --project Tools/Circuits -- fetch-pitlanes`.
+
+When the circuit folders are written, each lane is laid on our road by the
+real circuit round it: the bacinger line in `elevation/<id>.csv` is lined up
+with our centreline, and the scale, turn and shift that best lay that
+stretch of it on ours carry the lane too. Its two ends are then made the
+centreline's points where it leaves and rejoins, the difference taken up
+over its first and last 80 metres. A lane is five metres wide where it
+leaves and rejoins the track and nine (a fast lane and a working lane)
+beside the garages, walled both sides. Where it runs beside the road but
+would, at that width, lie on our road (ours is a little wider than the
+real one in places), it is moved out just far enough to stand at the foot
+of the pit wall, which is the track's own barrier with the run-off on
+that side cut back to it; `export` prints the most each lane was moved.

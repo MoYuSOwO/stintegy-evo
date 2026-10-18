@@ -31,6 +31,8 @@ public sealed class TrackSurfaceGeometry
     private readonly float[] _heights;
     private readonly Vector2[] _stations;
     private readonly float _step;
+    private readonly Vector2 _pitMinimum;
+    private readonly Vector2 _pitMaximum;
     public TrackData Track { get; }
     public Vector3 Minimum { get; }
     public Vector3 Maximum { get; }
@@ -62,6 +64,17 @@ public sealed class TrackSurfaceGeometry
         ];
         for (int i = 0; i < _stations.Length; i++)
             _stations[i] = track.Sample(i * StationStepMeters).Center;
+        if (track.PitLane is { } pit)
+        {
+            _pitMinimum = new Vector2(float.PositiveInfinity);
+            _pitMaximum = new Vector2(float.NegativeInfinity);
+            for (float u = 0f; u <= pit.LengthMeters; u += 1f)
+            {
+                PitLaneSample at = pit.Sample(u);
+                _pitMinimum = Vector2.Min(_pitMinimum, at.Center - new Vector2(at.HalfWidth));
+                _pitMaximum = Vector2.Max(_pitMaximum, at.Center + new Vector2(at.HalfWidth));
+            }
+        }
     }
 
     public float Height(float s, float d)
@@ -139,8 +152,48 @@ public sealed class TrackSurfaceGeometry
         float t = Math.Clamp((MathF.Abs(d) - barrier) / VergeMeters, 0f, 1f);
         float ease = t * t * (3f - 2f * t);
         float edge = Height(s, side * barrier);
-        return edge + (MeadowHeight(x, z) - edge) * ease;
+        float ground = edge + (MeadowHeight(x, z) - edge) * ease;
+        // Beside the pit lane the ground comes up to the lane's edge the
+        // same way it comes up to the barrier.
+        if (Pit is { } pit && NearPit(x, z))
+        {
+            PitLanePose pose = pit.Project(new Vector2(x, z));
+            float half = pose.Sample.HalfWidth;
+            float past = MathF.Max(0f, MathF.Abs(pose.D) - half);
+            float u = Math.Clamp((MathF.Sqrt(past * past + pose.BeyondEnd * pose.BeyondEnd)) / VergeMeters, 0f, 1f);
+            float lane = PitHeight(pose.Sample.Center + pose.Sample.Normal * Math.Clamp(pose.D, -half, half));
+            ground = lane + (ground - lane) * (u * u * (3f - 2f * u));
+        }
+        return ground;
     }
+
+    /// <summary>The circuit's pit lane, if it has one.</summary>
+    public PitLane? Pit => Track.PitLane;
+
+    /// <summary>
+    /// How high the pit lane is at a point of it: the road's own height
+    /// where the lane is still on the road or its run-off, and level with
+    /// the barrier's foot beyond, so it leaves the road without a step and
+    /// lies flat behind the wall.
+    /// </summary>
+    public float PitHeight(Vector2 point)
+    {
+        (float s, float d) = Project(point);
+        return Height(s, Math.Clamp(d, -BarrierOffset(s, -1), BarrierOffset(s, 1)));
+    }
+
+    /// <summary>A point of the pit lane, <paramref name="d"/> to the left of its middle.</summary>
+    public Vector3 PitPoint(float u, float d)
+    {
+        PitLaneSample sample = Pit!.Sample(u);
+        Vector2 point = sample.Center + sample.Normal * d;
+        return new Vector3(point.X, PitHeight(point), point.Y);
+    }
+
+    /// <summary>Whether a point is close enough to the pit lane for the lane to shape the ground there.</summary>
+    private bool NearPit(float x, float z) =>
+        x >= _pitMinimum.X - VergeMeters && x <= _pitMaximum.X + VergeMeters
+        && z >= _pitMinimum.Y - VergeMeters && z <= _pitMaximum.Y + VergeMeters;
 
     /// <summary>How far from the centreline the barrier stands on this side: the road and its buffer.</summary>
     public float BarrierOffset(float s, int side)

@@ -53,6 +53,11 @@ public sealed record CircuitManifest
     public int StartLineMeters { get; init; }
 
     public CircuitGrid Grid { get; init; } = new();
+
+    /// <summary>The pit lane, where the circuit has one written down; most do not yet.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CircuitPitLane? PitLane { get; init; }
+
     public CircuitSource Source { get; init; } = new();
 
     internal static readonly JsonSerializerOptions Json = new()
@@ -234,7 +239,14 @@ public static class CircuitLibrary
         (string folder, CircuitManifest manifest) = Find(id);
         string csv = ReadText($"{folder}/{manifest.Track}")
             ?? throw new FileNotFoundException($"Circuit '{id}' has no {manifest.Track} in {folder}.");
-        return CircuitTrackFile.Parse(manifest, csv);
+        TrackData track = CircuitTrackFile.Parse(manifest, csv);
+        if (manifest.PitLane is { } pit)
+        {
+            string lane = ReadText($"{folder}/{pit.Track}")
+                ?? throw new FileNotFoundException($"Circuit '{id}' has no {pit.Track} in {folder}.");
+            track.PitLane = PitLaneFile.Parse(pit, lane, track, id);
+        }
+        return track;
     }
 
     private static (string Folder, CircuitManifest Manifest) Find(string id)

@@ -10,6 +10,21 @@
     "firstLeft": true,
     "offsetMeters": 3.5
   },
+  "pitLane": {
+    "track": "pitlane.csv",
+    "lengthMeters": 744,
+    "entryMeters": 5967,
+    "exitMeters": 721,
+    "speedLimitKph": 80,
+    "speedLimitFromMeters": 45,
+    "speedLimitToMeters": 699,
+    "boxes": {
+      "count": 15,
+      "firstMeters": 382.5,
+      "spacingMeters": 14,
+      "offsetMeters": 2.5
+    }
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (az-2016)",
     "license": "MIT",
