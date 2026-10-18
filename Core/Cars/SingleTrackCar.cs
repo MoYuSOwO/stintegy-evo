@@ -88,6 +88,9 @@ public class SingleTrackCar : ICar
     public virtual float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) =>
         CarPhysics.EstimateCorneringLimit(state, Config, TiresOn(state), strategy, speed, gripUsage);
 
+    public virtual SteeringEstimate EstimateSteering(CarState state, RoadAttitude road) =>
+        CarPhysics.EstimateSteering(state, Config, TiresOn(state), road);
+
     public virtual float GripUsage(CarStrategy strategy) => CarPhysics.GripUsage(strategy);
 
     public virtual TireWindow TireWindow(CarState state, WheelId wheel) => TiresOn(state).For(wheel).Window;

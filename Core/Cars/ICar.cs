@@ -58,6 +58,13 @@ public interface ICar
     /// <summary>The steady corner the car can hold at this speed, read with that corner's own load on the outside wheels.</summary>
     float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f);
 
+    /// <summary>
+    /// The road-wheel angle that would turn this car onto a curvature, as it
+    /// is now, on this road: the steering a driver who knew the car exactly
+    /// would do. The car obeys the angle it is given, not this.
+    /// </summary>
+    SteeringEstimate EstimateSteering(CarState state, RoadAttitude road);
+
     /// <summary>How much of the tyres' grip the strategy's tyre rung lets the driver use.</summary>
     float GripUsage(CarStrategy strategy);
 

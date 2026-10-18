@@ -101,7 +101,7 @@ public partial class RaceView3D : Node3D
     /// </summary>
     public void SetExternalInput(
         int carIndex,
-        float desiredCurvature,
+        float steerAngleRadians,
         float desiredAccel,
         float frontBrakeBiasOffset = 0f
     )
@@ -110,9 +110,9 @@ public partial class RaceView3D : Node3D
             throw new InvalidOperationException("Wait for the view to initialize before supplying input.");
         if ((uint)carIndex >= (uint)_cars.Count)
             throw new ArgumentOutOfRangeException(nameof(carIndex));
-        if (!float.IsFinite(desiredCurvature) || !float.IsFinite(desiredAccel) || !float.IsFinite(frontBrakeBiasOffset))
+        if (!float.IsFinite(steerAngleRadians) || !float.IsFinite(desiredAccel) || !float.IsFinite(frontBrakeBiasOffset))
             throw new ArgumentOutOfRangeException(nameof(desiredAccel), "Control commands must be finite.");
-        _externalInputs.Enqueue((carIndex, new DriverInput(desiredCurvature, desiredAccel, frontBrakeBiasOffset)));
+        _externalInputs.Enqueue((carIndex, new DriverInput(steerAngleRadians, desiredAccel, frontBrakeBiasOffset)));
         _simulationStarted = true;
         _hudDirty = true;
     }

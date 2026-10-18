@@ -154,7 +154,7 @@ public sealed class TireLibraryTests
             car.InstallFreshTires(state);
             state.WarmTires(95f, 95f);
             for (int i = 0; i < 600; i++)
-                car.Step(state, new CarPhysicsStepInput(new DriverInput(0.012f, 0.5f), CarStrategy.Default, 25f), 1f / 60f);
+                car.Step(state, new CarPhysicsStepInput(new DriverInput(car.EstimateSteering(state, RoadAttitude.Flat).AngleFor(0.012f), 0.5f), CarStrategy.Default, 25f), 1f / 60f);
             return (state.FrontLeft.SurfaceTempC + state.RearRight.SurfaceTempC, state.FrontLeft.Wear + state.RearRight.Wear);
         }
         var plain = Corner(new TireConfig());
