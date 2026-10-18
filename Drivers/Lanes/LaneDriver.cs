@@ -52,6 +52,9 @@ public sealed record LaneDriverGains
     /// </summary>
     public bool TurnAwareEnvelope { get; init; } = true;
 
+    /// <summary>The plan corners on the sharpest of the road the hands are already steering for (LaneDriver.LeadCurvatures).</summary>
+    public bool PlanTurnLead { get; init; } = true;
+
     /// <summary>Lane moves eased in and out (LaneDriver.RangeAcceleration); off, at a fixed rate.</summary>
     public bool EaseLaneMoves { get; init; } = true;
 
@@ -329,6 +332,8 @@ public sealed class LaneDriver : IDriverController
         _aheadBrake = new float[ahead];
         _aheadRoad = new LaneRoad[ahead];
         _aheadSpeed = new float[ahead];
+        _leadGuess = new float[Math.Max(ahead, window)];
+        _leadBuffer = new float[Math.Max(ahead, window)];
         Range = TargetRange;
         Side = TargetSide;
         _rangeVelocity = 0f;
@@ -898,7 +903,9 @@ public sealed class LaneDriver : IDriverController
                 _aheadFactor[k] = _corner[lane][i];
                 _aheadBrake[k] = _brake[lane][i];
                 _aheadRoad[k] = _road[lane][i];
+                _leadGuess[k] = _speed[lane][i] > 1f ? _speed[lane][i] : car.SpeedMetersPerSecond;
             }
+            LeadCurvatures(_aheadCurvature, _leadGuess, n);
             float[] speed = _speed[lane];
             // Driving on from what the last step planned here, so a corner's
             // exit stays the one its apex allows; the first step has none.
@@ -1016,7 +1023,9 @@ public sealed class LaneDriver : IDriverController
             _windowStep[k] = (BlendedPosition(i + 1, Range, Side) - BlendedPosition(i, Range, Side)).Length();
             _windowFactor[k] = FactorFor(i, Range, Side);
             _windowBrake[k] = BlendOf(lane => _brake[(int)lane], i, Range, Side);
+            _leadGuess[k] = WindowGuess(i);
         }
+        LeadCurvatures(_windowCurvature, _leadGuess, n);
 
         int end = _lanes.Wrap(start + n - 1);
         int sideLane = Side >= 0f ? (int)LaneId.Left : (int)LaneId.Right;
@@ -1079,11 +1088,55 @@ public sealed class LaneDriver : IDriverController
             _windowCurvature[k] = LaneSet.Curvature(behind, here, ahead);
             _windowRoad[k] = RoadAt(i, _moveOffset[at]);
             _windowStep[k] = (_lanes.Position(i + 1, _moveOffset[at + 1]) - here).Length();
+            _leadGuess[k] = MathF.Max(_windowSpeed[k], 1f);
         }
+        LeadCurvatures(_windowCurvature, _leadGuess, n);
         return true;
     }
 
     private float[] _moveOffset = [];
+
+    private float[] _leadGuess = [];
+    private float[] _leadBuffer = [];
+
+    private float WindowGuess(int station)
+    {
+        int i = _lanes.Wrap(station);
+        float free = _speed[0][i];
+        return free > 1f ? free : 40f;
+    }
+
+    /// <summary>
+    /// The curvature the plan corners on: at each station the sharpest of the
+    /// road from there to as far as the car covers in its turn lag, the time
+    /// the hands steer ahead by (TurnLag). The wheel is turned now for the
+    /// road that far on, at the speed the car has now, so into a corner that
+    /// tightens the tyres are asked for that much more than the road under
+    /// the car alone would ask. Planned on the road under the car, the plan
+    /// had nothing over for it: braking into Zandvoort's Scheivlak on the
+    /// left lane the plan left the tyres 26 m/s² of corner and the hands
+    /// asked 32, the wheel stood at the axles' limit, and the car ran wide
+    /// and off. Out of a corner the road ahead is straighter and nothing
+    /// changes; reading the speed a moment ahead instead, as the pedals
+    /// once did, braked earlier for every corner alike.
+    /// </summary>
+    private void LeadCurvatures(float[] curvature, float[] speedGuess, int n)
+    {
+        if (!Gains.PlanTurnLead)
+            return;
+        Array.Copy(curvature, _leadBuffer, n);
+        for (int k = 0; k < n; k++)
+        {
+            float v = speedGuess[k];
+            float seconds = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(v);
+            int lead = (int)MathF.Ceiling(MathF.Max(0f, v) * seconds / _lanes.Spacing);
+            float sharpest = _leadBuffer[k];
+            for (int j = 1; j <= lead && k + j < n; j++)
+                if (MathF.Abs(_leadBuffer[k + j]) > MathF.Abs(sharpest))
+                    sharpest = _leadBuffer[k + j];
+            curvature[k] = sharpest;
+        }
+    }
 
     /// <summary>The window's speed at its start with the blend held where it stands.</summary>
     private float _windowStillSpeed;
