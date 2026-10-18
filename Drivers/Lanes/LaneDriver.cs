@@ -258,6 +258,39 @@ public sealed class LaneDriver : IDriverController
     private float _rangeVelocity;
     private float _sideVelocity;
 
+    /// <summary>
+    /// The share of the full rate the move under way is made at: the
+    /// quickest of these the tyres can carry, read again this often. A move
+    /// asked for in a corner the car is already at the edge of was made at
+    /// full rate all the same, and at Monaco's swimming pool, begun under
+    /// braking, the S it asked for needed more slowing than the road before
+    /// the corner had room for: the car ran two metres wide. A driver
+    /// eases across there, or waits, and goes once the corner lets go.
+    /// </summary>
+    private static readonly float[] MoveScales = [1f, 0.6f, 0.35f, 0.15f, 0f];
+    private const float MoveCheckSeconds = 0.1f;
+
+    /// <summary>How much faster than its plan the car may be at the start of a move's window and still make it.</summary>
+    private const float MoveSpeedToleranceMps = 0.5f;
+
+    private float _moveScale = 1f;
+    private float _moveCheckIn;
+
+    /// <summary>
+    /// The most the move may be made at, held down by the hands: wherever a
+    /// move adding to the corner finds the wheel at the axles' limit, a step
+    /// down MoveScales, and a step back up once it has been clear this long.
+    /// The plan's grip under braking is the lanes' learned one, and a move
+    /// between lanes is on neither: at Monaco the plan said the S could be
+    /// made where the axles, braking, had less than it thought.
+    /// </summary>
+    private float _boundScale = 1f;
+    private float _boundClearFor;
+    private float _boundStepIn;
+    private float _moveCurvature;
+    private bool _moveBound;
+    private const float BoundClearSeconds = 0.3f;
+
     public LaneDriverTelemetry LastTelemetry { get; private set; }
     public LaneSet Lanes => _lanes;
 
@@ -300,6 +333,11 @@ public sealed class LaneDriver : IDriverController
         Side = TargetSide;
         _rangeVelocity = 0f;
         _sideVelocity = 0f;
+        _moveScale = 1f;
+        _moveCheckIn = 0f;
+        _boundScale = 1f;
+        _boundClearFor = 0f;
+        _boundStepIn = 0f;
         Array.Clear(_planned);
         _referenceLateral = ReferenceLateral();
         _performance = UseAbilities ? new LanePerformance(context.Profile) : null;
@@ -341,6 +379,7 @@ public sealed class LaneDriver : IDriverController
             _performance.Update(lap, car.TrackS, dt);
         }
         PlanAhead(car, context.Environment.SurfaceGripScalar, dt);
+        ScaleMove(car, dt);
         MoveBlend(dt);
 
         _axles = AxlesOf(car);
@@ -362,7 +401,7 @@ public sealed class LaneDriver : IDriverController
         float headingError = MathHelper.NormalizeAngle(pathHeading - car.VelocityHeadingRadians);
         float turnIn = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(speed);
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
-        float moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
+        float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
         float feedforward = BlendedCurvature(previewStation) + BlendedSteer(previewStation) + moveCurvature;
         float here = BlendedCurvature(station);
@@ -419,6 +458,7 @@ public sealed class LaneDriver : IDriverController
         float lower = MathF.Max(-maxRequest, MathF.Min((-available - lean) / scale, -1e-4f));
         float wanted = curvature;
         curvature = Math.Clamp(curvature, lower, upper);
+        _moveBound = (wanted > upper && _moveCurvature > 0f) || (wanted < lower && _moveCurvature < 0f);
 
         float slip = MathF.Abs(car.SideslipAngleRadians);
         float slide;
@@ -692,11 +732,81 @@ public sealed class LaneDriver : IDriverController
         return seconds;
     }
 
+    private bool Moving =>
+        _rangeVelocity != 0f || _sideVelocity != 0f ||
+        MathF.Abs(Math.Clamp(TargetRange, 0f, 1f) - Range) > 1e-4f ||
+        (Range > 1e-4f && MathF.Abs(Math.Clamp(TargetSide, -1f, 1f) - Side) > 1e-4f);
+
+    /// <summary>
+    /// The quickest share of the full rate (MoveScales) whose S the plan can
+    /// still slow the car for from where it is: the window planned along the
+    /// move must not want the car slower at its start than it is, beyond
+    /// what the line without the move already wants.
+    /// </summary>
+    private void ScaleMove(RaceCarSnapshot car, float dt)
+    {
+        if (!Gains.FollowLaneMoves || !Moving)
+        {
+            _moveScale = 1f;
+            _moveCheckIn = 0f;
+            _boundScale = 1f;
+            _boundClearFor = 0f;
+            return;
+        }
+        _boundStepIn -= dt;
+        if (_moveBound)
+        {
+            _boundClearFor = 0f;
+            if (_boundStepIn <= 0f)
+            {
+                _boundScale = NextScale(MathF.Min(_boundScale, _moveScale), down: true);
+                _boundStepIn = MoveCheckSeconds;
+                _moveCheckIn = 0f;
+            }
+        }
+        else if ((_boundClearFor += dt) >= BoundClearSeconds && _boundScale < 1f)
+        {
+            _boundScale = NextScale(_boundScale, down: false);
+            _boundClearFor = 0f;
+            _moveCheckIn = 0f;
+        }
+        _moveCheckIn -= dt;
+        if (_moveCheckIn > 0f)
+            return;
+        _moveCheckIn = MoveCheckSeconds;
+        int start = (int)MathF.Floor(_lanes.StationOf(car.TrackS));
+        float speed = car.SpeedMetersPerSecond;
+        foreach (float scale in MoveScales)
+        {
+            if (scale > _boundScale)
+                continue;
+            _moveScale = scale;
+            PlanBlendWindow(start);
+            if (scale == 0f || _windowSpeed[0] >= MathF.Min(speed, _windowStillSpeed) - MoveSpeedToleranceMps)
+                break;
+        }
+    }
+
+    private static float NextScale(float scale, bool down)
+    {
+        if (down)
+        {
+            foreach (float s in MoveScales)
+                if (s < scale - 1e-4f)
+                    return s;
+            return 0f;
+        }
+        for (int i = MoveScales.Length - 1; i >= 0; i--)
+            if (MoveScales[i] > scale + 1e-4f)
+                return MoveScales[i];
+        return 1f;
+    }
+
     private void MoveBlend(float dt)
     {
         float range = Range, side = Side;
-        Ease(ref range, ref _rangeVelocity, Math.Clamp(TargetRange, 0f, 1f), RangeRate, Gains.EaseLaneMoves ? RangeAcceleration : 0f, dt);
-        Ease(ref side, ref _sideVelocity, Math.Clamp(TargetSide, -1f, 1f), SideRate, Gains.EaseLaneMoves ? SideAcceleration : 0f, dt);
+        Ease(ref range, ref _rangeVelocity, Math.Clamp(TargetRange, 0f, 1f), RangeRate * _moveScale, Gains.EaseLaneMoves ? RangeAcceleration : 0f, dt);
+        Ease(ref side, ref _sideVelocity, Math.Clamp(TargetSide, -1f, 1f), SideRate * _moveScale, Gains.EaseLaneMoves ? SideAcceleration : 0f, dt);
         Range = range;
         Side = side;
     }
@@ -751,8 +861,8 @@ public sealed class LaneDriver : IDriverController
         float targetRange = Math.Clamp(TargetRange, 0f, 1f), targetSide = Math.Clamp(TargetSide, -1f, 1f);
         void Step()
         {
-            Ease(ref range, ref rangeVelocity, targetRange, RangeRate, Gains.EaseLaneMoves ? RangeAcceleration : 0f, h);
-            Ease(ref side, ref sideVelocity, targetSide, SideRate, Gains.EaseLaneMoves ? SideAcceleration : 0f, h);
+            Ease(ref range, ref rangeVelocity, targetRange, RangeRate * _moveScale, Gains.EaseLaneMoves ? RangeAcceleration : 0f, h);
+            Ease(ref side, ref sideVelocity, targetSide, SideRate * _moveScale, Gains.EaseLaneMoves ? SideAcceleration : 0f, h);
         }
         for (float t = h; t < seconds - h; t += h)
             Step();
@@ -912,6 +1022,7 @@ public sealed class LaneDriver : IDriverController
         int sideLane = Side >= 0f ? (int)LaneId.Left : (int)LaneId.Right;
         float terminal = MathF.Min(_speed[0][end], _speed[sideLane][end]);
         LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
+        _windowStillSpeed = _windowSpeed[0];
         if (Gains.FollowLaneMoves && PlanMoveWindow(start))
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
         _windowStart = start;
@@ -950,8 +1061,8 @@ public sealed class LaneDriver : IDriverController
             _moveOffset[chord + k] = _lanes.BlendedOffset(i, range, side);
             float speed = MathF.Max(_windowSpeed[Math.Min(k, n - 1)], 5f);
             float dt = _lanes.Spacing / speed;
-            Ease(ref range, ref rangeVelocity, targetRange, RangeRate, rangeAcceleration, dt);
-            Ease(ref side, ref sideVelocity, targetSide, SideRate, sideAcceleration, dt);
+            Ease(ref range, ref rangeVelocity, targetRange, RangeRate * _moveScale, rangeAcceleration, dt);
+            Ease(ref side, ref sideVelocity, targetSide, SideRate * _moveScale, sideAcceleration, dt);
             if (k < n)
             {
                 _windowFactor[k] = FactorFor(i, range, side);
@@ -973,6 +1084,9 @@ public sealed class LaneDriver : IDriverController
     }
 
     private float[] _moveOffset = [];
+
+    /// <summary>The window's speed at its start with the blend held where it stands.</summary>
+    private float _windowStillSpeed;
 
     private float FactorFor(int station, float range, float side) =>
         BlendOf(lane => _corner[(int)lane], station, range, side);
