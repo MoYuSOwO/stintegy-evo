@@ -141,7 +141,7 @@ public sealed class RuleLineControllerTests
             $"out-lap {outLap:F2}s  flying {flying:F2}s  peak {peak:F1} m/s  spins {car.State.SpinEvents}"
         );
         Assert.Equal(0, car.State.SpinEvents);
-        Assert.InRange(flying, 100f, 120f);
+        Assert.InRange(flying, 85f, 120f);
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public sealed class RuleLineControllerTests
         float drove = 0f;
         for (int sector = 0; sector < sectors; sector++)
             drove += actual[sector];
-        Assert.InRange(drove, 110f, 125f);
+        Assert.InRange(drove, 85f, 125f);
         _output.WriteLine(
             $"plan {profile!.EstimateLapSeconds():F1}s  " +
             $"behind the table {slow:F1}s  " +

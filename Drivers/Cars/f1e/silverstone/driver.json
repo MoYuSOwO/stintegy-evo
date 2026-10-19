@@ -3,8 +3,8 @@
   "circuit": "silverstone",
   "lanes": "lanes.csv",
   "learnedFor": {
-    "physics": "a028a2a821d2",
-    "date": "2026-10-17"
+    "physics": "c0484df3cf92",
+    "date": "2026-10-18"
   },
   "energy": {
     "save": 1.25,
