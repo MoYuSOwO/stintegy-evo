@@ -70,7 +70,7 @@ public readonly record struct RaceCarSnapshot(
     /// they read this step: what a driver may know of this kind of car that
     /// not every car reports, found by the channel's id.
     /// </summary>
-    public IReadOnlyList<TelemetryChannel> InstrumentChannels { get; init; }
+    public IReadOnlyList<TelemetryChannel>? InstrumentChannels { get; init; }
 
     /// <summary>The readings of <see cref="InstrumentChannels"/>, in order.</summary>
     public ImmutableArray<float> Instruments { get; init; }

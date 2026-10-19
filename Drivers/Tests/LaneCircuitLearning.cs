@@ -45,8 +45,6 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         // corner, and counted as trouble it held the whole lap back from the
         // limit with the car on its lane.
         bool loose = Environment.GetEnvironmentVariable("STINTEGY_LEARN_LOOSE") == "1";
-        // STINTEGY_LEARN_BY_LAP=1: the old way, a whole lap kept or thrown away.
-        bool byLap = Environment.GetEnvironmentVariable("STINTEGY_LEARN_BY_LAP") == "1";
         // STINTEGY_LEARN_PROGRESS=<file>: a line after every lap the learner drives.
         string? progressPath = Environment.GetEnvironmentVariable("STINTEGY_LEARN_PROGRESS");
         var watch0 = System.Diagnostics.Stopwatch.StartNew();
@@ -73,13 +71,6 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         {
             foreach (LaneId lane in new[] { LaneId.Free, LaneId.Left, LaneId.Right })
             {
-                if (byLap)
-                {
-                    var (best, bestLap, history) = learner.Learn(track, file, lane == LaneId.Free ? 120 : 80, gains, lane: lane, level: level);
-                    _output.WriteLine($"{lane} @ {LaneTrackFile.GripLevels[level]:F2}: first {history[0].Result.FlyingLapSeconds:F2} kept {history.Count(h => h.Kept)}/{history.Count} best {bestLap}  [{watch.Elapsed.TotalMinutes:F0} min]");
-                    file = best;
-                    continue;
-                }
                 // The pace first, until the lap gets round on the road: the
                 // steering learns from a lap's error and a lap off the road or
                 // spun says nothing about the lock. Then the steering, where

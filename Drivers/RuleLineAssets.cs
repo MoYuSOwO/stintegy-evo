@@ -32,13 +32,13 @@ public static class RuleLineAssets
     }
 
     /// <summary>The car the shipped driver files were made for.</summary>
-    public const string StockCar = "f1e";
+    public const string StockCar = "formula_a_mixed";
 
     public static string? FindCsv(string id) => FindFile($"{StockCar}/{id}/line.csv");
 
     /// <summary>
     /// A driver file under <c>Cars/</c>, by its path there
-    /// (<c>f1e/silverstone/lanes.csv</c>): on disk beside the build, or else
+    /// (<c>formula_a_mixed/silverstone/lanes.csv</c>): on disk beside the build, or else
     /// unpacked from the assembly. What a driver learns is about a car on a
     /// circuit, so it is kept under the car, never with the circuit.
     /// </summary>

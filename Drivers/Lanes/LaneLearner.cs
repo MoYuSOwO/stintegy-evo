@@ -49,12 +49,6 @@ public sealed class LaneLearner
     /// <summary>After this many laps without a new best, go back to the best and take smaller steps.</summary>
     public int Patience { get; init; } = 8;
 
-    /// <summary>
-    /// Also drive every candidate from a rolling start on cold tyres. The hot
-    /// lap is what is timed; the cold one only has to come round clean, and
-    /// wherever it does not, the factors there come down.
-    /// </summary>
-    public bool CheckColdTyres { get; init; } = false;
     public float StepDecay { get; init; } = 0.6f;
 
     /// <summary>
@@ -87,104 +81,16 @@ public sealed class LaneLearner
     /// <summary>Told one line after every lap the learner drives, for a log to follow it by.</summary>
     public Action<string>? Progress { get; init; }
 
-    public (LaneTrackFile Best, LaneLapResult BestLap, List<Step> History) Learn(
-        TrackData track,
-        LaneTrackFile start,
-        int iterations,
-        LaneDriverGains? gains = null,
-        LaneShares? shares = null,
-        LaneId lane = LaneId.Free,
-        int level = -1
-    )
-    {
-        // Each grip level is learned on a road worth that much: the driver
-        // reads its grip as that share and so drives off that level's factors.
-        if (level < 0)
-            level = LaneTrackFile.TopLevel;
-        float roadGrip = LaneTrackFile.GripLevels[level];
-        // A side lane is learned by driving it: the whole lap held on it.
-        Action<Core.Racing.RaceCar, LaneDriver, float>? hold = lane == LaneId.Free
-            ? null
-            : (car, driver, t) =>
-            {
-                driver.TargetRange = 1f;
-                driver.TargetSide = lane == LaneId.Left ? 1f : -1f;
-            };
-        LaneLapResult Drive(LaneTrackFile file) => LaneLapRunner.Run(track, file, gains, shares, onStep: hold, roadGrip: roadGrip, flyingLaps: FlyingLaps);
-        LaneLapResult? DriveCold(LaneTrackFile file) => CheckColdTyres
-            ? LaneLapRunner.Run(track, file, gains, shares, onStep: hold, tireConfig: new Core.Cars.TireConfig())
-            : null;
-
-        LaneTrackFile current = start.Clone();
-        LaneSet lanes = current.LanesFor(track);
-        LaneTrackFile best = current.Clone();
-        LaneLapResult bestLap = Drive(best);
-        LaneLapResult? bestCold = DriveCold(best);
-        var history = new List<Step> { new(0, bestLap, true) };
-        float bestTime = Clean(bestLap) && (bestCold?.Finished ?? true)
-            ? Pace(bestLap)
-            : float.PositiveInfinity;
-        LaneLapResult last = bestLap;
-        LaneLapResult? lastCold = bestCold;
-        float step = 1f;
-        int stale = 0;
-        int failures = 0;
-
-        for (int iteration = 1; iteration <= iterations; iteration++)
-        {
-            if (stale >= Patience)
-            {
-                current = best.Clone();
-                lanes = current.LanesFor(track);
-                last = bestLap;
-                lastCold = bestCold;
-                step *= StepDecay;
-                stale = 0;
-            }
-            Adjust(lanes, current, last, lastCold, step, lane, level);
-            // Three laps in a row that never got round: nothing local is
-            // working, so come down everywhere until there is a lap to tune.
-            failures = last.Finished ? 0 : failures + 1;
-            if (failures >= 3)
-            {
-                foreach (float[] table in new[] { current.Factors(lane, level), current.BrakeFactors(lane, level) })
-                    for (int i = 0; i < table.Length; i++)
-                        table[i] = MathF.Max(MinimumFactor, table[i] * 0.97f);
-                failures = 0;
-            }
-            last = Drive(current);
-            lastCold = DriveCold(current);
-            bool kept = Clean(last) &&
-                        (lastCold?.Finished ?? true) && (lastCold?.OffTrackSeconds ?? 0f) == 0f &&
-                        Pace(last) < bestTime;
-            if (kept)
-            {
-                bestTime = Pace(last);
-                best = current.Clone();
-                bestLap = last;
-                bestCold = lastCold;
-                stale = 0;
-            }
-            else
-            {
-                stale++;
-            }
-            history.Add(new Step(iteration, last, kept));
-        }
-
-        return (best, bestLap, history);
-    }
-
     /// <summary>How long a stretch of road is judged on its own by <see cref="LearnSectors"/>.</summary>
     public float SectorMeters { get; init; } = 200f;
 
     /// <summary>
-    /// The same lessons as <see cref="Learn"/>, kept stretch by stretch
-    /// rather than lap by lap, as the autonomous racing teams that learn a
-    /// pace map do (a performance level per sector, raised, held or lowered
-    /// on what the car did there). Learn kept a candidate only if the whole
-    /// lap was better, so one corner in trouble threw away what every other
-    /// corner had learned that lap, and of 121 laps it kept two to twenty.
+    /// The pace is kept stretch by stretch rather than lap by lap, as the
+    /// autonomous racing teams that learn a pace map do (a performance level
+    /// per sector, raised, held or lowered on what the car did there). Keeping
+    /// a whole lap kept a candidate only if the whole lap was better, so one
+    /// corner in trouble threw away what every other corner had learned that
+    /// lap, and of 121 laps it kept two to twenty.
     /// Here each sector keeps the candidate's factors if it and the sector
     /// after it (where a faster exit arrives) are out of trouble and it is
     /// quicker, or if it was in trouble and no longer is; the rest go back.

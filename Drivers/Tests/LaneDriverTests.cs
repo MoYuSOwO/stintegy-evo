@@ -96,7 +96,7 @@ public sealed class LaneDriverTests
     public void TheShippedSilverstoneFolderLapsCleanly()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        Assert.NotNull(RuleLineAssets.FindFile("f1e/silverstone/driver.json"));
+        Assert.NotNull(RuleLineAssets.FindFile("formula_a_mixed/silverstone/driver.json"));
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track));
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());
@@ -154,50 +154,5 @@ public sealed class LaneDriverTests
         LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.Fresh(), startSpeed: 30f);
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());
-    }
-}
-
-public sealed class LaneLearnF1E
-{
-    private readonly ITestOutputHelper _output;
-    public LaneLearnF1E(ITestOutputHelper output) => _output = output;
-
-    [Fact]
-    public void LearnSilverstoneForTheF1ECar()
-    {
-        if (!LaneProbes.Enabled || !File.Exists(LaneProbes.Baked("silverstone"))) return;
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        LaneTrackFile file = LaneTrackFile.FromBakedLanes(LaneProbes.Baked("silverstone"), track);
-        var gains = new LaneDriverGains { TurnAwareEnvelope = true };
-        var learner = new LaneLearner { Reward = 0.02f, FlyingLaps = 3, CapBoundIsTrouble = true };
-        var watch = System.Diagnostics.Stopwatch.StartNew();
-        _output.WriteLine($"unlearned: {LaneLapRunner.Run(track, file, gains)}");
-        for (int level = LaneTrackFile.TopLevel; level >= 0; level--)
-        {
-            // STINTEGY_LEARN_FREE_ONLY=1 learns the free lane alone, for when the sides are still baking.
-            LaneId[] lanes = Environment.GetEnvironmentVariable("STINTEGY_LEARN_FREE_ONLY") == "1"
-                ? new[] { LaneId.Free }
-                : new[] { LaneId.Free, LaneId.Left, LaneId.Right };
-            foreach (LaneId lane in lanes)
-            {
-                var (best, bestLap, history) = learner.Learn(track, file, lane == LaneId.Free ? 120 : 80, gains, lane: lane, level: level);
-                _output.WriteLine($"{lane} @ {LaneTrackFile.GripLevels[level]:F2}: first {history[0].Result.FlyingLapSeconds:F2} best {bestLap}  [{watch.Elapsed.TotalMinutes:F0} min]");
-                file = best;
-            }
-        }
-        file.MarkLearnedNow();
-        file.Energy = LaneTrackFile.ForCircuit("silverstone", track).Energy;
-        string path = Path.Combine(LaneProbes.Dir, "silverstone");
-        file.SaveCircuit(path, "silverstone");
-        _output.WriteLine($"saved {path}");
-        var attack = new StintegyEVO.Core.Cars.CarStrategy(StintegyEVO.Core.Cars.TireUsageMode.Attack, StintegyEVO.Core.Cars.PowerOutputMode.Normal);
-        _output.WriteLine($"hot      {LaneLapRunner.Run(track, file, gains, flyingLaps: 3)}");
-        _output.WriteLine($"attack   {LaneLapRunner.Run(track, file, gains, strategy: attack, flyingLaps: 3)}");
-        _output.WriteLine($"cold     {LaneLapRunner.Run(track, file, gains, startSpeed: 0f, tireConfig: new StintegyEVO.Core.Cars.TireConfig())}");
-        _output.WriteLine($"wear 0.8 {LaneLapRunner.Run(track, file, gains, startingWear: 0.8f)}");
-        _output.WriteLine($"road .78 {LaneLapRunner.Run(track, file, gains, roadGrip: 0.78f)}");
-        foreach (float side in new[] { -1f, 0f, 1f })
-            _output.WriteLine($"hold range 1 side {side:+0;-0}: {LaneLapRunner.Run(track, file, gains, onStep: (car, d, t) => { d.TargetRange = 1f; d.TargetSide = side; })}");
-        _output.WriteLine($"switch every 8 s: {LaneLapRunner.Run(track, file, gains, onStep: (car, d, t) => { int phase = (int)(t / 8f) % 4; d.TargetRange = phase == 0 ? 0f : 1f; d.TargetSide = phase == 1 ? 1f : phase == 2 ? 0f : -1f; })}");
     }
 }
