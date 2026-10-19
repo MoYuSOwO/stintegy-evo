@@ -14,5 +14,5 @@ vehicle_params:
   P_max: 350000
   delta_max: 0.8
   v_max: 90
-  total_width: 1.9
+  total_width: 2.0
   total_length: 5.2

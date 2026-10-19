@@ -26,6 +26,12 @@ public sealed class LaneSet
 {
     public const float DefaultStationSpacing = 2f;
 
+    /// <summary>
+    /// Half a two-metre FIA car plus a tenth of margin: the least a lane
+    /// centre may sit from the white line before the body is over it.
+    /// </summary>
+    public const float EdgeMarginMeters = 1.1f;
+
     private readonly float[][] _offset;
     private readonly Vector2[] _centre;
     private readonly Vector2[] _normal;
@@ -248,7 +254,7 @@ public sealed class LaneSet
     /// stations with a periodic cubic through a lightly smoothed sequence. A
     /// lane the file does not carry is taken from <paramref name="fallback"/>.
     /// </summary>
-    public static LaneSet ImportBaked(string path, TrackData track, LaneSet fallback, float edgeMargin = 0.8f)
+    public static LaneSet ImportBaked(string path, TrackData track, LaneSet fallback, float edgeMargin = LaneSet.EdgeMarginMeters)
     {
         var points = new Dictionary<string, List<(float S, float D)>>();
         string[] lines = File.ReadAllLines(path);
@@ -398,7 +404,18 @@ public sealed class LaneSet
         }
 
         return new LaneSet(lengthMeters, spacing, centre, normal, halfWidth,
-            [free.ToArray(), left.ToArray(), right.ToArray()]);
+            [Clamp(free), Clamp(left), Clamp(right)]);
+
+        float[] Clamp(List<float> lane)
+        {
+            var offsets = lane.ToArray();
+            for (int i = 0; i < count; i++)
+            {
+                float edge = MathF.Max(0f, halfWidth[i] - EdgeMarginMeters);
+                offsets[i] = Math.Clamp(offsets[i], -edge, edge);
+            }
+            return offsets;
+        }
     }
 }
 
@@ -406,8 +423,8 @@ public sealed record LaneBakeOptions
 {
     public float StationSpacing { get; init; } = LaneSet.DefaultStationSpacing;
 
-    /// <summary>Half the car plus a little, from the centre of the car to the white line.</summary>
-    public float EdgeMargin { get; init; } = 0.85f;
+    /// <summary>Half a two-metre car plus 0.1 m: from the centre of the car to the white line.</summary>
+    public float EdgeMargin { get; init; } = LaneSet.EdgeMarginMeters;
 
     /// <summary>What a side lane leaves on its other side: a car and a gap.</summary>
     public float SideRoom { get; init; } = 3.0f;

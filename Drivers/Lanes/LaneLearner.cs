@@ -303,7 +303,8 @@ public sealed class LaneLearner
         OnTheRoad(lap) && (!BestMustBeTroubleFree || TroubleFree(lap));
 
     private bool OnTheRoad(LaneLapResult lap) =>
-        lap.Finished && lap.OffTrackSeconds == 0f && lap.LapTimes.Count >= FlyingLaps;
+        lap.Finished && lap.OffTrackSeconds == 0f && lap.WallSeconds == 0f &&
+        lap.LapTimes.Count >= FlyingLaps;
 
     private bool TroubleFree(LaneLapResult lap)
     {

@@ -145,6 +145,26 @@ public sealed class LaneDriverTests
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());
         Assert.True(r.WorstErrorMeters < 3f, r.ToString());
+        Assert.Equal(0f, r.WallSeconds);
+    }
+
+    [Fact]
+    public void BakuSwitchWithTheLearnedFile()
+    {
+        if (!LaneProbes.Enabled) return;
+        string folder = Environment.GetEnvironmentVariable("STINTEGY_CIRCUIT_FOLDER") ?? "";
+        if (folder.Length == 0) return;
+        TrackData track = CircuitLibrary.Load("baku");
+        LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.LoadCircuit(folder, track), onStep: (car, d, t) =>
+        {
+            int phase = (int)(t / 8f) % 4;
+            d.TargetRange = phase == 0 ? 0f : 1f;
+            d.TargetSide = phase == 1 ? 1f : phase == 2 ? 0f : -1f;
+        });
+        _output.WriteLine(r.ToString());
+        Assert.True(r.Finished, r.ToString());
+        Assert.Equal(0f, r.OffTrackSeconds);
+        Assert.Equal(0f, r.WallSeconds);
     }
 
     [Fact]

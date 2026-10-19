@@ -205,11 +205,11 @@ def bake(track_id: str, args: argparse.Namespace) -> None:
     kept = []
     for row in rows:
         lane, lap = row[0], row[7]
-        if lane != "free" and free_lap is not None and lap > free_lap * SIDE_LANE_MAX_SLOWDOWN:
+        if lane != "free" and free_lap is not None and lap > free_lap * args.max_side_slowdown:
             continue
         kept.append(row)
     for lane in ("left", "right"):
-        if lane in solved and free_lap is not None and float(solved[lane]["laptime"].iloc[0]) > free_lap * SIDE_LANE_MAX_SLOWDOWN:
+        if lane in solved and free_lap is not None and float(solved[lane]["laptime"].iloc[0]) > free_lap * args.max_side_slowdown:
             # A side lane gives up a strip of road, not a tenth of the lap.
             # One this much slower never got away from its starting guess
             # (Monaco's left lane once sat at the guessed 30 m/s for the
@@ -275,13 +275,19 @@ def main() -> None:
     parser.add_argument("--out", required=True)
     parser.add_argument("--lanes", nargs="+", default=["free", "left", "right"])
     parser.add_argument("--step", type=float, default=2.0, help="station spacing of the smoothed track, m")
-    # Centre of the car to the edge: half the track width of the wheels, so
-    # the wheels can use the line, as the driver's own bake does.
-    parser.add_argument("--width", type=float, default=1.7)
-    parser.add_argument("--safety", type=float, default=0.0)
+    # Centre of the car to the edge: half a two-metre FIA car plus a tenth,
+    # so the body stays off the white line.
+    parser.add_argument("--width", type=float, default=2.0)
+    parser.add_argument("--safety", type=float, default=0.1)
     parser.add_argument("--side-room", type=float, default=3.0)
     parser.add_argument("--reuse", action="store_true", help="keep lines already baked in the work directory")
     parser.add_argument("--max-minutes", type=float, default=30.0, help="give up on a lane after this long")
+    parser.add_argument(
+        "--max-side-slowdown",
+        type=float,
+        default=SIDE_LANE_MAX_SLOWDOWN,
+        help="keep a side lane up to this many times the free lane's lap time; a tight inside line may need more than 1.10",
+    )
     parser.add_argument("--exponent", type=float, default=2.0, help="friction ellipse; the physics combines as a circle")
     # A lane that sits at a nearly feasible point for the whole time budget
     # (Spa's free lane, from 30 m/s) can be started differently.
