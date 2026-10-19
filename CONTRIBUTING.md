@@ -63,7 +63,7 @@ Contributions to documentation, README improvements, Low Poly models, UI design,
 
 ## Development Environment Setup
 
-1.  **Engine**: [Godot Engine 4.6.x](https://godotengine.org/) (the standard version does not support C#; please ensure you use the **.NET edition**)
+1.  **Engine**: [Godot Engine 4.7.x](https://godotengine.org/) (the standard version does not support C#; please ensure you use the **.NET edition**)
 2.  **.NET SDK**: Version 8.0 or higher.
 3.  **IDE**: Rider is recommended; you can also use Visual Studio Code with the corresponding C# extension.
 4.  **Clone the Project**:

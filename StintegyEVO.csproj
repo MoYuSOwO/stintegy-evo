@@ -14,9 +14,7 @@
     <ProjectReference Include="Drivers/StintegyEVO.Drivers.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
     <!-- The game's own car is a pack the game loads from data/ like anyone's:
          built with the game, never referenced by it. -->
-    <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj"
-                      AdditionalProperties="Configuration=$(SimulationConfiguration)"
-                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
