@@ -14,7 +14,7 @@ StintegyEVO is a real-time racing simulation: vehicle and tyre physics, energy a
 
 ## Quick start: a car that moves
 
-You need the [.NET 8 SDK](https://dotnet.microsoft.com/download). For the 3D view you also need [Godot 4.6 .NET](https://godotengine.org/download).
+You need the [.NET 8 SDK](https://dotnet.microsoft.com/download). For the 3D view you also need [Godot 4.7 .NET](https://godotengine.org/download).
 
 ```bash
 git clone https://github.com/MoYuSOwO/stintegy-evo.git
