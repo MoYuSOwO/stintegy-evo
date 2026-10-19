@@ -22,9 +22,21 @@ internal static class LaneProbes
         }
     }
 
-    /// <summary>The offline 3D bake's output for a circuit, from <c>STINTEGY_LANES3D</c>; empty when unset.</summary>
-    public static string Baked(string id) =>
-        Environment.GetEnvironmentVariable("STINTEGY_LANES3D") is { } dir ? Path.Combine(dir, $"{id}.lanes3d.csv") : "";
+    /// <summary>
+    /// The offline 3D bake's output for a circuit: from <c>STINTEGY_LANES3D</c>
+    /// when set, else the shipped one in <c>Drivers/Bake/lanes/</c>; empty when
+    /// neither has it.
+    /// </summary>
+    public static string Baked(string id)
+    {
+        if (Environment.GetEnvironmentVariable("STINTEGY_LANES3D") is { Length: > 0 } dir)
+            return Path.Combine(dir, $"{id}.lanes3d.csv");
+        DirectoryInfo? at = new(AppContext.BaseDirectory);
+        while (at != null && !File.Exists(Path.Combine(at.FullName, "StintegyEVO.sln")))
+            at = at.Parent;
+        string shipped = at == null ? "" : Path.Combine(at.FullName, "Drivers", "Bake", "lanes", $"{id}.lanes3d.csv");
+        return File.Exists(shipped) ? shipped : "";
+    }
 }
 
 public sealed class LaneDriverTests
