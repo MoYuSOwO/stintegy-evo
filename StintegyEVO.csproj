@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.6.3">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
@@ -13,9 +13,7 @@
     <ProjectReference Include="Core/StintegyEVO.Core.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
     <!-- The game's own car is a pack the game loads from data/ like anyone's:
          built with the game, never referenced by it. -->
-    <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj"
-                      AdditionalProperties="Configuration=$(SimulationConfiguration)"
-                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>

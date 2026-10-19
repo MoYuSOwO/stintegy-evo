@@ -14,7 +14,7 @@ StintegyEVO 是一个实时赛车仿真：车辆与轮胎物理、能量与磨�
 
 ## 快速开始：让一辆车动起来
 
-需要 [.NET 8 SDK](https://dotnet.microsoft.com/download)。如需 3D 画面，还需要 [Godot 4.6 .NET 版](https://godotengine.org/download)。
+需要 [.NET 8 SDK](https://dotnet.microsoft.com/download)。如需 3D 画面，还需要 [Godot 4.7 .NET 版](https://godotengine.org/download)。
 
 ```bash
 git clone https://github.com/MoYuSOwO/stintegy-evo.git

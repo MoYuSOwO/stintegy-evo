@@ -66,7 +66,7 @@ _维护者会尽合理努力保证中英文版本一致。如果仍存在无法�
 
 ## 开发环境
 
-1. **引擎**：[Godot Engine 4.6.x](https://godotengine.org/)（标准版不支持 C#，请使用 **.NET 版本**）
+1. **引擎**：[Godot Engine 4.7.x](https://godotengine.org/)（标准版不支持 C#，请使用 **.NET 版本**）
 2. **.NET SDK**：8.0 或更高版本。
 3. **IDE**：推荐 Rider，也可以使用安装了相应 C# 扩展的 Visual Studio Code。
 4. **克隆项目**：
