@@ -33,7 +33,19 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         if (!LaneProbes.Enabled || Environment.GetEnvironmentVariable("STINTEGY_LEARN_CIRCUIT") is not { Length: > 0 } id) return;
         TrackData track = CircuitLibrary.Load(id);
         string baked = LaneProbes.Baked(id);
-        LaneTrackFile file = File.Exists(baked) ? LaneTrackFile.FromBakedLanes(baked, track) : LaneTrackFile.ForCircuit(id, track);
+        bool append = Environment.GetEnvironmentVariable("STINTEGY_LEARN_APPEND_LEVELS") == "1";
+        LaneTrackFile file;
+        if (append)
+        {
+            string learned = Path.Combine(LaneProbes.Dir, id);
+            file = File.Exists(Path.Combine(learned, "driver.json"))
+                ? LaneTrackFile.LoadCircuit(learned, track)
+                : (File.Exists(baked) ? LaneTrackFile.FromBakedLanes(baked, track) : LaneTrackFile.ForCircuit(id, track));
+        }
+        else
+        {
+            file = File.Exists(baked) ? LaneTrackFile.FromBakedLanes(baked, track) : LaneTrackFile.ForCircuit(id, track);
+        }
         LaneTrackFile shipped = LaneTrackFile.ForCircuit(id, track);
         file.Energy = shipped.Energy;
         var gains = new LaneDriverGains { TurnAwareEnvelope = true };
@@ -63,11 +75,14 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
             CleanErrorMeters = loose ? 0.6f : 0.4f,
         };
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        _output.WriteLine($"{id} from {(File.Exists(baked) ? baked : "the geometric bake")}: {LaneLapRunner.Run(track, file, gains)}");
+        _output.WriteLine($"{id} from {(append ? "the existing learned file" : File.Exists(baked) ? baked : "the geometric bake")}: {LaneLapRunner.Run(track, file, gains)}");
         // STINTEGY_LEARN_TOP_ONLY=1: full grip only, for comparing two ways of
         // driving, where the lower levels would only say the same again.
-        int lowest = Environment.GetEnvironmentVariable("STINTEGY_LEARN_TOP_ONLY") == "1" ? LaneTrackFile.TopLevel : 0;
-        for (int level = LaneTrackFile.TopLevel; level >= lowest; level--)
+        // STINTEGY_LEARN_APPEND_LEVELS=1: keep the full-grip factors and
+        // steering already in the learned file, and add the lower levels only.
+        int lowest = append ? 0 : (Environment.GetEnvironmentVariable("STINTEGY_LEARN_TOP_ONLY") == "1" ? LaneTrackFile.TopLevel : 0);
+        int highest = append ? LaneTrackFile.TopLevel - 1 : LaneTrackFile.TopLevel;
+        for (int level = highest; level >= lowest; level--)
         {
             foreach (LaneId lane in new[] { LaneId.Free, LaneId.Left, LaneId.Right })
             {

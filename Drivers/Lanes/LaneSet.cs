@@ -254,7 +254,7 @@ public sealed class LaneSet
     /// stations with a periodic cubic through a lightly smoothed sequence. A
     /// lane the file does not carry is taken from <paramref name="fallback"/>.
     /// </summary>
-    public static LaneSet ImportBaked(string path, TrackData track, LaneSet fallback, float edgeMargin = LaneSet.EdgeMarginMeters)
+    public static LaneSet ImportBaked(string path, TrackData track, LaneSet fallback)
     {
         var points = new Dictionary<string, List<(float S, float D)>>();
         string[] lines = File.ReadAllLines(path);
@@ -330,8 +330,7 @@ public sealed class LaneSet
                 float p0 = smooth[(j0 - 1 + m) % m], p1 = smooth[j0], p2 = smooth[j1], p3 = smooth[(j1 + 1) % m];
                 float value = 0.5f * (2f * p1 + (-p0 + p2) * u + (2f * p0 - 5f * p1 + 4f * p2 - p3) * u * u +
                                       (-p0 + 3f * p1 - 3f * p2 + p3) * u * u * u);
-                float edge = MathF.Max(0f, fallback.HalfWidth(i) - edgeMargin);
-                lane_[i] = Math.Clamp(value, -edge, edge);
+                lane_[i] = value;
             }
             offsets[lane] = lane_;
         }
@@ -404,18 +403,7 @@ public sealed class LaneSet
         }
 
         return new LaneSet(lengthMeters, spacing, centre, normal, halfWidth,
-            [Clamp(free), Clamp(left), Clamp(right)]);
-
-        float[] Clamp(List<float> lane)
-        {
-            var offsets = lane.ToArray();
-            for (int i = 0; i < count; i++)
-            {
-                float edge = MathF.Max(0f, halfWidth[i] - EdgeMarginMeters);
-                offsets[i] = Math.Clamp(offsets[i], -edge, edge);
-            }
-            return offsets;
-        }
+            [free.ToArray(), left.ToArray(), right.ToArray()]);
     }
 }
 
