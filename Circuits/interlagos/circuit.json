@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 4.5
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 0.8,
+    "basis": "Pirelli 2025 Sao Paulo GP preview: asphalt grip 3/5, asphalt abrasion 2/5. Other ratings, not used here: traction 3, braking 3, lateral 3, tyre stress 3, track evolution 5, downforce 4."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (br-1940)",
     "license": "MIT",

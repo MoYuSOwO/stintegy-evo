@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 5
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 1.25,
+    "basis": "No Pirelli rating found (last raced 2021); estimated from Pirelli\u0027s Isola in 2021, that the layout and the tarmac are abrasive: asphalt grip 3/5, asphalt abrasion 4/5."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (pt-2008)",
     "license": "MIT",

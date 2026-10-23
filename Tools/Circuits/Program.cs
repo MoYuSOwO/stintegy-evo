@@ -24,7 +24,10 @@ switch (command)
         break;
     case "check":
     {
-        // The folders are what the tool writes now, to the byte.
+        // The folders are what the tool writes now: the manifest as data,
+        // and the road as a road, which another CPU draws a few millimetres
+        // differently (see CheckRoad). A road that changed is one that
+        // moved by more than a car could notice.
         string fresh = Path.Combine(Path.GetTempPath(), "stintegy-circuits-check");
         if (Directory.Exists(fresh))
             Directory.Delete(fresh, recursive: true);
@@ -33,10 +36,12 @@ switch (command)
         int failed = 0;
         foreach (string file in Directory.GetFiles(fresh, "*", SearchOption.AllDirectories))
         {
-            string shipped = Path.Combine(outRoot, Path.GetRelativePath(fresh, file));
-            if (!File.Exists(shipped) || !File.ReadAllBytes(shipped).SequenceEqual(File.ReadAllBytes(file)))
+            string relative = Path.GetRelativePath(fresh, file);
+            string shipped = Path.Combine(outRoot, relative);
+            string? problem = !File.Exists(shipped) ? "missing" : CheckFile(file, shipped);
+            if (problem is not null)
             {
-                Console.WriteLine($"out of date: {Path.GetRelativePath(fresh, file)}");
+                Console.WriteLine($"out of date: {relative}: {problem}");
                 failed++;
             }
         }
@@ -51,6 +56,74 @@ switch (command)
         Console.Error.WriteLine($"unknown command '{command}'; use export or check");
         Environment.Exit(2);
         break;
+}
+
+// A circuit whose road is drawn by hand rather than derived carries the
+// drawing beside it: Zandvoort's banking and grade are written in
+// surface.json and Tools/Circuits/rebuild_zandvoort.py turns them into its
+// track.csv. This tool neither overwrites that road nor holds it to its own.
+const string AuthoredBy = "surface.json (see Tools/Circuits/rebuild_zandvoort.py)";
+
+static bool AuthoredElsewhere(string folder) => File.Exists(Path.Combine(folder, "surface.json"));
+
+// What makes a written file out of date. Null when it is not.
+static string? CheckFile(string fresh, string shipped)
+{
+    string name = Path.GetFileName(fresh);
+    if (name == CircuitManifest.FileName)
+    {
+        // Data, compared as data: the same manifest whatever the spacing
+        // or escaping, and a block the file leaves out reads as its default.
+        CircuitManifest a = CircuitManifest.Parse(File.ReadAllText(fresh));
+        CircuitManifest b = CircuitManifest.Parse(File.ReadAllText(shipped));
+        return a == b ? null : "the manifest differs";
+    }
+    if (name.EndsWith(".csv", StringComparison.Ordinal) && !name.EndsWith(".import", StringComparison.Ordinal))
+    {
+        if (AuthoredElsewhere(Path.GetDirectoryName(shipped)!))
+            return null;
+        return CheckRoad(File.ReadAllText(fresh), File.ReadAllText(shipped));
+    }
+    return File.ReadAllBytes(fresh).SequenceEqual(File.ReadAllBytes(shipped)) ? null : "the file differs";
+}
+
+// The road, row by row, within ten centimetres for anything measured in
+// metres and a thousandth for the bank and crown slopes. The centreline is
+// a heading integrated a metre at a time, so a sine that differs in its
+// last bit on another CPU walks the road by millimetres over a lap, and by
+// a few centimetres where the closure adjustment spreads it: Silverstone,
+// exported on Windows and again on an arm64 Mac from the same code, differs
+// by 3.5 mm. None of that is felt by a car. Moving a corner is metres.
+static string? CheckRoad(string fresh, string shipped)
+{
+    const float Metres = 0.1f;
+    const float Slope = 1e-3f;
+    IReadOnlyList<CircuitTrackFile.Row> a = CircuitTrackFile.ReadRows(fresh);
+    IReadOnlyList<CircuitTrackFile.Row> b = CircuitTrackFile.ReadRows(shipped);
+    if (a.Count != b.Count)
+        return $"{b.Count} rows where the tool writes {a.Count}";
+    // Each row scored by how far past its allowance it is, so the row
+    // named is the one that moved most for what it is.
+    float worst = 0f, worstMetres = 0f, worstSlope = 0f;
+    int at = -1;
+    for (int i = 0; i < a.Count; i++)
+    {
+        float metres = new[]
+        {
+            Vector2.Distance(a[i].Center, b[i].Center),
+            MathF.Abs(a[i].Z - b[i].Z),
+            MathF.Abs(a[i].Width - b[i].Width),
+            MathF.Abs(a[i].RunoffLeft - b[i].RunoffLeft),
+            MathF.Abs(a[i].RunoffRight - b[i].RunoffRight)
+        }.Max();
+        float slope = MathF.Max(MathF.Abs(a[i].BankSlope - b[i].BankSlope), MathF.Abs(a[i].Crown - b[i].Crown));
+        float score = MathF.Max(metres / Metres, slope / Slope);
+        if (score > worst)
+            (worst, worstMetres, worstSlope, at) = (score, metres, slope, i);
+    }
+    return worst <= 1f
+        ? null
+        : $"row {at} moved {worstMetres:G3} m, its slopes by {worstSlope:G3}";
 }
 
 static void Export(CircuitSpec spec, string outRoot, string repo)
@@ -100,14 +173,18 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
             FirstLeft = grid.IsFirstGridLeft,
             OffsetMeters = grid.GridOffset
         },
+        Surface = Asphalt.For(spec.Id),
         Source = survey.Length > 0
             ? spec.Source with { Notes = spec.Source.Notes.Replace(" Elevation is authored in the style of the venue, not surveyed.", "") + " " + Elevation.Notes(spec.Id) }
             : spec.Source
     };
     File.WriteAllText(Path.Combine(folder, CircuitManifest.FileName), manifest.ToJson() + "\n");
-    File.WriteAllText(
-        Path.Combine(folder, manifest.Track),
-        CircuitTrackFile.Write(rows, $"{spec.Id}: {count} m, one row a metre; written by Tools/Circuits"));
+    if (AuthoredElsewhere(folder))
+        Console.WriteLine($"{spec.Id,-16} road authored by {AuthoredBy}, kept as it is");
+    else
+        File.WriteAllText(
+            Path.Combine(folder, manifest.Track),
+            CircuitTrackFile.Write(rows, $"{spec.Id}: {count} m, one row a metre; written by Tools/Circuits"));
     // Godot reads a .csv as a translation table unless told to leave it be.
     File.WriteAllText(Path.Combine(folder, manifest.Track + ".import"), "[remap]\n\nimporter=\"keep\"\n");
     if (spec.LicenseFrom is { } license)
