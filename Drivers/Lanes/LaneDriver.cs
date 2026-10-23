@@ -378,10 +378,10 @@ public sealed class LaneDriver : IDriverController
         return MathF.Max(1f, LaneEnvelope.From(ideal, _car, _tires, CarStrategy.Default).Lateral(40f));
     }
 
-    /// <summary>Grip as the driver reads it, as a share of the reference, from the last refresh.</summary>
+    /// <summary>Grip as the driver reads it, as a share of this circuit at its best, from the last refresh.</summary>
     public float Grip { get; private set; } = 1f;
 
-    /// <summary>Grip as it really is, as a share of the reference, from the last refresh.</summary>
+    /// <summary>Grip as it really is, as a share of this circuit at its best, from the last refresh.</summary>
     public float ActualGrip { get; private set; } = 1f;
 
     public DriverInput GetControl(in DriverContext context, float dt)
@@ -954,13 +954,20 @@ public sealed class LaneDriver : IDriverController
         _planShares = _style is { } style
             ? Shares with { Lateral = Shares.Lateral * style.Corner, Brake = Shares.Brake * style.Brake }
             : Shares;
-        LaneEnvelope truth = LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(roadGrip);
-        ActualGrip = truth.Lateral(40f) / _referenceLateral;
+        // The road is the day's surface on this circuit's asphalt. Grip is
+        // read against the circuit at its best, so full grip means new tyres
+        // in their window on a clean track here, wherever here is: the
+        // learned levels are about the tyres and the day, and the asphalt is
+        // already in the envelope they multiply.
+        float asphalt = _trackView?.AsphaltGrip ?? 1f;
+        float road = roadGrip * asphalt;
+        LaneEnvelope truth = LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road);
+        ActualGrip = truth.Lateral(40f) / (_referenceLateral * MathF.Max(asphalt, 0.05f));
         // Adaptability: the plan is made on the grip the driver believes in.
         // The hands still feel the axles as they are; only the plan is late.
         Grip = _performance?.PerceiveGrip(ActualGrip, sinceLastRead) ?? ActualGrip;
         float belief = Math.Clamp(Grip / MathF.Max(ActualGrip, 1e-3f), 0.9f, 1.1f);
-        _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(roadGrip * belief);
+        _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road * belief);
         for (int lane = 0; lane < (sides ? 3 : 1); lane++)
         {
             _file.FactorsAtGrip((LaneId)lane, Grip, start, count, _corner[lane], _brake[lane]);
@@ -1304,6 +1311,9 @@ internal static class PlanState
         target.CoreTempC = source.CoreTempC;
         target.Wear = source.Wear;
         target.LoadN = source.LoadN;
-        target.SurfaceGrip = source.SurfaceGrip;
+        // The plan is for the racing surface, all lap. What the wheels are
+        // standing on this instant (a kerb, the day's rubber, the asphalt)
+        // is not the road ahead; the road's grip comes in once, in ReadGrip.
+        target.SurfaceGrip = 1f;
     }
 }

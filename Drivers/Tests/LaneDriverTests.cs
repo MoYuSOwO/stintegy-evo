@@ -167,6 +167,31 @@ public sealed class LaneDriverTests
         Assert.Equal(0f, r.WallSeconds);
     }
 
+    /// <summary>
+    /// Full grip is the circuit at its best. On asphalt a tenth slippier
+    /// than the average circuit, new tyres in their window still read as
+    /// full grip, so the driver uses what it learned at full grip, and the
+    /// lap is still clean because the slipperier road is in the envelope.
+    /// </summary>
+    [Fact]
+    public void FullGripIsTheCircuitAtItsBest()
+    {
+        TrackData track = CircuitLibrary.Load("monaco");
+        track.AsphaltGrip = 0.9f;
+        var read = new List<float>();
+        LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.ForCircuit("monaco", track), onStep: (car, d, t) =>
+        {
+            if (t > 5f)
+                read.Add(d.ActualGrip);
+        });
+        _output.WriteLine($"{r}  grip read {read.Min():F3}..{read.Max():F3}");
+        Assert.True(r.Finished, r.ToString());
+        Assert.Equal(0, r.Spins);
+        Assert.Equal(0f, r.OffTrackSeconds);
+        read.Sort();
+        Assert.InRange(read[read.Count / 2], 0.95f, 1.05f);
+    }
+
     [Fact]
     public void AnUnlearnedCircuitStillGetsRound()
     {
