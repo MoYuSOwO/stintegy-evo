@@ -155,6 +155,13 @@ public readonly record struct CarPhysicsStepInput(
     /// test, a predictor - gets exactly the old behaviour.
     /// </summary>
     public WheelSurfaceGrip SurfaceGrip { get; init; } = WheelSurfaceGrip.Clean;
+
+    /// <summary>
+    /// How hard the asphalt is on rubber, as a multiplier on tyre wear: the
+    /// circuit's <c>AsphaltAbrasion</c>. One, an average circuit, unless a
+    /// track says otherwise.
+    /// </summary>
+    public float SurfaceAbrasion { get; init; } = 1f;
 }
 
 /// <summary>

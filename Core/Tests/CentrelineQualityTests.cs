@@ -104,7 +104,7 @@ public sealed class CentrelineQualityTests
         List<float> steps = [];
         for (int s = 0; s < count; s += 5)
         {
-            if (straightOnly && MathF.Abs(coarse[s]) >= StraightCurvature)
+            if (straightOnly && NearACorner(coarse, s))
                 continue;
             float here = MathF.Atan(track.Sample(s).BankSlope);
             float next = MathF.Atan(track.Sample((s + 5) % count).BankSlope);
@@ -115,6 +115,25 @@ public sealed class CentrelineQualityTests
         steps.Sort();
         return steps[Math.Min(steps.Count - 1, (int)(steps.Count * 0.95f))];
     }
+
+    /// <summary>
+    /// Whether a corner is within <see cref="CornerReachMetres"/> of this
+    /// station. A banked corner's bank has to wind on before it and off
+    /// after it, and the road there is straight while it does; that is the
+    /// corner being built, not the straight wobbling.
+    /// </summary>
+    private static bool NearACorner(float[] curvature, int station)
+    {
+        int count = curvature.Length;
+        for (int d = -CornerReachMetres; d <= CornerReachMetres; d++)
+        {
+            if (MathF.Abs(curvature[((station + d) % count + count) % count]) >= StraightCurvature)
+                return true;
+        }
+        return false;
+    }
+
+    private const int CornerReachMetres = 100;
 
     public static IEnumerable<object[]> Circuits() =>
     [

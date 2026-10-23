@@ -31,6 +31,25 @@ public sealed record CircuitSource
 }
 
 /// <summary>
+/// What the circuit's asphalt is like, as multipliers on an average
+/// Grand Prix surface: how much grip it gives and how hard it is on
+/// rubber. One and one is the average circuit. These are the road's own
+/// and do not change through a race; rubber laid down and washed off is
+/// the race's dynamic layer, <c>RaceEnvironment.SurfaceGripScalar</c>.
+/// </summary>
+public sealed record CircuitSurface
+{
+    /// <summary>The asphalt's grip, on the racing surface and the kerbs; the grass does not change.</summary>
+    public float Grip { get; init; } = 1f;
+
+    /// <summary>How fast the asphalt takes rubber off: a multiplier on tyre wear.</summary>
+    public float Abrasion { get; init; } = 1f;
+
+    /// <summary>Where the two numbers come from, in words.</summary>
+    public string Basis { get; init; } = "";
+}
+
+/// <summary>
 /// A circuit's <c>circuit.json</c>: everything about it that is not the
 /// road itself. The road is <see cref="Track"/>, one row a metre.
 /// </summary>
@@ -53,6 +72,7 @@ public sealed record CircuitManifest
     public int StartLineMeters { get; init; }
 
     public CircuitGrid Grid { get; init; } = new();
+    public CircuitSurface Surface { get; init; } = new();
     public CircuitSource Source { get; init; } = new();
 
     internal static readonly JsonSerializerOptions Json = new()
@@ -178,13 +198,16 @@ public static class CircuitTrackFile
         TrackBuilder builder = TrackBuilder.FromRows(rows);
         builder.WithSurface(context =>
             surfaces[(int)MathF.Round(context.DistanceMeters / TrackData.StepLength) % count]);
-        return builder.Build(new TrackGridConfig
+        TrackData track = builder.Build(new TrackGridConfig
         {
             StartingLineIdx = manifest.StartLineMeters,
             GridCount = manifest.Grid.Count,
             IsFirstGridLeft = manifest.Grid.FirstLeft,
             GridOffset = manifest.Grid.OffsetMeters
         });
+        track.AsphaltGrip = manifest.Surface.Grip;
+        track.AsphaltAbrasion = manifest.Surface.Abrasion;
+        return track;
     }
 
     /// <summary>Writes rows in the form <see cref="ReadRows"/> reads.</summary>

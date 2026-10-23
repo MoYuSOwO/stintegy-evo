@@ -333,7 +333,10 @@ public static class CarPhysics
         // What each wheel is standing on, before anything asks how much
         // grip there is.
         foreach (WheelId wheel in Wheels)
+        {
             state.GetTire(wheel).SurfaceGrip = input.SurfaceGrip[wheel];
+            state.GetTire(wheel).SurfaceAbrasion = input.SurfaceAbrasion;
+        }
 
         // A car that has been declared lost is not being driven, so nothing
         // below this line runs: no request is read, no axle is resolved,
