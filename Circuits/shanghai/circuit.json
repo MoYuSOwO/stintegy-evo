@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 4.25
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 1,
+    "basis": "Pirelli 2025 Chinese GP preview: asphalt grip 3/5, asphalt abrasion 3/5. Other ratings, not used here: traction 3, braking 4, lateral 4, tyre stress 4, track evolution 5, downforce 3."
+  },
   "source": {
     "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",
     "license": "LGPL-3.0",

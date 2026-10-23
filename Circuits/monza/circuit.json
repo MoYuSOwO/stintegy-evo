@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 4.5
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 0.8,
+    "basis": "Pirelli 2025 Italian GP preview: asphalt grip 3/5, asphalt abrasion 2/5. Other ratings, not used here: traction 3, braking 4, lateral 2, tyre stress 3, track evolution 4, downforce 1."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (it-1922)",
     "license": "MIT",

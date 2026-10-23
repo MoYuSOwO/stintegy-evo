@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 3.5
   },
+  "surface": {
+    "grip": 0.985,
+    "abrasion": 0.64,
+    "basis": "Pirelli 2025 Azerbaijan GP preview: asphalt grip 2/5, asphalt abrasion 1/5. Other ratings, not used here: traction 5, braking 4, lateral 1, tyre stress 3, track evolution 5, downforce 2."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (az-2016)",
     "license": "MIT",
