@@ -173,6 +173,7 @@ static void Export(CircuitSpec spec, string outRoot, string repo)
             FirstLeft = grid.IsFirstGridLeft,
             OffsetMeters = grid.GridOffset
         },
+        Surface = Asphalt.For(spec.Id),
         Source = survey.Length > 0
             ? spec.Source with { Notes = spec.Source.Notes.Replace(" Elevation is authored in the style of the venue, not surveyed.", "") + " " + Elevation.Notes(spec.Id) }
             : spec.Source

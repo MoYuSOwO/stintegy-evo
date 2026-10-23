@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 4
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 1,
+    "basis": "Pirelli 2025 Singapore GP preview: asphalt grip 3/5, asphalt abrasion 3/5. Other ratings, not used here: traction 4, braking 5, lateral 2, tyre stress 2, track evolution 5, downforce 5."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (sg-2008)",
     "license": "MIT",

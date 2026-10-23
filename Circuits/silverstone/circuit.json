@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 4.75
   },
+  "surface": {
+    "grip": 1.015,
+    "abrasion": 0.8,
+    "basis": "Pirelli 2025 British GP preview: asphalt grip 4/5, asphalt abrasion 2/5. Other ratings, not used here: traction 3, braking 2, lateral 5, tyre stress 5, track evolution 2, downforce 4."
+  },
   "source": {
     "centreline": "TUMFTM/racetrack-database @ 2b44832e938e707103a0975ff5677a6be80362c4",
     "license": "LGPL-3.0",
