@@ -230,14 +230,16 @@ public class TrackData
     /// 100 m/s covers 1.7 m; five metres covers both.
     /// </summary>
     public const float BodyReachMeters = 5.0f;
-    public const float BaseFriction = 1.0f;
 
     private readonly float cellSize;
     private readonly Dictionary<long, List<int>> spatialBuckets = [];
 
     private readonly ImmutableArray<TrackNode> Nodes;
-    public float FrictionMultiplier { get; set; } = 1.0f;
-    public float Friction => BaseFriction * FrictionMultiplier;
+    /// <summary>The asphalt's grip, from <see cref="CircuitSurface.Grip"/>: one on an average circuit.</summary>
+    public float AsphaltGrip { get; set; } = 1f;
+
+    /// <summary>How hard the asphalt is on rubber, from <see cref="CircuitSurface.Abrasion"/>: one on an average circuit.</summary>
+    public float AsphaltAbrasion { get; set; } = 1f;
 
     internal int Length => Nodes.Length;
     public float LengthMeters => Length * StepLength;

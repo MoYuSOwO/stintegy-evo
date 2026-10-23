@@ -330,7 +330,8 @@ public sealed class Tire
         // is not charged more for the time it takes.
         float wearSpeed = Math.Max(0f, speed) / TireConfig.TireWorkReferenceSpeedMps;
         float wearDelta = tireWorkWear * wearSpeed *
-                          tempWearFactor * forceScale * dt * Config.WearScale;
+                          tempWearFactor * forceScale * dt * Config.WearScale *
+                          MathF.Max(0f, tire.SurfaceAbrasion);
 
         tire.Wear = Math.Clamp(tire.Wear + wearDelta, 0f, 1f);
     }

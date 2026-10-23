@@ -92,16 +92,20 @@ public static class SurfaceGrip
     /// the rubber and water grid says when there is one, and leave it at
     /// one until then.
     /// </summary>
-    public static float At(in TrackSample sample, float offset, float dynamic = 1f)
+    public static float At(in TrackSample sample, float offset, float dynamic = 1f, float asphalt = 1f)
     {
-        return StaticAt(sample, offset) * MathF.Max(0f, dynamic);
+        return StaticAt(sample, offset, asphalt) * MathF.Max(0f, dynamic);
     }
 
     /// <summary>
     /// The road's own contribution, everywhere, with both boundaries
     /// smoothed.
     /// </summary>
-    public static float StaticAt(in TrackSample sample, float offset)
+    /// <param name="asphalt">
+    /// The circuit's asphalt grip. It scales what is paved, the racing
+    /// surface and the kerbs; the grass past them is grass anywhere.
+    /// </param>
+    public static float StaticAt(in TrackSample sample, float offset, float asphalt = 1f)
     {
         float half = MathF.Max(sample.HalfWidth, 0f);
         float distance = MathF.Abs(offset);
@@ -118,7 +122,7 @@ public static class SurfaceGrip
             half + KerbWidthMeters + TransitionMeters,
             distance
         );
-        float surface = RacingSurface + (Kerb - RacingSurface) * acrossKerb;
+        float surface = (RacingSurface + (Kerb - RacingSurface) * acrossKerb) * MathF.Max(0f, asphalt);
         return surface + (Buffer - surface) * ontoGrass;
     }
 

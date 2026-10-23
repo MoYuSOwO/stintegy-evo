@@ -362,7 +362,8 @@ public sealed class RaceSimulation
             )
             {
                 RoadAttitude = SampleRoadAttitude(car),
-                SurfaceGrip = SampleWheelSurfaceGrip(car)
+                SurfaceGrip = SampleWheelSurfaceGrip(car),
+                SurfaceAbrasion = Track.AsphaltAbrasion
             };
 
             CarState startState = _startStates[i];
@@ -484,11 +485,12 @@ public sealed class RaceSimulation
         // The day's grip goes in through the dynamic layer, which is
         // exactly the slot it was reserved for.
         float today = _stepEnvironment.SurfaceGripScalar;
+        float asphalt = Track.AsphaltGrip;
         return new WheelSurfaceGrip(
-            SurfaceGrip.At(sample, OffsetOf(front + side), today),
-            SurfaceGrip.At(sample, OffsetOf(front - side), today),
-            SurfaceGrip.At(sample, OffsetOf(rear + side), today),
-            SurfaceGrip.At(sample, OffsetOf(rear - side), today)
+            SurfaceGrip.At(sample, OffsetOf(front + side), today, asphalt),
+            SurfaceGrip.At(sample, OffsetOf(front - side), today, asphalt),
+            SurfaceGrip.At(sample, OffsetOf(rear + side), today, asphalt),
+            SurfaceGrip.At(sample, OffsetOf(rear - side), today, asphalt)
         );
     }
 

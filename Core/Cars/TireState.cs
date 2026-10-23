@@ -35,6 +35,9 @@ public sealed class TireState
     /// </summary>
     public float SurfaceGrip { get; set; } = 1f;
 
+    /// <summary>How hard the road under it is on rubber: a multiplier on wear, one on an average circuit.</summary>
+    public float SurfaceAbrasion { get; set; } = 1f;
+
     public TireState Clone()
     {
         return new TireState
@@ -49,6 +52,7 @@ public sealed class TireState
     public void CopyFrom(TireState other)
     {
         SurfaceGrip = other.SurfaceGrip;
+        SurfaceAbrasion = other.SurfaceAbrasion;
         SurfaceTempC = other.SurfaceTempC;
         CoreTempC = other.CoreTempC;
         Wear = other.Wear;
