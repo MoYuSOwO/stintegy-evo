@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 3.5
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 1,
+    "basis": "Pirelli 2025 Dutch GP preview: asphalt grip 3/5, asphalt abrasion 3/5. Other ratings, not used here: traction 3, braking 3, lateral 4, tyre stress 5, track evolution 4, downforce 4."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (nl-1948)",
     "license": "MIT",

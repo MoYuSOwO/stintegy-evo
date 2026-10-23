@@ -10,6 +10,11 @@
     "firstLeft": true,
     "offsetMeters": 5
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 1,
+    "basis": "Pirelli 2025 Belgian GP preview: asphalt grip 3/5, asphalt abrasion 3/5. Other ratings, not used here: traction 4, braking 4, lateral 5, tyre stress 5, track evolution 3, downforce 2."
+  },
   "source": {
     "centreline": "bacinger/f1-circuits (be-1925)",
     "license": "MIT",

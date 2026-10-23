@@ -10,6 +10,11 @@
     "firstLeft": false,
     "offsetMeters": 0
   },
+  "surface": {
+    "grip": 1,
+    "abrasion": 1,
+    "basis": ""
+  },
   "source": {
     "centreline": "Built from straights and arcs by Tools/Circuits",
     "license": "Project content, see CONTENT_LICENSE.md",
