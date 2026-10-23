@@ -37,6 +37,12 @@ public sealed record LaneCircuitManifest
     /// <summary>Absent: the driver's general table, which is not set for this circuit.</summary>
     public LaneEnergyRungs? Energy { get; init; }
 
+    /// <summary>Absent: the driver's general tyre styles, which are not set for this circuit.</summary>
+    public LaneTyreRungs? Tyres { get; init; }
+
+    /// <summary>When and on what car the rungs were last calibrated, and how close they came.</summary>
+    public LaneCalibration? Calibration { get; init; }
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -87,6 +93,37 @@ public sealed record LaneEnergyRungs
     {
         Save = lift[0], Eco = lift[1], Normal = lift[2], Push = lift[3], Attack = lift[4], RaceLaps = raceLaps
     };
+}
+
+/// <summary>
+/// The tyre rungs on this circuit, Protect to Attack: how much of the
+/// corner, the brakes, the traction and the grip cap each one spends. The
+/// same share of a corner costs different rubber on different circuits, so
+/// the gaps between the rungs are set per circuit like the energy ones.
+/// </summary>
+public sealed record LaneTyreRungs
+{
+    public TyreStyle Protect { get; init; }
+    public TyreStyle Light { get; init; }
+    public TyreStyle Normal { get; init; }
+    public TyreStyle Push { get; init; }
+    public TyreStyle Attack { get; init; }
+
+    public TyreStyle[] Table() => [Protect, Light, Normal, Push, Attack];
+
+    public static LaneTyreRungs From(TyreStyle[] table) => new()
+    {
+        Protect = table[0], Light = table[1], Normal = table[2], Push = table[3], Attack = table[4]
+    };
+}
+
+/// <summary>What the last calibration measured, in words a person reads.</summary>
+public sealed record LaneCalibration
+{
+    public string Date { get; init; } = "";
+    public string Physics { get; init; } = "";
+    public string Energy { get; init; } = "";
+    public string Tyres { get; init; } = "";
 }
 
 /// <summary>

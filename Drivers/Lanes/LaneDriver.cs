@@ -165,6 +165,10 @@ public sealed class LaneDriver : IDriverController
 
     private readonly LaneTrackFile _file;
     private float[]? _energyTable;
+    private TyreStyle[]? _tyreStyles;
+
+    /// <summary>The tyre rungs' styles: this circuit's where it has them, the general table where not.</summary>
+    private TyreStyle[] TyreStyles => _tyreStyles ??= _file.Tyres?.Table() ?? Gains.TyreStyleTable;
     private readonly CarConfig _car;
     private readonly TireConfig _tires;
     private readonly TurnLag _turnLag;
@@ -949,7 +953,7 @@ public sealed class LaneDriver : IDriverController
             ? CarPhysics.GripUsage(car.Strategy) / MathF.Max(CarPhysics.GripUsage(CarStrategy.Default), 0.5f)
             : 1f;
         _style = Gains.TyreRungStyles
-            ? Gains.TyreStyleTable[Math.Clamp((int)car.Strategy.TireMode - 1, 0, Gains.TyreStyleTable.Length - 1)]
+            ? TyreStyles[Math.Clamp((int)car.Strategy.TireMode - 1, 0, TyreStyles.Length - 1)]
             : null;
         _planShares = _style is { } style
             ? Shares with { Lateral = Shares.Lateral * style.Corner, Brake = Shares.Brake * style.Brake }

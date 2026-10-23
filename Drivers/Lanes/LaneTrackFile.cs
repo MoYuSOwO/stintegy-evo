@@ -152,6 +152,8 @@ public sealed class LaneTrackFile
             copy._steer = _steer.Select(lane => (float[])lane.Clone()).ToArray();
         copy.Energy = Energy;
         copy.LearnedFor = LearnedFor;
+        copy.Tyres = Tyres;
+        copy.Calibration = Calibration;
         return copy;
     }
 
@@ -243,6 +245,12 @@ public sealed class LaneTrackFile
     /// <summary>What the car was when this was learned; null for a file that never said.</summary>
     public LaneLearnedFor? LearnedFor { get; set; }
 
+    /// <summary>The tyre rungs as this circuit's styles, or null where the driver's general table stands in.</summary>
+    public LaneTyreRungs? Tyres { get; set; }
+
+    /// <summary>What the last calibration of the rungs measured.</summary>
+    public LaneCalibration? Calibration { get; set; }
+
     /// <summary>
     /// Whether this was learned on the car as it is now: the stock car on
     /// the stock tyre, as far as their numbers tell. A file from before a
@@ -286,6 +294,8 @@ public sealed class LaneTrackFile
             throw new InvalidDataException($"{manifest.Circuit}: format {manifest.Format} is newer than this driver reads.");
         file.Energy = manifest.Energy;
         file.LearnedFor = manifest.LearnedFor;
+        file.Tyres = manifest.Tyres;
+        file.Calibration = manifest.Calibration;
         return file;
     }
 
@@ -293,7 +303,10 @@ public sealed class LaneTrackFile
     public void SaveCircuit(string folder, string id)
     {
         Directory.CreateDirectory(folder);
-        var manifest = new LaneCircuitManifest { Circuit = id, LearnedFor = LearnedFor, Energy = Energy };
+        var manifest = new LaneCircuitManifest
+        {
+            Circuit = id, LearnedFor = LearnedFor, Energy = Energy, Tyres = Tyres, Calibration = Calibration
+        };
         Save(Path.Combine(folder, manifest.Lanes));
         manifest.Write(Path.Combine(folder, LaneCircuitManifest.FileName));
     }
