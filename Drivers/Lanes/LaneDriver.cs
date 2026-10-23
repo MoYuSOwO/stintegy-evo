@@ -185,6 +185,17 @@ public sealed class LaneDriver : IDriverController
     private readonly float[][] _corner = new float[LaneSet.LaneCount][];
     private readonly float[][] _brake = new float[LaneSet.LaneCount][];
     private readonly bool[] _planned = new bool[LaneSet.LaneCount];
+    private float _sincePlan;
+
+    /// <summary>
+    /// How often the speeds ahead are planned again. The tyres, the pack and
+    /// the road change over seconds, not steps, and planning five hundred
+    /// metres of up to three lanes every step was most of what a car cost:
+    /// eight cars took ten milliseconds a step. Each car keeps its own beat,
+    /// offset from the others by its name, so they do not all plan in one
+    /// frame; a lane needed before it has been planned is planned at once.
+    /// </summary>
+    public float PlanIntervalSeconds { get; init; } = 0.1f;
     private float[] _aheadCurvature = [];
     private float[] _aheadStep = [];
     private float[] _aheadFactor = [];
@@ -362,6 +373,7 @@ public sealed class LaneDriver : IDriverController
         _performance = UseAbilities ? new LanePerformance(context.Profile) : null;
         _performance?.Update(0, context.Car.TrackS, 0f);
         PlanAhead(context.Car, context.Environment.SurfaceGripScalar, 0f);
+        _sincePlan = PlanIntervalSeconds * Phase(context.Car.Id);
     }
 
     /// <summary>
@@ -397,7 +409,12 @@ public sealed class LaneDriver : IDriverController
             int lap = (int)MathF.Floor(car.RaceDistanceMeters / MathF.Max(car.TrackLengthMeters, 1f));
             _performance.Update(lap, car.TrackS, dt);
         }
-        PlanAhead(car, context.Environment.SurfaceGripScalar, dt);
+        _sincePlan += dt;
+        if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
+        {
+            PlanAhead(car, context.Environment.SurfaceGripScalar, _sincePlan);
+            _sincePlan = 0f;
+        }
         ScaleMove(car, dt);
         MoveBlend(dt);
 
@@ -731,6 +748,15 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The planned speed at the car, for probes.</summary>
     public float PlannedSpeedAt(float s) => SpeedAt(_lanes.StationOf(s));
 
+    /// <summary>Where in the planning beat a car starts, from its name: the same every run.</summary>
+    private static float Phase(string id)
+    {
+        uint hash = 2166136261;
+        foreach (char c in id)
+            hash = (hash ^ c) * 16777619;
+        return (hash % 1000) / 1000f;
+    }
+
     /// <summary>
     /// The lap this lane would take on the grip the driver last read, planned
     /// whole for the asking. A report, not something the driver drives on.
@@ -903,15 +929,11 @@ public sealed class LaneDriver : IDriverController
     {
         int start = (int)MathF.Floor(_lanes.StationOf(car.TrackS));
         int n = _aheadSpeed.Length;
-        // On the free lane with no move asked for, the side lanes are read by
-        // nothing; they are planned again the step a move begins.
         bool sides = Range > 1e-3f || TargetRange > 1e-3f;
-        // Settled on one lane off the free one, the others are read by nothing either.
-        int settled = SettledSideLane();
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
         for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
-            if (lane != (int)LaneId.Free && (!sides || settled >= 0 && lane != settled))
+            if (!Reads(lane))
             {
                 _planned[lane] = false;
                 continue;
@@ -945,6 +967,22 @@ public sealed class LaneDriver : IDriverController
             _planned[lane] = true;
         }
         _windowStart = -1;
+    }
+
+    /// <summary>
+    /// Whether anything reads this lane's plan now. On the free lane with no
+    /// move asked for, the other lanes are read by nothing; they are planned
+    /// again the step a move begins. Settled on one lane off the free one,
+    /// the others are read by nothing either.
+    /// </summary>
+    private bool Reads(int lane)
+    {
+        if (lane == (int)LaneId.Free)
+            return true;
+        if (Range <= 1e-3f && TargetRange <= 1e-3f)
+            return false;
+        int settled = SettledSideLane();
+        return settled < 0 || lane == settled;
     }
 
     /// <summary>The live envelope and the learned factors at the grip the driver believes in.</summary>
