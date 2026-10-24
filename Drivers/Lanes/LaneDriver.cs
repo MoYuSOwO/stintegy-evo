@@ -174,6 +174,14 @@ public sealed record LaneDriverGains
     public float RejoinFacingRadians { get; init; } = 0.5f;
     public float RejoinLateralMeters { get; init; } = 1.5f;
     public float RejoinHeadingRadians { get; init; } = 0.15f;
+
+    /// <summary>
+    /// The brake balance a driver runs, as a share forward of what the axles
+    /// would take evenly, so the front locks first; and the braking, m/s²,
+    /// past which the driver reads the balance at all.
+    /// </summary>
+    public float BrakeBiasForwardMargin { get; init; } = 0.03f;
+    public float BrakeBiasReadAccel { get; init; } = 8f;
 }
 
 /// <summary>
@@ -747,7 +755,7 @@ public sealed class LaneDriver : IDriverController
         // would put on (SteeringEstimate), misjudged by this driver's hands;
         // the line takes up what is left.
         float steer = car.Steering.AngleFor(curvature) * (1f + (_performance?.SteeringRead ?? 0f));
-        return new DriverInput(steer, accel, FrontBrakeBiasOffset: BrakeBias(tyres, dt), TyreWearExcess: _performance?.TyreWearExcess ?? 0f);
+        return new DriverInput(steer, accel, FrontBrakeBiasOffset: BrakeBias(tyres, accel, dt), TyreWearExcess: _performance?.TyreWearExcess ?? 0f);
     }
 
     // What the car's own instruments say of its two axles this step.
@@ -958,22 +966,28 @@ public sealed class LaneDriver : IDriverController
     /// <summary>
     /// The brake balance dial, on a car whose balance is a fixed split: the
     /// share at the front the driver wants is the one each axle's grip left
-    /// would take, as the driver feels it, turned toward it as fast as the
-    /// driver can. A driver with feel is nearly there and nearly at once; one
-    /// without is late and off, and an axle locks. On a car whose brakes
-    /// share themselves it is only the driver's own error, as it always was.
+    /// would take under the braking, as the driver feels it, a little
+    /// forward of it, since a front that locks first runs on and a rear that
+    /// locks first spins, turned toward it as fast as the driver can. Only
+    /// read under braking: off the brakes the nose is up and the front feels
+    /// light, and a dial set by that would be rearward for the next stop.
+    /// Between stops it stays where the last one left it. A driver with feel
+    /// is nearly there and nearly at once; one without is late and off, and
+    /// an axle locks. On a car whose brakes share themselves it is only the
+    /// driver's own error, as it always was.
     /// </summary>
-    private float BrakeBias(AxleTelemetry tyres, float dt)
+    private float BrakeBias(AxleTelemetry tyres, float accel, float dt)
     {
         float error = _performance?.FrontBrakeBiasOffset ?? 0f;
         if (_car.FixedFrontBrakeShare is not { } fixedShare)
             return error;
         float front = tyres.FrontGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.FrontLateralUse * tyres.FrontLateralUse));
         float rear = tyres.RearGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.RearLateralUse * tyres.RearLateralUse));
-        float wanted = front + rear > 1f ? front / (front + rear) : fixedShare;
-        wanted += error;
         if (float.IsNaN(_brakeDial))
-            _brakeDial = wanted;
+            _brakeDial = fixedShare + Gains.BrakeBiasForwardMargin;
+        if (accel > -Gains.BrakeBiasReadAccel || front + rear <= 1f)
+            return Math.Clamp(_brakeDial - fixedShare, -0.25f, 0.25f);
+        float wanted = front / (front + rear) + Gains.BrakeBiasForwardMargin + error;
         float seconds = _performance?.BrakeDialSeconds ?? 0f;
         float follow = seconds <= 0f ? 1f : 1f - MathF.Exp(-MathF.Max(0f, dt) / seconds);
         _brakeDial += (wanted - _brakeDial) * follow;
