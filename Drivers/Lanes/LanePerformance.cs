@@ -21,8 +21,6 @@ public sealed class LanePerformance
     private const float MaximumAbilityVolatility = 0.12f;
     private const float ErrorFilterSeconds = 0.35f;
 
-    /// <summary>Pace across the whole scale: a rating of zero takes this share of the plan.</summary>
-    public const float SlowestPaceShare = 0.92f;
 
     /// <summary>The wandering every driver keeps, as a share of a zero-consistency driver's.</summary>
     public const float NoiseFloor = 0.08f;
@@ -60,7 +58,14 @@ public sealed class LanePerformance
     private const float BrakeMarkerSpreadMeters = 4.5f;
     private const float LateralSpreadMeters = 0.35f;
     private const float SpeedSpread = 0.012f;
-    private const float MaximumExtraBrakePreview = 0.12f;
+    private const float MaximumExtraBrakePreview = 0.22f;
+
+    // Pace: a slow driver uses the whole tyre like a quick one, but brakes a
+    // little early, builds the brakes and the throttle slowly, and so goes
+    // round on the same grip in more time. The rates, at the top and the
+    // bottom of the scale.
+    private const float FastestBrakeBuild = 600f, SlowestBrakeBuild = 140f;
+    private const float FastestThrottleBuild = 240f, SlowestThrottleBuild = 35f;
 
     private readonly DriverAbilities _abilities;
     private readonly Random _random;
@@ -110,8 +115,14 @@ public sealed class LanePerformance
         _segmentForm = Normal();
     }
 
-    /// <summary>Share of the plan taken this lap.</summary>
-    public float PaceShare { get; private set; } = 1f;
+    /// <summary>
+    /// How fast the brakes are squeezed on and the throttle opened, m/s² a
+    /// second, this lap: a quick driver is at full braking almost at once and
+    /// back on full power the moment the car will take it; a slow one builds
+    /// both, and loses the time there, not by asking less of the tyres.
+    /// </summary>
+    public float BrakeBuildRate { get; private set; } = FastestBrakeBuild;
+    public float ThrottleBuildRate { get; private set; } = FastestThrottleBuild;
 
     /// <summary>Metres the speed table is read ahead of the car: positive brakes later.</summary>
     public float BrakeMarkerMeters { get; private set; }
@@ -224,7 +235,8 @@ public sealed class LanePerformance
             float pace = Sample(_abilities.Pace, 0.38f * _sessionForm + 0.92f * _lapForm);
             PaceDraw = pace;
             Control = Sample(_abilities.CarControl, 0.38f * _sessionForm + 0.92f * _lapForm);
-            PaceShare = SlowestPaceShare + (1f - SlowestPaceShare) * pace;
+            BrakeBuildRate = SlowestBrakeBuild + (FastestBrakeBuild - SlowestBrakeBuild) * pace;
+            ThrottleBuildRate = SlowestThrottleBuild + (FastestThrottleBuild - SlowestThrottleBuild) * pace;
             ExtraBrakePreviewSeconds = (1f - pace) * MaximumExtraBrakePreview;
             float lapFeel = Feel(MathF.Pow(1f - Control, 1.25f));
             _lapBrakeBias = Normal() * LapBrakeBiasError * lapFeel;

@@ -585,7 +585,10 @@ public sealed class LaneDriver : IDriverController
         // corner needs is the plan's and what the learner finds, not a
         // look ahead that moves every braking point at once.
         float slowing = SpeedAt(station + 5f / _lanes.Spacing) < hereSpeed ? 1f : 0f;
-        float preview = MathF.Max(dt, 0f) + slowing * (_performance?.ExtraBrakePreviewSeconds ?? 0f);
+        // A driver who squeezes the brakes on over a beat starts that much
+        // sooner, half the time it takes to get to full braking.
+        float buildLead = _performance is { } p ? 0.5f * _car.MaxBrakeAccel / MathF.Max(p.BrakeBuildRate, 1f) : 0f;
+        float preview = MathF.Max(dt, 0f) + slowing * ((_performance?.ExtraBrakePreviewSeconds ?? 0f) + buildLead);
         float target = SpeedAt(station + MathF.Max(0f, speed) * preview / _lanes.Spacing);
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
         target *= speedScale;
@@ -727,7 +730,14 @@ public sealed class LaneDriver : IDriverController
         else
         {
             accel = SlidePedals(accel, slide, frontGone, dt);
+            // Pace: the brakes squeezed on and the throttle opened at this
+            // driver's rate. Coming off either is at once.
+            if (accel < 0f && accel < _lastAccel)
+                accel = MathF.Max(accel, MathF.Min(_lastAccel, 0f) - _performance.BrakeBuildRate * MathF.Max(dt, 0f));
+            else if (accel > 0f && accel > _lastAccel)
+                accel = MathF.Min(accel, MathF.Max(_lastAccel, 0f) + _performance.ThrottleBuildRate * MathF.Max(dt, 0f));
         }
+        _lastAccel = accel;
 
         LastTelemetry = new LaneDriverTelemetry(
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
@@ -943,6 +953,7 @@ public sealed class LaneDriver : IDriverController
     }
 
     private float _brakeDial = float.NaN;
+    private float _lastAccel;
 
     /// <summary>
     /// The brake balance dial, on a car whose balance is a fixed split: the
@@ -1017,12 +1028,6 @@ public sealed class LaneDriver : IDriverController
         var brake = new float[count];
         var speed = new float[count];
         _file.FactorsAtGrip(lane, Grip, corner, brake);
-        float pace = _performance?.PaceShare ?? 1f;
-        for (int i = 0; i < count; i++)
-        {
-            corner[i] *= pace;
-            brake[i] *= pace;
-        }
         int l = (int)lane;
         LaneSpeedPlanner.PlanClosed(_envelope, _curvature[l], _stepLength[l], corner, brake, _road[l], _planShares, speed);
         float seconds = 0f;
@@ -1267,17 +1272,6 @@ public sealed class LaneDriver : IDriverController
         for (int lane = 0; lane < (sides ? LaneSet.LaneCount : 1); lane++)
         {
             _file.FactorsAtGrip((LaneId)lane, Grip, start, count, _corner[lane], _brake[lane]);
-            // Pace: the share of the plan this driver takes this lap.
-            float pace = _performance?.PaceShare ?? 1f;
-            if (pace < 1f)
-            {
-                for (int k = 0; k < count; k++)
-                {
-                    int i = _lanes.Wrap(start + k);
-                    _corner[lane][i] *= pace;
-                    _brake[lane][i] *= pace;
-                }
-            }
         }
     }
 
