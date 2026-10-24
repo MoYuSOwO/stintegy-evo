@@ -139,6 +139,41 @@ public sealed record LaneDriverGains
     /// <summary>Body sideslip where the driver starts handing the slide back.</summary>
     public float SlideOnsetRadians { get; init; } = 0.10f;
     public float SlideFullRadians { get; init; } = 0.20f;
+
+    /// <summary>
+    /// The rear going: the share of full throttle kept at the worst of a
+    /// slide, by a driver with no feel and by one with all of it. Lifting
+    /// off all at once throws the weight forward and the rear further out;
+    /// a driver who can feel it keeps a little on to hold the rear down.
+    /// </summary>
+    public float CatchThrottleKeepNoFeel { get; init; } = 0f;
+    public float CatchThrottleKeepFullFeel { get; init; } = 0.35f;
+
+    /// <summary>The rear going under braking: the share of the brakes let off at the worst of it, so a locked rear rolls again.</summary>
+    public float CatchBrakeRelease { get; init; } = 0.6f;
+
+    /// <summary>After a catch, back to full throttle over this long, s: squeezed by a driver with feel, crept by one without.</summary>
+    public float ThrottleReturnSecondsNoFeel { get; init; } = 1.0f;
+    public float ThrottleReturnSecondsFullFeel { get; init; } = 0.35f;
+
+    /// <summary>
+    /// The front going: how far the wheel is unwound toward the turn the
+    /// car is actually making, and how much of the throttle comes off, at
+    /// the worst of it. More lock on a front that has let go only scrubs.
+    /// </summary>
+    public float UnwindShare { get; init; } = 0.6f;
+    public float UnderLift { get; init; } = 0.8f;
+
+    /// <summary>
+    /// After a spin, handed back by the physics: crept back onto the lane at
+    /// no more than this, m/s, and at a walking pace while still facing more
+    /// than about thirty degrees off the road; back on it within these.
+    /// </summary>
+    public float RejoinSpeed { get; init; } = 25f;
+    public float RejoinTurnSpeed { get; init; } = 6f;
+    public float RejoinFacingRadians { get; init; } = 0.5f;
+    public float RejoinLateralMeters { get; init; } = 1.5f;
+    public float RejoinHeadingRadians { get; init; } = 0.15f;
 }
 
 /// <summary>
@@ -265,6 +300,14 @@ public sealed class LaneDriver : IDriverController
     /// <summary>Where the tactics want the blend; the blend moves there at a limited rate.</summary>
     public float TargetRange { get; set; }
     public float TargetSide { get; set; }
+
+    /// <summary>
+    /// A speed the driver is not to exceed, m/s, or null for none: set by
+    /// whatever drives this driver from outside (traffic, a pit lane, a
+    /// safety car). The plan is otherwise untouched; the brakes come on only
+    /// above it, as they do above the plan.
+    /// </summary>
+    public float? SpeedCap { get; set; }
 
     /// <summary>Blend travel per second, in units of the blend.</summary>
     public float RangeRate { get; init; } = 0.6f;
@@ -435,6 +478,10 @@ public sealed class LaneDriver : IDriverController
         Vector2 toCar = car.Position - refPosition;
         float leftError = tangent.X * toCar.Y - tangent.Y * toCar.X;
         float headingError = MathHelper.NormalizeAngle(pathHeading - car.VelocityHeadingRadians);
+        // Where the body points, against the road: after a spin the car may
+        // be crawling or facing across it, and the way it moves says little.
+        float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
+        UpdateRejoin(car, leftError, facing);
         float turnIn = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(speed);
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
@@ -498,6 +545,7 @@ public sealed class LaneDriver : IDriverController
 
         float slip = MathF.Abs(car.SideslipAngleRadians);
         float slide;
+        float frontGone = 0f;
         if (_performance is null)
         {
             slide = Math.Clamp(
@@ -510,8 +558,13 @@ public sealed class LaneDriver : IDriverController
         }
         else
         {
-            slide = Recover(car, ref curvature, dt);
+            (slide, frontGone) = Recover(car, ref curvature, dt);
         }
+        // Facing well off the road after a spin: round on full lock at a
+        // walk, whichever way is shorter; the line's own steering reads the
+        // way the car moves, and a car crawling backwards reads it wrong.
+        if (_phase == SlidePhase.Rejoin && MathF.Abs(facing) > Gains.RejoinFacingRadians)
+            curvature = MathF.Sign(facing) * car.Capabilities.MaxCurvatureRequest;
 
         // Longitudinal: follow the table with its own slope as feedforward,
         // and pay the drag the axles will be charged for.
@@ -537,6 +590,18 @@ public sealed class LaneDriver : IDriverController
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
         target *= speedScale;
         ahead *= speedScale;
+        float uncapped = target;
+        if (SpeedCap is { } cap)
+        {
+            target = MathF.Min(target, cap);
+            ahead = MathF.Min(ahead, cap);
+        }
+        if (_phase == SlidePhase.Rejoin)
+        {
+            float creep = MathF.Abs(facing) > Gains.RejoinFacingRadians ? Gains.RejoinTurnSpeed : Gains.RejoinSpeed;
+            target = MathF.Min(target, creep);
+            ahead = MathF.Min(ahead, creep);
+        }
         float slope = (ahead - target) / 5f;
         // The road's part, the planner's way round (LaneSpeedPlanner.DriveFrom):
         // the axles are scaled onto the slope and gravity comes on top. Left
@@ -564,7 +629,12 @@ public sealed class LaneDriver : IDriverController
         // a step ago: the motor gives what it has this step. Asked for the
         // last step's figure, the step a push began asked for the power
         // without it, a tenth less, and the throttle trace dipped.
-        if (target >= flatOut - FlatOutToleranceMps)
+        // Held under the plan by a cap (a car in the way, a spin to come back
+        // from), the speed is tracked, not floored: stopped and waiting, the
+        // flat-out speed a step ahead is next to nothing, and every step that
+        // read as the plan being flat out the pedal went to the floor.
+        bool capped = target < uncapped - 0.1f;
+        if (!capped && target >= flatOut - FlatOutToleranceMps)
             accel = MathF.Max(accel, _car.MaxDriveAcceleration);
 
         // Lift and coast: off the throttle this long before a braking zone.
@@ -649,8 +719,15 @@ public sealed class LaneDriver : IDriverController
             if (over > 0f)
                 accel *= Math.Clamp(1f - over / Gains.BrakeFeelBand, Gains.BrakeFeelFloor, 1f);
         }
-        if (slide > 0f)
-            accel = MathF.Min(accel, accel * (1f - slide));
+        if (_performance is null)
+        {
+            if (slide > 0f)
+                accel = MathF.Min(accel, accel * (1f - slide));
+        }
+        else
+        {
+            accel = SlidePedals(accel, slide, frontGone, dt);
+        }
 
         LastTelemetry = new LaneDriverTelemetry(
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
@@ -679,67 +756,165 @@ public sealed class LaneDriver : IDriverController
         car.Instrument("induced_drag_mps2") ?? 0f,
         car.Instrument("rear_slide_severity") ?? 0f);
 
+    private enum SlidePhase { None, Catch, Spun, Rejoin }
+
+    private SlidePhase _phase;
     private float _perceivedSlip;
     private float _perceivedYawError;
+    private float _perceivedUnder;
     private float _slidingFor;
-    private bool _recovering;
+    private float _throttleReturn = 1f;
 
     /// <summary>Whether the driver is catching a slide right now.</summary>
-    public bool IsRecovering => _recovering;
+    public bool IsRecovering => _phase == SlidePhase.Catch;
+
+    /// <summary>Whether the car is spun, the physics playing it out, or crawling back onto its lane after.</summary>
+    public bool IsSpun => _phase == SlidePhase.Spun;
+    public bool IsRejoining => _phase == SlidePhase.Rejoin;
 
     /// <summary>Slides caught (or not) since the start, for probes.</summary>
     public int RecoveryEvents { get; private set; }
 
     /// <summary>
+    /// A spin is the physics' from the moment it calls one: the wheel and
+    /// pedals do nothing until it hands the car back, slow and pointing the
+    /// way it is going. From there the driver creeps back onto the lane,
+    /// and is back when on it and pointing down it.
+    /// </summary>
+    private void UpdateRejoin(RaceCarSnapshot car, float leftError, float facing)
+    {
+        if (car.Spinning)
+        {
+            _phase = SlidePhase.Spun;
+            _slidingFor = 0f;
+            return;
+        }
+        if (_phase == SlidePhase.Spun)
+            _phase = SlidePhase.Rejoin;
+        if (_phase == SlidePhase.Rejoin &&
+            MathF.Abs(leftError) < Gains.RejoinLateralMeters &&
+            MathF.Abs(facing) < Gains.RejoinHeadingRadians)
+        {
+            _phase = SlidePhase.None;
+            _throttleReturn = 0f;
+        }
+    }
+
+    /// <summary>
     /// Catching a slide, the historical driver's way: perceived through a
     /// filter whose speed is the driver's car control, acted on only after
     /// their reaction time, then countersteer on the perceived sideslip and
-    /// yaw error with a firmness drawn for this one catch, and the throttle
-    /// lifted for as long as it lasts. Returns how severe the slide is, 0..1.
+    /// on the yaw running past the one asked for, with a firmness drawn for
+    /// this one catch. A front that has let go instead is unwound toward the
+    /// turn the car is making. Returns how severe each is, 0..1: the rear
+    /// sliding and the front.
     /// </summary>
-    private float Recover(RaceCarSnapshot car, ref float curvature, float dt)
+    private (float Over, float Under) Recover(RaceCarSnapshot car, ref float curvature, float dt)
     {
+        if (_phase is SlidePhase.Spun or SlidePhase.Rejoin)
+            return (0f, 0f);
         LanePerformance performance = _performance!;
         float speed = car.SpeedMetersPerSecond;
         float sideslip = car.SideslipAngleRadians;
-        float yawError = car.YawRateRadiansPerSecond - speed * curvature;
+        float yaw = car.YawRateRadiansPerSecond;
+        float asked = speed * curvature;
+        float yawError = yaw - asked;
         float filter = 1f - MathF.Exp(-MathF.Max(0f, dt) / MathF.Max(performance.PerceptionSeconds, 1e-3f));
         _perceivedSlip += (sideslip - _perceivedSlip) * filter;
         _perceivedYawError += (yawError - _perceivedYawError) * filter;
 
         // In this physics two to four degrees of body slip is an ordinary
-        // corner; what says the car is going is the rear sliding, a slip past
-        // that, or a yaw rate running away from the one asked for.
+        // corner; what says the rear is going is the rear sliding, a slip
+        // past that, or the car turning faster than it was asked to. Turning
+        // slower than asked is the front, not the rear.
+        bool overRotating = yawError * MathF.Sign(yaw) > 0f;
         float slipSeverity = Math.Clamp((MathF.Abs(sideslip) - 0.07f) / 0.08f, 0f, 1f);
-        float yawSeverity = Math.Clamp((MathF.Abs(yawError) - 0.10f) / 0.6f, 0f, 1f) *
-                            Math.Clamp(MathF.Abs(sideslip) / 0.06f, 0f, 1f);
+        float yawSeverity = overRotating
+            ? Math.Clamp((MathF.Abs(yawError) - 0.10f) / 0.6f, 0f, 1f) * Math.Clamp(MathF.Abs(sideslip) / 0.06f, 0f, 1f)
+            : 0f;
         float rearSeverity = Math.Clamp((_axles.RearSlideSeverity - 0.15f) / 0.6f, 0f, 1f);
         float severity = MathF.Max(slipSeverity, MathF.Max(yawSeverity, rearSeverity));
 
-        if (!_recovering)
+        // The front gone: asked for a turn, the car makes a good deal less
+        // of it, with the front tyres at the end of what they hold and the
+        // rear not the reason.
+        float under = 0f;
+        if (speed > 15f && MathF.Abs(asked) > 0.05f && severity < 0.05f)
+        {
+            float made = yaw * MathF.Sign(asked);
+            float deficit = 1f - made / MathF.Abs(asked);
+            under = Math.Clamp((deficit - 0.12f) / 0.3f, 0f, 1f) *
+                    Math.Clamp((_axles.FrontLateralUse - 0.9f) / 0.08f, 0f, 1f);
+        }
+        _perceivedUnder += (under - _perceivedUnder) * filter;
+
+        if (_phase != SlidePhase.Catch)
         {
             _slidingFor = severity > 0.15f ? _slidingFor + dt : 0f;
             if (_slidingFor >= performance.ReactionSeconds)
             {
-                _recovering = true;
+                _phase = SlidePhase.Catch;
                 RecoveryEvents++;
                 performance.BeginRecovery();
             }
         }
         else if (severity < 0.05f)
         {
-            _recovering = false;
+            _phase = SlidePhase.None;
             _slidingFor = 0f;
         }
 
-        if (!_recovering)
-            return 0f;
-        float wheelBase = MathF.Max(car.WheelBaseMeters, 1.5f);
-        float correction = (0.35f * _perceivedSlip / wheelBase -
-                            0.25f * _perceivedYawError / MathF.Max(speed, 5f)) * performance.RecoveryGain;
-        float limit = car.Capabilities.MaxCurvatureRequest;
-        curvature = Math.Clamp(curvature + correction, -limit, limit);
-        return severity;
+        if (_phase == SlidePhase.Catch)
+        {
+            float wheelBase = MathF.Max(car.WheelBaseMeters, 1.5f);
+            float yawTerm = overRotating ? _perceivedYawError : 0f;
+            float correction = (0.35f * _perceivedSlip / wheelBase -
+                                0.25f * yawTerm / MathF.Max(speed, 5f)) * performance.RecoveryGain;
+            float limit = car.Capabilities.MaxCurvatureRequest;
+            curvature = Math.Clamp(curvature + correction, -limit, limit);
+            return (severity, 0f);
+        }
+
+        if (_perceivedUnder > 0.01f && yaw * curvature > 0f)
+        {
+            // Back toward the turn it is making, a little inside it, so the
+            // front tyres come back under their peak and bite again.
+            float making = yaw / MathF.Max(speed, 5f);
+            curvature += (making * 1.05f - curvature) * Gains.UnwindShare * Math.Clamp(_perceivedUnder, 0f, 1f);
+        }
+        return (0f, Math.Clamp(_perceivedUnder, 0f, 1f));
+    }
+
+    /// <summary>
+    /// The pedals through a slide. The rear going: off the throttle by how
+    /// bad it is, a driver with feel keeping some on, and off the brakes if
+    /// it went under braking; then back on the throttle progressively, not
+    /// all at once. The front going: off the throttle by how bad it is.
+    /// </summary>
+    private float SlidePedals(float accel, float over, float under, float dt)
+    {
+        float feel = _performance?.Control ?? 1f;
+        if (over > 0f)
+        {
+            float keepAtWorst = Gains.CatchThrottleKeepNoFeel + (Gains.CatchThrottleKeepFullFeel - Gains.CatchThrottleKeepNoFeel) * feel;
+            float keep = 1f - over * (1f - keepAtWorst);
+            if (accel > 0f)
+                accel = MathF.Min(accel, _car.MaxDriveAcceleration * keep);
+            else
+                accel *= 1f - Gains.CatchBrakeRelease * over;
+            _throttleReturn = MathF.Min(_throttleReturn, keep);
+            return accel;
+        }
+        if (under > 0f && accel > 0f)
+            accel *= 1f - Gains.UnderLift * under;
+        if (_throttleReturn < 1f)
+        {
+            float seconds = Gains.ThrottleReturnSecondsNoFeel + (Gains.ThrottleReturnSecondsFullFeel - Gains.ThrottleReturnSecondsNoFeel) * feel;
+            _throttleReturn = MathF.Min(1f, _throttleReturn + MathF.Max(0f, dt) / MathF.Max(seconds, 0.05f));
+            if (accel > 0f)
+                accel = MathF.Min(accel, _car.MaxDriveAcceleration * _throttleReturn);
+        }
+        return accel;
     }
 
     private static float Combined(float lateral, float longitudinal) =>
