@@ -32,11 +32,6 @@ public sealed class LanePerformance
     /// </summary>
     public const float FeelFloor = 0.15f;
 
-    // Feel for the grip each axle has left, as a share of it: how far one
-    // segment's reading wanders, and the lap's lean on top, at no feel.
-    private const float AxleGripMisreading = 0.05f;
-    private const float LapAxleGripMisreading = 0.025f;
-
     // The lock a corner wants, as a share of it: a driver who knew the car
     // exactly would turn the wheel just so; a real one is a little over or
     // under and the line takes up the rest.
@@ -74,16 +69,26 @@ public sealed class LanePerformance
     private float _sessionForm, _lapForm, _segmentForm;
     private float _targetMarker, _targetLateral, _targetSpeed, _targetOveruse, _targetBrakeBias;
     private float _lapBrakeBias, _gripBias;
-    private float _lapFrontRead, _lapRearRead, _targetFrontRead, _targetRearRead, _targetSteer;
+    private float _lapUsage, _targetSteer;
 
-    // Car control, as the historical driver had it: how near the limit a
-    // driver leaves the tyre wanders from one segment to the next, by up to
-    // this much for a driver with no feel at all, and a driver with less feel
-    // sits a little further from it on average, because they cannot tell
-    // where it is. The wandering is what puts them over it now and then.
-    private const float LimitJitter = 0.06f;
-    private const float LimitMarginWithNoFeel = 0.03f;
+    // Car control: every driver keeps some of the tyre in hand, the share
+    // of the limit the rung asks for that is not used, and how much is
+    // itself a wandering thing, 0.98 of it here and 0.99 there, one segment
+    // to the next and a lean for the lap. A driver with feel keeps little
+    // and wanders little; one without keeps more, because they cannot tell
+    // where the edge is, and wanders more. Over the limit is where the
+    // wandering outruns the margin, which on a gentle rung it seldom does
+    // and on Attack, with nothing kept back by the rung, it does more often.
+    private const float MarginWithFullFeel = 0.005f;
+    private const float MarginWithNoFeel = 0.03f;
+    private const float MarginWander = 0.015f;
     private const float MaximumLimitError = 0.15f;
+
+    // The rung asked for, from Protect to Attack: how much of that margin is
+    // kept (more on a gentle rung, next to none on Attack) and how often a
+    // corner is got wrong (seldom when nursing the tyres, more when pushing).
+    private static readonly float[] RungMargin = [1.8f, 1.4f, 1f, 0.6f, 0.25f];
+    private static readonly float[] RungMistakes = [0.2f, 0.5f, 1f, 1.5f, 2.2f];
 
     // And now and then a driver without the feel for it gets a corner wrong:
     // in too fast, by a few percent to a tenth. How often is what car
@@ -155,9 +160,9 @@ public sealed class LanePerformance
     public float ReactionSeconds => 0.30f + (0.05f - 0.30f) * Score(_abilities.Reactions);
 
     /// <summary>
-    /// How much more of the tyre than the plan this driver is using in this
-    /// segment: 0 at full control; for less feel, a little less on average
-    /// and wandering either side of it.
+    /// How much more of the limit the rung asks for this driver is using in
+    /// this segment: a little under on average, the margin kept, wandering
+    /// either side of that, and now and then past nothing.
     /// </summary>
     public float LimitOveruse { get; private set; }
 
@@ -173,13 +178,6 @@ public sealed class LanePerformance
 
     /// <summary>The brake balance this driver has set, as a share moved forward of the best split.</summary>
     public float FrontBrakeBiasOffset { get; private set; }
-
-    /// <summary>
-    /// How much more grip than is there the driver feels at each axle, as a
-    /// share: positive and the tyre is asked for more than it has.
-    /// </summary>
-    public float FrontGripRead { get; private set; }
-    public float RearGripRead { get; private set; }
 
     /// <summary>How much more lock than the corner wants the hands put on, as a share.</summary>
     public float SteeringRead { get; private set; }
@@ -226,6 +224,13 @@ public sealed class LanePerformance
     /// <summary>How much of the pace scale this lap's draw sits at, 0..1.</summary>
     public float PaceDraw { get; private set; } = 1f;
 
+    /// <summary>
+    /// The tyre rung being driven, 0 (Protect) to 4 (Attack), fractional
+    /// between two: how close to the edge this driver goes and how often
+    /// over it. The driver sets it before each update.
+    /// </summary>
+    public float Rung { get; set; } = 2f;
+
     public void Update(int lap, float s, float dt)
     {
         if (lap != _lap)
@@ -240,8 +245,7 @@ public sealed class LanePerformance
             ExtraBrakePreviewSeconds = (1f - pace) * MaximumExtraBrakePreview;
             float lapFeel = Feel(MathF.Pow(1f - Control, 1.25f));
             _lapBrakeBias = Normal() * LapBrakeBiasError * lapFeel;
-            _lapFrontRead = Normal() * LapAxleGripMisreading * lapFeel;
-            _lapRearRead = Normal() * LapAxleGripMisreading * lapFeel;
+            _lapUsage = Normal() * MarginWander * lapFeel * 0.5f;
 
             float unmanaged = Feel(1f - Score(_abilities.TireManagement));
             TyreRungDrift = RungPushWithNoManagement * (1f - Score(_abilities.TireManagement)) + Normal() * RungDriftWithNoManagement * unmanaged * 0.5f;
@@ -262,18 +266,16 @@ public sealed class LanePerformance
             _targetLateral = Normal() * LateralSpreadMeters * error;
             _targetSpeed = Normal() * SpeedSpread * error;
             float limitError = Feel(MathF.Pow(1f - Control, 1.25f));
-            _targetFrontRead = _lapFrontRead + Normal() * AxleGripMisreading * limitError;
-            _targetRearRead = _lapRearRead + Normal() * AxleGripMisreading * limitError;
             _targetSteer = Normal() * SteeringMisjudgement * limitError;
-            float wander = 0.4f + 0.6f * Math.Clamp(error, 0f, 1f);
+            float margin = (MarginWithFullFeel + (MarginWithNoFeel - MarginWithFullFeel) * (1f - Control)) * ForRung(RungMargin);
             _targetOveruse = Math.Clamp(
-                -LimitMarginWithNoFeel * (1f - Control) + Normal() * LimitJitter * limitError * wander,
+                -margin + _lapUsage + Normal() * MarginWander * limitError,
                 -MaximumLimitError,
                 MaximumLimitError);
             // From the rating, not the day's draw of it: a perfect rating
             // still wanders a hair below one on a bad lap, and that is not a
             // driver who gets corners wrong.
-            float mistakeChance = MistakesPerSegmentWithNoFeel * MathF.Pow(1f - Score(_abilities.CarControl), 1.25f);
+            float mistakeChance = MistakesPerSegmentWithNoFeel * MathF.Pow(1f - Score(_abilities.CarControl), 1.25f) * ForRung(RungMistakes);
             // Drawn only for a driver who can make one, so a perfect driver's
             // day is the same draw for draw as it was before mistakes existed.
             CornerOverstep = mistakeChance > 0f && (float)_random.NextDouble() < mistakeChance
@@ -291,8 +293,6 @@ public sealed class LanePerformance
         SpeedError += (_targetSpeed - SpeedError) * response;
         LimitOveruse += (_targetOveruse - LimitOveruse) * response;
         FrontBrakeBiasOffset += (_targetBrakeBias - FrontBrakeBiasOffset) * response;
-        FrontGripRead += (_targetFrontRead - FrontGripRead) * response;
-        RearGripRead += (_targetRearRead - RearGripRead) * response;
         SteeringRead += (_targetSteer - SteeringRead) * response;
     }
 
@@ -314,6 +314,13 @@ public sealed class LanePerformance
     }
 
     private static float Score(float rating) => Math.Clamp(rating * 0.01f, 0f, 1f);
+
+    private float ForRung(float[] table)
+    {
+        float x = Math.Clamp(Rung, 0f, table.Length - 1);
+        int i = Math.Min((int)MathF.Floor(x), table.Length - 2);
+        return table[i] + (table[i + 1] - table[i]) * (x - i);
+    }
 
     /// <summary>A misjudgement's size, from a driver's share of the worst: never below the floor.</summary>
     private static float Feel(float share) => FeelFloor + (1f - FeelFloor) * Math.Clamp(share, 0f, 1f);

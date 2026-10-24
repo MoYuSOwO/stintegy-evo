@@ -458,6 +458,7 @@ public sealed class LaneDriver : IDriverController
         if (_performance is not null)
         {
             int lap = (int)MathF.Floor(car.RaceDistanceMeters / MathF.Max(car.TrackLengthMeters, 1f));
+            _performance.Rung = (int)car.Strategy.TireMode - 1 + _performance.TyreRungDrift;
             _performance.Update(lap, car.TrackS, dt);
         }
         _sincePlan += dt;
@@ -469,7 +470,7 @@ public sealed class LaneDriver : IDriverController
         ScaleMove(car, dt);
         MoveBlend(dt);
 
-        _axles = Felt(AxlesOf(car));
+        _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
         float station = _lanes.StationOf(car.TrackS);
 
@@ -581,7 +582,10 @@ public sealed class LaneDriver : IDriverController
         float marker = (_performance?.BrakeMarkerMeters ?? 0f) / _lanes.Spacing;
         // Car control: a segment the driver has got wrong is taken faster
         // than the plan, not merely allowed more wheel.
-        float speedScale = 1f + (_performance?.SpeedError ?? 0f) + (_performance?.CornerOverstep ?? 0f);
+        // And the share of the limit it is using, margin and wander, taken
+        // as speed: the grip a corner asks goes with its square.
+        float speedScale = (1f + (_performance?.SpeedError ?? 0f) + (_performance?.CornerOverstep ?? 0f)) *
+                           MathF.Sqrt(MathF.Max(0.5f, 1f + (_performance?.LimitOveruse ?? 0f)));
         station += marker;
         AnchorBlendWindow(station);
         float hereSpeed = SpeedAt(station);
@@ -767,27 +771,6 @@ public sealed class LaneDriver : IDriverController
     /// without them reads as no grip measured, and every use of them falls
     /// back to the envelope.
     /// </summary>
-    /// <summary>
-    /// The axles as the driver feels them, not as the instruments read: each
-    /// axle's grip a little more or less than it is, by this segment's
-    /// reading of it, and what is being used of it read against that.
-    /// </summary>
-    private AxleTelemetry Felt(AxleTelemetry axles)
-    {
-        if (_performance is null)
-            return axles;
-        float front = 1f + _performance.FrontGripRead, rear = 1f + _performance.RearGripRead;
-        return axles with
-        {
-            FrontGripAccel = axles.FrontGripAccel * front,
-            RearGripAccel = axles.RearGripAccel * rear,
-            FrontLateralUse = axles.FrontLateralUse / front,
-            RearLateralUse = axles.RearLateralUse / rear,
-            FrontLongitudinalUse = axles.FrontLongitudinalUse / front,
-            RearLongitudinalUse = axles.RearLongitudinalUse / rear,
-        };
-    }
-
     private static AxleTelemetry AxlesOf(RaceCarSnapshot car) => new(
         car.Instrument("front_grip_mps2") ?? 0f,
         car.Instrument("rear_grip_mps2") ?? 0f,
