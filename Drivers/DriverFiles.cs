@@ -1,40 +1,12 @@
 using System.Reflection;
-using StintegyEVO.Core.Drivers;
-using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Drivers;
 
-public static class RuleLineAssets
+/// <summary>Where the driver's files for a car on a circuit are found: beside the build, or in the assembly.</summary>
+public static class DriverFiles
 {
-    public static GeometricRacingLine LoadOrBake(RuleTrackPack pack, TrackData track, float vehicleHalfWidthMeters) =>
-        LoadOrBake(pack, track.Project, track.Sample, track.WrapS, track.LengthMeters, vehicleHalfWidthMeters);
-
-    public static GeometricRacingLine LoadOrBake(
-        RuleTrackPack pack,
-        DriverTrackView track,
-        float vehicleHalfWidthMeters
-    ) =>
-        LoadOrBake(pack, track.Project, track.Sample, track.WrapS, track.LengthMeters, vehicleHalfWidthMeters);
-
-    public static GeometricRacingLine LoadOrBake(
-        RuleTrackPack pack,
-        Func<System.Numerics.Vector2, TrackPose> project,
-        Func<float, TrackSample> sample,
-        Func<float, float> wrap,
-        float lengthMeters,
-        float vehicleHalfWidthMeters
-    )
-    {
-        string? path = FindCsv(pack.Id);
-        if (path is not null)
-            return GeometricRacingLine.FromBakedCsv(path, project, sample, wrap, lengthMeters);
-        return GeometricRacingLine.Bake(sample, lengthMeters, wrap, vehicleHalfWidthMeters);
-    }
-
     /// <summary>The car the shipped driver files were made for.</summary>
     public const string StockCar = "formula_a_mixed";
-
-    public static string? FindCsv(string id) => FindFile($"{StockCar}/{id}/line.csv");
 
     /// <summary>
     /// A driver file under <c>Cars/</c>, by its path there
@@ -66,12 +38,12 @@ public static class RuleLineAssets
 
     private static string? ExtractEmbedded(string file)
     {
-        Assembly assembly = typeof(RuleLineAssets).Assembly;
+        Assembly assembly = typeof(DriverFiles).Assembly;
         string name = $"StintegyEVO.Drivers.Cars.{file.Replace('/', '.')}";
         using Stream? stream = assembly.GetManifestResourceStream(name);
         if (stream is null)
             return null;
-        string temp = Path.Combine(Path.GetTempPath(), "stintegy-rule-lines", file);
+        string temp = Path.Combine(Path.GetTempPath(), "stintegy-driver-files", file);
         Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
         using FileStream output = File.Create(temp);
         stream.CopyTo(output);

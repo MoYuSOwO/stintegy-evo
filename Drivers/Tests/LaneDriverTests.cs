@@ -114,7 +114,7 @@ public sealed class LaneDriverTests
     public void TheShippedSilverstoneFolderLapsCleanly()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        Assert.NotNull(RuleLineAssets.FindFile("formula_a_mixed/silverstone/driver.json"));
+        Assert.NotNull(DriverFiles.FindFile("formula_a_mixed/silverstone/driver.json"));
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track));
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());

@@ -272,13 +272,13 @@ public sealed class LaneTrackFile
     /// This car's shipped folder for the circuit, <c>Cars/{car}/{id}/</c>,
     /// or a fresh file baked on first use when it has none.
     /// </summary>
-    public static LaneTrackFile ForCircuit(string id, TrackData track, string car = RuleLineAssets.StockCar)
+    public static LaneTrackFile ForCircuit(string id, TrackData track, string car = DriverFiles.StockCar)
     {
-        string? manifestPath = RuleLineAssets.FindFile($"{car}/{id}/{LaneCircuitManifest.FileName}");
+        string? manifestPath = DriverFiles.FindFile($"{car}/{id}/{LaneCircuitManifest.FileName}");
         if (manifestPath is null)
             return Fresh();
         LaneCircuitManifest manifest = LaneCircuitManifest.Read(manifestPath);
-        string lanesPath = RuleLineAssets.FindFile($"{car}/{id}/{manifest.Lanes}")
+        string lanesPath = DriverFiles.FindFile($"{car}/{id}/{manifest.Lanes}")
                            ?? throw new FileNotFoundException($"{car}/{id}/{LaneCircuitManifest.FileName} names {manifest.Lanes}, which is not there.");
         return WithManifest(Load(lanesPath, track), manifest);
     }
