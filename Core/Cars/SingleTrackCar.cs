@@ -157,7 +157,7 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
             Config.SteerRateLimitRadiansPerSecond,
             Config.MaxDriveAcceleration,
             Powertrain.DriveAccelerationLimit(
-                state.Chassis().Energy, strategy.Rung(CarPhysics.OutputLadderIndex, Powertrain.OutputLadder), state.Speed, mass,
+                state.Chassis().Energy, strategy.Setting(CarPhysics.OutputLadderIndex, Powertrain.OutputLadder), state.Speed, mass,
                 Config.MaxDriveAcceleration, state.Chassis().PushToPass.Active),
             Powertrain.OutputAvailability(state.Chassis().Energy));
     }
@@ -248,10 +248,10 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         AddTire(dashboard, "RL", own.RearLeft, TireWindow(state, WheelId.RearLeft));
         AddTire(dashboard, "RR", own.RearRight, TireWindow(state, WheelId.RearRight));
 
-        dashboard.AddMode(TireLadder.Usage, (int)strategy.TireMode);
+        dashboard.AddMode(TireLadder.Usage, strategy.Tires);
         IReadOnlyList<ModeLadder> ladders = Ladders;
         for (int i = 0; i < ladders.Count; i++)
-            dashboard.AddMode(ladders[i], strategy.Rung(i, ladders[i]));
+            dashboard.AddMode(ladders[i], strategy.Setting(i, ladders[i]));
         dashboard.SetOutputAvailability(Powertrain.OutputAvailability(energy));
         dashboard.SetMass(TotalMassKg(state));
     }

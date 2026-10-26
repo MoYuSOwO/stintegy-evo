@@ -99,7 +99,7 @@ public sealed class RangeExtenderPowertrain : IPowertrain
 
     public float DriveAccelerationLimit(
         in PowertrainState energy,
-        int outputRung,
+        float output,
         float speed,
         float massKg,
         float chassisForceCeiling,

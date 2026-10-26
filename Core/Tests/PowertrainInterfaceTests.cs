@@ -117,11 +117,10 @@ public sealed class PowertrainInterfaceTests
         // words for the other.
         Assert.Equal(2, dashboard.Modes.Count);
         Assert.Equal("Tyres", dashboard.Modes[0].Label);
-        Assert.Equal("Push", dashboard.Modes[0].Rung);
+        Assert.Equal("Push", dashboard.Modes[0].Nearest);
         Assert.Equal("Engine", dashboard.Modes[1].Label);
-        Assert.Equal("Lean", dashboard.Modes[1].Rung);
-        Assert.Equal(1, dashboard.Modes[1].Ordinal);
-        Assert.Equal(5, dashboard.Modes[1].RungCount);
+        Assert.Equal("Lean", dashboard.Modes[1].Nearest);
+        Assert.Equal(0f, dashboard.Modes[1].Setting);
 
         Assert.Equal(4, dashboard.Tires.Count);
         Assert.Equal(1f, dashboard.Tires[0].LifeFraction);
@@ -151,7 +150,7 @@ public sealed class PowertrainInterfaceTests
         Near.Equal(config.MassKg + 0.62f * powertrain.FuelAllowanceKg, dashboard.MassKg);
         Assert.Equal(1f, dashboard.OutputAvailability);
         Assert.Equal("Power", dashboard.Modes[1].Label);
-        Assert.Equal("Normal", dashboard.Modes[1].Rung);
+        Assert.Equal("Normal", dashboard.Modes[1].Nearest);
     }
 
     [Fact]
@@ -204,8 +203,8 @@ public sealed class PowertrainInterfaceTests
     {
         // The shipped car has five settings, so five is everywhere in this
         // codebase by habit. Nothing may depend on it. An engine that says it
-        // has seven gets seven: the panel counts to seven, names the seventh,
-        // and the seventh buys pace the third does not.
+        // has seven gets seven: the top of its travel is the seventh, the
+        // panel names it, and it buys pace the third does not.
         CarConfig config = new()
         {
             Powertrain = new TankAndBatteryPowertrain(SevenMaps)
@@ -217,15 +216,13 @@ public sealed class PowertrainInterfaceTests
         dashboard.Refresh(
             new SingleTrackCar(config, WarmTires()),
             state,
-            new CarStrategy(TireUsageMode.Normal, 7)
+            new CarStrategy(TireLadder.Usage.DefaultSetting, 1f)
         );
 
-        Assert.Equal(7, dashboard.Modes[1].RungCount);
-        Assert.Equal(7, dashboard.Modes[1].Ordinal);
-        Assert.Equal("Qualifying", dashboard.Modes[1].Rung);
-        // The tyre ladder alongside it is untouched at five, because that one
-        // belongs to the game rather than to the machinery.
-        Assert.Equal(5, dashboard.Modes[0].RungCount);
+        Assert.Equal("Qualifying", dashboard.Modes[1].Nearest);
+        // The tyre ladder alongside it keeps its own five names, because that
+        // one belongs to the game rather than to the machinery.
+        Assert.Equal("Normal", dashboard.Modes[0].Nearest);
 
         Assert.True(
             SpeedAfterAStint(config, 7) > SpeedAfterAStint(config, 3),
@@ -244,7 +241,7 @@ public sealed class PowertrainInterfaceTests
         // Nobody has set it, so it sits in the middle of the ladder it has.
         Assert.Equal(
             2,
-            CarStrategy.Default.Rung(0, config.Powertrain.OutputLadder)
+            config.Powertrain.OutputLadder.Nearest(CarStrategy.Default.Setting(0, config.Powertrain.OutputLadder))
         );
         Assert.True(
             SpeedAfterAStint(config, 3) > SpeedAfterAStint(config, 1),
@@ -253,21 +250,43 @@ public sealed class PowertrainInterfaceTests
     }
 
     [Fact]
-    public void ASettingFromALongerLadderLandsOnTheTopOfAShorterOne()
+    public void ASettingPastTheEndsOfTheTravelLandsOnThem()
     {
-        // A saved setup outlives the car it was written for. Asked for a
-        // seventh setting, a five-rung pack gives its fifth rather than
-        // refusing to start or quietly giving its middle.
+        // A saved setup outlives the car it was written for. Asked for more
+        // than the top, a pack gives its top rather than refusing to start
+        // or quietly giving its middle; asked for less than the bottom, its
+        // bottom.
         ElectricPowertrain pack = ElectricPowertrain.Default;
 
         Assert.Equal(
             pack.GetDrivePowerLimitWatts(PowerOutputMode.Attack),
-            pack.GetDrivePowerLimitWatts(7)
+            pack.GetDrivePowerLimitWatts(1.4f)
         );
         Assert.Equal(
             pack.GetDrivePowerLimitWatts(PowerOutputMode.Save),
-            pack.GetDrivePowerLimitWatts(0)
+            pack.GetDrivePowerLimitWatts(-0.3f)
         );
+    }
+
+    [Fact]
+    public void TheNamedMarksAreTheNamedSettingsAndBetweenTwoIsBetweenThem()
+    {
+        // The travel is continuous, but a setting on a mark is exactly that
+        // named setting, and one partway from a mark to the next asks for
+        // power partway between the two.
+        ElectricPowertrain pack = ElectricPowertrain.Default;
+        ModeLadder ladder = pack.OutputLadder;
+        for (int rung = 1; rung <= ladder.RungCount; rung++)
+            Assert.Equal(pack.GetDrivePowerLimitWatts(rung), pack.GetDrivePowerLimitWatts(ladder.Mark(rung)));
+        for (int rung = 1; rung < ladder.RungCount; rung++)
+        {
+            float between = pack.GetDrivePowerLimitWatts((ladder.Mark(rung) + ladder.Mark(rung + 1)) / 2f);
+            float low = MathF.Min(pack.GetDrivePowerLimitWatts(rung), pack.GetDrivePowerLimitWatts(rung + 1));
+            float high = MathF.Max(pack.GetDrivePowerLimitWatts(rung), pack.GetDrivePowerLimitWatts(rung + 1));
+            Assert.InRange(between, low, high);
+            if (high > low)
+                Assert.True(between > low && between < high, $"between rungs {rung} and {rung + 1}");
+        }
     }
 
     [Fact]
@@ -309,7 +328,7 @@ public sealed class PowertrainInterfaceTests
             Speed = 40f
         }.WithEnergy(PowertrainState.Filled(1f));
         state.InstallFreshTires(tires);
-        CarStrategy strategy = new(TireUsageMode.Normal, rung);
+        CarStrategy strategy = new(TireLadder.Usage.DefaultSetting, config.Powertrain.OutputLadder.Mark(rung));
 
         for (int i = 0; i < 600; i++)
         {
@@ -423,7 +442,7 @@ public sealed class PowertrainInterfaceTests
 
         public float DriveAccelerationLimit(
             in PowertrainState energy,
-            int outputRung,
+            float output,
             float speed,
             float massKg,
             float chassisForceCeiling,
@@ -435,7 +454,7 @@ public sealed class PowertrainInterfaceTests
 
             // Each map up the ladder is worth a little more power, whatever
             // length the ladder happens to be.
-            float watts = 300000f + 15000f * _maps.Clamp(outputRung);
+            float watts = 300000f + 15000f * (1f + _maps.RungsUp(output));
             float powerLimited = watts / (massKg * MathF.Max(speed, 8f));
             return MathF.Min(chassisForceCeiling, powerLimited);
         }

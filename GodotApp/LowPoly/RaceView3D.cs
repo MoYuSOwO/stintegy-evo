@@ -285,9 +285,9 @@ public partial class RaceView3D : Node3D
             while (_commands.TryDequeue(out var command))
             {
                 var car = Simulation.Cars[command.Car];
-                CarStrategy strategy = car.Strategy.NudgedTires(command.Tire);
+                CarStrategy strategy = car.Strategy.NudgedTires(command.Tire * CarStrategy.Click);
                 if (car.Car.Ladders.Count > 0)
-                    strategy = strategy.Nudged(0, car.Car.Ladders[0], command.Power);
+                    strategy = strategy.Nudged(0, car.Car.Ladders[0], command.Power * CarStrategy.Click);
                 car.Strategy = strategy;
             }
             // P is the watched car's first button, held, not toggled: down is
@@ -397,7 +397,10 @@ public partial class RaceView3D : Node3D
         }
         else if (input is InputEventMouseMotion motion && motion.ButtonMask.HasFlag(MouseButtonMask.Right))
             _camera.Orbit(-motion.Relative.X * 0.006f);
-        else if (input is InputEventKey key && key.Pressed && !key.Echo)
+        // The strategy keys repeat while held, so a setting can be swept
+        // along its travel; every other key acts once a press.
+        else if (input is InputEventKey key && key.Pressed &&
+                 (!key.Echo || key.Keycode is Key.Q or Key.E or Key.A or Key.D))
         {
             switch (key.Keycode)
             {

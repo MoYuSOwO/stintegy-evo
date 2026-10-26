@@ -42,13 +42,13 @@ public readonly record struct TireWindow(
 );
 
 /// <summary>
-/// One ladder and where it is set.
+/// One ladder and where it is set: zero to one along its travel, and the
+/// name of the mark nearest it.
 /// </summary>
 public readonly record struct DashboardMode(
     string Label,
-    string Rung,
-    int Ordinal,
-    int RungCount
+    string Nearest,
+    float Setting
 );
 
 /// <summary>
@@ -111,21 +111,13 @@ public sealed class CarDashboard
     public void AddTire(DashboardTire tire) => _tires.Add(tire);
 
     /// <summary>
-    /// One ladder and where it is set. Clamped, so a strategy carried over
-    /// from a car with a longer ladder reads out as the setting it will
-    /// actually get.
+    /// One ladder and where it is set, brought onto its travel so a
+    /// strategy from anywhere reads out as the setting the car will get.
     /// </summary>
-    public void AddMode(ModeLadder ladder, int ordinal)
+    public void AddMode(ModeLadder ladder, float setting)
     {
-        ordinal = ladder.Clamp(ordinal);
-        _modes.Add(
-            new DashboardMode(
-                ladder.Label,
-                ladder.RungLabel(ordinal),
-                ordinal,
-                ladder.RungCount
-            )
-        );
+        setting = ModeLadder.Settle(setting);
+        _modes.Add(new DashboardMode(ladder.Label, ladder.RungLabel(ladder.Nearest(setting)), setting));
     }
 
     public void SetOutputAvailability(float availability) => OutputAvailability = availability;
