@@ -163,4 +163,40 @@ public sealed class TireLibraryTests
         Assert.True(hot.Heat > plain.Heat + 2f, $"heat {hot.Heat:F1} against {plain.Heat:F1}");
         Assert.True(worn.Wear > plain.Wear * 1.6f, $"wear {worn.Wear:E2} against {plain.Wear:E2}");
     }
+
+    /// <summary>
+    /// The development compound: the same grip as the medium, always in its
+    /// window and wearing a hundred times slower, so work on the driver is
+    /// not work on the tyres. Ten minutes of hard cornering leave it gripping
+    /// as it started; the medium, run the same way, loses about one per cent.
+    /// </summary>
+    [Fact]
+    public void TheSuperTyreGripsAfterTenMinutesAsItDidAtTheStart()
+    {
+        ICar car = CarLibrary.Load("official:formula_a_mixed").Car;
+        Assert.Equal("official:formula_a/medium", car.Compounds[0].Id);
+        float Kept(string compound)
+        {
+            var state = new CarState { Speed = 45f, Energy = PowertrainState.Filled(0.8f) };
+            car.FitTires(state, compound);
+            // Measure from the same hot state: the medium would otherwise earn
+            // back part of its wear by warming out of the blankets, and the
+            // test would be measuring warm-up rather than degradation.
+            state.WarmTires(95f, 95f);
+            float before = car.EstimateCorneringLimit(state, CarStrategy.Default, 45f);
+            for (int i = 0; i < 60 * 600; i++)
+            {
+                state.Speed = 45f;
+                car.Step(state, new CarPhysicsStepInput(new DriverInput(0.016f, 0.5f), CarStrategy.Default, 25f), 1f / 60f);
+            }
+            return car.EstimateCorneringLimit(state, CarStrategy.Default, 45f) / before;
+        }
+        float super = Kept("official:formula_a/super");
+        float medium = Kept("official:formula_a/medium");
+        Assert.InRange(super, 0.99f, 1.01f);
+        // The medium loses about one per cent over the ten minutes on this
+        // calibration, which is enough to tell it from the development
+        // compound; its absolute wear is a separate calibration.
+        Assert.True(medium < super - 0.005f, $"medium kept {medium:F3} against the super's {super:F3}");
+    }
 }
