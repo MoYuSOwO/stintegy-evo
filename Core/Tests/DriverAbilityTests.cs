@@ -50,9 +50,9 @@ public sealed class DriverAbilityTests
             FixedController controller = new();
             DriverProfile profile = new("driver", new DriverAbilities
             {
-                Pace = ability, Consistency = ability, CarControl = ability,
-                TireManagement = ability, Adaptability = ability,
-                Reactions = ability, Awareness = ability, Overtaking = ability, Defending = ability
+                Pace = ability, Consistency = ability, Focus = ability, Precision = ability, Recovery = ability, Technical = ability,
+                TireManagement = ability, EnergyManagement = ability, Adaptability = ability,
+                Reactions = ability, Awareness = ability, Overtaking = ability, Defending = ability, Boldness = ability
             }, 42);
             RaceCar car = new("car", new(), new(), new Driver(profile, controller),
                 new CarState { Position = at.Center, Heading = at.Heading, Speed = 10f });

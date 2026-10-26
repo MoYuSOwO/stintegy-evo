@@ -572,7 +572,7 @@ public sealed class LaneDriver : IDriverController
         // Consistency: the brake marker, read a few metres early or late,
         // and the speed this segment, a little over or under.
         float marker = (_performance?.BrakeMarkerMeters ?? 0f) / _lanes.Spacing;
-        // Car control: a segment the driver has got wrong is taken faster
+        // Focus: a segment the driver has got wrong is taken faster
         // than the plan, not merely allowed more wheel.
         // And the share of the limit it is using, margin and wander, taken
         // as speed: the grip a corner asks goes with its square.
@@ -589,10 +589,9 @@ public sealed class LaneDriver : IDriverController
         // corner needs is the plan's and what the learner finds, not a
         // look ahead that moves every braking point at once.
         float slowing = SpeedAt(station + 5f / _lanes.Spacing) < hereSpeed ? 1f : 0f;
-        // A driver who squeezes the brakes on over a beat starts that much
-        // sooner, half the time it takes to get to full braking.
-        float buildLead = _performance is { } p ? 0.5f * _car.MaxBrakeAccel / MathF.Max(p.BrakeBuildRate, 1f) : 0f;
-        float preview = MathF.Max(dt, 0f) + slowing * ((_performance?.ExtraBrakePreviewSeconds ?? 0f) + buildLead);
+        // The foot's beat onto the brakes is started half of it early.
+        float footLead = _performance is null ? 0f : 0.5f * _car.MaxBrakeAccel / FootBrakeRate;
+        float preview = MathF.Max(dt, 0f) + slowing * ((_performance?.ExtraBrakePreviewSeconds ?? 0f) + footLead);
         float target = SpeedAt(station + MathF.Max(0f, speed) * preview / _lanes.Spacing);
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
         target *= speedScale;
@@ -734,12 +733,14 @@ public sealed class LaneDriver : IDriverController
         else
         {
             accel = SlidePedals(accel, slide, frontGone, dt);
-            // Pace: the brakes squeezed on and the throttle opened at this
-            // driver's rate. Coming off either is at once.
+            accel = ExitThrottle(accel, dt);
+            // A foot takes a beat to press a pedal down, the same beat for
+            // every driver: the brakes to full in about a tenth, the
+            // throttle in about a quarter. Coming off either is at once.
             if (accel < 0f && accel < _lastAccel)
-                accel = MathF.Max(accel, MathF.Min(_lastAccel, 0f) - _performance.BrakeBuildRate * MathF.Max(dt, 0f));
+                accel = MathF.Max(accel, MathF.Min(_lastAccel, 0f) - FootBrakeRate * MathF.Max(dt, 0f));
             else if (accel > 0f && accel > _lastAccel)
-                accel = MathF.Min(accel, MathF.Max(_lastAccel, 0f) + _performance.ThrottleBuildRate * MathF.Max(dt, 0f));
+                accel = MathF.Min(accel, MathF.Max(_lastAccel, 0f) + FootThrottleRate * MathF.Max(dt, 0f));
         }
         _lastAccel = accel;
 
@@ -780,6 +781,8 @@ public sealed class LaneDriver : IDriverController
     private float _perceivedSlip;
     private float _perceivedYawError;
     private float _perceivedUnder;
+    private float _pushingFor;
+    private const float FeltSeconds = 0.04f;
     private float _slidingFor;
     private float _throttleReturn = 1f;
 
@@ -819,12 +822,11 @@ public sealed class LaneDriver : IDriverController
     }
 
     /// <summary>
-    /// Catching a slide, the historical driver's way: perceived through a
-    /// filter whose speed is the driver's car control, acted on only after
-    /// their reaction time, then countersteer on the perceived sideslip and
+    /// Catching a slide, the historical driver's way: felt through the seat,
+    /// acted on only after the driver's reaction time, then countersteer on the perceived sideslip and
     /// on the yaw running past the one asked for, with a firmness drawn for
-    /// this one catch. A front that has let go instead is unwound toward the
-    /// turn the car is making. Returns how severe each is, 0..1: the rear
+    /// this one catch (Recovery). A front that has let go instead is unwound,
+    /// after the same reaction time, toward the turn the car is making. Returns how severe each is, 0..1: the rear
     /// sliding and the front.
     /// </summary>
     private (float Over, float Under) Recover(RaceCarSnapshot car, ref float curvature, float dt)
@@ -837,7 +839,9 @@ public sealed class LaneDriver : IDriverController
         float yaw = car.YawRateRadiansPerSecond;
         float asked = speed * curvature;
         float yawError = yaw - asked;
-        float filter = 1f - MathF.Exp(-MathF.Max(0f, dt) / MathF.Max(performance.PerceptionSeconds, 1e-3f));
+        // What the seat says, smoothed as any body smooths it, alike for
+        // every driver: how late the hands move after it is Reactions alone.
+        float filter = 1f - MathF.Exp(-MathF.Max(0f, dt) / FeltSeconds);
         _perceivedSlip += (sideslip - _perceivedSlip) * filter;
         _perceivedYawError += (yawError - _perceivedYawError) * filter;
 
@@ -864,7 +868,8 @@ public sealed class LaneDriver : IDriverController
             under = Math.Clamp((deficit - 0.12f) / 0.3f, 0f, 1f) *
                     Math.Clamp((_axles.FrontLateralUse - 0.9f) / 0.08f, 0f, 1f);
         }
-        _perceivedUnder += (under - _perceivedUnder) * filter;
+        _pushingFor = under > 0f ? _pushingFor + dt : 0f;
+        _perceivedUnder += ((_pushingFor >= performance.ReactionSeconds ? under : 0f) - _perceivedUnder) * filter;
 
         if (_phase != SlidePhase.Catch)
         {
@@ -911,7 +916,7 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     private float SlidePedals(float accel, float over, float under, float dt)
     {
-        float feel = _performance?.Control ?? 1f;
+        float feel = _performance?.Catching ?? 1f;
         if (over > 0f)
         {
             float keepAtWorst = Gains.CatchThrottleKeepNoFeel + (Gains.CatchThrottleKeepFullFeel - Gains.CatchThrottleKeepNoFeel) * feel;
@@ -937,14 +942,51 @@ public sealed class LaneDriver : IDriverController
 
     private float _brakeDial = float.NaN;
     private float _lastAccel;
+    private bool _brakedSinceThrottle;
+    private float _sinceThrottle = float.PositiveInfinity;
+
+    // How fast a foot presses the pedals down, m/s² a second.
+    private const float FootBrakeRate = 600f, FootThrottleRate = 240f;
+
+    // Braking harder than this is a braking zone, so the throttle after it is a corner's exit.
+    private const float ExitAfterBrakingAccel = -5f;
+
+    /// <summary>
+    /// Pace out of a corner: the first throttle after a braking zone. A
+    /// driver short of pace is not sure the car will take the power, so
+    /// waits a beat, and now and then gives part of it first; the quick one
+    /// is on it the moment the car will have it. The pedals themselves move
+    /// as fast for one as for the other.
+    /// </summary>
+    private float ExitThrottle(float accel, float dt)
+    {
+        LanePerformance performance = _performance!;
+        if (accel < ExitAfterBrakingAccel)
+            _brakedSinceThrottle = true;
+        if (accel > 0f && _lastAccel <= 0f && _brakedSinceThrottle)
+        {
+            _brakedSinceThrottle = false;
+            _sinceThrottle = 0f;
+            performance.BeginExit();
+        }
+        else
+            _sinceThrottle += MathF.Max(0f, dt);
+        if (accel <= 0f)
+            return accel;
+        if (_sinceThrottle < performance.ExitHesitationSeconds)
+            return 0f;
+        if (_sinceThrottle < performance.ExitHesitationSeconds + performance.PartThrottleSeconds)
+            return MathF.Min(accel, _car.MaxDriveAcceleration * performance.PartThrottleShare);
+        return accel;
+    }
 
     /// <summary>
     /// The brake balance dial, on a car whose balance is a fixed split. The
     /// right setting can be worked out: the share at the front that each
     /// axle's grip left, after the corner it is carrying, would take. Under
     /// any braking the dial is there, straight-line stop or trail into a
-    /// corner, and a driver is off it only by its own error, which its car
-    /// control sets: a good one nearly never, a poor one by enough now and
+    /// corner, and a driver is off it only by its own error, which knowing
+    /// the car (Technical) sets: a good one nearly never, a poor one by enough now and
     /// then to lock an axle. Held at the last stop's setting through a
     /// trail into a corner, it was the straight-line stop's, forward, and
     /// the front, turning and braking at once, ran wide. Off the brakes the

@@ -9,11 +9,17 @@ namespace StintegyEVO.Drivers.Lanes;
 /// from the driver's own seed, so the same driver on the same day drives the
 /// same race.
 ///
-/// Pace is how much of the plan the driver takes. Consistency is how far the
-/// brake marker, the line and the speed wander from one segment to the next,
-/// and how much a driver's form swings from lap to lap. Every driver keeps a
-/// floor of that wandering, the best included, so no two races are the same
-/// frame for frame.
+/// Each rating does one thing (DriverAbilities says which). Pace is how
+/// close to the edge the driver dares: the grip kept in hand, the brake
+/// point, the throttle out of a corner. Consistency is how far the brake
+/// marker, the line and the speed wander from one segment to the next, how
+/// much form swings from lap to lap, and how often a corner is got wrong.
+/// Focus is how seldom a corner is got wrong outright. Precision is the
+/// hands: how close to its aim the lock and the edge of the tyre land.
+/// Recovery is how a slide is caught, Reactions the one delay before the
+/// hands move, Technical how near right the brake balance is set. Every driver keeps a floor of the wandering and
+/// the misjudging, the best included, so no two races are the same frame
+/// for frame.
 /// </summary>
 public sealed class LanePerformance
 {
@@ -55,12 +61,15 @@ public sealed class LanePerformance
     private const float SpeedSpread = 0.012f;
     private const float MaximumExtraBrakePreview = 0.22f;
 
-    // Pace: a slow driver uses the whole tyre like a quick one, but brakes a
-    // little early, builds the brakes and the throttle slowly, and so goes
-    // round on the same grip in more time. The rates, at the top and the
-    // bottom of the scale.
-    private const float FastestBrakeBuild = 600f, SlowestBrakeBuild = 140f;
-    private const float FastestThrottleBuild = 240f, SlowestThrottleBuild = 35f;
+    // Pace out of a corner: every driver works the pedals as fast as the
+    // next, but one short of pace is not sure the car will take the power.
+    // They wait a beat before the throttle, and now and then go to part of
+    // it first and to the rest once the car has shown it holds. At the
+    // bottom of the scale, the longest beat and the longest part-throttle,
+    // and how often there is one.
+    private const float LongestExitHesitation = 0.25f;
+    private const float LongestPartThrottle = 0.45f;
+    private const float PartThrottleChanceWithNoPace = 0.8f;
 
     private readonly DriverAbilities _abilities;
     private readonly Random _random;
@@ -71,16 +80,17 @@ public sealed class LanePerformance
     private float _lapBrakeBias, _gripBias;
     private float _lapUsage, _targetSteer;
 
-    // Car control: every driver keeps some of the tyre in hand, the share
-    // of the limit the rung asks for that is not used, and how much is
-    // itself a wandering thing, 0.98 of it here and 0.99 there, one segment
-    // to the next and a lean for the lap. A driver with feel keeps little
-    // and wanders little; one without keeps more, because they cannot tell
-    // where the edge is, and wanders more. Over the limit is where the
+    // Every driver keeps some of the tyre in hand, the share of the limit
+    // the rung asks for that is not used. How much is pace: the quick
+    // driver dares to keep little, the slow one keeps more. Where the edge
+    // really is, is precision: aiming at 0.99 of it, the hands get 0.98
+    // here and 1.00 there, one segment to the next and a lean for the lap,
+    // and a driver without feel wanders more. Over the limit is where the
     // wandering outruns the margin, which on a gentle rung it seldom does
-    // and on Attack, with nothing kept back by the rung, it does more often.
-    private const float MarginWithFullFeel = 0.005f;
-    private const float MarginWithNoFeel = 0.03f;
+    // and on Attack, with nothing kept back by the rung, it does more often,
+    // and a quick driver with poor hands most of all.
+    private const float MarginWithFullPace = 0.005f;
+    private const float MarginWithNoPace = 0.03f;
     private const float MarginWander = 0.015f;
     private const float MaximumLimitError = 0.15f;
 
@@ -90,15 +100,15 @@ public sealed class LanePerformance
     private static readonly float[] RungMargin = [1.8f, 1.4f, 1f, 0.6f, 0.25f];
     private static readonly float[] RungMistakes = [0.2f, 0.5f, 1f, 1.5f, 2.2f];
 
-    // And now and then a driver without the feel for it gets a corner wrong:
-    // in too fast, by a few percent to a tenth. How often is what car
-    // control buys; a driver with all of it never does.
-    private const float MistakesPerSegmentWithNoFeel = 0.012f;
+    // And now and then a driver gets a corner wrong: in too fast, by a few
+    // percent to a tenth. How often is focus; a driver with all of it never
+    // does.
+    private const float MistakesPerSegmentWithNoFocus = 0.012f;
     private const float SmallestMistake = 0.04f;
     private const float LargestMistake = 0.10f;
 
-    // Brake balance, also from the historical driver: a lap's bias error and
-    // a segment's on top of it, as a share of the braking moved forward.
+    // Brake balance, set by knowing the car (Technical): a lap's bias error
+    // and a segment's on top of it, as a share of the braking moved forward.
     private const float LapBrakeBiasError = 0.025f;
     private const float SegmentBrakeBiasJitter = 0.035f;
     private const float MaximumBrakeBiasError = 0.07f;
@@ -120,14 +130,22 @@ public sealed class LanePerformance
         _segmentForm = Normal();
     }
 
-    /// <summary>
-    /// How fast the brakes are squeezed on and the throttle opened, m/s² a
-    /// second, this lap: a quick driver is at full braking almost at once and
-    /// back on full power the moment the car will take it; a slow one builds
-    /// both, and loses the time there, not by asking less of the tyres.
-    /// </summary>
-    public float BrakeBuildRate { get; private set; } = FastestBrakeBuild;
-    public float ThrottleBuildRate { get; private set; } = FastestThrottleBuild;
+    /// <summary>Out of this corner, the beat waited before the throttle, seconds.</summary>
+    public float ExitHesitationSeconds { get; private set; }
+
+    /// <summary>Then how long only part of the throttle is given, seconds, and which part (1 is all of it).</summary>
+    public float PartThrottleSeconds { get; private set; }
+    public float PartThrottleShare { get; private set; } = 1f;
+
+    /// <summary>A corner's exit has come: draw how sure of the power this driver is out of it.</summary>
+    public void BeginExit()
+    {
+        float doubt = 1f - PaceDraw;
+        ExitHesitationSeconds = LongestExitHesitation * doubt * (0.5f + (float)_random.NextDouble());
+        bool part = doubt > 0f && (float)_random.NextDouble() < PartThrottleChanceWithNoPace * doubt;
+        PartThrottleSeconds = part ? LongestPartThrottle * doubt * (0.6f + 0.8f * (float)_random.NextDouble()) : 0f;
+        PartThrottleShare = part ? 0.5f + 0.3f * (float)_random.NextDouble() : 1f;
+    }
 
     /// <summary>Metres the speed table is read ahead of the car: positive brakes later.</summary>
     public float BrakeMarkerMeters { get; private set; }
@@ -147,15 +165,16 @@ public sealed class LanePerformance
     /// </summary>
     public float ExtraBrakePreviewSeconds { get; private set; }
 
-    /// <summary>Car control as drawn this lap, 0..1.</summary>
-    public float Control { get; private set; } = 1f;
+    /// <summary>Precision as drawn this lap, 0..1.</summary>
+    public float Hands { get; private set; } = 1f;
 
-    /// <summary>How long a slide takes to be felt fully: a filter on what the driver perceives.</summary>
-    public float PerceptionSeconds => 0.25f + (0.04f - 0.25f) * Control;
+    /// <summary>Recovery as drawn this lap, 0..1: how well slides are caught.</summary>
+    public float Catching { get; private set; } = 1f;
 
     /// <summary>
-    /// From the moment a slide starts to the moment the hands move. Reactions,
-    /// not control: the slow driver is clean until something happens, then late.
+    /// From the moment something happens (the rear going, the front letting
+    /// go) to the moment the hands move: the only delay a driver has. The
+    /// slow driver is clean until something happens, then late.
     /// </summary>
     public float ReactionSeconds => 0.30f + (0.05f - 0.30f) * Score(_abilities.Reactions);
 
@@ -210,7 +229,7 @@ public sealed class LanePerformance
     public void BeginRecovery()
     {
         float eventForm = 0.25f * _sessionForm + 0.35f * _lapForm + 0.9f * Normal();
-        float control = Sample(_abilities.CarControl, eventForm);
+        float control = Sample(_abilities.Recovery, eventForm);
         RecoveryGain = Math.Clamp(0.72f + 0.28f * control + Normal() * 0.18f * (1f - control), 0.55f, 1.12f);
     }
 
@@ -232,17 +251,16 @@ public sealed class LanePerformance
             _lap = lap;
             float pace = Sample(_abilities.Pace, 0.38f * _sessionForm + 0.92f * _lapForm);
             PaceDraw = pace;
-            Control = Sample(_abilities.CarControl, 0.38f * _sessionForm + 0.92f * _lapForm);
-            BrakeBuildRate = SlowestBrakeBuild + (FastestBrakeBuild - SlowestBrakeBuild) * pace;
-            ThrottleBuildRate = SlowestThrottleBuild + (FastestThrottleBuild - SlowestThrottleBuild) * pace;
+            Hands = Sample(_abilities.Precision, 0.38f * _sessionForm + 0.92f * _lapForm);
+            Catching = Sample(_abilities.Recovery, 0.38f * _sessionForm + 0.92f * _lapForm);
             ExtraBrakePreviewSeconds = (1f - pace) * MaximumExtraBrakePreview;
-            float lapFeel = Feel(MathF.Pow(1f - Control, 1.25f));
-            _lapBrakeBias = Normal() * LapBrakeBiasError * lapFeel;
+            float lapFeel = Feel(MathF.Pow(1f - Hands, 1.25f));
+            _lapBrakeBias = Normal() * LapBrakeBiasError * Feel(MathF.Pow(1f - Score(_abilities.Technical), 1.25f));
             _lapUsage = Normal() * MarginWander * lapFeel * 0.5f;
 
-            float unmanaged = Feel(1f - Score(_abilities.TireManagement));
-            TyreRungDrift = RungPushWithNoManagement * (1f - Score(_abilities.TireManagement)) + Normal() * RungDriftWithNoManagement * unmanaged * 0.5f;
-            EnergyRungDrift = RungPushWithNoManagement * (1f - Score(_abilities.TireManagement)) + Normal() * RungDriftWithNoManagement * unmanaged * 0.5f;
+            float tyres = 1f - Score(_abilities.TireManagement), energy = 1f - Score(_abilities.EnergyManagement);
+            TyreRungDrift = RungPushWithNoManagement * tyres + Normal() * RungDriftWithNoManagement * Feel(tyres) * 0.5f;
+            EnergyRungDrift = RungPushWithNoManagement * energy + Normal() * RungDriftWithNoManagement * Feel(energy) * 0.5f;
 
             float longRun = 0.6f * _sessionForm + 0.8f * _lapForm;
             Adaptation = Sample(_abilities.Adaptability, longRun);
@@ -258,9 +276,9 @@ public sealed class LanePerformance
             _targetMarker = Normal() * BrakeMarkerSpreadMeters * error;
             _targetLateral = Normal() * LateralSpreadMeters * error;
             _targetSpeed = Normal() * SpeedSpread * error;
-            float limitError = Feel(MathF.Pow(1f - Control, 1.25f));
+            float limitError = Feel(MathF.Pow(1f - Hands, 1.25f));
             _targetSteer = Normal() * SteeringMisjudgement * limitError;
-            float margin = (MarginWithFullFeel + (MarginWithNoFeel - MarginWithFullFeel) * (1f - Control)) * ForRung(RungMargin);
+            float margin = (MarginWithFullPace + (MarginWithNoPace - MarginWithFullPace) * (1f - PaceDraw)) * ForRung(RungMargin);
             _targetOveruse = Math.Clamp(
                 -margin + _lapUsage + Normal() * MarginWander * limitError,
                 -MaximumLimitError,
@@ -268,14 +286,14 @@ public sealed class LanePerformance
             // From the rating, not the day's draw of it: a perfect rating
             // still wanders a hair below one on a bad lap, and that is not a
             // driver who gets corners wrong.
-            float mistakeChance = MistakesPerSegmentWithNoFeel * MathF.Pow(1f - Score(_abilities.CarControl), 1.25f) * ForRung(RungMistakes);
+            float mistakeChance = MistakesPerSegmentWithNoFocus * MathF.Pow(1f - Score(_abilities.Focus), 1.25f) * ForRung(RungMistakes);
             // Drawn only for a driver who can make one, so a perfect driver's
             // day is the same draw for draw as it was before mistakes existed.
             CornerOverstep = mistakeChance > 0f && (float)_random.NextDouble() < mistakeChance
                 ? SmallestMistake + (LargestMistake - SmallestMistake) * (float)_random.NextDouble()
                 : 0f;
             _targetBrakeBias = Math.Clamp(
-                _lapBrakeBias + Normal() * SegmentBrakeBiasJitter * limitError * (0.2f + 0.8f * Math.Clamp(error, 0f, 1f)),
+                _lapBrakeBias + Normal() * SegmentBrakeBiasJitter * Feel(MathF.Pow(1f - Score(_abilities.Technical), 1.25f)) * (0.2f + 0.8f * Math.Clamp(error, 0f, 1f)),
                 -MaximumBrakeBiasError,
                 MaximumBrakeBiasError);
         }
