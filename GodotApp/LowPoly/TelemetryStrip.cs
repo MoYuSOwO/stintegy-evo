@@ -79,9 +79,12 @@ public partial class TelemetryStrip : Control
         QueueRedraw();
     }
 
+    // Laid out on entering the scene as well as on a resize: a size set
+    // before the strip is in the tree sends no resize, and left every
+    // caption stacked in the top corner.
     public override void _Notification(int what)
     {
-        if (what != NotificationResized)
+        if (what != NotificationResized && what != NotificationReady)
             return;
         float band = (Size.Y - Header) / 3f;
         for (int i = 0; i < _captions.Length; i++)
