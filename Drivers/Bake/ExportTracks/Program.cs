@@ -84,7 +84,7 @@ internal static class Program
     {
         var state = new CarState();
         float temp = 0.5f * (tires.IdealSurfaceTempLowC + tires.IdealSurfaceTempHighC);
-        foreach (TireState tyre in new[] { state.FrontLeft, state.FrontRight, state.RearLeft, state.RearRight })
+        foreach (TireState tyre in new[] { state.Chassis().FrontLeft, state.Chassis().FrontRight, state.Chassis().RearLeft, state.Chassis().RearRight })
         {
             tyre.SurfaceTempC = temp;
             tyre.CoreTempC = temp;
