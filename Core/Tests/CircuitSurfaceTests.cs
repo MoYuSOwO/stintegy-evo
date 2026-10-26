@@ -67,32 +67,30 @@ public sealed class CircuitSurfaceTests
         {
             Position = sample.Center,
             Heading = sample.Heading,
-            Speed = 30f,
-            Energy = PowertrainState.Filled(0.8f)
-        });
+            Speed = 30f
+        }.WithEnergy(PowertrainState.Filled(0.8f)));
         var simulation = new RaceSimulation(track);
         simulation.AddCar(car);
         simulation.Step(1f / 120f);
-        return car.State.FrontLeft.SurfaceGrip;
+        return car.State.Chassis().FrontLeft.SurfaceGrip;
     }
 
     private static float WearAfterCorner(float abrasion)
     {
         CarConfig car = new();
         TestTires tires = TestControlFixtures.WarmTires();
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = 40f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
-        state.FrontLeft.SurfaceTempC = state.FrontRight.SurfaceTempC = 90f;
-        state.RearLeft.SurfaceTempC = state.RearRight.SurfaceTempC = 90f;
+            Speed = 40f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
+        state.Chassis().FrontLeft.SurfaceTempC = state.Chassis().FrontRight.SurfaceTempC = 90f;
+        state.Chassis().RearLeft.SurfaceTempC = state.Chassis().RearRight.SurfaceTempC = 90f;
         var input = new CarPhysicsStepInput(new DriverInput(0.01f, 0f), CarStrategy.Default, AirTempC: 25f)
         {
             SurfaceAbrasion = abrasion
         };
         for (int i = 0; i < 240; i++)
             CarPhysics.Step(state, car, tires, input, 1f / 120f);
-        return state.FrontLeft.Wear + state.FrontRight.Wear + state.RearLeft.Wear + state.RearRight.Wear;
+        return state.Chassis().FrontLeft.Wear + state.Chassis().FrontRight.Wear + state.Chassis().RearLeft.Wear + state.Chassis().RearRight.Wear;
     }
 }

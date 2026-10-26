@@ -68,7 +68,7 @@ internal static class TestSteering
 
     /// <summary>For a car in a simulation, on a level road.</summary>
     public static DriverInput For(RaceCar car, Ask ask) =>
-        new(car.Car.EstimateSteering(car.State, RoadAttitude.Flat).AngleFor(ask.Curvature), ask.Accel, ask.FrontBrakeBiasOffset);
+        new(car.Car.As<ICarEnvelope>().EstimateSteering(car.State, RoadAttitude.Flat).AngleFor(ask.Curvature), ask.Accel, ask.FrontBrakeBiasOffset);
 
     /// <summary>The pedals as given, the wheels turned for <paramref name="curvature"/>.</summary>
     public static DriverInput Holding(CarState state, CarConfig car, TireConfig tires, float curvature, float accel, RoadAttitude? road = null) =>
@@ -115,7 +115,22 @@ public static class TestTireExtensions
     /// <summary>A fresh set on every corner, at the test's temperatures.</summary>
     public static void InstallFreshTires(this CarState state, TestTires tires)
     {
-        state.InstallFreshTires();
-        state.WarmTires(tires.SurfaceTempC, tires.CoreTempC);
+        state.Chassis().InstallFreshTires();
+        state.Chassis().WarmTires(tires.SurfaceTempC, tires.CoreTempC);
+    }
+}
+
+/// <summary>Short ways for tests to reach a car's features and the chassis's own state.</summary>
+internal static class TestFeatureExtensions
+{
+    /// <summary>The car's <typeparamref name="T"/> feature; the test fails if the car has none.</summary>
+    public static T As<T>(this ICar car) where T : class =>
+        car as T ?? throw new InvalidOperationException($"{car.GetType().Name} has no {typeof(T).Name}.");
+
+    /// <summary>The state with the chassis's stores set to <paramref name="energy"/>.</summary>
+    public static CarState WithEnergy(this CarState state, PowertrainState energy)
+    {
+        state.Chassis().Energy = energy;
+        return state;
     }
 }

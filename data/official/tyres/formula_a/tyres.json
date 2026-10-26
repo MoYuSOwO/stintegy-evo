@@ -18,6 +18,22 @@
         "wearScale": 1,
         "wearCliffGripLoss": 0.12
       }
+    },
+    {
+      "id": "super",
+      "name": "Super (development)",
+      "tyre": {
+        "baseMu": 2.4,
+        "loadSensitivity": 0.3,
+        "idealSurfaceTempLowC": 0,
+        "idealSurfaceTempHighC": 400,
+        "coldGripLossPerCSquared": 0,
+        "hotGripLossPerCSquared": 0,
+        "coreOverheatTempC": 1000,
+        "heatScale": 0.01,
+        "wearScale": 0.01,
+        "wearCliffGripLoss": 0
+      }
     }
   ]
 }

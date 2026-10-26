@@ -51,6 +51,9 @@ public sealed class ReadmeExampleTests
     /// </summary>
     private sealed class CentrelineFollower : IDriverController
     {
+        // It steers by the car's own steering estimate, so it drives only a car that has one.
+        public CarNeeds Needs => new([typeof(ICarEnvelope)], []);
+
         public DriverInput GetControl(in DriverContext context, float dt)
         {
             RaceCarSnapshot car = context.Car;

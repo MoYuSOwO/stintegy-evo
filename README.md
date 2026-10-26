@@ -29,6 +29,9 @@ The world never drives itself. To see a car go round, give it a controller. This
 ```csharp
 sealed class CentrelineFollower : IDriverController
 {
+    // It steers by the car's own steering estimate, so it drives only a car that has one.
+    public CarNeeds Needs => new([typeof(ICarEnvelope)], []);
+
     public DriverInput GetControl(in DriverContext context, float dt)
     {
         RaceCarSnapshot car = context.Car;
@@ -92,10 +95,11 @@ What is **not** here: rule-based or learned drivers, racing-line solvers, observ
 ## How the pieces meet
 
 - **Controllers.** `IDriverController.GetControl` reads a `DriverContext` (the driver's profile, a read-only track view and a frozen frame) and returns a `DriverInput`: the angle to turn the front wheels to, desired longitudinal acceleration and an optional brake-bias offset. The car turns its wheels where it is told and does not correct the driver; `RaceCarSnapshot.Steering` says what angle a driver who knew the car exactly would choose for a given curvature. A car may also have no driver; the host then sets `RaceCar.ExternalInput`, and a zero command coasts rather than freezing the car.
+- **What a car has.** Every car is a body on the road (`ICar`: its motion, its size, its screen). Anything more it declares by implementing a feature: changeable tyres (`ICarTires`), stores it spends (`ICarStores`), buttons a driver holds (`ICarButtons`), an envelope to plan against (`ICarEnvelope`), the feel of its grip (`ICarGripFeel`). The frame carries a feature's readings only for a car that has it. A controller says what it needs (`IDriverController.Needs`); a driver is not put in a car without a required feature, and uses an optional one only where it is there.
 - **Freeze, collect, advance.** In every substep all controllers read the same frozen frame, every command is collected and validated, and only then does physics advance. No controller sees a world another controller has already changed.
 - **Devices on the car.** Everything between a command and the tyres is a published device with its parameters on `CarConfig`. A car without a device has that device's parameters at zero; the interface does not change.
   - The **combined-grip limiter** is the electronic stability device this class of racing permits. It trims each axle's drive and braking so that the tyre's combined use stays inside a fixed share of the friction circle, the same at every tyre rung, and above 10 m/s it cuts drive on an axle that is past its peak slip angle. It never steers. `CombinedGripLimiterStrength = 0` means the device is not fitted.
-  - **Push-to-pass** adds power while the button is held, within the series' allowance (`PushToPassRules`: seconds for the race, a cap on one push, a wait after each), which Core enforces; when to press it is the host's or the driver's. **Active aero** restores part of the downforce lost in a leading car's wake.
+  - **Push-to-pass**, the chassis's one button, adds power while it is held, within the series' allowance (`PushToPassRules`: seconds for the race, a cap on one push, a wait after each), which Core enforces; when to press it is the host's or the driver's. **Active aero** restores part of the downforce lost in a leading car's wake.
 - **Tracks are geometry.** A track provides a centreline, widths, run-off, curvature, elevation and banking, surfaces and a starting grid. It does not provide a racing line.
 
 The contracts are stated in the XML documentation on these types and are held by the tests in `Core/Tests`.

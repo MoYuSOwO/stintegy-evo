@@ -228,14 +228,15 @@ public partial class RaceView : Node2D
                 {
                     Position = sample.Center,
                     Heading = sample.Heading,
-                    Speed = 0f,
-                    Energy = PowertrainState.Filled(0.82f)
+                    Speed = 0f
                 }
             );
-            car.State.WarmTires(86f, 84f);
+            // Filled and on warm tyres, where the car has stores and tyres to have.
+            (car.Car as ICarStores)?.Fill(car.State, PowertrainState.Filled(0.82f));
+            (car.Car as ICarTires)?.WarmTires(car.State, 86f, 84f);
             _simulation!.AddCar(car);
-            // Off the grid: no push until the line.
-            car.LockPushToPassUntilLine();
+            // Off the grid: no button does anything until the line.
+            car.HoldButtonsUntilLine();
         }
 
         GD.Print($"Default 2D display: cars={carCount}; No controller; vehicles stationary");
@@ -299,16 +300,20 @@ public partial class RaceView : Node2D
 
         CarState state = _playerCar.State;
         CarTelemetry telemetry = state.Telemetry;
-        float frontTemp = Average(state.FrontLeft.SurfaceTempC, state.FrontRight.SurfaceTempC);
-        float rearTemp = Average(state.RearLeft.SurfaceTempC, state.RearRight.SurfaceTempC);
+        ICarTires? tyres = _playerCar.Car as ICarTires;
+        TireReading Read(WheelId wheel) => tyres?.Tire(state, wheel) ?? default;
+        TireReading fl = Read(WheelId.FrontLeft), fr = Read(WheelId.FrontRight);
+        TireReading rl = Read(WheelId.RearLeft), rr = Read(WheelId.RearRight);
+        float frontTemp = Average(fl.SurfaceTempC, fr.SurfaceTempC);
+        float rearTemp = Average(rl.SurfaceTempC, rr.SurfaceTempC);
         _dashboard.Refresh(_playerCar.Car, state, _playerCar.Strategy);
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
             $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {(_playerCar.Car.Ladders.Count > 0 ? _playerCar.Car.Ladders[0].Label.ToLowerInvariant() : "-")}\n" +
             $"Input steer/accel {telemetry.Input.SteerAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
             $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
-            $"Wheel surf/core/wear  FL {WheelStatus(state.FrontLeft)}  |  FR {WheelStatus(state.FrontRight)}\n" +
-            $"                         RL {WheelStatus(state.RearLeft)}  |  RR {WheelStatus(state.RearRight)}\n" +
+            $"Wheel surf/core/wear  FL {WheelStatus(fl)}  |  FR {WheelStatus(fr)}\n" +
+            $"                         RL {WheelStatus(rl)}  |  RR {WheelStatus(rr)}\n" +
             $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
     }
 
@@ -361,7 +366,7 @@ public partial class RaceView : Node2D
 
     private static float Average(float left, float right) => (left + right) * 0.5f;
 
-    private static string WheelStatus(TireState tire) =>
+    private static string WheelStatus(TireReading tire) =>
         $"{tire.SurfaceTempC:0}/{tire.CoreTempC:0} C {tire.Wear * 100f:0.0}%";
 
     private void StartCsvTelemetryIfRequested()

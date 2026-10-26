@@ -72,9 +72,8 @@ public sealed class TrackProjectionTests
                 {
                     Position = at.Center,
                     Heading = at.Heading,
-                    Speed = 20f,
-                    Energy = PowertrainState.Filled(0.9f)
-                },
+                    Speed = 20f
+                }.WithEnergy(PowertrainState.Filled(0.9f)),
                 _ => (0.0096f, 12f)
             );
             var simulation = new RaceSimulation(track);

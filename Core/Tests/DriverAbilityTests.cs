@@ -50,9 +50,9 @@ public sealed class DriverAbilityTests
             FixedController controller = new();
             DriverProfile profile = new("driver", new DriverAbilities
             {
-                Pace = ability, Consistency = ability, CarControl = ability,
-                TireManagement = ability, Adaptability = ability,
-                Reactions = ability, Awareness = ability, Overtaking = ability, Defending = ability
+                Pace = ability, Consistency = ability, Focus = ability, Precision = ability, Recovery = ability, Technical = ability,
+                TireManagement = ability, EnergyManagement = ability, Adaptability = ability,
+                Reactions = ability, Awareness = ability, Overtaking = ability, Defending = ability, Boldness = ability
             }, 42);
             RaceCar car = new("car", new(), new(), new Driver(profile, controller),
                 new CarState { Position = at.Center, Heading = at.Heading, Speed = 10f });
@@ -68,8 +68,8 @@ public sealed class DriverAbilityTests
         Assert.Equal(100f, high.Controller.Profile!.Abilities.Pace);
         Assert.Equal(low.Car.State.Position, high.Car.State.Position);
         Assert.Equal(low.Car.State.Speed, high.Car.State.Speed);
-        Assert.Equal(low.Car.State.FrontLeft.Wear, high.Car.State.FrontLeft.Wear);
-        Assert.Equal(low.Car.State.Energy, high.Car.State.Energy);
+        Assert.Equal(low.Car.State.Chassis().FrontLeft.Wear, high.Car.State.Chassis().FrontLeft.Wear);
+        Assert.Equal(low.Car.State.Chassis().Energy, high.Car.State.Chassis().Energy);
     }
 
     private sealed class FixedController : IDriverController

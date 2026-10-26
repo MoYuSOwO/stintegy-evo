@@ -27,6 +27,7 @@
     <ProjectReference Include="../../Cars/official/formula_a_mixed/formula_a_mixed.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
     <Compile Include="../../GodotApp/LowPoly/PresentationTiming.cs" Link="Presentation/PresentationTiming.cs" />
+    <Compile Include="../../GodotApp/LowPoly/LapTimer.cs" Link="Presentation/LapTimer.cs" />
     <Compile Include="../../GodotApp/LowPoly/TrackSurfaceGeometry.cs" Link="Presentation/TrackSurfaceGeometry.cs" />
   </ItemGroup>
 

@@ -36,6 +36,9 @@ public static class CarPhysics
     /// </summary>
     internal const int OutputLadderIndex = 0;
 
+    /// <summary>Where push-to-pass sits among the chassis's buttons (<see cref="ICarButtons"/>): its only one.</summary>
+    internal const int PushToPassButton = 0;
+
     /// <summary>
     /// The share of the tyre's friction circle the combined-grip limiter lets
     /// the pedals take it to, the same whatever the tyre rung: the device's
@@ -92,7 +95,7 @@ public static class CarPhysics
             config,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.ActiveAero
+            state.Chassis().ActiveAero
         );
     }
 
@@ -146,7 +149,7 @@ public static class CarPhysics
     )
     {
         float lateralAcceleration = speed * speed * curvature;
-        float massKg = TotalMassKg(config, state.Energy);
+        float massKg = TotalMassKg(config, state.Chassis().Energy);
         WheelLoads loads = CalculateWheelLoads(
             config,
             massKg,
@@ -155,16 +158,16 @@ public static class CarPhysics
             speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.ActiveAero
+            state.Chassis().ActiveAero
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float frontGrip = (
-            WheelGripForce(config, tires, state.FrontLeft, loads.FrontLeft, front: true) +
-            WheelGripForce(config, tires, state.FrontRight, loads.FrontRight, front: true)
+            WheelGripForce(config, tires, state.Chassis().FrontLeft, loads.FrontLeft, front: true) +
+            WheelGripForce(config, tires, state.Chassis().FrontRight, loads.FrontRight, front: true)
         ) / Math.Max(massKg, Epsilon) * usage;
         float rearGrip = (
-            WheelGripForce(config, tires, state.RearLeft, loads.RearLeft, front: false) +
-            WheelGripForce(config, tires, state.RearRight, loads.RearRight, front: false)
+            WheelGripForce(config, tires, state.Chassis().RearLeft, loads.RearLeft, front: false) +
+            WheelGripForce(config, tires, state.Chassis().RearRight, loads.RearRight, front: false)
         ) / Math.Max(massKg, Epsilon) * usage;
 
         // What the car can hold, not what it can touch. See
@@ -193,12 +196,12 @@ public static class CarPhysics
         );
 
         float powertrainDriveLimit = config.Powertrain.DriveAccelerationLimit(
-            state.Energy,
+            state.Chassis().Energy,
             OutputRung(config, strategy),
             speed,
             massKg,
             config.MaxDriveAcceleration,
-            state.PushToPass.Active
+            state.Chassis().PushToPass.Active
         );
         float gripDriveLimit = config.AdaptiveDriveSplit
             ? SharedDriveLimit(frontLongitudinal, rearLongitudinal, powertrainDriveLimit, config.FrontDriveShare)
@@ -262,7 +265,7 @@ public static class CarPhysics
         float assumedLongitudinalAcceleration
     )
     {
-        float massKg = TotalMassKg(config, state.Energy);
+        float massKg = TotalMassKg(config, state.Chassis().Energy);
         WheelLoads loads = CalculateWheelLoads(
             config,
             massKg,
@@ -271,17 +274,17 @@ public static class CarPhysics
             speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.ActiveAero
+            state.Chassis().ActiveAero
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
         float mass = Math.Max(massKg, Epsilon);
         float frontGrip = (
-            WheelGripForce(config, tires, state.FrontLeft, loads.FrontLeft, front: true) +
-            WheelGripForce(config, tires, state.FrontRight, loads.FrontRight, front: true)
+            WheelGripForce(config, tires, state.Chassis().FrontLeft, loads.FrontLeft, front: true) +
+            WheelGripForce(config, tires, state.Chassis().FrontRight, loads.FrontRight, front: true)
         ) / mass * usage;
         float rearGrip = (
-            WheelGripForce(config, tires, state.RearLeft, loads.RearLeft, front: false) +
-            WheelGripForce(config, tires, state.RearRight, loads.RearRight, front: false)
+            WheelGripForce(config, tires, state.Chassis().RearLeft, loads.RearLeft, front: false) +
+            WheelGripForce(config, tires, state.Chassis().RearRight, loads.RearRight, front: false)
         ) / mass * usage;
 
         return MathF.Max(
@@ -318,24 +321,25 @@ public static class CarPhysics
             return;
 
         state.Normalize();
+        state.Chassis().Normalize();
 
         // The button and the clock first, so everything below sees the push
         // as it stands this step. A car that has been declared lost is not
         // pressing anything.
-        state.PushToPass = PushToPassState.Advance(
-            state.PushToPass,
+        state.Chassis().PushToPass = PushToPassState.Advance(
+            state.Chassis().PushToPass,
             config.PushToPass,
-            input.Strategy.PushToPass && !state.Spinning,
+            input.Strategy.Holding(PushToPassButton) && !state.Spinning,
             dt
         );
-        state.ActiveAero = state.PushToPass.Active ? 1f : 0f;
+        state.Chassis().ActiveAero = state.Chassis().PushToPass.Active ? 1f : 0f;
 
         // What each wheel is standing on, before anything asks how much
         // grip there is.
         foreach (WheelId wheel in Wheels)
         {
-            state.GetTire(wheel).SurfaceGrip = input.SurfaceGrip[wheel];
-            state.GetTire(wheel).SurfaceAbrasion = input.SurfaceAbrasion;
+            state.Chassis().GetTire(wheel).SurfaceGrip = input.SurfaceGrip[wheel];
+            state.Chassis().GetTire(wheel).SurfaceAbrasion = input.SurfaceAbrasion;
         }
 
         // A car that has been declared lost is not being driven, so nothing
@@ -359,7 +363,7 @@ public static class CarPhysics
         float curvatureDemandScale = road.CurvatureDemandScale;
         float longitudinalDemandScale = road.LongitudinalDemandScale;
 
-        float massKg = TotalMassKg(config, state.Energy);
+        float massKg = TotalMassKg(config, state.Chassis().Energy);
         WheelLoads loads = CalculateWheelLoads(
             state,
             config,
@@ -368,8 +372,8 @@ public static class CarPhysics
         );
         ApplyWheelLoads(state, loads);
 
-        float frontGrip = CalculateAxleGripAccel(massKg, config, tires, state.FrontLeft, state.FrontRight, front: true);
-        float rearGrip = CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false);
+        float frontGrip = CalculateAxleGripAccel(massKg, config, tires, state.Chassis().FrontLeft, state.Chassis().FrontRight, front: true);
+        float rearGrip = CalculateAxleGripAccel(massKg, config, tires, state.Chassis().RearLeft, state.Chassis().RearRight, front: false);
         float totalGrip = Math.Max(Epsilon, frontGrip + rearGrip);
 
         float desiredAccel = Math.Clamp(
@@ -431,12 +435,12 @@ public static class CarPhysics
         if (desiredAccel >= 0f)
         {
             float available = config.Powertrain.DriveAccelerationLimit(
-                state.Energy,
+                state.Chassis().Energy,
                 OutputRung(config, input.Strategy),
                 state.Speed,
                 massKg,
                 config.MaxDriveAcceleration,
-                state.PushToPass.Active
+                state.Chassis().PushToPass.Active
             );
             float driveAccel = Math.Min(desiredAccel, available);
             if (config.AdaptiveDriveSplit)
@@ -630,15 +634,15 @@ public static class CarPhysics
         state.Speed = newSpeed;
         UpdateSpinVerdict(state, dt);
         PowertrainSettlement settlement = config.Powertrain.Settle(
-            state.Energy,
+            state.Chassis().Energy,
             driveAccelActual,
             brakeAccelActual,
             averageSpeed,
             massKg,
             dt,
-            state.PushToPass.Active
+            state.Chassis().PushToPass.Active
         );
-        state.Energy = settlement.Energy;
+        state.Chassis().Energy = settlement.Energy;
         float drivePowerWatts = settlement.DrawnPowerWatts;
         float regenPowerWatts = config.Powertrain.RecoveredPowerWatts(
             brakeAccelActual,
@@ -683,7 +687,7 @@ public static class CarPhysics
         float tireWakeDownforceLoss =
             EffectiveTireWakeDownforceLoss(state, config);
         UpdateTires(
-            state.FrontLeft,
+            state.Chassis().FrontLeft,
             true,
             config,
             tires,
@@ -703,7 +707,7 @@ public static class CarPhysics
             dt
         );
         UpdateTires(
-            state.FrontRight,
+            state.Chassis().FrontRight,
             true,
             config,
             tires,
@@ -723,7 +727,7 @@ public static class CarPhysics
             dt
         );
         UpdateTires(
-            state.RearLeft,
+            state.Chassis().RearLeft,
             false,
             config,
             tires,
@@ -743,7 +747,7 @@ public static class CarPhysics
             dt
         );
         UpdateTires(
-            state.RearRight,
+            state.Chassis().RearRight,
             false,
             config,
             tires,
@@ -797,6 +801,7 @@ public static class CarPhysics
         );
 
         state.Normalize();
+        state.Chassis().Normalize();
     }
 
     /// <summary>
@@ -965,7 +970,7 @@ public static class CarPhysics
             steerStep
         );
 
-        float massKg = TotalMassKg(config, state.Energy);
+        float massKg = TotalMassKg(config, state.Chassis().Energy);
         float roadNormalGravity = input.RoadAttitude.NormalGravity(
             Gravity,
             averageSpeed,
@@ -994,10 +999,10 @@ public static class CarPhysics
         float tireWakeDownforceLoss =
             EffectiveTireWakeDownforceLoss(state, config);
         float frontSpinGrip = CalculateAxleGripAccel(
-            massKg, config, tires, state.FrontLeft, state.FrontRight, front: true
+            massKg, config, tires, state.Chassis().FrontLeft, state.Chassis().FrontRight, front: true
         );
         float rearSpinGrip = CalculateAxleGripAccel(
-            massKg, config, tires, state.RearLeft, state.RearRight, front: false
+            massKg, config, tires, state.Chassis().RearLeft, state.Chassis().RearRight, front: false
         );
         foreach (WheelId wheel in Wheels)
         {
@@ -1021,7 +1026,7 @@ public static class CarPhysics
             // and the two landing in the same place is the check.
             float spinSlip = state.SideslipAngleRadians;
             UpdateTires(
-                state.GetTire(wheel),
+                state.Chassis().GetTire(wheel),
                 front,
                 config,
                 tires,
@@ -1043,14 +1048,14 @@ public static class CarPhysics
         }
 
         PowertrainSettlement settlement = config.Powertrain.Settle(
-            state.Energy,
+            state.Chassis().Energy,
             0f,
             0f,
             averageSpeed,
             massKg,
             dt
         );
-        state.Energy = settlement.Energy;
+        state.Chassis().Energy = settlement.Energy;
 
         float actualLongitudinalAccel = (newSpeed - oldSpeed) / dt;
         float response = 1f - MathF.Exp(-config.LoadTransferResponse * dt);
@@ -1079,8 +1084,8 @@ public static class CarPhysics
             (yawRate - previousYawRate) / dt
         );
         SingleTrackState.Of(state).Axles = new AxleTelemetry(
-            CalculateAxleGripAccel(massKg, config, tires, state.FrontLeft, state.FrontRight, front: true),
-            CalculateAxleGripAccel(massKg, config, tires, state.RearLeft, state.RearRight, front: false),
+            CalculateAxleGripAccel(massKg, config, tires, state.Chassis().FrontLeft, state.Chassis().FrontRight, front: true),
+            CalculateAxleGripAccel(massKg, config, tires, state.Chassis().RearLeft, state.Chassis().RearRight, front: false),
             0f, 0f, 0f, 0f, 0f, 0f,
             1f
         );
@@ -1095,6 +1100,7 @@ public static class CarPhysics
         }
 
         state.Normalize();
+        state.Chassis().Normalize();
     }
 
     /// <summary>
@@ -1241,7 +1247,7 @@ public static class CarPhysics
     {
         // The axles' grip at the loads this step will put on them, as the
         // step itself reads it, not at whatever the tyres last carried.
-        float massKg = TotalMassKg(config, state.Energy);
+        float massKg = TotalMassKg(config, state.Chassis().Energy);
         WheelLoads loads = CalculateWheelLoads(
             state, config, massKg, road.NormalGravity(Gravity, state.Speed, state.Telemetry.ActualCurvature));
         float Axle(TireState left, float leftLoad, TireState right, float rightLoad, bool front) =>
@@ -1253,8 +1259,8 @@ public static class CarPhysics
             config.WheelBaseMeters,
             FrontMomentArm(config),
             RearMomentArm(config),
-            Axle(state.FrontLeft, loads.FrontLeft, state.FrontRight, loads.FrontRight, front: true),
-            Axle(state.RearLeft, loads.RearLeft, state.RearRight, loads.RearRight, front: false),
+            Axle(state.Chassis().FrontLeft, loads.FrontLeft, state.Chassis().FrontRight, loads.FrontRight, front: true),
+            Axle(state.Chassis().RearLeft, loads.RearLeft, state.Chassis().RearRight, loads.RearRight, front: false),
             config.FrontPeakSlipAngleRatio,
             config.SteerCurvatureFeedbackGain,
             config.MaxSteerAngleRadians,
@@ -2063,11 +2069,11 @@ public static class CarPhysics
     )
     {
         float frontLoadWeight =
-            CalculateTireForceScale(state.FrontLeft, config, tires, front: true) +
-            CalculateTireForceScale(state.FrontRight, config, tires, front: true);
+            CalculateTireForceScale(state.Chassis().FrontLeft, config, tires, front: true) +
+            CalculateTireForceScale(state.Chassis().FrontRight, config, tires, front: true);
         float rearLoadWeight =
-            CalculateTireForceScale(state.RearLeft, config, tires, front: false) +
-            CalculateTireForceScale(state.RearRight, config, tires, front: false);
+            CalculateTireForceScale(state.Chassis().RearLeft, config, tires, front: false) +
+            CalculateTireForceScale(state.Chassis().RearRight, config, tires, front: false);
 
         // Lateral rubber work is force times deformation. In this reduced
         // model deformation is not a state of its own, so use the small-angle
@@ -2167,7 +2173,7 @@ public static class CarPhysics
             state.Speed,
             state.DownforceVelocityDeficit,
             state.WakeDownforceLoss,
-            state.ActiveAero,
+            state.Chassis().ActiveAero,
             normalGravity
         );
     }
@@ -2250,10 +2256,10 @@ public static class CarPhysics
 
     private static void ApplyWheelLoads(CarState state, WheelLoads loads)
     {
-        state.FrontLeft.LoadN = loads.FrontLeft;
-        state.FrontRight.LoadN = loads.FrontRight;
-        state.RearLeft.LoadN = loads.RearLeft;
-        state.RearRight.LoadN = loads.RearRight;
+        state.Chassis().FrontLeft.LoadN = loads.FrontLeft;
+        state.Chassis().FrontRight.LoadN = loads.FrontRight;
+        state.Chassis().RearLeft.LoadN = loads.RearLeft;
+        state.Chassis().RearRight.LoadN = loads.RearRight;
     }
 
     private static float CalculateAxleGripAccel(

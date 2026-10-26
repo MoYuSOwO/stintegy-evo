@@ -16,12 +16,12 @@ public sealed class AeroBalanceTests
         float FrontShare(float? aeroBalance, float speed)
         {
             var car = new CarConfig { Aero = new StandardAero { FrontDownforceShare = aeroBalance } };
-            var state = new CarState { Speed = speed, Energy = PowertrainState.Filled(0.8f) };
+            var state = new CarState { Speed = speed }.WithEnergy(PowertrainState.Filled(0.8f));
             state.InstallFreshTires(new TireConfig());
             CarPhysics.Step(state, car, new TireConfig(),
                 new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 25f, 35f), 1f / 60f);
-            float front = state.FrontLeft.LoadN + state.FrontRight.LoadN;
-            return front / (front + state.RearLeft.LoadN + state.RearRight.LoadN);
+            float front = state.Chassis().FrontLeft.LoadN + state.Chassis().FrontRight.LoadN;
+            return front / (front + state.Chassis().RearLeft.LoadN + state.Chassis().RearRight.LoadN);
         }
 
         float trimmedWithWeight = FrontShare(null, 60f);

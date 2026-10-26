@@ -565,13 +565,12 @@ public sealed class RoadAttitudeTests
         TestTires tires = new(new TireConfig
         {
         }, 90f, 90f);
-        CarState state = new()
+        CarState state = new CarState()
         {
             Position = Vector2.Zero,
             Heading = 0f,
-            Speed = 50f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = 50f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         CarPhysicsStepInput input = new(
             new DriverInput(0f, 0f),
             CarStrategy.Default,

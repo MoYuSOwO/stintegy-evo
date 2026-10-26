@@ -25,11 +25,10 @@ public sealed class CorneringDragTests
 
     private static CarState Rolling(float speed)
     {
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = speed,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = speed
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         state.InstallFreshTires(WarmTires());
         return state;
     }

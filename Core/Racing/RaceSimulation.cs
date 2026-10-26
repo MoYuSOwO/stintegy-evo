@@ -403,16 +403,12 @@ public sealed class RaceSimulation
             TrackRegion region = TrackBoundaryResolver.Classify(finalPose);
             float lapsBefore = MathF.Floor(car.Progress.RaceDistanceMeters / Track.LengthMeters);
             car.Progress.Update(Track, finalPose, region, car.LastBoundaryContact.HasValue);
-            // Crossing the line lifts race control's hold on push-to-pass.
-            // Counted on race distance, not the lap number, which reads zero
-            // on both sides of the line for a car starting behind it.
-            if (car.State.PushToPass.Locked &&
+            // Crossing the line lifts race control's hold on the car's
+            // buttons. Counted on race distance, not the lap number, which
+            // reads zero on both sides of the line for a car starting behind it.
+            if (car.Car is ICarButtons buttons &&
                 MathF.Floor(car.Progress.RaceDistanceMeters / Track.LengthMeters) > lapsBefore)
-            {
-                PushToPassState push = car.State.PushToPass;
-                push.Locked = false;
-                car.State.PushToPass = push;
-            }
+                buttons.CrossedLine(car.State);
         }
 
     }

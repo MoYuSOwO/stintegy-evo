@@ -46,10 +46,10 @@ public sealed record TireSet(Tire Front, Tire Rear)
 
     public void Install(CarState state)
     {
-        Front.Reset(state.FrontLeft);
-        Front.Reset(state.FrontRight);
-        Rear.Reset(state.RearLeft);
-        Rear.Reset(state.RearRight);
+        Front.Reset(state.Chassis().FrontLeft);
+        Front.Reset(state.Chassis().FrontRight);
+        Rear.Reset(state.Chassis().RearLeft);
+        Rear.Reset(state.Chassis().RearRight);
     }
 }
 
