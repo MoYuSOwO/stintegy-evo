@@ -42,6 +42,14 @@ public interface ICarTires
 
     /// <summary>The tyre on this corner as it is now, and where it works.</summary>
     TireReading Tire(CarState state, WheelId wheel);
+
+    /// <summary>
+    /// A planning copy of the car given these tyres: the compound and what
+    /// each of the four read, front left, front right, rear left, rear
+    /// right. For a driver who keeps its own copy of the car to ask the
+    /// envelope about; the race's own car is never given tyres this way.
+    /// </summary>
+    void Assume(CarState plan, string? compound, ReadOnlySpan<TireReading> tires);
 }
 
 /// <summary>One tyre as it is now: its temperatures, wear, load and grip, and the window it works in.</summary>
@@ -98,6 +106,13 @@ public interface ICarButtons
 
     /// <summary>The car has crossed the line: race control's hold, if any, is lifted.</summary>
     void CrossedLine(CarState state);
+
+    /// <summary>
+    /// A planning copy of the car with this button doing what it was read
+    /// doing: for a driver asking the envelope what the car can do while a
+    /// push runs, or does not.
+    /// </summary>
+    void Assume(CarState plan, int button, bool running);
 }
 
 /// <summary>
@@ -135,14 +150,40 @@ public interface ICarEnvelope
 
     /// <summary>The limits a controller is told about, as they stand.</summary>
     CarCapabilities Capabilities(CarState state, CarStrategy strategy);
+
+    /// <summary>How the car carries its weight and shares its drive and its brakes between the axles.</summary>
+    AxleLayout Layout { get; }
 }
 
 /// <summary>
-/// How much of each axle's grip the car is using, as a driver feels it
-/// through the seat and the wheel: zero is none, one is all the axle has.
+/// How a car is laid out between its axles, as its driver knows it: where
+/// the weight sits, where the drive goes and how the brakes are shared.
 /// </summary>
+/// <param name="FrontWeightShare">The share of the car's weight on the front axle, standing.</param>
+/// <param name="FrontDriveShare">The share of the drive the front axle is given.</param>
+/// <param name="DriveFollowsGrip">
+/// Whether the car moves its drive between the axles by the grip each has
+/// left, each held to its own motor's share; otherwise the drive is split
+/// as it is and runs out where the first axle does.
+/// </param>
+/// <param name="FixedFrontBrakeShare">
+/// The share of the braking at the front, where the brakes are fixed to a
+/// balance the driver dials (<see cref="DriverInput.FrontBrakeBiasOffset"/>
+/// moves it); none where the car shares its brakes by grip itself.
+/// </param>
+public readonly record struct AxleLayout(
+    float FrontWeightShare, float FrontDriveShare, bool DriveFollowsGrip, float? FixedFrontBrakeShare);
+
+/// <summary>
+/// Each axle's grip, as a driver feels it through the seat and the wheel:
+/// how much there is, and how much of it is being used, zero none and one
+/// all the axle has.
+/// </summary>
+/// <param name="FrontGripAccel">What the front axle could give, as an acceleration of the whole car.</param>
+/// <param name="RearGripAccel">What the rear axle could give, the same way.</param>
 /// <param name="RearSlideSeverity">How far the rear is past its peak and sliding, zero when it is not.</param>
 public readonly record struct GripUse(
+    float FrontGripAccel, float RearGripAccel,
     float FrontLateral, float RearLateral, float FrontLongitudinal, float RearLongitudinal, float RearSlideSeverity);
 
 /// <summary>
@@ -165,6 +206,12 @@ public interface ICarGripFeel
 
     /// <summary>The slip angle at which a tyre gives <paramref name="share"/> of its peak grip, on the way up to it.</summary>
     float SlipAngleAtShare(float share);
+
+    /// <summary>
+    /// How much the tyres on the car lose of their grip per unit of load as
+    /// the load grows: zero is grip in proportion to load, one is none gained.
+    /// </summary>
+    float LoadSensitivity(CarState state);
 }
 
 /// <summary>

@@ -106,6 +106,23 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         };
     }
 
+    public virtual void Assume(CarState plan, string? compound, ReadOnlySpan<TireReading> tires)
+    {
+        if (tires.Length != 4)
+            throw new ArgumentException("Four tyres: front left, front right, rear left, rear right.", nameof(tires));
+        SingleTrackState own = plan.Chassis();
+        own.Compound = compound is not null && _sets.ContainsKey(compound) ? compound : null;
+        ReadOnlySpan<TireState> corners = [own.FrontLeft, own.FrontRight, own.RearLeft, own.RearRight];
+        for (int i = 0; i < 4; i++)
+        {
+            corners[i].SurfaceTempC = tires[i].SurfaceTempC;
+            corners[i].CoreTempC = tires[i].CoreTempC;
+            corners[i].Wear = tires[i].Wear;
+            corners[i].LoadN = tires[i].LoadN;
+            corners[i].SurfaceGrip = tires[i].SurfaceGrip;
+        }
+    }
+
     public virtual void WarmTires(CarState state, float surfaceTempC, float coreTempC) =>
         state.Chassis().WarmTires(surfaceTempC, coreTempC);
 
@@ -181,10 +198,26 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         state.Chassis().PushToPass = push;
     }
 
+    public virtual void Assume(CarState plan, int button, bool running)
+    {
+        if (button != CarPhysics.PushToPassButton)
+            throw new ArgumentOutOfRangeException(nameof(button));
+        SingleTrackState own = plan.Chassis();
+        PushToPassState push = own.PushToPass;
+        push.Active = running;
+        own.PushToPass = push;
+        // The chassis trims its aero to the wake while a push runs.
+        own.ActiveAero = running ? 1f : 0f;
+    }
+
+    public virtual AxleLayout Layout => new(
+        Config.FrontStaticLoadShare, Config.FrontDriveShare, Config.AdaptiveDriveSplit, Config.FixedFrontBrakeShare);
+
     public virtual GripUse GripUse(CarState state)
     {
         AxleTelemetry axles = state.Axles();
         return new GripUse(
+            axles.FrontGripAccel, axles.RearGripAccel,
             axles.FrontLateralUse, axles.RearLateralUse,
             axles.FrontLongitudinalUse, axles.RearLongitudinalUse,
             axles.RearSlideSeverity);
@@ -196,6 +229,8 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
     public virtual float PeakSlipAngleRadians => TireSlipCurve.PeakSlipAngleRadians;
 
     public virtual float SlipAngleAtShare(float share) => TireSlipCurve.InverseEvaluate(share);
+
+    public virtual float LoadSensitivity(CarState state) => TiresOn(state).Front.Config.LoadSensitivity;
 
     public virtual void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
     {

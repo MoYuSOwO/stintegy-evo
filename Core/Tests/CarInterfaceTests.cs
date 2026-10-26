@@ -292,9 +292,12 @@ public sealed class CarInterfaceTests
         public void WarmTires(CarState state, float surfaceTempC, float coreTempC) { }
         public string? Compound(CarState state) => Own(state).Compound;
         public TireReading Tire(CarState state, WheelId wheel) => new(70f, 70f, 0f, 2000f, 1f) { Window = Window };
+        public void Assume(CarState plan, string? compound, ReadOnlySpan<TireReading> tires) => Own(plan).Compound = compound;
 
         public CarCapabilities Capabilities(CarState state, CarStrategy strategy) =>
             new(800f, 0.2f, SteerLock, 1f, 5f, 5f, 1f);
+
+        public AxleLayout Layout { get; } = new(0.5f, 0f, false, null);
 
         public void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
         {
