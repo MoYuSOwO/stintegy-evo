@@ -1669,6 +1669,52 @@ public sealed class CarPhysicsTests
         );
     }
 
+    /// <summary>
+    /// A fixed brake split stops the car only as hard as the axle it
+    /// overloads lets it: set far from where the grip is, that axle saturates
+    /// and the other's grip goes unused, where brakes that share themselves
+    /// by grip use both. The driver's dial moves the split back toward it.
+    /// </summary>
+    [Fact]
+    public void AFixedBrakeSplitFarFromTheGripStopsTheCarLessHard()
+    {
+        TestTires tires = WarmTires();
+        float SpeedLost(CarConfig car, float dial)
+        {
+            CarState state = CreateState(speed: 50f, batterySoc: 0.8f, tires);
+            StepMany(state, car, tires, new DriverInput(0f, -60f, FrontBrakeBiasOffset: dial), CarStrategy.Default, steps: 30);
+            return 50f - state.Speed;
+        }
+
+        float sharing = SpeedLost(new CarConfig(), 0f);
+        float forward = SpeedLost(new CarConfig { FixedFrontBrakeShare = 0.9f }, 0f);
+        float rearward = SpeedLost(new CarConfig { FixedFrontBrakeShare = 0.15f }, 0f);
+        float dialledBack = SpeedLost(new CarConfig { FixedFrontBrakeShare = 0.9f }, -0.25f);
+
+        Assert.True(forward < sharing, $"far forward lost {forward:F2} m/s, sharing brakes {sharing:F2}");
+        Assert.True(rearward < sharing, $"far rearward lost {rearward:F2} m/s, sharing brakes {sharing:F2}");
+        Assert.True(dialledBack > forward, $"dialled back lost {dialledBack:F2} m/s, left forward {forward:F2}");
+    }
+
+    /// <summary>A driver whose hands are harder on the tyres wears them more on the same run, one kinder less.</summary>
+    [Fact]
+    public void TheDriversWearExcessWearsTheTyresMoreOrLess()
+    {
+        CarConfig car = new();
+        TestTires tires = WarmTires();
+        float WearWith(float excess)
+        {
+            CarState state = CreateState(speed: 37f, batterySoc: 0.8f, tires);
+            StepMany(state, car, tires, new DriverInput(0.02f, 0f, TyreWearExcess: excess), CarStrategy.Default, steps: 240);
+            return AverageWear(state);
+        }
+
+        float reference = WearWith(0f);
+        Assert.True(WearWith(0.4f) > reference);
+        Assert.True(WearWith(-0.1f) < reference);
+        Assert.True(reference > 0f);
+    }
+
     [Fact]
     public void CoreShedsHeatToTheAirFarMoreSlowlyThanTheTread()
     {
