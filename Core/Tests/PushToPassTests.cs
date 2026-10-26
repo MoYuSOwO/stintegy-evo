@@ -95,23 +95,23 @@ public sealed class PushToPassTests
         TrackSample start = track.Sample(track.StartingLineS - 15f);
         RaceCar car = TestControlFixtures.ExternalCar(
             "grid",
-            new CarState { Position = start.Center, Heading = start.Heading, Speed = 20f, Energy = PowertrainState.Filled(0.9f) },
+            new CarState { Position = start.Center, Heading = start.Heading, Speed = 20f }.WithEnergy(PowertrainState.Filled(0.9f)),
             new DriverInput(0f, 2f));
-        car.Strategy = car.Strategy with { PushToPass = true };
+        car.Strategy = car.Strategy.WithButton(0, true);
         var simulation = new RaceSimulation(track);
         simulation.AddCar(car);
-        car.LockPushToPassUntilLine();
+        car.HoldButtonsUntilLine();
 
         simulation.Step(0.25f);
-        Assert.True(car.State.PushToPass.Locked);
-        Assert.False(car.State.PushToPass.Active);
+        Assert.True(car.State.Chassis().PushToPass.Locked);
+        Assert.False(car.State.Chassis().PushToPass.Active);
 
         for (int i = 0; i < 120 && car.Progress.RaceDistanceMeters < 1f; i++)
             simulation.Step(Dt);
         simulation.Step(Dt);
-        Assert.False(car.State.PushToPass.Locked);
-        Assert.True(car.State.PushToPass.Active);
-        Assert.True(simulation.CaptureFrame()[0].PushToPassActive);
+        Assert.False(car.State.Chassis().PushToPass.Locked);
+        Assert.True(car.State.Chassis().PushToPass.Active);
+        Assert.True(simulation.CaptureFrame()[0].Buttons[0].Running);
     }
 
     [Fact]

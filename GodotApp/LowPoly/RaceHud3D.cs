@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Linq;
 using Godot;
@@ -90,6 +91,8 @@ public partial class RaceHud3D : CanvasLayer
         _laps.AddThemeFontSizeOverride("font_size", 11);
         _laps.AddThemeColorOverride("font_color", Ink);
         bottom.AddChild(_laps);
+        // Named so a smoke test can find it whatever the car puts in it.
+        _strategy.Name = "StrategyReadout";
         _strategy.Position = new(210, 28);
         _strategy.AddThemeFontSizeOverride("font_size", 11);
         _strategy.AddThemeColorOverride("font_color", Ink);
@@ -102,7 +105,7 @@ public partial class RaceHud3D : CanvasLayer
         mapPanel.AddChild(_map);
         _map.Initialize(race.Surface, race.Simulation.Cars);
 
-        var footer = Label(root, "← →  CAR     Q E  TYRE     A D  ENERGY     HOLD P  PUSH     SPACE  PAUSE     H  HIDE UI", 11, new(24, -28), Ink);
+        var footer = Label(root, "← →  CAR     Q E  TYRE     A D  ENERGY     HOLD P  CAR BUTTON     SPACE  PAUSE     H  HIDE UI", 11, new(24, -28), Ink);
         footer.AnchorTop = 1;
         footer.AnchorBottom = 1;
         _stats.AnchorLeft = 1;
@@ -128,19 +131,13 @@ public partial class RaceHud3D : CanvasLayer
         SampleLaps();
     }
 
-    private static string PushText(StintegyEVO.Core.Racing.RaceCar car)
+    /// <summary>Each of the car's buttons and the car's own words for it; nothing on a car with none.</summary>
+    private static IEnumerable<string> ButtonLines(StintegyEVO.Core.Racing.RaceCar car)
     {
-        PushToPassState push = car.State.PushToPass;
-        float left = car.Car.PushToPassRemainingSeconds(car.State);
-        // How long one push may last is the chassis's rule; another car may not have one.
-        string active = car.Car is SingleTrackCar chassis
-            ? $"ON  {chassis.Config.PushToPass.MaxActivationSeconds - push.ActivationSeconds:0}s"
-            : "ON";
-        string now = push.Locked ? "LOCKED"
-            : push.Active ? active
-            : push.CooldownSeconds > 0f ? $"WAIT  {push.CooldownSeconds:0}s"
-            : left > 0f ? "READY" : "USED";
-        return $"PUSH  {now}   {left:0}s LEFT";
+        if (car.Car is not ICarButtons buttons)
+            yield break;
+        for (int i = 0; i < buttons.Buttons.Count; i++)
+            yield return $"{buttons.Buttons[i].Label.ToUpperInvariant()}  {buttons.Read(car.State, i).Status}";
     }
 
     public void Refresh(double coreMs)
@@ -152,11 +149,16 @@ public partial class RaceHud3D : CanvasLayer
         string controller = car.Driver == null ? "NO CONTROLLER" : "CONTROLLER ATTACHED";
         _driver.Text = $"CAR {_race.SelectedCarIndex + 1:00}    /    {controller}";
         _speed.Text = $"{car.State.Speed * 3.6f:000} km/h";
-        float wear = (car.State.FrontLeft.Wear + car.State.FrontRight.Wear + car.State.RearLeft.Wear + car.State.RearRight.Wear) / 4;
+        // Only what the car puts on its screen: its modes, its stores, its
+        // tyres and its buttons, each where it has them.
         _dashboard.Refresh(car.Car, car.State, car.Strategy);
-        var tireMode = _dashboard.Modes[0]; var powerMode = _dashboard.Modes[1];
-        string stores = string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%"));
-        _strategy.Text = $"{tireMode.Label.ToUpperInvariant()}   {tireMode.Rung}\n{powerMode.Label.ToUpperInvariant()}   {powerMode.Rung}\n{stores}\nTYRE LIFE  {(1 - wear) * 100:0}%\n{PushText(car)}";
+        var lines = _dashboard.Modes.Select(mode => $"{mode.Label.ToUpperInvariant()}   {mode.Rung}").ToList();
+        if (_dashboard.Resources.Count > 0)
+            lines.Add(string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%")));
+        if (_dashboard.Tires.Count > 0)
+            lines.Add($"TYRE LIFE  {_dashboard.Tires.Average(tire => tire.LifeFraction) * 100:0}%");
+        lines.AddRange(ButtonLines(car));
+        _strategy.Text = string.Join("\n", lines);
         SampleLaps();
         LapTimer timer = _timers[_race.SelectedCarIndex];
         float now = sim.RaceTimeSeconds;

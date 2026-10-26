@@ -257,13 +257,12 @@ public sealed class RaceSimulationTests
         TrackSample start = track.Sample(12f);
         CarCollisionConfig collision = new() { WidthMeters = 1.8f };
         float outsideLeftWallD = start.HalfWidth + start.LeftBufferWidth + 0.8f;
-        CarState state = new()
+        CarState state = new CarState()
         {
             Position = start.Center + start.Normal * outsideLeftWallD,
             Heading = start.Heading,
-            Speed = 0f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = 0f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "wall-test",
             new CarConfig(),
@@ -295,13 +294,12 @@ public sealed class RaceSimulationTests
         CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
         var limits = TrackBoundaryResolver.GetWallLimits(start);
         float centerD = limits.LeftWallD - collision.HalfLengthMeters * 0.5f;
-        CarState state = new()
+        CarState state = new CarState()
         {
             Position = start.Center + start.Normal * centerD,
             Heading = MathF.Atan2(start.Normal.Y, start.Normal.X),
-            Speed = 0f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = 0f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
 
         Assert.False(
             TrackBoundaryResolver.IsInsideTrackWalls(track, state, collision),
@@ -322,13 +320,12 @@ public sealed class RaceSimulationTests
         CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
         var limits = TrackBoundaryResolver.GetWallLimits(start);
         float centerD = limits.LeftWallD - collision.HalfLengthMeters - 0.4f;
-        CarState state = new()
+        CarState state = new CarState()
         {
             Position = start.Center + start.Normal * centerD,
             Heading = MathF.Atan2(start.Normal.Y, start.Normal.X),
-            Speed = 42f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = 42f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "wall-sweep",
             new CarConfig(),
@@ -356,13 +353,12 @@ public sealed class RaceSimulationTests
         CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
         var limits = TrackBoundaryResolver.GetWallLimits(start);
         float centerD = limits.RightWallD + collision.HalfLengthMeters + 0.4f;
-        CarState state = new()
+        CarState state = new CarState()
         {
             Position = start.Center + start.Normal * centerD,
             Heading = MathF.Atan2(-start.Normal.Y, -start.Normal.X),
-            Speed = 42f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = 42f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "right-wall-sweep",
             new CarConfig(),
@@ -639,9 +635,8 @@ public sealed class RaceSimulationTests
             {
                 Position = start.Center,
                 Heading = start.Heading,
-                Speed = speed,
-                Energy = PowertrainState.Filled(0.8f)
-            },
+                Speed = speed
+            }.WithEnergy(PowertrainState.Filled(0.8f)),
             collision
         );
     }
@@ -759,29 +754,29 @@ public sealed class RaceSimulationTests
 
     private static IEnumerable<TireState> Tires(CarState state)
     {
-        yield return state.FrontLeft;
-        yield return state.FrontRight;
-        yield return state.RearLeft;
-        yield return state.RearRight;
+        yield return state.Chassis().FrontLeft;
+        yield return state.Chassis().FrontRight;
+        yield return state.Chassis().RearLeft;
+        yield return state.Chassis().RearRight;
     }
 
     private static float AverageSurfaceTemp(CarState state)
     {
         return (
-            state.FrontLeft.SurfaceTempC +
-            state.FrontRight.SurfaceTempC +
-            state.RearLeft.SurfaceTempC +
-            state.RearRight.SurfaceTempC
+            state.Chassis().FrontLeft.SurfaceTempC +
+            state.Chassis().FrontRight.SurfaceTempC +
+            state.Chassis().RearLeft.SurfaceTempC +
+            state.Chassis().RearRight.SurfaceTempC
         ) * 0.25f;
     }
 
     private static float AverageCoreTemp(CarState state)
     {
         return (
-            state.FrontLeft.CoreTempC +
-            state.FrontRight.CoreTempC +
-            state.RearLeft.CoreTempC +
-            state.RearRight.CoreTempC
+            state.Chassis().FrontLeft.CoreTempC +
+            state.Chassis().FrontRight.CoreTempC +
+            state.Chassis().RearLeft.CoreTempC +
+            state.Chassis().RearRight.CoreTempC
         ) * 0.25f;
     }
 

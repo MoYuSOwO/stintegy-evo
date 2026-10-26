@@ -68,8 +68,8 @@ public sealed class DriverAbilityTests
         Assert.Equal(100f, high.Controller.Profile!.Abilities.Pace);
         Assert.Equal(low.Car.State.Position, high.Car.State.Position);
         Assert.Equal(low.Car.State.Speed, high.Car.State.Speed);
-        Assert.Equal(low.Car.State.FrontLeft.Wear, high.Car.State.FrontLeft.Wear);
-        Assert.Equal(low.Car.State.Energy, high.Car.State.Energy);
+        Assert.Equal(low.Car.State.Chassis().FrontLeft.Wear, high.Car.State.Chassis().FrontLeft.Wear);
+        Assert.Equal(low.Car.State.Chassis().Energy, high.Car.State.Chassis().Energy);
     }
 
     private sealed class FixedController : IDriverController

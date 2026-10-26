@@ -31,10 +31,8 @@ func press(code: Key) -> void:
     Input.parse_input_event(released)
 
 func strategy_readout() -> String:
-    for label in scene.find_children("*", "Label", true, false):
-        if "Q / E" in label.text:
-            return label.text
-    return ""
+    var label := scene.find_child("StrategyReadout", true, false) as Label
+    return label.text if label != null else ""
 
 func capture(name: String) -> void:
     if DisplayServer.get_name() == "headless":

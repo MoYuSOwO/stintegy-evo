@@ -505,20 +505,20 @@ public sealed class SingleTrackDynamicsTests
             car, tires, past, SingleTrackDynamicsLimits.SpinVerdictHoldSeconds * 2f
         );
 
-        float startWear = gone.FrontLeft.Wear;
-        float startTemp = gone.FrontLeft.SurfaceTempC;
+        float startWear = gone.Chassis().FrontLeft.Wear;
+        float startTemp = gone.Chassis().FrontLeft.SurfaceTempC;
         float peak = startTemp;
         for (int i = 0; i < 60 * 12; i++)
         {
             CarPhysics.Step(
                 gone, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
             );
-            peak = MathF.Max(peak, gone.FrontLeft.SurfaceTempC);
+            peak = MathF.Max(peak, gone.Chassis().FrontLeft.SurfaceTempC);
             if (!gone.Spinning && i > 10)
                 break;
         }
 
-        float wearCost = (gone.FrontLeft.Wear - startWear) * 100f;
+        float wearCost = (gone.Chassis().FrontLeft.Wear - startWear) * 100f;
         float heatRise = peak - startTemp;
 
         // Up to two per cent: a spin overheats the tread as well as dragging
@@ -706,11 +706,10 @@ public sealed class SingleTrackDynamicsTests
 
     private static CarState CreateState(float speed, TireConfig tires)
     {
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = speed,
-            Energy = PowertrainState.Filled(0.6f)
-        };
+            Speed = speed
+        }.WithEnergy(PowertrainState.Filled(0.6f));
         state.InstallFreshTires(tires);
         return state;
     }

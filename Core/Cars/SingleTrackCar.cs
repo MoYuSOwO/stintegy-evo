@@ -15,7 +15,7 @@ namespace StintegyEVO.Core.Cars;
 /// <see cref="ICar"/> itself. The tyres are the game's either way
 /// (<see cref="Tire"/>).
 /// </summary>
-public class SingleTrackCar : ICar
+public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnvelope, ICarGripFeel
 {
     /// <summary>One compound in no pack, built to <paramref name="tires"/>: for tests and probes.</summary>
     public SingleTrackCar(CarConfig config, TireConfig tires)
@@ -61,14 +61,14 @@ public class SingleTrackCar : ICar
 
     /// <summary>The tyres on the car: the compound fitted, or the first one if none is.</summary>
     public TireSet TiresOn(CarState state) =>
-        state.Compound is { } id && _sets.TryGetValue(id, out TireSet? set) ? set : Compounds[0].Set;
+        state.Chassis().Compound is { } id && _sets.TryGetValue(id, out TireSet? set) ? set : Compounds[0].Set;
     public CarSpec Spec { get; }
     public IPowertrain Powertrain => Config.Powertrain;
 
     /// <summary>The powertrain's output ladder, and nothing else.</summary>
     public virtual IReadOnlyList<ModeLadder> Ladders => [Config.Powertrain.OutputLadder];
 
-    public virtual float TotalMassKg(CarState state) => CarPhysics.TotalMassKg(Config, state.Energy);
+    public virtual float TotalMassKg(CarState state) => CarPhysics.TotalMassKg(Config, state.Chassis().Energy);
 
     public virtual void Step(CarState state, CarPhysicsStepInput input, float dt) =>
         CarPhysics.Step(state, Config, TiresOn(state), input, dt);
@@ -95,18 +95,40 @@ public class SingleTrackCar : ICar
 
     public virtual TireWindow TireWindow(CarState state, WheelId wheel) => TiresOn(state).For(wheel).Window;
 
+    public virtual string? Compound(CarState state) => state.Chassis().Compound;
+
+    public virtual TireReading Tire(CarState state, WheelId wheel)
+    {
+        TireState tire = state.Chassis().GetTire(wheel);
+        return new TireReading(tire.SurfaceTempC, tire.CoreTempC, tire.Wear, tire.LoadN, tire.SurfaceGrip)
+        {
+            Window = TireWindow(state, wheel)
+        };
+    }
+
+    public virtual void WarmTires(CarState state, float surfaceTempC, float coreTempC) =>
+        state.Chassis().WarmTires(surfaceTempC, coreTempC);
+
+    public virtual PowertrainState Stores(CarState state) => state.Chassis().Energy;
+
+    public virtual void Fill(CarState state, PowertrainState stores)
+    {
+        stores.Clamp();
+        state.Chassis().Energy = stores;
+    }
+
     public virtual void FitTires(CarState state, string compound)
     {
         if (!_sets.TryGetValue(compound, out TireSet? set))
             throw new ArgumentException(
                 $"This car does not run '{compound}'; it runs {string.Join(", ", Compounds.Select(c => c.Id))}.",
                 nameof(compound));
-        state.Compound = compound;
+        state.Chassis().Compound = compound;
         set.Install(state);
     }
 
     public virtual void InstallFreshTires(CarState state) =>
-        FitTires(state, state.Compound is { } id && _sets.ContainsKey(id) ? id : Compounds[0].Id);
+        FitTires(state, state.Chassis().Compound is { } id && _sets.ContainsKey(id) ? id : Compounds[0].Id);
 
     public virtual CarCapabilities Capabilities(CarState state, CarStrategy strategy)
     {
@@ -118,17 +140,66 @@ public class SingleTrackCar : ICar
             Config.SteerRateLimitRadiansPerSecond,
             Config.MaxDriveAcceleration,
             Powertrain.DriveAccelerationLimit(
-                state.Energy, strategy.Rung(CarPhysics.OutputLadderIndex, Powertrain.OutputLadder), state.Speed, mass,
-                Config.MaxDriveAcceleration, state.PushToPass.Active),
-            Powertrain.OutputAvailability(state.Energy),
-            TiresOn(state).Front.Window.Compound);
+                state.Chassis().Energy, strategy.Rung(CarPhysics.OutputLadderIndex, Powertrain.OutputLadder), state.Speed, mass,
+                Config.MaxDriveAcceleration, state.Chassis().PushToPass.Active),
+            Powertrain.OutputAvailability(state.Chassis().Energy));
     }
 
-    public virtual float PushToPassRemainingSeconds(CarState state) => state.PushToPass.RemainingSeconds(Config.PushToPass);
+    private static readonly CarButton[] ButtonList = [new("push_to_pass", "Push")];
+
+    /// <summary>Push-to-pass, the chassis's one button.</summary>
+    public virtual IReadOnlyList<CarButton> Buttons => ButtonList;
+
+    public virtual CarButtonReading Read(CarState state, int button)
+    {
+        if (button != CarPhysics.PushToPassButton)
+            throw new ArgumentOutOfRangeException(nameof(button));
+        PushToPassState push = state.Chassis().PushToPass;
+        PushToPassRules rules = Config.PushToPass;
+        float left = push.RemainingSeconds(rules);
+        bool ready = !push.Locked && !push.Active && push.CooldownSeconds <= 0f && left > 0f;
+        string status = push.Locked ? "LOCKED"
+            : push.Active ? $"ON  {rules.MaxActivationSeconds - push.ActivationSeconds:0}s"
+            : push.CooldownSeconds > 0f ? $"WAIT  {push.CooldownSeconds:0}s"
+            : left > 0f ? "READY" : "USED";
+        return new CarButtonReading(ready, push.Active, push.Locked, left, push.CooldownSeconds, $"{status}   {left:0}s LEFT");
+    }
+
+    public virtual void HoldUntilLine(CarState state)
+    {
+        PushToPassState push = state.Chassis().PushToPass;
+        push.Locked = true;
+        state.Chassis().PushToPass = push;
+    }
+
+    public virtual void CrossedLine(CarState state)
+    {
+        PushToPassState push = state.Chassis().PushToPass;
+        if (!push.Locked)
+            return;
+        push.Locked = false;
+        state.Chassis().PushToPass = push;
+    }
+
+    public virtual GripUse GripUse(CarState state)
+    {
+        AxleTelemetry axles = state.Axles();
+        return new GripUse(
+            axles.FrontLateralUse, axles.RearLateralUse,
+            axles.FrontLongitudinalUse, axles.RearLongitudinalUse,
+            axles.RearSlideSeverity);
+    }
+
+    /// <summary>The slip curve's own figure (<see cref="TireSlipCurve.SustainablePeakShare"/>).</summary>
+    public virtual float SustainablePeakShare => TireSlipCurve.SustainablePeakShare;
+
+    public virtual float PeakSlipAngleRadians => TireSlipCurve.PeakSlipAngleRadians;
+
+    public virtual float SlipAngleAtShare(float share) => TireSlipCurve.InverseEvaluate(share);
 
     public virtual void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
     {
-        PowertrainState energy = state.Energy;
+        PowertrainState energy = state.Chassis().Energy;
         IReadOnlyList<PowertrainResourceInfo> declared = Powertrain.Resources;
         for (int i = 0; i < declared.Count && i < PowertrainState.Capacity; i++)
         {
@@ -136,10 +207,11 @@ public class SingleTrackCar : ICar
             dashboard.AddResource(new DashboardResource(info.Id, info.Label, energy[i], info.FullMassKg * energy[i]));
         }
 
-        AddTire(dashboard, "FL", state.FrontLeft, TireWindow(state, WheelId.FrontLeft));
-        AddTire(dashboard, "FR", state.FrontRight, TireWindow(state, WheelId.FrontRight));
-        AddTire(dashboard, "RL", state.RearLeft, TireWindow(state, WheelId.RearLeft));
-        AddTire(dashboard, "RR", state.RearRight, TireWindow(state, WheelId.RearRight));
+        SingleTrackState own = state.Chassis();
+        AddTire(dashboard, "FL", own.FrontLeft, TireWindow(state, WheelId.FrontLeft));
+        AddTire(dashboard, "FR", own.FrontRight, TireWindow(state, WheelId.FrontRight));
+        AddTire(dashboard, "RL", own.RearLeft, TireWindow(state, WheelId.RearLeft));
+        AddTire(dashboard, "RR", own.RearRight, TireWindow(state, WheelId.RearRight));
 
         dashboard.AddMode(TireLadder.Usage, (int)strategy.TireMode);
         IReadOnlyList<ModeLadder> ladders = Ladders;

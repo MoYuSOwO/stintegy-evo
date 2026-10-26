@@ -46,7 +46,7 @@ public readonly record struct AeroAir(
         state.AirVelocityDeficit,
         state.DownforceVelocityDeficit,
         state.WakeDownforceLoss,
-        state.ActiveAero
+        state.Chassis().ActiveAero
     );
 }
 

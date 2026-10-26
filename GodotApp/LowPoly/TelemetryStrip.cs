@@ -56,9 +56,12 @@ public partial class TelemetryStrip : Control
         // the motor can give at this speed, so flat out reads full at 75 m/s
         // as it does at 20, and the brake as a share of the car's full brake.
         float accel = car.LastInput.DesiredAccel;
-        // What any car says it can give, not one chassis's numbers.
-        float motor = MathF.Max(0.1f, car.Car.Capabilities(car.State, car.Strategy).AvailableDriveAcceleration);
+        // What the car says it can give, not one chassis's numbers; a car
+        // that says nothing is read against its brakes.
         float brakeFull = MathF.Max(0.1f, car.Car.Spec.MaximumBrakeDeceleration);
+        float motor = car.Car is ICarEnvelope envelope
+            ? MathF.Max(0.1f, envelope.Capabilities(car.State, car.Strategy).AvailableDriveAcceleration)
+            : brakeFull;
         float steerDegrees = car.State.SteerAngleRadians * SteeringRatio * 180f / MathF.PI;
         _samples.Add((
             time,

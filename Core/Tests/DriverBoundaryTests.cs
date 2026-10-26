@@ -24,7 +24,7 @@ public sealed class DriverBoundaryTests
             a.Name!.Contains("Godot", StringComparison.OrdinalIgnoreCase) ||
             a.Name.Contains("Highs", StringComparison.OrdinalIgnoreCase) ||
             a.Name.Contains("Blas", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(new[] { "GetControl", "Initialize" },
+        Assert.Equal(new[] { "GetControl", "Initialize", "get_Needs" }.Order().ToArray(),
             typeof(IDriverController).GetMethods().Select(m => m.Name).Order().ToArray());
     }
 
@@ -101,22 +101,22 @@ public sealed class DriverBoundaryTests
     {
         ProbeController controller = new();
         RaceCar car = Car("controlled", 50f, controller);
-        car.State.FrontLeft.SurfaceTempC = 87f;
-        car.State.Energy = PowertrainState.Filled(0.7f);
+        car.State.Chassis().FrontLeft.SurfaceTempC = 87f;
+        car.State.Chassis().Energy = PowertrainState.Filled(0.7f);
         RaceSimulation race = new(Road.Value);
         race.AddCar(car);
         DriverContext frame = race.CaptureFrameContext(car);
         CarStrategy strategy = car.Strategy;
         Vector2 position = car.State.Position;
-        car.State.FrontLeft.SurfaceTempC = 120f;
-        car.State.Energy = PowertrainState.Filled(0.2f);
+        car.State.Chassis().FrontLeft.SurfaceTempC = 120f;
+        car.State.Chassis().Energy = PowertrainState.Filled(0.2f);
         car.Strategy = new(TireUsageMode.Attack, PowerOutputMode.Attack);
         race.Environment.AirTempC = 42f;
         race.Environment.TrackTempC = 66f;
         race.Environment.SurfaceGripScalar = 0.9f;
         race.Step(0.1f);
         Assert.Equal(position, frame.Car.Position);
-        Assert.Equal(87f, frame.Car.FrontLeft.SurfaceTempC);
+        Assert.Equal(87f, frame.Car.Tires[0].SurfaceTempC);
         Assert.Equal(0.7f, frame.Car.Resources[0].Fraction);
         Assert.Equal(strategy, frame.Car.Strategy);
         Assert.Equal(25f, frame.Environment.AirTempC);

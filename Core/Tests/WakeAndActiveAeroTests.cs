@@ -35,17 +35,17 @@ public sealed class WakeAndActiveAeroTests
         simulation.AddCar(car);
 
         simulation.Step(1f / 60f);
-        Assert.Equal(0f, car.State.ActiveAero);
+        Assert.Equal(0f, car.State.Chassis().ActiveAero);
 
-        car.Strategy = car.Strategy with { PushToPass = true };
+        car.Strategy = car.Strategy.WithButton(0, true);
         simulation.Step(1f / 60f);
-        Assert.True(car.State.PushToPass.Active);
-        Assert.Equal(1f, car.State.ActiveAero);
-        Assert.Equal(1f, simulation.CaptureFrame()[0].ActiveAero);
+        Assert.True(car.State.Chassis().PushToPass.Active);
+        Assert.Equal(1f, car.State.Chassis().ActiveAero);
+        Assert.True(simulation.CaptureFrame()[0].Buttons[0].Running);
 
-        car.Strategy = car.Strategy with { PushToPass = false };
+        car.Strategy = car.Strategy.WithButton(0, false);
         simulation.Step(1f / 60f);
-        Assert.Equal(0f, car.State.ActiveAero);
+        Assert.Equal(0f, car.State.Chassis().ActiveAero);
     }
 
     [Fact]
@@ -61,10 +61,11 @@ public sealed class WakeAndActiveAeroTests
         CarState inWakeAssisted = new()
         {
             AirVelocityDeficit = 0.08f,
-            WakeDownforceLoss = 0.05f,
-            ActiveAero = 1f
+            WakeDownforceLoss = 0.05f
         };
-        CarState cleanAirAssisted = new() { ActiveAero = 1f };
+        inWakeAssisted.Chassis().ActiveAero = 1f;
+        CarState cleanAirAssisted = new();
+        cleanAirAssisted.Chassis().ActiveAero = 1f;
 
         float clean = CarPhysics.EffectiveDownforcePerSpeedSquared(
             cleanAir,
@@ -191,11 +192,11 @@ public sealed class WakeAndActiveAeroTests
         TrackData track = Loop.Value;
         RaceSimulation simulation = new(track);
         RaceCar car = CreateCar(track, 40f, "solo", new CarConfig { Powertrain = ElectricPowertrain.Default });
-        car.Strategy = car.Strategy with { PushToPass = push };
+        car.Strategy = car.Strategy.WithButton(0, push);
         simulation.AddCar(car);
         for (int frame = 0; frame < 12 * 60; frame++)
             simulation.Step(1f / 60f);
-        Assert.Equal(push, car.State.PushToPass.Active);
+        Assert.Equal(push, car.State.Chassis().PushToPass.Active);
         return car.Progress.RaceDistanceMeters;
     }
 
@@ -213,9 +214,8 @@ public sealed class WakeAndActiveAeroTests
             {
                 Position = sample.Center,
                 Heading = sample.Heading,
-                Speed = 45f,
-                Energy = PowertrainState.Filled(0.9f)
-            },
+                Speed = 45f
+            }.WithEnergy(PowertrainState.Filled(0.9f)),
             new DriverInput(0f, 2f),
             config
         );
