@@ -121,9 +121,8 @@ public sealed class BoundaryContactTimeTests
             {
                 Position = at.Center,
                 Heading = at.Heading,
-                Speed = 25f,
-                Energy = PowertrainState.Filled(0.9f)
-            },
+                Speed = 25f
+            }.WithEnergy(PowertrainState.Filled(0.9f)),
             _ => (wanted, 2f)
         );
         RaceSimulation simulation = new(track);
@@ -159,9 +158,8 @@ public sealed class BoundaryContactTimeTests
             {
                 Position = at.Center,
                 Heading = at.Heading,
-                Speed = speed,
-                Energy = PowertrainState.Filled(0.9f)
-            },
+                Speed = speed
+            }.WithEnergy(PowertrainState.Filled(0.9f)),
             _ => (at.Curvature, 0f)
         );
     }

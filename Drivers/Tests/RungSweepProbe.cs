@@ -35,7 +35,7 @@ public sealed class RungSweepProbe
             var r = LaneLapRunner.Run(track, file, gains, flyingLaps: 4, tireConfig: tyresConfig, strategy: new CarStrategy(mode, PowerOutputMode.Normal), onStep: (car, d, t) =>
             {
                 var s = car.State;
-                var tyres = new[] { s.FrontLeft, s.FrontRight, s.RearLeft, s.RearRight };
+                var tyres = new[] { s.Chassis().FrontLeft, s.Chassis().FrontRight, s.Chassis().RearLeft, s.Chassis().RearRight };
                 if (car.Progress.Lap != lastLap) { lastLap = car.Progress.Lap; crossings.Add((t, tyres.Max(x => x.Wear))); }
                 if (crossings.Count >= 3) { surf += tyres.Average(x => x.SurfaceTempC); n++; }
             });
@@ -63,7 +63,7 @@ public sealed class LiftSweepProbe
             var r = LaneLapRunner.Run(track, file, flyingLaps: 4, startingCharge: 0.6f, onStep: (car, d, t) =>
             {
                 d.CoastOverride = coast;
-                if (car.Progress.Lap != lastLap) { lastLap = car.Progress.Lap; crossings.Add((t, car.State.Energy.Primary, car.State.Energy.Secondary)); }
+                if (car.Progress.Lap != lastLap) { lastLap = car.Progress.Lap; crossings.Add((t, car.State.Chassis().Energy.Primary, car.State.Chassis().Energy.Secondary)); }
             });
             var a = crossings[2]; var b = crossings[^1]; int laps = crossings.Count - 3;
             float lap = (b.T - a.T) / laps, kwh = (a.Soc - b.Soc) / laps * 30f, fuel = (a.Fuel - b.Fuel) / laps * 120f;
@@ -89,7 +89,7 @@ public sealed class EnergyRungProbe
             int lastLap = int.MinValue;
             var r = LaneLapRunner.Run(track, file, flyingLaps: 4, startingCharge: 0.6f, strategy: new CarStrategy(TireUsageMode.Normal, rung), onStep: (car, d, t) =>
             {
-                if (car.Progress.Lap != lastLap) { lastLap = car.Progress.Lap; crossings.Add((t, car.State.Energy.Primary)); }
+                if (car.Progress.Lap != lastLap) { lastLap = car.Progress.Lap; crossings.Add((t, car.State.Chassis().Energy.Primary)); }
             });
             var a = crossings[2]; var b = crossings[^1]; int laps = crossings.Count - 3;
             float kwh = (a.Soc - b.Soc) / laps * 30f;

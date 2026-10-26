@@ -272,9 +272,8 @@ public sealed class WallContactDynamicsTests
             {
                 Position = position,
                 Heading = pointing,
-                Speed = speed,
-                Energy = PowertrainState.Filled(0.9f)
-            },
+                Speed = speed
+            }.WithEnergy(PowertrainState.Filled(0.9f)),
             default,
             config
         );

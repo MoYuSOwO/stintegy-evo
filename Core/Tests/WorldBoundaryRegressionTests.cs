@@ -103,15 +103,15 @@ public sealed class WorldBoundaryRegressionTests
         RaceSimulation race = new(track);
         race.AddCar(car);
 
-        car.State.FrontLeft.SurfaceTempC = 87f;
-        car.State.Energy = PowertrainState.Filled(0.7f);
+        car.State.Chassis().FrontLeft.SurfaceTempC = 87f;
+        car.State.Chassis().Energy = PowertrainState.Filled(0.7f);
         race.Environment.AirTempC = 25f;
         race.Environment.TrackTempC = 35f;
         race.Environment.SurfaceGripScalar = 1f;
         RaceFrameSnapshot first = race.CaptureFrame();
 
-        car.State.FrontLeft.SurfaceTempC = 121f;
-        car.State.Energy = PowertrainState.Filled(0.2f);
+        car.State.Chassis().FrontLeft.SurfaceTempC = 121f;
+        car.State.Chassis().Energy = PowertrainState.Filled(0.2f);
         race.Environment.AirTempC = 42f;
         race.Environment.TrackTempC = 66f;
         race.Environment.SurfaceGripScalar = 0.9f;
@@ -119,19 +119,19 @@ public sealed class WorldBoundaryRegressionTests
 
         // A third mutation proves neither retained frame is a live view of
         // the car or the environment after its own capture.
-        car.State.FrontLeft.SurfaceTempC = 143f;
-        car.State.Energy = PowertrainState.Filled(0.05f);
+        car.State.Chassis().FrontLeft.SurfaceTempC = 143f;
+        car.State.Chassis().Energy = PowertrainState.Filled(0.05f);
         race.Environment.AirTempC = -5f;
         race.Environment.TrackTempC = 12f;
         race.Environment.SurfaceGripScalar = 0.4f;
 
-        Assert.Equal(87f, first[0].FrontLeft.SurfaceTempC);
+        Assert.Equal(87f, first[0].Tires[0].SurfaceTempC);
         Assert.Equal(0.7f, first[0].Resources[0].Fraction);
         Assert.Equal(25f, first.Environment.AirTempC);
         Assert.Equal(35f, first.Environment.TrackTempC);
         Assert.Equal(1f, first.Environment.SurfaceGripScalar);
 
-        Assert.Equal(121f, second[0].FrontLeft.SurfaceTempC);
+        Assert.Equal(121f, second[0].Tires[0].SurfaceTempC);
         Assert.Equal(0.2f, second[0].Resources[0].Fraction);
         Assert.Equal(42f, second.Environment.AirTempC);
         Assert.Equal(66f, second.Environment.TrackTempC);
@@ -182,7 +182,7 @@ public sealed class WorldBoundaryRegressionTests
         race.AddCar(car);
         race.Step(Dt);
         RaceFrameSnapshot frame = race.CaptureFrame();
-        return new(frame[0].FrontLeft.LoadN, car.LastInput);
+        return new(frame[0].Tires[0].LoadN, car.LastInput);
     }
 
 
@@ -242,13 +242,12 @@ public sealed class WorldBoundaryRegressionTests
     )
     {
         TrackSample at = track.Sample(s);
-        CarState state = new()
+        CarState state = new CarState()
         {
             Position = at.Center,
             Heading = at.Heading,
-            Speed = speed,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = speed
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         return TestControlFixtures.ExternalCar(id, state, input);
     }
 

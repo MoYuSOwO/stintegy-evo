@@ -18,4 +18,11 @@ public static class StockCar
             : throw new InvalidOperationException($"{Id} is not a single-track car; the driver drives only those."));
 
     public static CarConfig Config => ConfigValue.Value;
+
+    private static readonly Lazy<ICarGripFeel> FeelValue = new(() =>
+        CarLibrary.Load(Id).Car as ICarGripFeel
+            ?? throw new InvalidOperationException($"{Id} does not say how its grip feels; the driver needs that."));
+
+    /// <summary>How the stock car's grip feels: where its tyres peak, and what they hold.</summary>
+    public static ICarGripFeel Feel => FeelValue.Value;
 }

@@ -116,17 +116,17 @@ public static class LaneLapRunner
             {
                 Position = here,
                 Heading = heading,
-                Speed = startSpeed,
-                Energy = PowertrainState.Filled(startingCharge)
+                Speed = startSpeed
             }
         )
         {
             Strategy = strategy ?? CarStrategy.Default
         };
-        car.State.WarmTires(tireTempC, tireTempC);
+        car.State.Chassis().Energy = PowertrainState.Filled(startingCharge);
+        car.State.Chassis().WarmTires(tireTempC, tireTempC);
         if (startingWear > 0f)
         {
-            foreach (TireState tyre in new[] { car.State.FrontLeft, car.State.FrontRight, car.State.RearLeft, car.State.RearRight })
+            foreach (TireState tyre in new[] { car.State.Chassis().FrontLeft, car.State.Chassis().FrontRight, car.State.Chassis().RearLeft, car.State.Chassis().RearRight })
                 tyre.Wear = startingWear;
         }
         var simulation = new RaceSimulation(track, new RaceEnvironment { SurfaceGripScalar = roadGrip });

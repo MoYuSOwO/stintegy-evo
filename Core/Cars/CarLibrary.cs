@@ -171,7 +171,9 @@ public static class CarLibrary
         var definition = (ICarDefinition)(Activator.CreateInstance(definitions[0])
             ?? throw new InvalidDataException($"Car '{id}': {definitions[0].Name} cannot be made."));
         ICar car = definition.Build(compounds) ?? throw new InvalidDataException($"Car '{id}' built nothing.");
-        if (car.Compounds.Count == 0 || car.Compounds.Any(c => !compounds.Contains(c)))
+        if (car is ICarTires tires
+                ? tires.Compounds.Count == 0 || tires.Compounds.Any(c => !compounds.Contains(c))
+                : compounds.Count > 0)
             throw new InvalidDataException($"Car '{id}' must run the compounds it declares and only those.");
         if (car.Ladders.Count > CarStrategy.MaximumLadders)
             throw new InvalidDataException($"Car '{id}' declares {car.Ladders.Count} ladders; at most {CarStrategy.MaximumLadders}.");

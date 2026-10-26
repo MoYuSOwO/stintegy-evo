@@ -20,6 +20,13 @@ namespace StintegyEVO.Core.Drivers;
 /// </remarks>
 public interface IDriverController
 {
+    /// <summary>
+    /// What this driver needs of a car, and what it uses when the car has it
+    /// (<see cref="CarNeeds"/>). A driver is not put in a car that lacks a
+    /// required feature. Nothing, unless the driver says otherwise.
+    /// </summary>
+    CarNeeds Needs => CarNeeds.None;
+
     void Initialize(in DriverContext context) { }
     DriverInput GetControl(in DriverContext context, float dt);
 }

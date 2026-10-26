@@ -130,9 +130,8 @@ public sealed class SurfaceGripTests
                 Position = sample.Center + sample.Normal *
                            (half - config.TrackWidthMeters * 0.5f + 0.4f),
                 Heading = sample.Heading,
-                Speed = 40f,
-                Energy = PowertrainState.Filled(0.8f)
-            },
+                Speed = 40f
+            }.WithEnergy(PowertrainState.Filled(0.8f)),
             _ => (sample.Curvature, 0f),
             config
         );
@@ -143,12 +142,12 @@ public sealed class SurfaceGripTests
         // The track's normal is the clockwise turn of its tangent, so
         // offset grows to the right of travel: displacing the car along it
         // puts the right-hand wheels over the line.
-        float outerFront = car.State.FrontRight.SurfaceGrip;
-        float innerFront = car.State.FrontLeft.SurfaceGrip;
+        float outerFront = car.State.Chassis().FrontRight.SurfaceGrip;
+        float innerFront = car.State.Chassis().FrontLeft.SurfaceGrip;
         _output.WriteLine(
             $"外前轮 {outerFront:0.000}  内前轮 {innerFront:0.000}  " +
-            $"外后轮 {car.State.RearRight.SurfaceGrip:0.000}  " +
-            $"内后轮 {car.State.RearLeft.SurfaceGrip:0.000}"
+            $"外后轮 {car.State.Chassis().RearRight.SurfaceGrip:0.000}  " +
+            $"内后轮 {car.State.Chassis().RearLeft.SurfaceGrip:0.000}"
         );
         Assert.True(
             outerFront < innerFront,
@@ -203,11 +202,10 @@ public sealed class SurfaceGripTests
         WheelSurfaceGrip surface
     )
     {
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = 55f,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = 55f
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         state.InstallFreshTires(tires);
         float best = 0f;
         for (int i = 1; i <= 24; i++)

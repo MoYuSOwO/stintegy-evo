@@ -59,8 +59,8 @@ public sealed class PhysicsBoundaryTests
         Near.Equal(
             protect.Telemetry.ActualLateralAccel,
             attack.Telemetry.ActualLateralAccel);
-        Near.Equal(protect.FrontLeft.Wear, attack.FrontLeft.Wear, abs: 0f);
-        Near.Equal(protect.RearLeft.SurfaceTempC, attack.RearLeft.SurfaceTempC);
+        Near.Equal(protect.Chassis().FrontLeft.Wear, attack.Chassis().FrontLeft.Wear, abs: 0f);
+        Near.Equal(protect.Chassis().RearLeft.SurfaceTempC, attack.Chassis().RearLeft.SurfaceTempC);
     }
 
     [Fact]
@@ -122,8 +122,8 @@ public sealed class PhysicsBoundaryTests
             Assert.Equal(idle.SideslipAngleRadians, absent.SideslipAngleRadians);
             Assert.Equal(idle.YawRateRadiansPerSecond, absent.YawRateRadiansPerSecond);
             Assert.Equal(idle.Heading, absent.Heading);
-            Assert.Equal(idle.RearLeft.Wear, absent.RearLeft.Wear);
-            Assert.Equal(idle.FrontRight.SurfaceTempC, absent.FrontRight.SurfaceTempC);
+            Assert.Equal(idle.Chassis().RearLeft.Wear, absent.Chassis().RearLeft.Wear);
+            Assert.Equal(idle.Chassis().FrontRight.SurfaceTempC, absent.Chassis().FrontRight.SurfaceTempC);
             Assert.Equal(0f, absent.Axles().CombinedGripLimiterCutAccel);
         }
     }
@@ -135,9 +135,9 @@ public sealed class PhysicsBoundaryTests
     [Fact]
     public void ThePublishedEnvelopeIsPublicAndReadsWithoutWriting()
     {
-        // Published on the interface every car implements, so a driver can
-        // read it off any car.
-        var method = typeof(ICar).GetMethod(nameof(ICar.EstimatePerformanceLimits));
+        // Published on the envelope feature, so a driver can read it off any
+        // car that has one.
+        var method = typeof(ICarEnvelope).GetMethod(nameof(ICarEnvelope.EstimatePerformanceLimits));
         Assert.NotNull(method);
         Assert.True(method!.IsPublic);
         Assert.True(typeof(CarPerformanceLimits).IsPublic);
@@ -148,8 +148,8 @@ public sealed class PhysicsBoundaryTests
         CarStrategy strategy = new(TireUsageMode.Normal, PowerOutputMode.Normal);
         CarState before = state.Clone();
 
-        CarPerformanceLimits limits = car.EstimatePerformanceLimits(
-            state, strategy, state.Speed, 0.01f, car.GripUsage(strategy)
+        CarPerformanceLimits limits = car.As<ICarEnvelope>().EstimatePerformanceLimits(
+            state, strategy, state.Speed, 0.01f, car.As<ICarEnvelope>().GripUsage(strategy)
         );
 
         Assert.True(limits.LateralAccelerationLimit > 0f);
@@ -157,9 +157,9 @@ public sealed class PhysicsBoundaryTests
         Assert.True(limits.MaximumBrakeDeceleration > 0f);
         Assert.Equal(before.Speed, state.Speed);
         Assert.Equal(before.Position, state.Position);
-        Assert.Equal(before.FrontLeft.SurfaceTempC, state.FrontLeft.SurfaceTempC);
-        Assert.Equal(before.RearRight.Wear, state.RearRight.Wear);
-        Assert.Equal(before.Energy.Primary, state.Energy.Primary);
+        Assert.Equal(before.Chassis().FrontLeft.SurfaceTempC, state.Chassis().FrontLeft.SurfaceTempC);
+        Assert.Equal(before.Chassis().RearRight.Wear, state.Chassis().RearRight.Wear);
+        Assert.Equal(before.Chassis().Energy.Primary, state.Chassis().Energy.Primary);
     }
 
     private static CarPhysicsStepInput StepInput(
@@ -169,11 +169,10 @@ public sealed class PhysicsBoundaryTests
 
     private static CarState NewState(float speed, TireConfig tires)
     {
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = speed,
-            Energy = PowertrainState.Filled(0.8f)
-        };
+            Speed = speed
+        }.WithEnergy(PowertrainState.Filled(0.8f));
         state.InstallFreshTires(tires);
         return state;
     }

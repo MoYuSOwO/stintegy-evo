@@ -33,7 +33,7 @@ public sealed class TireLibraryTests
         Assert.Contains("official:formula_a/medium", formulaA.Compounds.Select(c => c.Id));
 
         ICar car = CarLibrary.Load("official:formula_a_mixed").Car;
-        Assert.Equal(formulaA.Compounds.Select(c => c.Id), car.Compounds.Select(c => c.Id));
+        Assert.Equal(formulaA.Compounds.Select(c => c.Id), car.As<ICarTires>().Compounds.Select(c => c.Id));
     }
 
     [Fact]
@@ -116,15 +116,15 @@ public sealed class TireLibraryTests
         var state = new CarState();
 
         car.InstallFreshTires(state);
-        Assert.Equal(hard.Id, state.Compound);
+        Assert.Equal(hard.Id, state.Chassis().Compound);
 
         car.FitTires(state, soft.Id);
-        Assert.Equal(soft.Id, state.Compound);
+        Assert.Equal(soft.Id, state.Chassis().Compound);
         Assert.Equal(soft.Id, car.TireWindow(state, WheelId.RearLeft).Compound);
-        Assert.Equal(Tire.BlanketTempC, state.FrontLeft.SurfaceTempC);
+        Assert.Equal(Tire.BlanketTempC, state.Chassis().FrontLeft.SurfaceTempC);
 
         Assert.Throws<ArgumentException>(() => car.FitTires(state, "official:formula_a/medium"));
-        Assert.Equal(soft.Id, state.Compound);
+        Assert.Equal(soft.Id, state.Chassis().Compound);
     }
 
     [Fact]
@@ -135,9 +135,9 @@ public sealed class TireLibraryTests
         var car = new SingleTrackCar(new CarConfig(), [hard, soft]);
         float Limit(TireCompound compound)
         {
-            var state = new CarState { Speed = 40f, Energy = PowertrainState.Filled(0.8f) };
+            var state = new CarState { Speed = 40f }.WithEnergy(PowertrainState.Filled(0.8f));
             car.FitTires(state, compound.Id);
-            state.WarmTires(95f, 95f);
+            state.Chassis().WarmTires(95f, 95f);
             return car.EstimateCorneringLimit(state, CarStrategy.Default, 40f);
         }
         Assert.True(Limit(soft) > Limit(hard) * 1.03f, $"soft {Limit(soft):F2} against hard {Limit(hard):F2}");
@@ -150,12 +150,12 @@ public sealed class TireLibraryTests
         (float Heat, float Wear) Corner(TireConfig tyre)
         {
             var car = new SingleTrackCar(new CarConfig(), tyre);
-            var state = new CarState { Speed = 45f, Energy = PowertrainState.Filled(0.8f) };
+            var state = new CarState { Speed = 45f }.WithEnergy(PowertrainState.Filled(0.8f));
             car.InstallFreshTires(state);
-            state.WarmTires(95f, 95f);
+            state.Chassis().WarmTires(95f, 95f);
             for (int i = 0; i < 600; i++)
                 car.Step(state, new CarPhysicsStepInput(new DriverInput(car.EstimateSteering(state, RoadAttitude.Flat).AngleFor(0.012f), 0.5f), CarStrategy.Default, 25f), 1f / 60f);
-            return (state.FrontLeft.SurfaceTempC + state.RearRight.SurfaceTempC, state.FrontLeft.Wear + state.RearRight.Wear);
+            return (state.Chassis().FrontLeft.SurfaceTempC + state.Chassis().RearRight.SurfaceTempC, state.Chassis().FrontLeft.Wear + state.Chassis().RearRight.Wear);
         }
         var plain = Corner(new TireConfig());
         var hot = Corner(new TireConfig { HeatScale = 1.5f });
@@ -174,22 +174,22 @@ public sealed class TireLibraryTests
     public void TheSuperTyreGripsAfterTenMinutesAsItDidAtTheStart()
     {
         ICar car = CarLibrary.Load("official:formula_a_mixed").Car;
-        Assert.Equal("official:formula_a/medium", car.Compounds[0].Id);
+        Assert.Equal("official:formula_a/medium", car.As<ICarTires>().Compounds[0].Id);
         float Kept(string compound)
         {
-            var state = new CarState { Speed = 45f, Energy = PowertrainState.Filled(0.8f) };
-            car.FitTires(state, compound);
+            var state = new CarState { Speed = 45f }.WithEnergy(PowertrainState.Filled(0.8f));
+            car.As<ICarTires>().FitTires(state, compound);
             // Measure from the same hot state: the medium would otherwise earn
             // back part of its wear by warming out of the blankets, and the
             // test would be measuring warm-up rather than degradation.
-            state.WarmTires(95f, 95f);
-            float before = car.EstimateCorneringLimit(state, CarStrategy.Default, 45f);
+            state.Chassis().WarmTires(95f, 95f);
+            float before = car.As<ICarEnvelope>().EstimateCorneringLimit(state, CarStrategy.Default, 45f);
             for (int i = 0; i < 60 * 600; i++)
             {
                 state.Speed = 45f;
                 car.Step(state, new CarPhysicsStepInput(new DriverInput(0.016f, 0.5f), CarStrategy.Default, 25f), 1f / 60f);
             }
-            return car.EstimateCorneringLimit(state, CarStrategy.Default, 45f) / before;
+            return car.As<ICarEnvelope>().EstimateCorneringLimit(state, CarStrategy.Default, 45f) / before;
         }
         float super = Kept("official:formula_a/super");
         float medium = Kept("official:formula_a/medium");

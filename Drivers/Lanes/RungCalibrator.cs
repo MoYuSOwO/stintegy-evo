@@ -193,8 +193,8 @@ public sealed class RungCalibrator
                     return;
                 lastLap = car.Progress.Lap;
                 CarState s = car.State;
-                float wear = (s.FrontLeft.Wear + s.FrontRight.Wear + s.RearLeft.Wear + s.RearRight.Wear) / 4f;
-                crossings.Add((t, s.Energy.Primary, wear));
+                float wear = (s.Chassis().FrontLeft.Wear + s.Chassis().FrontRight.Wear + s.Chassis().RearLeft.Wear + s.Chassis().RearRight.Wear) / 4f;
+                crossings.Add((t, s.Chassis().Energy.Primary, wear));
             });
         // Crossings: the start, the end of the out lap, the end of the
         // settling lap, then the measured laps.

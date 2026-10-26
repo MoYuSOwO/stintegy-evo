@@ -62,11 +62,10 @@ public sealed class PowertrainInterfaceTests
     {
         CarConfig config = FuelCar();
         TestTires tires = WarmTires();
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = 55f,
-            Energy = PowertrainState.Filled(1f)
-        };
+            Speed = 55f
+        }.WithEnergy(PowertrainState.Filled(1f));
         state.InstallFreshTires(tires);
 
         for (int i = 0; i < 600; i++)
@@ -84,10 +83,10 @@ public sealed class PowertrainInterfaceTests
             );
         }
 
-        Assert.InRange(state.Energy.Primary, 0.01f, 0.999f);
-        Assert.Equal(1f, state.Energy.Secondary);
+        Assert.InRange(state.Chassis().Energy.Primary, 0.01f, 0.999f);
+        Assert.Equal(1f, state.Chassis().Energy.Secondary);
         Assert.True(
-            CarPhysics.TotalMassKg(config, state.Energy) <
+            CarPhysics.TotalMassKg(config, state.Chassis().Energy) <
             config.MassKg + FullTankMassKg,
             "a car that has been driving should have burned something"
         );
@@ -97,7 +96,7 @@ public sealed class PowertrainInterfaceTests
     public void TheDashboardReadsWhateverIsFitted()
     {
         CarDashboard dashboard = new();
-        CarState state = new() { Energy = new PowertrainState(0.5f, 0.25f) };
+        CarState state = new CarState() { }.WithEnergy(new PowertrainState(0.5f, 0.25f));
         state.InstallFreshTires(WarmTires());
 
         dashboard.Refresh(
@@ -133,7 +132,7 @@ public sealed class PowertrainInterfaceTests
     {
         CarDashboard dashboard = new();
         CarConfig config = new();
-        CarState state = new() { Energy = PowertrainState.Filled(0.62f) };
+        CarState state = new CarState() { }.WithEnergy(PowertrainState.Filled(0.62f));
         state.InstallFreshTires(WarmTires());
 
         dashboard.Refresh(new SingleTrackCar(config, WarmTires()), state, CarStrategy.Default);
@@ -160,7 +159,7 @@ public sealed class PowertrainInterfaceTests
     {
         CarDashboard dashboard = new();
         CarConfig config = new();
-        CarState state = new() { Energy = PowertrainState.Filled(0.02f) };
+        CarState state = new CarState() { }.WithEnergy(PowertrainState.Filled(0.02f));
         state.InstallFreshTires(WarmTires());
 
         dashboard.Refresh(new SingleTrackCar(config, WarmTires()), state, CarStrategy.Default);
@@ -213,7 +212,7 @@ public sealed class PowertrainInterfaceTests
         };
 
         CarDashboard dashboard = new();
-        CarState state = new() { Energy = PowertrainState.Filled(1f) };
+        CarState state = new CarState() { }.WithEnergy(PowertrainState.Filled(1f));
         state.InstallFreshTires(WarmTires());
         dashboard.Refresh(
             new SingleTrackCar(config, WarmTires()),
@@ -305,11 +304,10 @@ public sealed class PowertrainInterfaceTests
     private static float SpeedAfterAStint(CarConfig config, int rung)
     {
         TestTires tires = WarmTires();
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = 40f,
-            Energy = PowertrainState.Filled(1f)
-        };
+            Speed = 40f
+        }.WithEnergy(PowertrainState.Filled(1f));
         state.InstallFreshTires(tires);
         CarStrategy strategy = new(TireUsageMode.Normal, rung);
 
@@ -343,7 +341,7 @@ public sealed class PowertrainInterfaceTests
         float Drag(float tankFraction)
         {
             TestTires tires = WarmTires();
-            CarState state = new() { Speed = 70f, Energy = new PowertrainState(tankFraction, 1f) };
+            CarState state = new CarState() { Speed = 70f }.WithEnergy(new PowertrainState(tankFraction, 1f));
             state.InstallFreshTires(tires);
             CarPhysics.Step(state, config, tires, new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 28f), Dt);
             float mass = config.MassKg + FullTankMassKg * tankFraction;
@@ -357,11 +355,10 @@ public sealed class PowertrainInterfaceTests
     {
         CarConfig config = FuelCar();
         TestTires tires = WarmTires();
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = 30f,
-            Energy = new PowertrainState(tankFraction, 1f)
-        };
+            Speed = 30f
+        }.WithEnergy(new PowertrainState(tankFraction, 1f));
         state.InstallFreshTires(tires);
         CarPhysics.Step(
             state,
@@ -374,8 +371,8 @@ public sealed class PowertrainInterfaceTests
             ),
             Dt
         );
-        return state.FrontLeft.LoadN + state.FrontRight.LoadN +
-               state.RearLeft.LoadN + state.RearRight.LoadN;
+        return state.Chassis().FrontLeft.LoadN + state.Chassis().FrontRight.LoadN +
+               state.Chassis().RearLeft.LoadN + state.Chassis().RearRight.LoadN;
     }
 
     private static CarConfig FuelCar()

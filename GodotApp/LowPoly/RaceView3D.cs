@@ -203,14 +203,15 @@ public partial class RaceView3D : Node3D
             {
                 Position = sample.Center,
                 Heading = sample.Heading,
-                Speed = 0f,
-                Energy = PowertrainState.Filled(0.82f)
+                Speed = 0f
             }
         );
-        car.State.WarmTires(86f, 84f);
+        // Filled and on warm tyres, where the car has stores and tyres to have.
+        (car.Car as ICarStores)?.Fill(car.State, PowertrainState.Filled(0.82f));
+        (car.Car as ICarTires)?.WarmTires(car.State, 86f, 84f);
         Simulation.AddCar(car);
-        // Off the grid: no push until the line.
-        car.LockPushToPassUntilLine();
+        // Off the grid: no button does anything until the line.
+        car.HoldButtonsUntilLine();
     }
 
     private void CreateCarViews()
@@ -289,15 +290,18 @@ public partial class RaceView3D : Node3D
                     strategy = strategy.Nudged(0, car.Car.Ladders[0], command.Power);
                 car.Strategy = strategy;
             }
-            // Push-to-pass is held, not toggled: P down is the button down,
-            // for the car being watched. The car decides whether a push runs.
+            // P is the watched car's first button, held, not toggled: down is
+            // the button down. What it does, and whether it does anything
+            // now, is the car's to say; a car with no buttons ignores it.
             for (int i = 0; i < Simulation.Cars.Count; i++)
             {
                 RaceCar car = Simulation.Cars[i];
+                if (car.Car is not ICarButtons { Buttons.Count: > 0 })
+                    continue;
                 bool held = i == SelectedCarIndex && Input.IsPhysicalKeyPressed(Key.P);
-                if (car.Strategy.PushToPass != held)
+                if (car.Strategy.Holding(0) != held)
                 {
-                    car.Strategy = car.Strategy with { PushToPass = held };
+                    car.Strategy = car.Strategy.WithButton(0, held);
                     _hudDirty = true;
                 }
             }

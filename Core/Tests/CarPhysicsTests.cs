@@ -70,12 +70,12 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState state = CreateState(speed: 24f, batterySoc: 0.8f, tires);
         float startSpeed = state.Speed;
-        float startSoc = state.Energy.Primary;
+        float startSoc = state.Chassis().Energy.Primary;
 
         StepMany(state, car, tires, new DriverInput(0f, 4f), CarStrategy.Default, steps: 30);
 
         Assert.True(state.Speed > startSpeed, "speed should increase under positive drive request");
-        Assert.True(state.Energy.Primary < startSoc, "battery SOC should fall when drive power is used");
+        Assert.True(state.Chassis().Energy.Primary < startSoc, "battery SOC should fall when drive power is used");
         Assert.True(state.Telemetry.DrivePowerWatts > 0f, "drive power should be reported");
         Assert.True(state.Telemetry.ActualLongitudinalAccel > 0f, "net longitudinal accel should remain positive");
     }
@@ -87,12 +87,12 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState state = CreateState(speed: 34f, batterySoc: 0.5f, tires);
         float startSpeed = state.Speed;
-        float startSoc = state.Energy.Primary;
+        float startSoc = state.Chassis().Energy.Primary;
 
         StepMany(state, car, tires, new DriverInput(0f, -7f), CarStrategy.Default, steps: 20);
 
         Assert.True(state.Speed < startSpeed, "speed should fall under brake request");
-        Assert.True(state.Energy.Primary > startSoc, "battery SOC should rise from regen during braking");
+        Assert.True(state.Chassis().Energy.Primary > startSoc, "battery SOC should rise from regen during braking");
         Assert.True(state.Telemetry.RegenPowerWatts > 0f, "regen power should be reported");
         Assert.True(state.Telemetry.ActualLongitudinalAccel < 0f, "net longitudinal accel should be negative");
     }
@@ -876,21 +876,21 @@ public sealed class CarPhysicsTests
         var powertrain = (RangeExtenderPowertrain)car.Powertrain;
         TestTires tires = WarmTires();
         CarState state = CreateState(speed: 30f, batterySoc: 0.5f, tires);
-        float startFuel = state.Energy.Secondary;
+        float startFuel = state.Chassis().Energy.Secondary;
 
         // Flat out for a few seconds: more than the generator makes, so the
         // pack runs down while the fuel burns.
         StepMany(state, car, tires, new DriverInput(0f, car.MaxDriveAcceleration), CarStrategy.Default, steps: 180);
-        Assert.True(state.Energy.Secondary < startFuel, "the generator should burn fuel");
-        float afterPush = state.Energy.Primary;
+        Assert.True(state.Chassis().Energy.Secondary < startFuel, "the generator should burn fuel");
+        float afterPush = state.Chassis().Energy.Primary;
         Assert.True(afterPush < 0.5f, "full power should draw the pack down faster than the generator fills it");
 
         // Coasting: the generator alone refills the pack.
         StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 180);
-        Assert.True(state.Energy.Primary > afterPush, "the generator should refill the pack while the motors rest");
+        Assert.True(state.Chassis().Energy.Primary > afterPush, "the generator should refill the pack while the motors rest");
 
         // Burnt fuel is mass the car no longer carries.
-        Assert.True(CarPhysics.TotalMassKg(car, state.Energy) < car.MassKg + powertrain.FuelAllowanceKg);
+        Assert.True(CarPhysics.TotalMassKg(car, state.Chassis().Energy) < car.MassKg + powertrain.FuelAllowanceKg);
     }
 
     [Fact]
@@ -908,7 +908,7 @@ public sealed class CarPhysicsTests
         StepMany(attack, car, tires, input, new CarStrategy(TireUsageMode.Normal, PowerOutputMode.Attack), steps: 60);
 
         Assert.True(attack.Speed > save.Speed, "attack battery mode should produce more straight-line speed");
-        Assert.True(attack.Energy.Primary < save.Energy.Primary, "attack battery mode should spend more energy");
+        Assert.True(attack.Chassis().Energy.Primary < save.Chassis().Energy.Primary, "attack battery mode should spend more energy");
         Assert.True(attack.Telemetry.DrivePowerWatts > save.Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
     }
 
@@ -961,7 +961,7 @@ public sealed class CarPhysicsTests
         Near.Equal(
             save.Telemetry.RequestedLongitudinalAccel,
             attack.Telemetry.RequestedLongitudinalAccel);
-        Near.Equal(save.Energy.Primary, attack.Energy.Primary);
+        Near.Equal(save.Chassis().Energy.Primary, attack.Chassis().Energy.Primary);
     }
 
     [Fact]
@@ -1438,7 +1438,7 @@ public sealed class CarPhysicsTests
                 input = new Ask(curvature, BrakeForShare(state, car, tires, strategy, curvature, 0.19f));
             }
 
-            state.Energy = PowertrainState.Filled(0.8f);
+            state.Chassis().Energy = PowertrainState.Filled(0.8f);
             CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, input), dt);
         }
 
@@ -1884,7 +1884,7 @@ public sealed class CarPhysicsTests
                 // tyres as it should, and a worn tyre runs at another
                 // temperature; hold the wear so the drift that is left is
                 // the thermal model's own.
-                foreach (TireState tire in new[] { state.FrontLeft, state.FrontRight, state.RearLeft, state.RearRight })
+                foreach (TireState tire in new[] { state.Chassis().FrontLeft, state.Chassis().FrontRight, state.Chassis().RearLeft, state.Chassis().RearRight })
                     tire.Wear = 0f;
             }
             previous = settled;
@@ -2260,17 +2260,17 @@ public sealed class CarPhysicsTests
         {
         }, 32f, 30f);
         CarState state = new();
-        state.FrontLeft.SurfaceTempC = 118f;
-        state.FrontLeft.CoreTempC = 104f;
-        state.FrontLeft.Wear = 0.72f;
-        state.FrontLeft.LoadN = 1234f;
+        state.Chassis().FrontLeft.SurfaceTempC = 118f;
+        state.Chassis().FrontLeft.CoreTempC = 104f;
+        state.Chassis().FrontLeft.Wear = 0.72f;
+        state.Chassis().FrontLeft.LoadN = 1234f;
 
         state.InstallFreshTires(tires);
 
-        Near.Equal(32f, state.FrontLeft.SurfaceTempC);
-        Near.Equal(30f, state.FrontLeft.CoreTempC);
-        Near.Equal(0f, state.FrontLeft.Wear);
-        Near.Equal(0f, state.FrontLeft.LoadN);
+        Near.Equal(32f, state.Chassis().FrontLeft.SurfaceTempC);
+        Near.Equal(30f, state.Chassis().FrontLeft.CoreTempC);
+        Near.Equal(0f, state.Chassis().FrontLeft.Wear);
+        Near.Equal(0f, state.Chassis().FrontLeft.LoadN);
     }
 
 
@@ -2358,11 +2358,10 @@ public sealed class CarPhysicsTests
 
     private static CarState CreateState(float speed, float batterySoc, TestTires tires)
     {
-        CarState state = new()
+        CarState state = new CarState()
         {
-            Speed = speed,
-            Energy = PowertrainState.Filled(batterySoc)
-        };
+            Speed = speed
+        }.WithEnergy(PowertrainState.Filled(batterySoc));
         state.InstallFreshTires(tires);
         return state;
     }
@@ -2484,10 +2483,10 @@ public sealed class CarPhysicsTests
             // wear decide the grip, the grip decides the slip angles, and
             // the slip angles are the whole of what is being carried back.
             rehearsal.Speed = speed;
-            rehearsal.FrontLeft.CopyFrom(state.FrontLeft);
-            rehearsal.FrontRight.CopyFrom(state.FrontRight);
-            rehearsal.RearLeft.CopyFrom(state.RearLeft);
-            rehearsal.RearRight.CopyFrom(state.RearRight);
+            rehearsal.Chassis().FrontLeft.CopyFrom(state.Chassis().FrontLeft);
+            rehearsal.Chassis().FrontRight.CopyFrom(state.Chassis().FrontRight);
+            rehearsal.Chassis().RearLeft.CopyFrom(state.Chassis().RearLeft);
+            rehearsal.Chassis().RearRight.CopyFrom(state.Chassis().RearRight);
         }
         state.SteerAngleRadians = rehearsal.SteerAngleRadians;
         state.SideslipAngleRadians = rehearsal.SideslipAngleRadians;
@@ -2509,7 +2508,7 @@ public sealed class CarPhysicsTests
         float dt
     )
     {
-        float temperature = state.FrontLeft.SurfaceTempC;
+        float temperature = state.Chassis().FrontLeft.SurfaceTempC;
         CarPhysics.Step(
             state,
             car,
@@ -2543,7 +2542,7 @@ public sealed class CarPhysicsTests
 
     private static void MakeRearTiresHotAndWorn(CarState state)
     {
-        foreach (TireState tire in new[] { state.RearLeft, state.RearRight })
+        foreach (TireState tire in new[] { state.Chassis().RearLeft, state.Chassis().RearRight })
         {
             tire.SurfaceTempC = 140f;
             tire.CoreTempC = 130f;
@@ -2553,7 +2552,7 @@ public sealed class CarPhysicsTests
 
     private static void MakeFrontTiresHotAndWorn(CarState state)
     {
-        foreach (TireState tire in new[] { state.FrontLeft, state.FrontRight })
+        foreach (TireState tire in new[] { state.Chassis().FrontLeft, state.Chassis().FrontRight })
         {
             tire.SurfaceTempC = 130f;
             tire.CoreTempC = 122f;
@@ -2639,10 +2638,10 @@ public sealed class CarPhysicsTests
 
     private static IEnumerable<TireState> Tires(CarState state)
     {
-        yield return state.FrontLeft;
-        yield return state.FrontRight;
-        yield return state.RearLeft;
-        yield return state.RearRight;
+        yield return state.Chassis().FrontLeft;
+        yield return state.Chassis().FrontRight;
+        yield return state.Chassis().RearLeft;
+        yield return state.Chassis().RearRight;
     }
 
     private static TestTires WarmTires()
@@ -2697,60 +2696,60 @@ public sealed class CarPhysicsTests
     private static float AverageSurfaceTemp(CarState state)
     {
         return (
-            state.FrontLeft.SurfaceTempC +
-            state.FrontRight.SurfaceTempC +
-            state.RearLeft.SurfaceTempC +
-            state.RearRight.SurfaceTempC
+            state.Chassis().FrontLeft.SurfaceTempC +
+            state.Chassis().FrontRight.SurfaceTempC +
+            state.Chassis().RearLeft.SurfaceTempC +
+            state.Chassis().RearRight.SurfaceTempC
         ) * 0.25f;
     }
 
     private static float AverageCoreTemp(CarState state)
     {
         return (
-            state.FrontLeft.CoreTempC +
-            state.FrontRight.CoreTempC +
-            state.RearLeft.CoreTempC +
-            state.RearRight.CoreTempC
+            state.Chassis().FrontLeft.CoreTempC +
+            state.Chassis().FrontRight.CoreTempC +
+            state.Chassis().RearLeft.CoreTempC +
+            state.Chassis().RearRight.CoreTempC
         ) * 0.25f;
     }
 
     private static float AverageFrontCoreTemp(CarState state)
     {
-        return (state.FrontLeft.CoreTempC + state.FrontRight.CoreTempC) * 0.5f;
+        return (state.Chassis().FrontLeft.CoreTempC + state.Chassis().FrontRight.CoreTempC) * 0.5f;
     }
 
     private static float AverageRearCoreTemp(CarState state)
     {
-        return (state.RearLeft.CoreTempC + state.RearRight.CoreTempC) * 0.5f;
+        return (state.Chassis().RearLeft.CoreTempC + state.Chassis().RearRight.CoreTempC) * 0.5f;
     }
 
     private static float AverageRearSurfaceTemp(CarState state)
     {
-        return (state.RearLeft.SurfaceTempC + state.RearRight.SurfaceTempC) * 0.5f;
+        return (state.Chassis().RearLeft.SurfaceTempC + state.Chassis().RearRight.SurfaceTempC) * 0.5f;
     }
 
     private static float AverageFrontSurfaceTemp(CarState state)
     {
-        return (state.FrontLeft.SurfaceTempC + state.FrontRight.SurfaceTempC) * 0.5f;
+        return (state.Chassis().FrontLeft.SurfaceTempC + state.Chassis().FrontRight.SurfaceTempC) * 0.5f;
     }
 
     private static float AverageFrontWear(CarState state)
     {
-        return (state.FrontLeft.Wear + state.FrontRight.Wear) * 0.5f;
+        return (state.Chassis().FrontLeft.Wear + state.Chassis().FrontRight.Wear) * 0.5f;
     }
 
     private static float AverageRearWear(CarState state)
     {
-        return (state.RearLeft.Wear + state.RearRight.Wear) * 0.5f;
+        return (state.Chassis().RearLeft.Wear + state.Chassis().RearRight.Wear) * 0.5f;
     }
 
     private static float AverageWear(CarState state)
     {
         return (
-            state.FrontLeft.Wear +
-            state.FrontRight.Wear +
-            state.RearLeft.Wear +
-            state.RearRight.Wear
+            state.Chassis().FrontLeft.Wear +
+            state.Chassis().FrontRight.Wear +
+            state.Chassis().RearLeft.Wear +
+            state.Chassis().RearRight.Wear
         ) * 0.25f;
     }
 }

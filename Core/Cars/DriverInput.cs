@@ -53,12 +53,26 @@ public readonly record struct CarStrategy
     private int R3 { get; init; }
     private int R4 { get; init; }
 
+    // Which of the car's buttons are held, one bit each in the car's order
+    // (ICarButtons.Buttons).
+    private int Held { get; init; }
+
+    /// <summary>The most buttons a car can have.</summary>
+    public const int MaximumButtons = 8;
+
     /// <summary>
-    /// The push-to-pass button, held. Whether a push actually runs is the
-    /// car's to say: the allowance, the cooldown and race control's lock
-    /// all have a vote (<see cref="PushToPassState"/>).
+    /// Whether the car's <paramref name="button"/>th button is held. What
+    /// holding it does, and whether it does anything now, is the car's to
+    /// say (<see cref="ICarButtons"/>).
     /// </summary>
-    public bool PushToPass { get; init; }
+    public bool Holding(int button) => (Held & Bit(button)) != 0;
+
+    /// <summary>The same strategy with the car's <paramref name="button"/>th button held, or let go.</summary>
+    public CarStrategy WithButton(int button, bool held) =>
+        this with { Held = held ? Held | Bit(button) : Held & ~Bit(button) };
+
+    private static int Bit(int button) =>
+        button is >= 0 and < MaximumButtons ? 1 << button : throw new ArgumentOutOfRangeException(nameof(button));
 
     /// <summary>A share of the tyres' grip to use in place of what the tyre rung allows.</summary>
     public float? TireGripUsageOverride { get; init; }

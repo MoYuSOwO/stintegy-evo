@@ -74,6 +74,22 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
         CarTelemetry telemetry = car.State.Telemetry;
         DriverInput input = telemetry.Input;
         CarState state = car.State;
+        // Stores and tyres only where the car has them; blank where it has not.
+        object primary = car.Car is ICarStores stores ? stores.Stores(state).Primary : "";
+        var tires = new object[16];
+        Array.Fill(tires, "");
+        if (car.Car is ICarTires tyres)
+        {
+            WheelId[] wheels = [WheelId.FrontLeft, WheelId.FrontRight, WheelId.RearLeft, WheelId.RearRight];
+            for (int w = 0; w < 4; w++)
+            {
+                TireReading tire = tyres.Tire(state, wheels[w]);
+                tires[w] = tire.SurfaceTempC;
+                tires[4 + w] = tire.CoreTempC;
+                tires[8 + w] = tire.Wear;
+                tires[12 + w] = tire.LoadN;
+            }
+        }
 
         WriteValues(
             raceTimeSeconds,
@@ -104,25 +120,13 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             telemetry.SideslipAngleRadians,
             telemetry.YawRateRadiansPerSecond,
             telemetry.YawAccelerationRadiansPerSecondSquared,
-            state.Energy.Primary,
+            primary,
             environment.AirTempC,
             environment.TrackTempC,
-            state.FrontLeft.SurfaceTempC,
-            state.FrontRight.SurfaceTempC,
-            state.RearLeft.SurfaceTempC,
-            state.RearRight.SurfaceTempC,
-            state.FrontLeft.CoreTempC,
-            state.FrontRight.CoreTempC,
-            state.RearLeft.CoreTempC,
-            state.RearRight.CoreTempC,
-            state.FrontLeft.Wear,
-            state.FrontRight.Wear,
-            state.RearLeft.Wear,
-            state.RearRight.Wear,
-            state.FrontLeft.LoadN,
-            state.FrontRight.LoadN,
-            state.RearLeft.LoadN,
-            state.RearRight.LoadN,
+            tires[0], tires[1], tires[2], tires[3],
+            tires[4], tires[5], tires[6], tires[7],
+            tires[8], tires[9], tires[10], tires[11],
+            tires[12], tires[13], tires[14], tires[15],
             car.LastBoundaryContact.HasValue ? 1 : 0,
             car.HitCarThisStep ? 1 : 0
         );

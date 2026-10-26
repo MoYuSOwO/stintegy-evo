@@ -68,9 +68,10 @@ public sealed class TurnLag
     // not a delay.
     private static float At(CarConfig car, TireConfig tires, float speed)
     {
-        var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = speed, Energy = PowertrainState.Filled(0.8f) };
-        state.InstallFreshTires();
-        state.WarmTires(90f, 90f);
+        var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = speed };
+        state.Chassis().Energy = PowertrainState.Filled(0.8f);
+        state.Chassis().InstallFreshTires();
+        state.Chassis().WarmTires(90f, 90f);
         float settled = SettledLateralAccel / (speed * speed);
         float ask = StepLateralAccel / (speed * speed);
         int settle = (int)(SettleSeconds / Dt), window = (int)(WindowSeconds / Dt);

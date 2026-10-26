@@ -54,9 +54,9 @@ public partial class LaneDriverDemo : Node
             new CarState
             {
                 Position = here,
-                Heading = System.MathF.Atan2(next.Y - here.Y, next.X - here.X),
-                Energy = PowertrainState.Filled(0.8f)
+                Heading = System.MathF.Atan2(next.Y - here.Y, next.X - here.X)
             });
+        (car.Car as ICarStores)?.Fill(car.State, PowertrainState.Filled(0.8f));
 
         var simulation = new RaceSimulation(track);
         simulation.AddCar(car);

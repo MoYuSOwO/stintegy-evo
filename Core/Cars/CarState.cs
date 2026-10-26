@@ -18,6 +18,13 @@ public interface ICarStateExtension
     void CopyFrom(ICarStateExtension other);
 }
 
+/// <summary>
+/// One car's running state. What every car has is here: a rigid body's
+/// motion on the road, the referee's count of its spins, the air it sits in
+/// and what it last reported. Anything that belongs to the kind of car it is
+/// -- tyres, stores, buttons -- is the car's own (<see cref="Own"/>), read
+/// through the car's features (<see cref="ICarTires"/> and the rest).
+/// </summary>
 public sealed class CarState
 {
     public Vector2 Position { get; set; }
@@ -63,14 +70,6 @@ public sealed class CarState
     /// </summary>
     public int SpinEvents { get; set; }
 
-    /// <summary>
-    /// How much of each of its consumables the car has left. What the slots
-    /// mean is declared by the powertrain fitted to it - charge on an
-    /// electric car, fuel on a petrol one - so read them through that rather
-    /// than assuming.
-    /// </summary>
-    public PowertrainState Energy { get; set; } = PowertrainState.Full;
-
     public float FilteredLongitudinalAccel { get; set; }
     public float FilteredLateralAccel { get; set; }
 
@@ -107,22 +106,6 @@ public sealed class CarState
     /// </summary>
     public float DownforceVelocityDeficit { get; set; }
 
-    /// <summary>
-    /// How strongly the active aero is trimmed to a leading car's wake, zero
-    /// to one. Physics sets it from push-to-pass every step; it hands back
-    /// the configured share of the downforce the wake took, capped at
-    /// clean-air downforce, and does nothing in clean air.
-    /// </summary>
-    public float ActiveAero { get; set; }
-
-    /// <summary>The car's push-to-pass: what is used, what is running, what is waiting.</summary>
-    public PushToPassState PushToPass { get; set; }
-
-    public TireState FrontLeft { get; } = new();
-    public TireState FrontRight { get; } = new();
-    public TireState RearLeft { get; } = new();
-    public TireState RearRight { get; } = new();
-
     public CarTelemetry Telemetry { get; internal set; }
 
     public Vector2 Forward => new(MathF.Cos(Heading), MathF.Sin(Heading));
@@ -134,55 +117,11 @@ public sealed class CarState
     public void Normalize()
     {
         Speed = Math.Max(0f, Speed);
-        PowertrainState energy = Energy;
-        energy.Clamp();
-        Energy = energy;
         Heading = MathHelper.NormalizeAngle(Heading);
         SideslipAngleRadians = MathHelper.NormalizeAngle(SideslipAngleRadians);
         AirVelocityDeficit = Math.Clamp(AirVelocityDeficit, 0f, 1f);
         WakeDownforceLoss = Math.Clamp(WakeDownforceLoss, 0f, 1f);
         DownforceVelocityDeficit = Math.Clamp(DownforceVelocityDeficit, 0f, 1f);
-        ActiveAero = Math.Clamp(ActiveAero, 0f, 1f);
-    }
-
-    public TireState GetTire(WheelId wheel)
-    {
-        return wheel switch
-        {
-            WheelId.FrontLeft => FrontLeft,
-            WheelId.FrontRight => FrontRight,
-            WheelId.RearLeft => RearLeft,
-            WheelId.RearRight => RearRight,
-            _ => FrontLeft
-        };
-    }
-
-    /// <summary>
-    /// The compound on the car, by its full id (<see cref="TireCompound.Id"/>);
-    /// none before the car has been given any (<see cref="ICar.FitTires"/>).
-    /// </summary>
-    public string? Compound { get; set; }
-
-    /// <summary>A new tyre on every corner, off the blankets, whatever the compound.</summary>
-    public void InstallFreshTires()
-    {
-        foreach (TireState tire in new[] { FrontLeft, FrontRight, RearLeft, RearRight })
-            tire.Reset(Tire.BlanketTempC, Tire.BlanketTempC);
-    }
-
-    /// <summary>
-    /// Every tyre brought to these temperatures, in place of the blankets'
-    /// (<see cref="Tire.BlanketTempC"/>): for a host or a test that wants
-    /// a car on tyres already warm, or stone cold. Which tyres are on and
-    /// how worn they are is the car's (<see cref="ICar.FitTires"/>).
-    /// </summary>
-    public void WarmTires(float surfaceTempC, float coreTempC)
-    {
-        foreach (TireState tire in new[] { FrontLeft, FrontRight, RearLeft, RearRight })
-        {
-            tire.SurfaceTempC = surfaceTempC;
-            tire.CoreTempC = coreTempC;
-        }
     }
 
     /// <summary>The car's own state, which only that car reads (<see cref="ICarStateExtension"/>).</summary>
@@ -202,22 +141,14 @@ public sealed class CarState
             Spinning = Spinning,
             SpinSeconds = SpinSeconds,
             SpinEvents = SpinEvents,
-            Energy = Energy,
-            Compound = Compound,
             FilteredLongitudinalAccel = FilteredLongitudinalAccel,
             FilteredLateralAccel = FilteredLateralAccel,
             AirVelocityDeficit = AirVelocityDeficit,
             WakeDownforceLoss = WakeDownforceLoss,
             DownforceVelocityDeficit = DownforceVelocityDeficit,
-            ActiveAero = ActiveAero,
-            PushToPass = PushToPass,
             Telemetry = Telemetry,
             Own = Own?.Clone()
         };
-        clone.FrontLeft.CopyFrom(FrontLeft);
-        clone.FrontRight.CopyFrom(FrontRight);
-        clone.RearLeft.CopyFrom(RearLeft);
-        clone.RearRight.CopyFrom(RearRight);
         return clone;
     }
 
@@ -233,15 +164,11 @@ public sealed class CarState
         Spinning = other.Spinning;
         SpinSeconds = other.SpinSeconds;
         SpinEvents = other.SpinEvents;
-        Energy = other.Energy;
-        Compound = other.Compound;
         FilteredLongitudinalAccel = other.FilteredLongitudinalAccel;
         FilteredLateralAccel = other.FilteredLateralAccel;
         AirVelocityDeficit = other.AirVelocityDeficit;
         WakeDownforceLoss = other.WakeDownforceLoss;
         DownforceVelocityDeficit = other.DownforceVelocityDeficit;
-        ActiveAero = other.ActiveAero;
-        PushToPass = other.PushToPass;
         Telemetry = other.Telemetry;
         if (other.Own is null)
             Own = null;
@@ -249,9 +176,5 @@ public sealed class CarState
             Own.CopyFrom(other.Own);
         else
             Own = other.Own.Clone();
-        FrontLeft.CopyFrom(other.FrontLeft);
-        FrontRight.CopyFrom(other.FrontRight);
-        RearLeft.CopyFrom(other.RearLeft);
-        RearRight.CopyFrom(other.RearRight);
     }
 }

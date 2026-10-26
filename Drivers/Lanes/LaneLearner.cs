@@ -20,10 +20,10 @@ public sealed class LaneLearner
     /// rear stands at five to seven in every fast corner with no slide at
     /// all (RearSlideSeverity nought), and the learning slowed them.
     /// </summary>
-    public float TroubleSlipRadians { get; init; } = Tire.PeakSlipAngleRadians;
+    public float TroubleSlipRadians { get; init; } = StockCar.Feel.PeakSlipAngleRadians;
     public float CleanErrorMeters { get; init; } = 0.6f;
     /// <summary>Under the angle a tyre gives what it holds at: room left to go faster.</summary>
-    public float CleanSlipRadians { get; init; } = Tire.SlipAngleAtShare(Tire.SustainablePeakShare);
+    public float CleanSlipRadians { get; init; } = StockCar.Feel.SlipAngleAtShare(StockCar.Feel.SustainablePeakShare);
     public float LookBackMeters { get; init; } = 150f;
     public float LookAheadMeters { get; init; } = 20f;
     public float Penalty { get; init; } = 0.03f;

@@ -42,49 +42,37 @@ public readonly record struct RaceCarSnapshot(
     public float AirVelocityDeficit { get; init; }
     public float DownforceVelocityDeficit { get; init; }
     public float WakeDownforceLoss { get; init; }
-    public float ActiveAero { get; init; }
 
-    /// <summary>Push-to-pass as it stands: running, locked, seconds left and the cooldown still to wait.</summary>
-    public bool PushToPassActive { get; init; }
-    public bool PushToPassLocked { get; init; }
-    public float PushToPassRemainingSeconds { get; init; }
-    public float PushToPassCooldownSeconds { get; init; }
-    public TireSnapshot FrontLeft { get; init; }
-    public TireSnapshot FrontRight { get; init; }
-    public TireSnapshot RearLeft { get; init; }
-    public TireSnapshot RearRight { get; init; }
+    /// <summary>
+    /// The four tyres, front left, front right, rear left, rear right; empty
+    /// on a car without changeable tyres (<see cref="ICarTires"/>).
+    /// </summary>
+    public ImmutableArray<TireReading> Tires { get; init; }
+
+    /// <summary>The compound on the car, by its full id; none on a car without changeable tyres.</summary>
+    public string? TireCompound { get; init; }
+
+    /// <summary>The car's buttons as they stand (<see cref="ICarButtons"/>), in its order; empty on a car with none.</summary>
+    public ImmutableArray<CarButtonReading> Buttons { get; init; }
+
+    /// <summary>How much of each axle's grip the car is using; none on a car that does not say (<see cref="ICarGripFeel"/>).</summary>
+    public GripUse? GripUse { get; init; }
+
+    /// <summary>The car's stores (<see cref="ICarStores"/>); empty on a car with none.</summary>
     public ImmutableArray<PowertrainResourceSnapshot> Resources { get; init; }
+
+    /// <summary>The limits a controller is told about; zero on a car with no envelope (<see cref="ICarEnvelope"/>).</summary>
     public CarCapabilities Capabilities { get; init; }
 
     /// <summary>
     /// The road-wheel angle for any curvature, read off the car before the
     /// step: what a driver who knew the car exactly would turn the wheels
     /// to (<see cref="SteeringEstimate.AngleFor"/>). The car obeys the angle
-    /// a driver gives it, not this.
+    /// a driver gives it, not this. Empty on a car with no envelope
+    /// (<see cref="ICarEnvelope"/>).
     /// </summary>
     public SteeringEstimate Steering { get; init; }
     public CarTelemetry Telemetry { get; init; }
-
-    /// <summary>
-    /// The car's own instruments (<see cref="ICar.TelemetryChannels"/>), as
-    /// they read this step: what a driver may know of this kind of car that
-    /// not every car reports, found by the channel's id.
-    /// </summary>
-    public IReadOnlyList<TelemetryChannel>? InstrumentChannels { get; init; }
-
-    /// <summary>The readings of <see cref="InstrumentChannels"/>, in order.</summary>
-    public ImmutableArray<float> Instruments { get; init; }
-
-    /// <summary>The reading of the instrument with this id, or none if the car has no such instrument.</summary>
-    public float? Instrument(string id)
-    {
-        if (InstrumentChannels is null || Instruments.IsDefault)
-            return null;
-        for (int i = 0; i < InstrumentChannels.Count && i < Instruments.Length; i++)
-            if (InstrumentChannels[i].Id == id)
-                return Instruments[i];
-        return null;
-    }
     public float BoundaryContactSeconds { get; init; }
     public bool HitCar { get; init; }
     public float RaceDistanceMeters { get; init; }
@@ -109,13 +97,33 @@ public readonly record struct RaceCarSnapshot(
     {
         CarState state = car.State;
         ICar model = car.Car;
-        IPowertrain powertrain = model.Powertrain;
-        var resources = ImmutableArray.CreateBuilder<PowertrainResourceSnapshot>(powertrain.Resources.Count);
-        for (int i = 0; i < powertrain.Resources.Count && i < PowertrainState.Capacity; i++)
+        var resources = ImmutableArray<PowertrainResourceSnapshot>.Empty;
+        if (model is ICarStores stores)
         {
-            PowertrainResourceInfo info = powertrain.Resources[i];
-            resources.Add(new(info.Id, info.Label, info.Class, state.Energy[i], info.FullMassKg * state.Energy[i]));
+            PowertrainState left = stores.Stores(state);
+            IReadOnlyList<PowertrainResourceInfo> declared = stores.Powertrain.Resources;
+            var builder = ImmutableArray.CreateBuilder<PowertrainResourceSnapshot>(declared.Count);
+            for (int i = 0; i < declared.Count && i < PowertrainState.Capacity; i++)
+            {
+                PowertrainResourceInfo info = declared[i];
+                builder.Add(new(info.Id, info.Label, info.Class, left[i], info.FullMassKg * left[i]));
+            }
+            resources = builder.ToImmutable();
         }
+        var tires = ImmutableArray<TireReading>.Empty;
+        if (model is ICarTires tyres)
+            tires = [
+                tyres.Tire(state, WheelId.FrontLeft), tyres.Tire(state, WheelId.FrontRight),
+                tyres.Tire(state, WheelId.RearLeft), tyres.Tire(state, WheelId.RearRight)];
+        var buttons = ImmutableArray<CarButtonReading>.Empty;
+        if (model is ICarButtons held)
+        {
+            var builder = ImmutableArray.CreateBuilder<CarButtonReading>(held.Buttons.Count);
+            for (int i = 0; i < held.Buttons.Count; i++)
+                builder.Add(held.Read(state, i));
+            buttons = builder.ToImmutable();
+        }
+        ICarEnvelope? envelope = model as ICarEnvelope;
         return new RaceCarSnapshot(
             car.Id,
             state.Position,
@@ -146,21 +154,14 @@ public readonly record struct RaceCarSnapshot(
             AirVelocityDeficit = state.AirVelocityDeficit,
             DownforceVelocityDeficit = state.DownforceVelocityDeficit,
             WakeDownforceLoss = state.WakeDownforceLoss,
-            ActiveAero = state.ActiveAero,
-            PushToPassActive = state.PushToPass.Active,
-            PushToPassLocked = state.PushToPass.Locked,
-            PushToPassRemainingSeconds = model.PushToPassRemainingSeconds(state),
-            PushToPassCooldownSeconds = state.PushToPass.CooldownSeconds,
-            FrontLeft = TireSnapshot.Capture(state.FrontLeft, model.TireWindow(state, WheelId.FrontLeft)),
-            FrontRight = TireSnapshot.Capture(state.FrontRight, model.TireWindow(state, WheelId.FrontRight)),
-            RearLeft = TireSnapshot.Capture(state.RearLeft, model.TireWindow(state, WheelId.RearLeft)),
-            RearRight = TireSnapshot.Capture(state.RearRight, model.TireWindow(state, WheelId.RearRight)),
-            Resources = resources.ToImmutable(),
-            Capabilities = model.Capabilities(state, car.Strategy),
-            Steering = model.EstimateSteering(state, RaceSimulation.RoadAttitudeAt(pose.Sample, pose.D)),
+            Tires = tires,
+            TireCompound = (model as ICarTires)?.Compound(state),
+            Buttons = buttons,
+            GripUse = (model as ICarGripFeel)?.GripUse(state),
+            Resources = resources,
+            Capabilities = envelope?.Capabilities(state, car.Strategy) ?? default,
+            Steering = envelope?.EstimateSteering(state, RaceSimulation.RoadAttitudeAt(pose.Sample, pose.D)) ?? default,
             Telemetry = state.Telemetry,
-            InstrumentChannels = model.TelemetryChannels,
-            Instruments = ReadInstruments(model, state),
             BoundaryContactSeconds = car.BoundaryContactSeconds,
             HitCar = car.HitCarThisStep,
             RaceDistanceMeters = car.Progress.RaceDistanceMeters,
@@ -169,30 +170,12 @@ public readonly record struct RaceCarSnapshot(
             WheelBaseMeters = model.Spec.WheelBaseMeters
         };
     }
-
-    private static ImmutableArray<float> ReadInstruments(ICar model, CarState state)
-    {
-        int count = model.TelemetryChannels.Count;
-        if (count == 0)
-            return ImmutableArray<float>.Empty;
-        var values = new float[count];
-        model.ReadTelemetry(state, values);
-        return ImmutableArray.Create(values);
-    }
 }
 
 /// <summary>
 /// A value copy of one tyre, with where that tyre works as its car tells it.
 /// It never exposes the live TireState.
 /// </summary>
-public readonly record struct TireSnapshot(float SurfaceTempC, float CoreTempC, float Wear, float LoadN, float SurfaceGrip)
-{
-    public TireWindow Window { get; init; }
-
-    internal static TireSnapshot Capture(TireState tire, TireWindow window) =>
-        new(tire.SurfaceTempC, tire.CoreTempC, tire.Wear, tire.LoadN, tire.SurfaceGrip) { Window = window };
-}
-
 public readonly record struct PowertrainResourceSnapshot(
     string Id, string Label, PowertrainResourceClass Class, float Fraction, float RemainingMassKg);
 
