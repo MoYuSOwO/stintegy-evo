@@ -289,6 +289,18 @@ public partial class RaceView3D : Node3D
                     strategy = strategy.Nudged(0, car.Car.Ladders[0], command.Power);
                 car.Strategy = strategy;
             }
+            // Push-to-pass is held, not toggled: P down is the button down,
+            // for the car being watched. The car decides whether a push runs.
+            for (int i = 0; i < Simulation.Cars.Count; i++)
+            {
+                RaceCar car = Simulation.Cars[i];
+                bool held = i == SelectedCarIndex && Input.IsPhysicalKeyPressed(Key.P);
+                if (car.Strategy.PushToPass != held)
+                {
+                    car.Strategy = car.Strategy with { PushToPass = held };
+                    _hudDirty = true;
+                }
+            }
 
             if (_hudDirty || _hudElapsed >= 0.2)
             {
