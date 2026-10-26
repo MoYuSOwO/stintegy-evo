@@ -240,7 +240,7 @@ public sealed class LaneDriver : IDriverController
     private readonly float[][] _speed = new float[LaneSet.LaneCount][];
     private LaneSet _lanes = null!;
     private LaneEnvelope _envelope;
-    private float _referenceLateral = 1f;
+    private readonly Dictionary<string, float> _referenceLateral = new();
     private LanePerformance? _performance;
     private readonly float[][] _corner = new float[LaneSet.LaneCount][];
     private readonly float[][] _brake = new float[LaneSet.LaneCount][];
@@ -490,7 +490,7 @@ public sealed class LaneDriver : IDriverController
         _boundClearFor = 0f;
         _boundStepIn = 0f;
         Array.Clear(_planned);
-        _referenceLateral = ReferenceLateral();
+        _referenceLateral.Clear();
         _performance = UseAbilities ? new LanePerformance(context.Profile) : null;
         _performance?.Update(0, context.Car.TrackS, 0f);
         _adaptability = Math.Clamp(context.Profile.Abilities.Adaptability * 0.01f, 0f, 1f);
@@ -512,17 +512,27 @@ public sealed class LaneDriver : IDriverController
     }
 
     /// <summary>
-    /// What this car corners at 40 m/s on new tyres at their best temperature
-    /// on a clean road: the full grip every grip level is a share of.
+    /// What this car corners at 40 m/s on new tyres of this compound at
+    /// their best temperature on a clean road: the full grip every grip
+    /// level is a share of. Each compound's own best is its full grip, so a
+    /// harder tyre at its best drives on the notes as the softer one did at
+    /// its best, and nothing is learned again for it.
     /// </summary>
-    private float ReferenceLateral()
+    private float ReferenceLateral(string? compound)
     {
+        string key = compound ?? "";
+        if (_referenceLateral.TryGetValue(key, out float known))
+            return known;
         var ideal = new CarState();
+        TireReading fresh = _tyres.Tire(ideal, WheelId.FrontLeft);
+        _tyres.Assume(ideal, compound, [fresh, fresh, fresh, fresh]);
         TireWindow window = _tyres.Tire(ideal, WheelId.FrontLeft).Window;
         float temp = 0.5f * (window.IdealSurfaceLowC + window.IdealSurfaceHighC);
         var best = new TireReading(temp, temp, 0f, 0f, 1f);
-        _tyres.Assume(ideal, null, [best, best, best, best]);
-        return MathF.Max(1f, LaneEnvelope.From(ideal, _carEnvelope, _feel, CarStrategy.Default).Lateral(40f));
+        _tyres.Assume(ideal, compound, [best, best, best, best]);
+        float reference = MathF.Max(1f, LaneEnvelope.From(ideal, _carEnvelope, _feel, CarStrategy.Default).Lateral(40f));
+        _referenceLateral[key] = reference;
+        return reference;
     }
 
     /// <summary>Grip as the driver reads it, as a share of this circuit at its best, from the last refresh.</summary>
@@ -1610,7 +1620,7 @@ public sealed class LaneDriver : IDriverController
         float asphalt = _trackView?.AsphaltGrip ?? 1f;
         float road = roadGrip * asphalt;
         LaneEnvelope truth = LaneEnvelope.From(_plan, _carEnvelope, _feel, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road);
-        ActualGrip = truth.Lateral(40f) / (_referenceLateral * MathF.Max(asphalt, 0.05f));
+        ActualGrip = truth.Lateral(40f) / (ReferenceLateral(car.TireCompound) * MathF.Max(asphalt, 0.05f));
         // Adaptability: the plan is made on the grip the driver believes in.
         // The hands still feel the axles as they are; only the plan is late.
         Grip = _performance?.PerceiveGrip(ActualGrip, sinceLastRead) ?? ActualGrip;

@@ -84,7 +84,9 @@ public static class LaneLapRunner
         float startingWear = 0f,
         float startingCharge = 0.8f,
         CarConfig? carConfig = null,
-        float tireTempC = 90f
+        float tireTempC = 90f,
+        ICar? model = null,
+        string? compound = null
     )
     {
         LaneSet lanes = file.LanesFor(track);
@@ -101,7 +103,7 @@ public static class LaneLapRunner
         var tires = tireConfig ?? DevelopmentTyres.Super;
         // One kind of car, raced and planned with: the driver keeps its own
         // copy of what it is, and knows it only by its features.
-        ICar model = new SingleTrackCar(carConfig, tires);
+        model ??= new SingleTrackCar(carConfig, tires);
         var driver = new LaneDriver(file, model)
         {
             Gains = gains ?? new LaneDriverGains(),
@@ -124,6 +126,8 @@ public static class LaneLapRunner
         {
             Strategy = strategy ?? CarStrategy.Default
         };
+        if (compound is not null)
+            ((ICarTires)model).FitTires(car.State, compound);
         car.State.Chassis().Energy = PowertrainState.Filled(startingCharge);
         car.State.Chassis().WarmTires(tireTempC, tireTempC);
         if (startingWear > 0f)

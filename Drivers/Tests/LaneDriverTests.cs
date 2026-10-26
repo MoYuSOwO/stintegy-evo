@@ -1,3 +1,4 @@
+using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Track;
@@ -223,6 +224,39 @@ public sealed class LaneDriverTests
         _output.WriteLine($"{r}  grip read {read.Min():F3}..{read.Max():F3}");
         Assert.True(r.Finished, r.ToString());
         Assert.Equal(0, r.Spins);
+        Assert.Equal(0f, r.OffTrackSeconds);
+        read.Sort();
+        Assert.InRange(read[read.Count / 2], 0.95f, 1.05f);
+    }
+
+    /// <summary>
+    /// Full grip is the compound on the car at its best, not the first one
+    /// the car lists: a harder tyre with a tenth less grip, new and in its
+    /// window, reads as full grip and drives on the notes learned on the
+    /// softer one, cleanly, without anything learned again for it.
+    /// </summary>
+    [Fact]
+    public void FullGripIsTheCompoundOnTheCarAtItsBest()
+    {
+        TrackData track = CircuitLibrary.Load("silverstone");
+        TireConfig medium = TireLibrary.Resolve("official:formula_a/medium")[0].Front;
+        // The medium with a tenth less grip: a copy through its own numbers.
+        var numbers = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(medium))!;
+        numbers[nameof(TireConfig.BaseMu)] = medium.BaseMu * 0.9f;
+        TireConfig harder = System.Text.Json.JsonSerializer.Deserialize<TireConfig>(numbers)!;
+        Assert.Equal(medium.BaseMu * 0.9f, harder.BaseMu);
+        var hard = new TireCompound("hard", "Hard", harder, harder);
+        var soft = new TireCompound("medium", "Medium", medium, medium);
+        var car = new SingleTrackCar(StockCar.Config, [soft, hard]);
+        var read = new List<float>();
+        LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.ForCircuit("silverstone", track), model: car, compound: "hard",
+            onStep: (_, d, t) =>
+            {
+                if (t > 5f)
+                    read.Add(d.ActualGrip);
+            });
+        _output.WriteLine($"{r}  grip read {read.Min():F3}..{read.Max():F3}");
+        Assert.True(r.Finished, r.ToString());
         Assert.Equal(0f, r.OffTrackSeconds);
         read.Sort();
         Assert.InRange(read[read.Count / 2], 0.95f, 1.05f);
