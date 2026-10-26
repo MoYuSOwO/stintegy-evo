@@ -125,10 +125,7 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         for (int k = 0; k < lanes.Length; k++)
         {
             for (int level = highest; level >= lowest; level--)
-            {
-                byLane[k].Factors(lanes[k], level).CopyTo(file.Factors(lanes[k], level), 0);
-                byLane[k].BrakeFactors(lanes[k], level).CopyTo(file.BrakeFactors(lanes[k], level), 0);
-            }
+                file.TakeLevel(byLane[k], lanes[k], level);
             byLane[k].Steer(lanes[k]).CopyTo(file.Steer(lanes[k]), 0);
         }
         file.MarkLearnedNow();

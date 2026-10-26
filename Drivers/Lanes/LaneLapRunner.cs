@@ -40,6 +40,9 @@ public sealed class LaneLapResult
     /// <summary>Per station: whether the driver was braking there.</summary>
     public bool[] StationBraking { get; init; } = [];
 
+    /// <summary>Per station: whether the driver was on the throttle there.</summary>
+    public bool[] StationThrottle { get; init; } = [];
+
     /// <summary>
     /// Stations where the driver wanted more wheel than the axles would give:
     /// the car had stopped following its plan, whether or not it had run
@@ -139,6 +142,7 @@ public static class LaneLapRunner
         var stationSlip = new float[count];
         var stationShortfall = new float[count];
         var stationBraking = new bool[count];
+        var stationThrottle = new bool[count];
         var stationOff = new bool[count];
         var stationCapBound = new bool[count];
         var signedSum = new float[count];
@@ -211,6 +215,8 @@ public static class LaneLapRunner
                 stationShortfall[k] = MathF.Max(stationShortfall[k], plan - car.State.Speed);
                 if (tel.CommandAccel < -3f)
                     stationBraking[k] = true;
+                if (tel.CommandAccel > 1f)
+                    stationThrottle[k] = true;
                 if (tel.CurvatureCap != 0f && MathF.Sign(tel.WantedCurvature) == MathF.Sign(tel.CurvatureCap) &&
                     MathF.Abs(tel.WantedCurvature) > MathF.Abs(tel.CurvatureCap) * CapOverreach)
                     stationCapBound[k] = true;
@@ -246,6 +252,7 @@ public static class LaneLapRunner
             StationSlip = stationSlip,
             StationShortfall = stationShortfall,
             StationBraking = stationBraking,
+            StationThrottle = stationThrottle,
             StationOff = stationOff,
             StationCapBound = stationCapBound,
             StationSpeed = speedSum.Select((sum, i) => signedCount[i] > 0 ? sum / signedCount[i] : 0f).ToArray(),

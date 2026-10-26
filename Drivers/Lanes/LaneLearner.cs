@@ -46,6 +46,15 @@ public sealed class LaneLearner
     public bool LearnBraking { get; init; } = true;
     public float MaximumBrakeFactor { get; init; } = 1.08f;
 
+    /// <summary>
+    /// Learns the throttle out of each corner: trouble where the driver was
+    /// on the throttle takes from the traction there, not from the corner
+    /// speed, so a corner whose exit bites keeps its speed and loses only
+    /// its throttle. At most this much over the driver's general share.
+    /// </summary>
+    public bool LearnTraction { get; init; } = true;
+    public float MaximumTractionFactor { get; init; } = 1.08f;
+
     /// <summary>After this many laps without a new best, go back to the best and take smaller steps.</summary>
     public int Patience { get; init; } = 8;
 
@@ -159,6 +168,7 @@ public sealed class LaneLearner
             {
                 float[] lateral = current.Factors(lane, level), brake = current.BrakeFactors(lane, level);
                 float[] newLateral = candidate.Factors(lane, level), newBrake = candidate.BrakeFactors(lane, level);
+                float[] traction = current.TractionFactors(lane, level), newTraction = candidate.TractionFactors(lane, level);
                 for (int k = 0; k < sectors; k++)
                 {
                     int next = (k + 1) % sectors;
@@ -189,6 +199,7 @@ public sealed class LaneLearner
                     {
                         lateral[i] = newLateral[i];
                         brake[i] = newBrake[i];
+                        traction[i] = newTraction[i];
                     }
                     kept++;
                 }
@@ -325,17 +336,22 @@ public sealed class LaneLearner
         int n = lanes.Count;
         float[] lateral = file.Factors(lane, level);
         float[] brake = file.BrakeFactors(lane, level);
+        float[] traction = file.TractionFactors(lane, level);
         var lateralScale = new float[n];
         var brakeScale = new float[n];
+        var tractionScale = new float[n];
         Array.Fill(lateralScale, 1f);
         Array.Fill(brakeScale, 1f);
+        Array.Fill(tractionScale, 1f);
         var troubled = new bool[n];
         int back = (int)MathF.Ceiling(LookBackMeters / lanes.Spacing);
         int ahead = (int)MathF.Ceiling(LookAheadMeters / lanes.Spacing);
         bool sawLap = lap.StationError.Length == n && lap.FlyingLapSeconds > 0f && LearnBraking;
+        bool sawThrottle = lap.StationError.Length == n && lap.FlyingLapSeconds > 0f && LearnTraction && lap.StationThrottle.Length == n;
 
         // Trouble is charged to whichever the driver was doing on the way in:
-        // stations it was braking at give up braking, the rest give up corner.
+        // stations it was braking at give up braking, stations it was on the
+        // throttle at give up traction, the rest give up corner.
         void Punish(int at, float penalty, bool both)
         {
             for (int k = -back; k <= ahead; k++)
@@ -343,10 +359,13 @@ public sealed class LaneLearner
                 int i = lanes.Wrap(at + k);
                 troubled[i] = true;
                 bool braking = sawLap && lap.StationBraking[i];
-                if (both || !sawLap || !braking || k >= 0)
+                bool throttle = sawThrottle && lap.StationThrottle[i] && !braking;
+                if (both || !sawLap || (!braking && !throttle) || (k >= 0 && !throttle))
                     lateralScale[i] = MathF.Min(lateralScale[i], 1f - penalty);
                 if (both || braking)
                     brakeScale[i] = MathF.Min(brakeScale[i], 1f - penalty);
+                if (LearnTraction && (both || throttle))
+                    tractionScale[i] = MathF.Min(tractionScale[i], 1f - penalty);
             }
         }
 
@@ -394,6 +413,8 @@ public sealed class LaneLearner
                     lateralScale[i] = 1f + Reward * step;
                     if (LearnBraking && lap.StationBraking[i])
                         brakeScale[i] = 1f + Reward * step;
+                    if (sawThrottle && lap.StationThrottle[i])
+                        tractionScale[i] = 1f + Reward * step;
                 }
             }
         }
@@ -401,6 +422,8 @@ public sealed class LaneLearner
         Apply(lanes, lateral, lateralScale, MinimumFactor, MaximumFactor);
         if (LearnBraking)
             Apply(lanes, brake, brakeScale, MinimumFactor, MaximumBrakeFactor);
+        if (LearnTraction)
+            Apply(lanes, traction, tractionScale, MinimumFactor, MaximumTractionFactor);
     }
 
     private void Apply(LaneSet lanes, float[] factors, float[] scale, float minimum, float maximum)

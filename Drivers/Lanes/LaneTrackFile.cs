@@ -6,7 +6,8 @@ namespace StintegyEVO.Drivers.Lanes;
 
 /// <summary>
 /// One circuit's tuning file: the four lanes and, per station, lane and grip
-/// level, the learned share of the envelope the plan may spend there.
+/// level, the learned share of the envelope the plan may spend there, and
+/// of the tyre the throttle may take out of a corner.
 ///
 /// Factors are multipliers on the live envelope, never speeds, so a worn
 /// tyre or a flat battery still moves the plan. They are kept per grip
@@ -24,6 +25,7 @@ public sealed class LaneTrackFile
     private LaneSet? _lanes;
     private float[][][] _corner = [];
     private float[][][] _brake = [];
+    private float[][][] _traction = [];
     private float[][] _steer = [];
     private readonly LaneBakeOptions _bake;
 
@@ -35,6 +37,7 @@ public sealed class LaneTrackFile
         {
             _corner = corner ?? NewFactors(lanes.Count);
             _brake = brake ?? NewFactors(lanes.Count);
+            _traction = NewTraction(lanes.Count);
             _steer = NewSteer(lanes.Count);
         }
     }
@@ -70,6 +73,7 @@ public sealed class LaneTrackFile
             _lanes = bake();
             _corner = NewFactors(_lanes.Count);
             _brake = NewFactors(_lanes.Count);
+            _traction = NewTraction(_lanes.Count);
             _steer = NewSteer(_lanes.Count);
         }
         return _lanes;
@@ -85,6 +89,38 @@ public sealed class LaneTrackFile
     public float[] Factors(LaneId lane) => Factors(lane, TopLevel);
 
     public float[] BrakeFactors(LaneId lane) => BrakeFactors(lane, TopLevel);
+
+    /// <summary>
+    /// Traction factors for one lane at one grip level: per station, a
+    /// multiplier on the share of the tyre the throttle may take while the
+    /// corner is still on it. One is the driver's general share; below it,
+    /// a corner whose exit has bitten before.
+    /// </summary>
+    public float[] TractionFactors(LaneId lane, int level) => _traction[level][(int)lane];
+
+    /// <summary>Everything learned for one lane at one grip level, taken from another file on the same lanes.</summary>
+    public void TakeLevel(LaneTrackFile from, LaneId lane, int level)
+    {
+        from.Factors(lane, level).CopyTo(Factors(lane, level), 0);
+        from.BrakeFactors(lane, level).CopyTo(BrakeFactors(lane, level), 0);
+        from.TractionFactors(lane, level).CopyTo(TractionFactors(lane, level), 0);
+    }
+
+    /// <summary>
+    /// A lane's traction factor at one station and this grip, interpolated
+    /// between the levels either side, and no more hopeful than any level
+    /// with more grip.
+    /// </summary>
+    public float TractionAt(LaneId lane, float grip, int station)
+    {
+        (int lo, int hi, float t) = Bracket(grip);
+        float[] tLo = _traction[lo][(int)lane], tHi = _traction[hi][(int)lane];
+        int i = ((station % tLo.Length) + tLo.Length) % tLo.Length;
+        float value = tLo[i] + (tHi[i] - tLo[i]) * t;
+        for (int k = t > 0f ? hi : lo + 1; k < GripLevels.Length; k++)
+            value = MathF.Min(value, _traction[k][(int)lane][i]);
+        return value;
+    }
 
     /// <summary>
     /// The factors for a lane at this grip, interpolated between the two
@@ -149,6 +185,8 @@ public sealed class LaneTrackFile
         static float[][][] Copy(float[][][] source) =>
             source.Select(level => level.Select(lane => (float[])lane.Clone()).ToArray()).ToArray();
         var copy = new LaneTrackFile(_lanes, Copy(_corner), Copy(_brake), _bake);
+        if (_traction.Length == GripLevels.Length)
+            copy._traction = Copy(_traction);
         if (_steer.Length == LaneSet.LaneCount)
             copy._steer = _steer.Select(lane => (float[])lane.Clone()).ToArray();
         copy.Energy = Energy;
@@ -180,6 +218,9 @@ public sealed class LaneTrackFile
         return factors;
     }
 
+    private static float[][][] NewTraction(int count) =>
+        GripLevels.Select(_ => Enumerable.Range(0, LaneSet.LaneCount).Select(_ => Enumerable.Repeat(1f, count).ToArray()).ToArray()).ToArray();
+
     /// <summary>Puts one grip level back to its conservative start, for relearning it.</summary>
     public void ResetLevel(int level)
     {
@@ -187,6 +228,7 @@ public sealed class LaneTrackFile
         {
             Array.Fill(_corner[level][lane], StartingFactors[level]);
             Array.Fill(_brake[level][lane], StartingFactors[level]);
+            Array.Fill(_traction[level][lane], 1f);
         }
     }
 
@@ -208,6 +250,8 @@ public sealed class LaneTrackFile
                 header.Add($"corner_{lane}@{Level(level)}");
             foreach (string lane in LaneNames)
                 header.Add($"brake_{lane}@{Level(level)}");
+            foreach (string lane in LaneNames)
+                header.Add($"traction_{lane}@{Level(level)}");
         }
         foreach (string lane in LaneNames)
             header.Add($"steer_{lane}");
@@ -230,6 +274,8 @@ public sealed class LaneTrackFile
                     row.Add(_corner[level][lane][i].ToString("F4", CultureInfo.InvariantCulture));
                 for (int lane = 0; lane < LaneSet.LaneCount; lane++)
                     row.Add(_brake[level][lane][i].ToString("F4", CultureInfo.InvariantCulture));
+                for (int lane = 0; lane < LaneSet.LaneCount; lane++)
+                    row.Add(_traction[level][lane][i].ToString("F4", CultureInfo.InvariantCulture));
             }
             for (int lane = 0; lane < LaneSet.LaneCount; lane++)
                 row.Add(_steer[lane][i].ToString("F6", CultureInfo.InvariantCulture));
@@ -326,6 +372,7 @@ public sealed class LaneTrackFile
         LaneSet lanes = LaneSet.Load(path, sample, lengthMeters);
         float[][][] corner = NewFactors(lanes.Count);
         float[][][] brake = NewFactors(lanes.Count);
+        float[][][] traction = NewTraction(lanes.Count);
         float[][] steer = NewSteer(lanes.Count);
         Dictionary<string, int>? columns = null;
         int row = 0;
@@ -348,6 +395,8 @@ public sealed class LaneTrackFile
                         corner[level][lane][row] = float.Parse(cols[c], CultureInfo.InvariantCulture);
                     if (columns.TryGetValue($"brake_{name}@{Level(level)}", out int b))
                         brake[level][lane][row] = float.Parse(cols[b], CultureInfo.InvariantCulture);
+                    if (columns.TryGetValue($"traction_{name}@{Level(level)}", out int tr))
+                        traction[level][lane][row] = float.Parse(cols[tr], CultureInfo.InvariantCulture);
                 }
                 if (columns.TryGetValue($"factor_{name}", out int oldCorner))
                     corner[TopLevel][lane][row] = float.Parse(cols[oldCorner], CultureInfo.InvariantCulture);
@@ -374,6 +423,7 @@ public sealed class LaneTrackFile
             steer[middle] = LaneSet.Between(steer[left], steer[right]);
         }
         var file = new LaneTrackFile(lanes, corner, brake, null);
+        file._traction = traction;
         file._steer = steer;
         return file;
     }

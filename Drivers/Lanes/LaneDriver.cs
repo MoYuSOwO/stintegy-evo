@@ -694,7 +694,8 @@ public sealed class LaneDriver : IDriverController
         float circle = (_style is { } throttleStyle
                 ? throttleStyle.Traction + (_performance?.LimitOveruse ?? 0f)
                 : (Gains.TractionUse + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority)
-            * (1f + 2f * (_performance?.CornerOverstep ?? 0f));
+            * (1f + 2f * (_performance?.CornerOverstep ?? 0f))
+            * TractionHere((int)MathF.Round(station));
         // One axle's room for drive: the circle a tyre holds (about nine
         // tenths of its peak, TireSlipCurve.SustainablePeakShare) with the
         // corner it is carrying, or about to carry, taken out. Below walking
@@ -1083,6 +1084,17 @@ public sealed class LaneDriver : IDriverController
     private float _lastAccel;
     private bool _brakedSinceThrottle;
     private float _sinceThrottle = float.PositiveInfinity;
+
+    /// <summary>
+    /// What the notes say of this corner's exit, at the grip the driver
+    /// believes in: the share of the general traction to take here, blended
+    /// across the lanes as the line is.
+    /// </summary>
+    private float TractionHere(int station)
+    {
+        float At(LaneId lane) => _file.TractionAt(lane, Grip, station);
+        return LaneSet.Blend(At(LaneId.Free), At(LaneId.Left), At(LaneId.Right), At(LaneId.Middle), Range, Side);
+    }
 
     // How fast a foot presses the pedals down, m/s² a second.
     private const float FootBrakeRate = 600f, FootThrottleRate = 240f;
