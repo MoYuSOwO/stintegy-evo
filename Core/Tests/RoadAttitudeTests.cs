@@ -481,7 +481,7 @@ public sealed class RoadAttitudeTests
         yield return ("sepang", TrackFactory.SepangStyleTestTrack());
         yield return ("speedway", TrackFactory.BankedSpeedwayTestTrack());
         yield return ("simple", TrackFactory.SimpleTestTrack());
-        yield return ("simple-left", TrackFactory.SimpleTestTrack(isLeft: true));
+        yield return ("simple_left", TrackFactory.SimpleTestTrack(isLeft: true));
     }
 
     private static float ElevationRange(TrackData track)

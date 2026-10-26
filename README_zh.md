@@ -87,7 +87,7 @@ for (int i = 0; i < 60 * 240; i++)   // four simulated minutes
 
 - **世界与物理：** 车辆状态、滑移角轮胎、动力系统资源、温度与磨损、抓地、道路姿态与倾角、碰撞、尾流、赛道界限与墙、确定性步进。
 - **领域契约：** 稳定身份、带 0..100 能力评级的车手档案、车辆能力、有类型的资源槽位、赛道几何、不可变的帧快照，以及控制器接口。
-- **内容即数据：** 车是带命名空间的包（`data/<命名空间>/cars/<名字>/`：一个 `car.json` 加一个基于游戏自带底盘的程序集，见 [`Cars/MODDING.md`](Cars/MODDING.md)）；配方放在轮胎包里（`data/<命名空间>/tyres/<名字>/tyres.json`），由车声明，所有车共用同一个轮胎模型；赛道是文件夹（`Circuits/<id>/`：`circuit.json`、每米一行的 `track.csv`、布景），由离线工具 `Tools/Circuits` 从测绘源数据生成，见 [`Circuits/README.md`](Circuits/README.md)。
+- **内容即数据：** 车是带命名空间的包（`data/<命名空间>/cars/<名字>/`：一个 `car.json` 加一个基于游戏自带底盘的程序集，见 [`Cars/MODDING.md`](Cars/MODDING.md)）；配方放在轮胎包里（`data/<命名空间>/tyres/<名字>/tyres.json`），由车声明，所有车共用同一个轮胎模型；赛道同样是带命名空间的包（`data/<命名空间>/circuits/<名字>/`：`circuit.json`、每米一行的 `track.csv`、布景），由离线工具 `Tools/Circuits` 从测绘源数据生成，见 [`Circuits/README.md`](Circuits/README.md)。
 - **表现层：** Godot 3D 视图、相机、HUD 和物理状态 CSV 记录。旧的 2D `RaceView` / `Levels/root.tscn` 仅作兼容保留。
 
 这里**没有**：规则驾驶器或学习驾驶器、赛车线求解器、观测向量、神经网络、训练程序和模型文件。世界不偏好任何行车线，也不在物理里藏一个车手模型。
@@ -96,6 +96,7 @@ for (int i = 0; i < 60 * 240; i++)   // four simulated minutes
 
 - **控制器。** `IDriverController.GetControl` 读取 `DriverContext`（车手档案、只读赛道视图和一帧冻结快照），返回 `DriverInput`：前轮要打到的角度、期望纵向加速度和可选的刹车配比偏移。车只把轮子打到车手给的角度，不会替车手修正；`RaceCarSnapshot.Steering` 给出一个完全了解这辆车的车手为某个曲率会选的角度。车也可以没有车手，此时由宿主设置 `RaceCar.ExternalInput`；零命令意味着滑行，不会把车冻住。
 - **车有什么。** 每辆车都是路上的一个刚体（`ICar`：运动、尺寸、仪表盘）。除此之外的东西，车通过实现对应的功能接口来声明：可换的轮胎（`ICarTires`）、消耗的储能（`ICarStores`）、车手按住的按钮（`ICarButtons`）、可供规划的性能包络（`ICarEnvelope`）、抓地的手感（`ICarGripFeel`）。只有具备某项功能的车，快照里才有这项功能的读数。控制器声明自己需要什么（`IDriverController.Needs`）：缺少必需功能的车，车手不会被放进去；可选功能有就用，没有就不用。
+- **车手是包。** 车手包（`data/<命名空间>/drivers/<名字>/`：一个 `driver.json` 加一个只含一个 `IDriverDefinition` 的程序集）由 `DriverLibrary` 像车一样加载。开赛前 `DriverLibrary.Check` 会拒绝缺少车手所需功能的车；车手在这条赛道没有这台车的笔记，或笔记是在这台车的另一个版本上学的，会提醒维修墙。车手对一台车学到的东西放在车包里：`drivers/<车手命名空间>/<车手名字>/<赛道命名空间>/<赛道名字>/`；车手本人的经验放在存档指定的地方（`IDriverProgressStore`）。所有 id 都拆成文件夹，冒号不会进路径。
 - **冻结、收集、推进。** 每个子步里，所有控制器读同一帧冻结快照，全部命令收集并校验完之后物理才推进。没有哪个控制器会看到被其他控制器改过的世界。
 - **车上的装置。** 命令与轮胎之间的一切都是公示的装置，参数在 `CarConfig` 上。没装某个装置的车，该装置参数为零；接口不变。
   - **合成抓地限制器**（combined-grip limiter）是本系别允许的电子稳定装置。它裁剪每根轴的驱动与制动，使轮胎合成用量不超过摩擦圆的一个固定份额（各轮胎档位相同）；车速高于 10 m/s 时，滑移角过峰的那根轴驱动清零。它不碰转向。`CombinedGripLimiterStrength = 0` 即未装机。
@@ -120,4 +121,4 @@ python3 Tools/verify_boundary.py --godot /path/to/godot-dotnet
 
 - **代码**采用 [GNU Affero 通用公共许可证 v3.0](LICENSE)。
 - **内容与素材**适用单独的[内容许可说明](CONTENT_LICENSE_zh.md)，涵盖项目素材、第三方材料和官方发行版。
-- `Tools/Circuits/Sources/` 及由它生成的 `Circuits/` 赛道文件夹中的**第三方赛道数据**保留原有的 LGPL-3.0 或 MIT 条款，详见 [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md)。
+- `Tools/Circuits/Sources/` 及由它生成的 `data/official/circuits/` 赛道包中的**第三方赛道数据**保留原有的 LGPL-3.0 或 MIT 条款，详见 [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md)。

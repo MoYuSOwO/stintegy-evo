@@ -24,7 +24,7 @@
     <Compile Remove="Drivers/**/*.cs" />
     <!-- Car packs are their own assemblies. -->
     <Compile Remove="Cars/**/*.cs" />
-    <!-- The circuit tool writes Circuits/ offline; it is not part of the game. -->
+    <!-- The circuit tool writes data/official/circuits/ offline; it is not part of the game. -->
     <Compile Remove="Tools/Circuits/**/*.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->
     <Compile Remove="Tools/Tests/**/*.cs" />

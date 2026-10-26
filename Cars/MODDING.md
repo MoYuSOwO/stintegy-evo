@@ -27,14 +27,18 @@ letters, digits and underscores, and they are the folder names:
   "format": 1,
   "id": "my_car",
   "name": "My Car",
+  "version": 1,
   "assembly": "someone.my_car.dll",
   "model": "car.glb",
   "tyres": ["official:formula_a"]
 }
 ```
 
-`id` must be the folder's name. `definition` names the class to build when
-the assembly holds more than one. `tyres` is what the car runs (see
+`id` must be the folder's name. `version` is yours to raise whenever you
+change how the car drives: what a driver learned on the car was learned on a
+version, and is out of date on another (building the same pack again changes
+nothing). `definition` names the class to build when the assembly holds more
+than one. `tyres` is what the car runs (see
 [Tyres](#tyres)); a car that names none does not load.
 
 ## The code
@@ -76,7 +80,13 @@ decides for itself what lies between two. What the car's dashboard shows and wha
 yours too (`Describe`, `TelemetryChannels`).
 
 The driver is not part of a car and cannot be changed by one: every car is
-driven by the same drivers, through `ICar`.
+driven by the same drivers, through `ICar`. Drivers are packs of their own
+(`data/<namespace>/drivers/<name>/`, a `driver.json` and an assembly with one
+`IDriverDefinition`). What a driver learns about your car at a circuit is
+about your car, so it is kept in your pack, under the driver and the circuit
+by their ids: `drivers/<driver namespace>/<driver name>/<circuit
+namespace>/<circuit name>/`, with a `notes.json` saying which version of the
+car it was learned on. Ship those folders and the drivers know your car.
 
 Copy `Cars/official/formula_a_mixed/formula_a_mixed.csproj` for the build
 settings: Core is referenced but not copied, because the game supplies it.
