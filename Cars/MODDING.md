@@ -69,7 +69,10 @@ tyre is pressed and how it is used and is told the grip it has.
 What the strategist can set is yours to declare: `ICar.Ladders`, up to
 four — an output setting, an engine map, a hybrid's deployment — each with
 its own rungs and names. The tyre ladder is the game's and every car has
-it. What the car's dashboard shows and what its telemetry records are
+it. A ladder is set anywhere from zero to one along its travel, and its
+rungs are evenly spaced marks on it (`ModeLadder.Mark`): your powertrain is
+handed that setting, should give exactly the named setting on a mark, and
+decides for itself what lies between two. What the car's dashboard shows and what its telemetry records are
 yours too (`Describe`, `TelemetryChannels`).
 
 The driver is not part of a car and cannot be changed by one: every car is
