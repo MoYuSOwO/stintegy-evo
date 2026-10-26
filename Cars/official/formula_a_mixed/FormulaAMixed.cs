@@ -56,7 +56,14 @@ public sealed class FormulaAMixed : ICarDefinition
         MaxCurvatureRequest = 0.32f,
         MaxDriveAcceleration = 12f,
         MaxBrakeAccel = 57f,
-        CombinedGripLimiterStrength = 1f,
+        // No traction control: the driver's right foot holds the throttle to
+        // what the tyres will take, and a driver without the feel for it
+        // spins the rear. The device stays in the physics for a car that has one.
+        CombinedGripLimiterStrength = 0f,
+        // The brake balance is the driver's dial on a fixed split: 57 per
+        // cent front is about the load at the front braking hard from
+        // racing speed, downforce and weight transfer together.
+        FixedFrontBrakeShare = 0.57f,
         CombinedGripLimiterPastPeakMinimumSpeed = 10f,
         RollingDragAccel = 0.18f,
         WakeVelocityDeficit = 0.11f,
