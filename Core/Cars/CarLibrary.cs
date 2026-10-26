@@ -40,6 +40,14 @@ public sealed record CarManifest
 
     public string Name { get; init; } = "";
 
+    /// <summary>
+    /// The car's own version: its author raises it whenever the car is
+    /// changed in a way that changes how it drives. Everything learned on
+    /// the car -- a driver's notes -- is learned on a version, and is stale
+    /// on another.
+    /// </summary>
+    public int Version { get; init; } = 1;
+
     /// <summary>The pack's assembly, relative to its folder.</summary>
     public string Assembly { get; init; } = "";
 
@@ -70,9 +78,11 @@ public sealed record CarManifest
 
 /// <summary>A car pack, loaded: what it is, where it came from, and the car.</summary>
 /// <param name="Fingerprint">
-/// A short hash of the pack's code and the tyres it runs. Anything learned
-/// on this car -- lanes, a driver's notes -- is learned on these, and is
-/// stale when either changes.
+/// A short hash of what the car is: its version, the physics it runs on
+/// (<see cref="CarPhysics.Revision"/>), what it says of itself and the tyres
+/// it runs. Anything learned on this car -- a driver's notes -- is learned
+/// on these, and is stale when any of them changes; building the same pack
+/// again does not change it.
 /// </param>
 public sealed record LoadedCar(ResourceId Id, CarManifest Manifest, string Folder, ICar Car, string Fingerprint);
 
@@ -178,11 +188,23 @@ public static class CarLibrary
         if (car.Ladders.Count > CarStrategy.MaximumLadders)
             throw new InvalidDataException($"Car '{id}' declares {car.Ladders.Count} ladders; at most {CarStrategy.MaximumLadders}.");
 
-        // The code and every tyre pack it runs, in the order declared.
-        var hashed = new StringBuilder(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
+        string fingerprint = Fingerprint(id, manifest, car);
+        return new LoadedCar(id, manifest, folder, car, fingerprint);
+    }
+
+    /// <summary>What anything learned on a car was learned on (<see cref="LoadedCar.Fingerprint"/>).</summary>
+    internal static string Fingerprint(ResourceId id, CarManifest manifest, ICar car)
+    {
+        // What the car is, not the bytes it was built into: the same pack
+        // built again against a new game is the same car.
+        var hashed = new StringBuilder()
+            .Append(id).Append(':').Append(manifest.Version)
+            .Append(':').Append(CarPhysics.Revision)
+            .Append(':').Append(JsonSerializer.Serialize(car.Spec));
+        foreach (ModeLadder ladder in car.Ladders)
+            hashed.Append(':').Append(ladder.Id).Append('=').Append(string.Join(',', ladder.Rungs));
         foreach (string pack in manifest.Tyres.Select(t => t.Split(TireLibrary.CompoundSeparator)[0]).Distinct())
             hashed.Append(':').Append(TireLibrary.Load(pack).Fingerprint);
-        string fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashed.ToString())), 0, 6).ToLowerInvariant();
-        return new LoadedCar(id, manifest, folder, car, fingerprint);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashed.ToString())), 0, 6).ToLowerInvariant();
     }
 }
