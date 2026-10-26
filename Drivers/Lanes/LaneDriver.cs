@@ -278,6 +278,26 @@ public sealed class LaneDriver : IDriverController
 
     public LanePerformance? Performance => _performance;
 
+    /// <summary>
+    /// What this driver has learned of this circuit in this car, on top of
+    /// the car's notes. Set it before the session from wherever the game
+    /// keeps drivers' progress (IDriverProgressStore) and read it back after
+    /// to keep what was learned; left unset, or learned on another layout,
+    /// the driver starts as on a circuit never driven. Only a driver with
+    /// ratings learns as it drives, and only when LearnsAsItDrives.
+    /// </summary>
+    public LaneFamiliarity? Familiarity { get; set; }
+
+    /// <summary>Off for the offline learner: the car's notes are learned on the car, not a driver's nerves.</summary>
+    public bool LearnsAsItDrives { get; init; } = true;
+
+    // The familiarity in force: null when the driver does not learn as it drives.
+    private LaneFamiliarity? _familiar;
+    private float _adaptability = 1f;
+    private int _familiarSegment = -1;
+    private bool _scaredInSegment;
+    private int _familiarLap = int.MinValue;
+
     /// <summary>How long before each braking zone the driver lifts, seconds: the energy rung's.</summary>
     public float CoastSeconds { get; private set; }
 
@@ -430,6 +450,17 @@ public sealed class LaneDriver : IDriverController
         _referenceLateral = ReferenceLateral();
         _performance = UseAbilities ? new LanePerformance(context.Profile) : null;
         _performance?.Update(0, context.Car.TrackS, 0f);
+        _adaptability = Math.Clamp(context.Profile.Abilities.Adaptability * 0.01f, 0f, 1f);
+        _familiar = null;
+        if (_performance is not null && LearnsAsItDrives)
+        {
+            if (Familiarity is null || !Familiarity.Fits(context.Track.LengthMeters))
+                Familiarity = LaneFamiliarity.NewCircuit(context.Track.LengthMeters, _adaptability);
+            _familiar = Familiarity;
+        }
+        _familiarSegment = -1;
+        _scaredInSegment = false;
+        _familiarLap = int.MinValue;
         PlanAhead(context.Car, context.Environment.SurfaceGripScalar, 0f);
         _sincePlan = PlanIntervalSeconds * Phase(context.Car.Id);
     }
@@ -467,6 +498,7 @@ public sealed class LaneDriver : IDriverController
             int lap = (int)MathF.Floor(car.RaceDistanceMeters / MathF.Max(car.TrackLengthMeters, 1f));
             _performance.Rung = (int)car.Strategy.TireMode - 1 + _performance.TyreRungDrift;
             _performance.Update(lap, car.TrackS, dt);
+            Familiarise(car, lap);
         }
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
@@ -838,6 +870,8 @@ public sealed class LaneDriver : IDriverController
         _outside = OutsideEdgeMeters(context, car);
         if (car.Spinning)
         {
+            if (_phase != SlidePhase.Spun)
+                Scared(car.TrackS, big: true);
             _phase = SlidePhase.Spun;
             _slidingFor = 0f;
             return;
@@ -847,7 +881,10 @@ public sealed class LaneDriver : IDriverController
         if (_phase == SlidePhase.None &&
             (_outside > 0.5f ||
              (MathF.Abs(facing) > Gains.RejoinWrongWayRadians && car.SpeedMetersPerSecond < Gains.RejoinSpeed)))
+        {
             _phase = SlidePhase.Rejoin;
+            Scared(car.TrackS, big: true);
+        }
         // Back on the road and pointing down it, the driving is the
         // ordinary kind again, whatever the speed: holding a car that has
         // come back on at forty metres a second to a crawl only threw it
@@ -1019,6 +1056,7 @@ public sealed class LaneDriver : IDriverController
                 _phase = SlidePhase.Catch;
                 RecoveryEvents++;
                 performance.BeginRecovery();
+                Scared(car.TrackS, big: false);
             }
         }
         else if (severity < 0.05f)
@@ -1093,7 +1131,8 @@ public sealed class LaneDriver : IDriverController
     private float TractionHere(int station)
     {
         float At(LaneId lane) => _file.TractionAt(lane, Grip, station);
-        return LaneSet.Blend(At(LaneId.Free), At(LaneId.Left), At(LaneId.Right), At(LaneId.Middle), Range, Side);
+        float noted = LaneSet.Blend(At(LaneId.Free), At(LaneId.Left), At(LaneId.Right), At(LaneId.Middle), Range, Side);
+        return _familiar is { } familiar ? noted * familiar.Traction[familiar.SegmentOf(station * _lanes.Spacing)] : noted;
     }
 
     // How fast a foot presses the pedals down, m/s² a second.
@@ -1101,6 +1140,44 @@ public sealed class LaneDriver : IDriverController
 
     // Braking harder than this is a braking zone, so the throttle after it is a corner's exit.
     private const float ExitAfterBrakingAccel = -5f;
+
+    /// <summary>
+    /// Something went wrong here: the driver takes a little less of the
+    /// notes into it from now on, of whatever they were doing on the way.
+    /// </summary>
+    private void Scared(float s, bool big)
+    {
+        if (_familiar is not { } familiar)
+            return;
+        LaneFamiliarity.Pedal pedal = _lastAccel < -3f ? LaneFamiliarity.Pedal.Braking
+            : _lastAccel > 1f ? LaneFamiliarity.Pedal.Throttle
+            : LaneFamiliarity.Pedal.Corner;
+        familiar.Scare(s, pedal, big);
+        _scaredInSegment = true;
+    }
+
+    /// <summary>
+    /// Every segment left behind without a scare, driven normally, gives
+    /// back some of what is held there; and a lap's count.
+    /// </summary>
+    private void Familiarise(RaceCarSnapshot car, int lap)
+    {
+        if (_familiar is not { } familiar)
+            return;
+        if (lap != _familiarLap)
+        {
+            if (_familiarLap != int.MinValue)
+                familiar.Laps++;
+            _familiarLap = lap;
+        }
+        int segment = familiar.SegmentOf(car.TrackS);
+        if (segment == _familiarSegment)
+            return;
+        if (_familiarSegment >= 0 && !_scaredInSegment && _phase == SlidePhase.None)
+            familiar.Clean(_familiarSegment, _adaptability);
+        _familiarSegment = segment;
+        _scaredInSegment = false;
+    }
 
     /// <summary>
     /// Pace out of a corner: the first throttle after a braking zone. A
@@ -1449,6 +1526,17 @@ public sealed class LaneDriver : IDriverController
         for (int lane = 0; lane < (sides ? LaneSet.LaneCount : 1); lane++)
         {
             _file.FactorsAtGrip((LaneId)lane, Grip, start, count, _corner[lane], _brake[lane]);
+            // The car's notes, as much of them as this driver takes here.
+            if (_familiar is { } familiar)
+            {
+                for (int k = 0, n = _lanes.Count; k < Math.Min(count, n); k++)
+                {
+                    int i = _lanes.Wrap(start + k);
+                    int segment = familiar.SegmentOf(i * _lanes.Spacing);
+                    _corner[lane][i] *= familiar.Corner[segment];
+                    _brake[lane][i] *= familiar.Brake[segment];
+                }
+            }
         }
     }
 

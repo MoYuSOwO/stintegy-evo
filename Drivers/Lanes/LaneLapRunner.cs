@@ -102,7 +102,9 @@ public static class LaneLapRunner
         var driver = new LaneDriver(file, carConfig, tires)
         {
             Gains = gains ?? new LaneDriverGains(),
-            Shares = shares ?? new LaneShares()
+            Shares = shares ?? new LaneShares(),
+            // A lap of the plan and the notes, not of a driver's nerves.
+            LearnsAsItDrives = false
         };
         var profile = new DriverProfile("lanes", abilities ?? new DriverAbilities());
         var car = new RaceCar(
