@@ -339,7 +339,7 @@ public static class CarPhysics
         foreach (WheelId wheel in Wheels)
         {
             state.Chassis().GetTire(wheel).SurfaceGrip = input.SurfaceGrip[wheel];
-            state.Chassis().GetTire(wheel).SurfaceAbrasion = input.SurfaceAbrasion;
+            state.Chassis().GetTire(wheel).SurfaceAbrasion = input.SurfaceAbrasion * MathF.Max(0f, 1f + input.DriverInput.TyreWearExcess);
         }
 
         // A car that has been declared lost is not being driven, so nothing
@@ -475,6 +475,7 @@ public static class CarPhysics
                 frontGrip,
                 rearGrip,
                 input.DriverInput.FrontBrakeBiasOffset,
+                config.FixedFrontBrakeShare,
                 out float frontBrake,
                 out float rearBrake
             );
@@ -1807,10 +1808,22 @@ public static class CarPhysics
         float frontGrip,
         float rearGrip,
         float frontBrakeBiasOffset,
+        float? fixedFrontShare,
         out float frontBrake,
         out float rearBrake
     )
     {
+        if (fixedFrontShare is { } fixedShare)
+        {
+            // A real car's brakes: the balance the dial is at, whatever each
+            // axle can take. Too much for one and it locks, and the axle
+            // resolution clips it and spends its lateral grip on the slide.
+            float offset = float.IsFinite(frontBrakeBiasOffset) ? Math.Clamp(frontBrakeBiasOffset, -0.25f, 0.25f) : 0f;
+            float share = Math.Clamp(fixedShare + offset, 0f, 1f);
+            frontBrake = brakeRequest * share;
+            rearBrake = brakeRequest - frontBrake;
+            return;
+        }
         float frontCapacity = RemainingLongitudinalGrip(
             frontGrip,
             frontLateralRequest

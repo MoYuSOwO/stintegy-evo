@@ -18,7 +18,13 @@ public readonly record struct DriverInput(
     float FrontBrakeBiasOffset = 0f,
     // Signed fraction of total drive moved toward the front axle, off the
     // split the car makes by grip; zero keeps that split.
-    float FrontDriveBiasOffset = 0f
+    float FrontDriveBiasOffset = 0f,
+    // How hard this driver's hands are on the tyres beyond what the single
+    // track resolves (the small slides and corrections, the kerbs, the
+    // wheelspin it averages away), as a share more wear than the driver the
+    // tyre was calibrated with: -0.1 wears a tenth less. Zero is that
+    // driver, so an input nobody filled in wears as it always did.
+    float TyreWearExcess = 0f
 );
 
 /// <summary>
