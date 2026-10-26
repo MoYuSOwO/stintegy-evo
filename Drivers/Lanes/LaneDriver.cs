@@ -294,6 +294,7 @@ public sealed class LaneDriver : IDriverController
     // The familiarity in force: null when the driver does not learn as it drives.
     private LaneFamiliarity? _familiar;
     private float _adaptability = 1f;
+    private float _tyreHeed = 1f;
     private int _familiarSegment = -1;
     private bool _scaredInSegment;
     private float _segmentPeakUse;
@@ -453,6 +454,7 @@ public sealed class LaneDriver : IDriverController
         _performance = UseAbilities ? new LanePerformance(context.Profile) : null;
         _performance?.Update(0, context.Car.TrackS, 0f);
         _adaptability = Math.Clamp(context.Profile.Abilities.Adaptability * 0.01f, 0f, 1f);
+        _tyreHeed = Math.Clamp(context.Profile.Abilities.TireManagement * 0.01f, 0f, 1f);
         _familiar = null;
         if (_performance is not null && LearnsAsItDrives)
         {
@@ -498,7 +500,7 @@ public sealed class LaneDriver : IDriverController
         if (_performance is not null)
         {
             int lap = (int)MathF.Floor(car.RaceDistanceMeters / MathF.Max(car.TrackLengthMeters, 1f));
-            _performance.Rung = (int)car.Strategy.TireMode - 1 + _performance.TyreRungDrift;
+            _performance.Rung = DrivenRung(car);
             _performance.Update(lap, car.TrackS, dt);
             Familiarise(car, lap);
         }
@@ -1195,7 +1197,7 @@ public sealed class LaneDriver : IDriverController
         _segmentPeakUse = MathF.Max(_segmentPeakUse, MathF.Max(
             Combined(axles.FrontLateralUse, axles.FrontLongitudinalUse),
             Combined(axles.RearLateralUse, axles.RearLongitudinalUse)));
-        bool gentleRung = (int)car.Strategy.TireMode - 1 < 2;
+        bool gentleRung = DrivenRung(car) < 2f;
         if (gentleRung || _phase != SlidePhase.None || SpeedCap is not null ||
             car.SpeedMetersPerSecond < UnderPlanShare * PlannedSpeedAt(car.TrackS))
             _segmentHeldBack = true;
@@ -1257,6 +1259,42 @@ public sealed class LaneDriver : IDriverController
     }
 
     /// <summary>A rung between two of a table's, by the fraction past the lower one; clamped to its ends.</summary>
+    // Tyres this far under their window, or this far past it, and the
+    // driver backs off by as much as it allows: at most one rung, all of it
+    // for a driver who manages the tyres, a third for one who does not.
+    private const float ColdSpanC = 20f;
+    private const float HotSpanC = 15f;
+    private const float MostBackOffRungs = 1f;
+
+    /// <summary>
+    /// The tyre rung being driven, 0 (Protect) to 4 (Attack), fractional
+    /// between two: how much of what the driver knows is used right now.
+    /// The pit wall's rung, this lap's drift off it (mostly harder, for a
+    /// driver who manages the tyres badly), and the driver's own backing off
+    /// while the tyres are out of their window, cold or cooking. The one
+    /// definition: the margin, the mistakes, the shares of the limit and
+    /// whether a corner teaches anything all read it.
+    /// </summary>
+    private float DrivenRung(RaceCarSnapshot car)
+    {
+        float asked = (int)car.Strategy.TireMode - 1 + (_performance?.TyreRungDrift ?? 0f);
+        if (_performance is null)
+            return asked;
+        TireSnapshot[] tyres = [car.FrontLeft, car.FrontRight, car.RearLeft, car.RearRight];
+        TireWindow window = tyres[0].Window;
+        float outside = 0f;
+        if (window.IdealSurfaceHighC > window.IdealSurfaceLowC)
+        {
+            float surface = tyres.Average(t => t.SurfaceTempC);
+            float cold = (window.IdealSurfaceLowC - surface) / ColdSpanC;
+            float hot = MathF.Max((tyres.Max(t => t.SurfaceTempC) - window.IdealSurfaceHighC) / HotSpanC,
+                                  window.CoreOverheatC > 0f ? (tyres.Max(t => t.CoreTempC) - window.CoreOverheatC) / HotSpanC : 0f);
+            outside = Math.Clamp(MathF.Max(cold, hot), 0f, 1f);
+        }
+        float heed = 1f / 3f + 2f / 3f * Math.Clamp(_tyreHeed, 0f, 1f);
+        return Math.Clamp(asked - MostBackOffRungs * outside * heed, 0f, 4f);
+    }
+
     private static TyreStyle Rung(TyreStyle[] table, float at)
     {
         float x = Math.Clamp(at, 0f, table.Length - 1);
@@ -1526,7 +1564,7 @@ public sealed class LaneDriver : IDriverController
         // driver who manages the tyres drives the rung, one who does not
         // drifts off it, mostly harder.
         _style = Gains.TyreRungStyles
-            ? Rung(TyreStyles, (int)car.Strategy.TireMode - 1 + (_performance?.TyreRungDrift ?? 0f))
+            ? Rung(TyreStyles, DrivenRung(car))
             : null;
         _planShares = _style is { } style
             ? Shares with { Lateral = Shares.Lateral * style.Corner, Brake = Shares.Brake * style.Brake }
