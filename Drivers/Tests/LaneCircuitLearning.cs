@@ -84,12 +84,12 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         // steering already in the learned file, and add the lower levels only.
         int lowest = append ? 0 : (Environment.GetEnvironmentVariable("STINTEGY_LEARN_TOP_ONLY") == "1" ? LaneTrackFile.TopLevel : 0);
         int highest = append ? LaneTrackFile.TopLevel - 1 : LaneTrackFile.TopLevel;
-        // The three lanes learn side by side, each on its own copy of the
+        // The four lanes learn side by side, each on its own copy of the
         // file: a lane's factors and steering are its own, and a car settled
-        // on a side lane plans on that lane alone. Each lane still goes down
+        // on a lane off the free one plans on that lane alone. Each lane still goes down
         // the levels in order, as a level is capped by the ones above it.
         // One after another, Silverstone took nine minutes at full grip.
-        LaneId[] lanes = [LaneId.Free, LaneId.Left, LaneId.Right];
+        LaneId[] lanes = [LaneId.Free, LaneId.Left, LaneId.Right, LaneId.Middle];
         LaneTrackFile[] byLane = new LaneTrackFile[lanes.Length];
         System.Threading.Tasks.Parallel.For(0, lanes.Length, k =>
         {

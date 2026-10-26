@@ -5,19 +5,22 @@ using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Drivers.Lanes;
 
-/// <summary>Which of the three baked lanes.</summary>
+/// <summary>Which of the four baked lanes.</summary>
 public enum LaneId
 {
     Free = 0,
     Left = 1,
-    Right = 2
+    Right = 2,
+    /// <summary>The middle of the road, for the car between two others.</summary>
+    Middle = 3
 }
 
 /// <summary>
-/// Three closed lanes on one circuit, each an offset from the centreline at
+/// Four closed lanes on one circuit, each an offset from the centreline at
 /// the same stations: the free lane uses the whole road, the left and right
-/// lanes leave a car's width on the other side. Anywhere between them is a
-/// blend, because at one station all three sit on the same normal.
+/// lanes leave a car's width on the other side, and the middle lane keeps to
+/// the middle, for three abreast. Anywhere between them is a blend, because
+/// at one station all four sit on the same normal.
 ///
 /// A driver asset, baked offline and kept with the track's tuning file. Core
 /// still stores no line.
@@ -31,6 +34,8 @@ public sealed class LaneSet
     /// centre may sit from the white line before the body is over it.
     /// </summary>
     public const float EdgeMarginMeters = 1.1f;
+
+    public const int LaneCount = 4;
 
     private readonly float[][] _offset;
     private readonly Vector2[] _centre;
@@ -75,19 +80,31 @@ public sealed class LaneSet
     /// <summary>
     /// The blended offset, Simplix's way round: <paramref name="range"/> is how
     /// far from the free lane (0..1), <paramref name="side"/> which way
-    /// (+1 the left lane, -1 the right lane, 0 halfway between them).
+    /// (+1 the left lane, -1 the right lane, 0 the middle lane).
     /// </summary>
     public float BlendedOffset(int station, float range, float side)
     {
         int i = Wrap(station);
-        float free = _offset[0][i];
+        return Blend(_offset[0][i], _offset[1][i], _offset[2][i], _offset[3][i], range, side);
+    }
+
+    /// <summary>
+    /// The one blend of four per-lane values, offsets or anything learned
+    /// per lane: along the side from the middle lane out to the left or the
+    /// right one, then from the free lane that far towards it.
+    /// </summary>
+    public static float Blend(float free, float left, float right, float middle, float range, float side)
+    {
         if (range <= 0f)
             return free;
-        float left = free + (_offset[1][i] - free) * range;
-        float right = free + (_offset[2][i] - free) * range;
-        float towardLeft = (1f + Math.Clamp(side, -1f, 1f)) * 0.5f;
-        return right + (left - right) * towardLeft;
+        side = Math.Clamp(side, -1f, 1f);
+        float across = side >= 0f ? middle + (left - middle) * side : middle + (right - middle) * -side;
+        return free + (across - free) * range;
     }
+
+    /// <summary>Where a file has no middle lane: halfway between the side lanes.</summary>
+    internal static float[] Between(float[] left, float[] right) =>
+        left.Select((l, i) => 0.5f * (l + right[i])).ToArray();
 
     public Vector2 Position(int station, float offset) =>
         Centre(station) + Normal(station) * offset;
@@ -132,7 +149,7 @@ public sealed class LaneSet
             halfWidth[i] = here.HalfWidth;
         }
 
-        var offsets = new float[3][];
+        var offsets = new float[LaneCount][];
         for (int lane = 0; lane < 3; lane++)
         {
             var low = new float[count];
@@ -150,6 +167,7 @@ public sealed class LaneSet
 
             offsets[lane] = Relax(centre, normal, low, high, o);
         }
+        offsets[(int)LaneId.Middle] = Between(offsets[1], offsets[2]);
 
         return new LaneSet(lengthMeters, spacing, centre, normal, halfWidth, offsets);
     }
@@ -277,13 +295,15 @@ public sealed class LaneSet
         float length = track.LengthMeters;
         int count = fallback.Count;
         float spacing = fallback.Spacing;
-        var offsets = new float[3][];
-        string[] names = ["free", "left", "right"];
-        for (int lane = 0; lane < 3; lane++)
+        var offsets = new float[LaneCount][];
+        string[] names = ["free", "left", "right", "middle"];
+        for (int lane = 0; lane < LaneCount; lane++)
         {
             if (!points.TryGetValue(names[lane], out var list) || list.Count < 16)
             {
-                offsets[lane] = Enumerable.Range(0, count).Select(i => fallback.Offset((LaneId)lane, i)).ToArray();
+                offsets[lane] = lane == (int)LaneId.Middle
+                    ? Between(offsets[1], offsets[2])
+                    : Enumerable.Range(0, count).Select(i => fallback.Offset((LaneId)lane, i)).ToArray();
                 continue;
             }
 
@@ -340,13 +360,13 @@ public sealed class LaneSet
 
     /// <summary>The same lanes with the free lane replaced, for comparing lines.</summary>
     internal LaneSet WithFreeOffsets(float[] free) =>
-        new(LengthMeters, Spacing, _centre, _normal, _halfWidth, [free, _offset[1], _offset[2]]);
+        new(LengthMeters, Spacing, _centre, _normal, _halfWidth, [free, _offset[1], _offset[2], _offset[3]]);
 
     public void Save(string path)
     {
         using var writer = new StreamWriter(path);
         writer.WriteLine($"# lanes length_m={LengthMeters.ToString(CultureInfo.InvariantCulture)} spacing_m={Spacing.ToString(CultureInfo.InvariantCulture)}");
-        writer.WriteLine("station,s_m,free_m,left_m,right_m,half_width_m");
+        writer.WriteLine("station,s_m,free_m,left_m,right_m,half_width_m,middle_m");
         for (int i = 0; i < Count; i++)
         {
             writer.WriteLine(string.Join(',',
@@ -355,7 +375,8 @@ public sealed class LaneSet
                 _offset[0][i].ToString("F4", CultureInfo.InvariantCulture),
                 _offset[1][i].ToString("F4", CultureInfo.InvariantCulture),
                 _offset[2][i].ToString("F4", CultureInfo.InvariantCulture),
-                _halfWidth[i].ToString("F3", CultureInfo.InvariantCulture)));
+                _halfWidth[i].ToString("F3", CultureInfo.InvariantCulture),
+                _offset[3][i].ToString("F4", CultureInfo.InvariantCulture)));
         }
     }
 
@@ -368,6 +389,8 @@ public sealed class LaneSet
         var free = new List<float>();
         var left = new List<float>();
         var right = new List<float>();
+        var middle = new List<float>();
+        int middleCol = -1;
         float spacing = DefaultStationSpacing;
         foreach (string line in File.ReadLines(path))
         {
@@ -381,11 +404,16 @@ public sealed class LaneSet
                 continue;
             }
             if (line.StartsWith("station"))
+            {
+                middleCol = Array.IndexOf(line.Split(','), "middle_m");
                 continue;
+            }
             string[] cols = line.Split(',');
             free.Add(float.Parse(cols[2], CultureInfo.InvariantCulture));
             left.Add(float.Parse(cols[3], CultureInfo.InvariantCulture));
             right.Add(float.Parse(cols[4], CultureInfo.InvariantCulture));
+            if (middleCol >= 0)
+                middle.Add(float.Parse(cols[middleCol], CultureInfo.InvariantCulture));
         }
 
         int count = free.Count;
@@ -403,7 +431,8 @@ public sealed class LaneSet
         }
 
         return new LaneSet(lengthMeters, spacing, centre, normal, halfWidth,
-            [free.ToArray(), left.ToArray(), right.ToArray()]);
+            [free.ToArray(), left.ToArray(), right.ToArray(),
+             middleCol >= 0 ? middle.ToArray() : Between(left.ToArray(), right.ToArray())]);
     }
 }
 

@@ -116,7 +116,7 @@ public sealed class LaneLearner
             : (car, driver, t) =>
             {
                 driver.TargetRange = 1f;
-                driver.TargetSide = lane == LaneId.Left ? 1f : -1f;
+                driver.TargetSide = LaneSide(lane);
             };
         LaneLapResult Drive(LaneTrackFile file) => LaneLapRunner.Run(track, file, gains, shares, onStep: hold, roadGrip: roadGrip, flyingLaps: FlyingLaps);
 
@@ -443,7 +443,7 @@ public sealed class LaneLearner
             : (car, driver, t) =>
             {
                 driver.TargetRange = 1f;
-                driver.TargetSide = lane == LaneId.Left ? 1f : -1f;
+                driver.TargetSide = LaneSide(lane);
             };
         LaneLapResult Drive(LaneTrackFile file) => LaneLapRunner.Run(track, file, gains, onStep: hold);
 
@@ -532,4 +532,12 @@ public sealed class LaneLearner
 
         return (best, bestLap, history);
     }
+
+    /// <summary>The blend's side that is this lane: +1 the left lane, -1 the right, 0 the middle.</summary>
+    internal static float LaneSide(LaneId lane) => lane switch
+    {
+        LaneId.Left => 1f,
+        LaneId.Right => -1f,
+        _ => 0f
+    };
 }

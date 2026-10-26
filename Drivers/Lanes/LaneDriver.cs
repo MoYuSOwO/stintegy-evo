@@ -173,18 +173,18 @@ public sealed class LaneDriver : IDriverController
     private readonly TireConfig _tires;
     private readonly TurnLag _turnLag;
     private readonly CarState _plan = new();
-    private readonly float[][] _curvature = new float[3][];
-    private readonly LaneRoad[][] _road = new LaneRoad[3][];
+    private readonly float[][] _curvature = new float[LaneSet.LaneCount][];
+    private readonly LaneRoad[][] _road = new LaneRoad[LaneSet.LaneCount][];
     private DriverTrackView? _trackView;
-    private readonly float[][] _stepLength = new float[3][];
-    private readonly float[][] _speed = new float[3][];
+    private readonly float[][] _stepLength = new float[LaneSet.LaneCount][];
+    private readonly float[][] _speed = new float[LaneSet.LaneCount][];
     private LaneSet _lanes = null!;
     private LaneEnvelope _envelope;
     private float _referenceLateral = 1f;
     private LanePerformance? _performance;
-    private readonly float[][] _corner = new float[3][];
-    private readonly float[][] _brake = new float[3][];
-    private readonly bool[] _planned = new bool[3];
+    private readonly float[][] _corner = new float[LaneSet.LaneCount][];
+    private readonly float[][] _brake = new float[LaneSet.LaneCount][];
+    private readonly bool[] _planned = new bool[LaneSet.LaneCount];
     private float[] _aheadCurvature = [];
     private float[] _aheadStep = [];
     private float[] _aheadFactor = [];
@@ -315,7 +315,7 @@ public sealed class LaneDriver : IDriverController
     {
         _lanes = _file.LanesFor(context.Track);
         _trackView = context.Track;
-        for (int lane = 0; lane < 3; lane++)
+        for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             int count = _lanes.Count;
             _curvature[lane] = new float[count];
@@ -906,10 +906,10 @@ public sealed class LaneDriver : IDriverController
         // On the free lane with no move asked for, the side lanes are read by
         // nothing; they are planned again the step a move begins.
         bool sides = Range > 1e-3f || TargetRange > 1e-3f;
-        // Settled on one side lane, the other is read by nothing either.
+        // Settled on one lane off the free one, the others are read by nothing either.
         int settled = SettledSideLane();
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
-        for (int lane = 0; lane < 3; lane++)
+        for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             if (lane != (int)LaneId.Free && (!sides || settled >= 0 && lane != settled))
             {
@@ -974,7 +974,7 @@ public sealed class LaneDriver : IDriverController
         Grip = _performance?.PerceiveGrip(ActualGrip, sinceLastRead) ?? ActualGrip;
         float belief = Math.Clamp(Grip / MathF.Max(ActualGrip, 1e-3f), 0.9f, 1.1f);
         _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road * belief);
-        for (int lane = 0; lane < (sides ? 3 : 1); lane++)
+        for (int lane = 0; lane < (sides ? LaneSet.LaneCount : 1); lane++)
         {
             _file.FactorsAtGrip((LaneId)lane, Grip, start, count, _corner[lane], _brake[lane]);
             // Pace: the share of the plan this driver takes this lap.
@@ -995,8 +995,8 @@ public sealed class LaneDriver : IDriverController
     {
         if (Range <= 1e-3f && TargetRange <= 1e-3f)
             return Interpolate(_speed[0], station);
-        // Settled on a side lane, the blend is that lane, and its own plan
-        // is the blend's plan.
+        // Settled on a side lane or the middle one, the blend is that lane,
+        // and its own plan is the blend's plan.
         int settled = SettledSideLane();
         if (settled >= 0)
             return Interpolate(_speed[settled], station);
@@ -1020,15 +1020,18 @@ public sealed class LaneDriver : IDriverController
     }
 
     /// <summary>
-    /// The side lane the car is settled on, all the way out and not moving,
-    /// or -1. There the blend is that lane, and planning a window for it
-    /// again every step made a lap held on a side lane six times as long to
-    /// drive as one on the free lane.
+    /// The lane off the free one the car is settled on, all the way out and
+    /// not moving: a side lane or the middle one, or -1. There the blend is
+    /// that lane, and planning a window for it again every step made a lap
+    /// held on a side lane six times as long to drive as one on the free lane.
     /// </summary>
     private int SettledSideLane()
     {
-        if (Range < 1f || TargetRange < 1f || MathF.Abs(Side) < 1f || TargetSide != Side ||
-            _rangeVelocity != 0f || _sideVelocity != 0f)
+        if (Range < 1f || TargetRange < 1f || TargetSide != Side || _rangeVelocity != 0f || _sideVelocity != 0f)
+            return -1;
+        if (Side == 0f)
+            return (int)LaneId.Middle;
+        if (MathF.Abs(Side) < 1f)
             return -1;
         return Side > 0f ? (int)LaneId.Left : (int)LaneId.Right;
     }
@@ -1080,8 +1083,10 @@ public sealed class LaneDriver : IDriverController
         LeadCurvatures(_windowCurvature, _leadGuess, n);
 
         int end = _lanes.Wrap(start + n - 1);
+        // Ending on the slowest of the lanes the blend lies between: the
+        // free one, the middle one and the side lane it is towards.
         int sideLane = Side >= 0f ? (int)LaneId.Left : (int)LaneId.Right;
-        float terminal = MathF.Min(_speed[0][end], _speed[sideLane][end]);
+        float terminal = MathF.Min(_speed[0][end], MathF.Min(_speed[sideLane][end], _speed[(int)LaneId.Middle][end]));
         LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
         _windowStillSpeed = _windowSpeed[0];
         if (Gains.FollowLaneMoves && PlanMoveWindow(start))
@@ -1199,13 +1204,7 @@ public sealed class LaneDriver : IDriverController
     private float BlendOf(Func<LaneId, float[]> table, int station, float range, float side)
     {
         int i = _lanes.Wrap(station);
-        float free = table(LaneId.Free)[i];
-        if (range <= 0f)
-            return free;
-        float left = free + (table(LaneId.Left)[i] - free) * range;
-        float right = free + (table(LaneId.Right)[i] - free) * range;
-        float towardLeft = (1f + side) * 0.5f;
-        return right + (left - right) * towardLeft;
+        return LaneSet.Blend(table(LaneId.Free)[i], table(LaneId.Left)[i], table(LaneId.Right)[i], table(LaneId.Middle)[i], range, side);
     }
 
     private const float StandardGravity = 9.80665f;

@@ -58,13 +58,31 @@ public sealed class LaneDriverTests
         for (int i = 0; i < lanes.Count; i++)
         {
             float half = lanes.HalfWidth(i);
-            foreach (LaneId lane in new[] { LaneId.Free, LaneId.Left, LaneId.Right })
+            foreach (LaneId lane in new[] { LaneId.Free, LaneId.Left, LaneId.Right, LaneId.Middle })
                 minRoom = MathF.Min(minRoom, half - MathF.Abs(lanes.Offset(lane, i)));
             leftOverRight += lanes.Offset(LaneId.Left, i) - lanes.Offset(LaneId.Right, i);
         }
         _output.WriteLine($"stations {lanes.Count} min room to edge {minRoom:F2} m, mean left-right gap {leftOverRight / lanes.Count:F2} m");
         Assert.True(minRoom >= 0.8f, $"a lane comes within {minRoom:F2} m of the edge");
         Assert.True(leftOverRight / lanes.Count > 1f);
+    }
+
+    [Fact]
+    public void TheShippedLanesLieLeftToRightInTheirOrder()
+    {
+        // A bake that took the other side of the road for left put the left
+        // lane on the right the whole lap, and every move to make room went
+        // into the car it was making room for.
+        TrackData track = CircuitLibrary.Load("silverstone");
+        LaneSet lanes = Silverstone(track).LanesFor(track);
+        int wrong = 0;
+        for (int i = 0; i < lanes.Count; i++)
+        {
+            float left = lanes.Offset(LaneId.Left, i), middle = lanes.Offset(LaneId.Middle, i), right = lanes.Offset(LaneId.Right, i);
+            if (!(left > middle && middle > right))
+                wrong++;
+        }
+        Assert.True(wrong == 0, $"left, middle, right out of order at {wrong} of {lanes.Count} stations");
     }
 
     [Fact]

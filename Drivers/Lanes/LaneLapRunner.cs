@@ -171,7 +171,10 @@ public static class LaneLapRunner
                 {
                     firstCrossing = at;
                     planned = driver.PlannedLapSeconds(
-                        driver.TargetRange < 0.5f ? LaneId.Free : driver.TargetSide >= 0f ? LaneId.Left : LaneId.Right);
+                        driver.TargetRange < 0.5f ? LaneId.Free
+                        : driver.TargetSide > 0.5f ? LaneId.Left
+                        : driver.TargetSide < -0.5f ? LaneId.Right
+                        : LaneId.Middle);
                 }
                 else
                 {

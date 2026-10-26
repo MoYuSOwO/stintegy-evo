@@ -5,7 +5,7 @@ using StintegyEVO.Core.Track;
 namespace StintegyEVO.Drivers.Lanes;
 
 /// <summary>
-/// One circuit's tuning file: the three lanes and, per station, lane and grip
+/// One circuit's tuning file: the four lanes and, per station, lane and grip
 /// level, the learned share of the envelope the plan may spend there.
 ///
 /// Factors are multipliers on the live envelope, never speeds, so a worn
@@ -39,7 +39,8 @@ public sealed class LaneTrackFile
         }
     }
 
-    private static float[][] NewSteer(int count) => [new float[count], new float[count], new float[count]];
+    private static float[][] NewSteer(int count) =>
+        Enumerable.Range(0, LaneSet.LaneCount).Select(_ => new float[count]).ToArray();
 
     /// <summary>
     /// Per station, curvature added to the steering feedforward (1/m), learned
@@ -148,7 +149,7 @@ public sealed class LaneTrackFile
         static float[][][] Copy(float[][][] source) =>
             source.Select(level => level.Select(lane => (float[])lane.Clone()).ToArray()).ToArray();
         var copy = new LaneTrackFile(_lanes, Copy(_corner), Copy(_brake), _bake);
-        if (_steer.Length == 3)
+        if (_steer.Length == LaneSet.LaneCount)
             copy._steer = _steer.Select(lane => (float[])lane.Clone()).ToArray();
         copy.Energy = Energy;
         copy.LearnedFor = LearnedFor;
@@ -169,8 +170,8 @@ public sealed class LaneTrackFile
         var factors = new float[GripLevels.Length][][];
         for (int level = 0; level < GripLevels.Length; level++)
         {
-            factors[level] = new float[3][];
-            for (int lane = 0; lane < 3; lane++)
+            factors[level] = new float[LaneSet.LaneCount][];
+            for (int lane = 0; lane < LaneSet.LaneCount; lane++)
             {
                 factors[level][lane] = new float[count];
                 Array.Fill(factors[level][lane], StartingFactors[level]);
@@ -182,14 +183,14 @@ public sealed class LaneTrackFile
     /// <summary>Puts one grip level back to its conservative start, for relearning it.</summary>
     public void ResetLevel(int level)
     {
-        for (int lane = 0; lane < 3; lane++)
+        for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             Array.Fill(_corner[level][lane], StartingFactors[level]);
             Array.Fill(_brake[level][lane], StartingFactors[level]);
         }
     }
 
-    private static readonly string[] LaneNames = ["free", "left", "right"];
+    private static readonly string[] LaneNames = ["free", "left", "right", "middle"];
 
     private static string Level(int level) => GripLevels[level].ToString("F2", CultureInfo.InvariantCulture);
 
@@ -200,7 +201,7 @@ public sealed class LaneTrackFile
         writer.WriteLine(
             $"# lanes length_m={lanes.LengthMeters.ToString(CultureInfo.InvariantCulture)} " +
             $"spacing_m={lanes.Spacing.ToString(CultureInfo.InvariantCulture)}");
-        var header = new List<string> { "station", "s_m", "free_m", "left_m", "right_m", "half_width_m" };
+        var header = new List<string> { "station", "s_m", "free_m", "left_m", "right_m", "half_width_m", "middle_m" };
         for (int level = 0; level < GripLevels.Length; level++)
         {
             foreach (string lane in LaneNames)
@@ -220,16 +221,17 @@ public sealed class LaneTrackFile
                 lanes.Offset(LaneId.Free, i).ToString("F4", CultureInfo.InvariantCulture),
                 lanes.Offset(LaneId.Left, i).ToString("F4", CultureInfo.InvariantCulture),
                 lanes.Offset(LaneId.Right, i).ToString("F4", CultureInfo.InvariantCulture),
-                lanes.HalfWidth(i).ToString("F3", CultureInfo.InvariantCulture)
+                lanes.HalfWidth(i).ToString("F3", CultureInfo.InvariantCulture),
+                lanes.Offset(LaneId.Middle, i).ToString("F4", CultureInfo.InvariantCulture)
             };
             for (int level = 0; level < GripLevels.Length; level++)
             {
-                for (int lane = 0; lane < 3; lane++)
+                for (int lane = 0; lane < LaneSet.LaneCount; lane++)
                     row.Add(_corner[level][lane][i].ToString("F4", CultureInfo.InvariantCulture));
-                for (int lane = 0; lane < 3; lane++)
+                for (int lane = 0; lane < LaneSet.LaneCount; lane++)
                     row.Add(_brake[level][lane][i].ToString("F4", CultureInfo.InvariantCulture));
             }
-            for (int lane = 0; lane < 3; lane++)
+            for (int lane = 0; lane < LaneSet.LaneCount; lane++)
                 row.Add(_steer[lane][i].ToString("F6", CultureInfo.InvariantCulture));
             writer.WriteLine(string.Join(',', row));
         }
@@ -337,7 +339,7 @@ public sealed class LaneTrackFile
                 columns = cols.Select((name, index) => (name, index)).ToDictionary(c => c.name, c => c.index);
                 continue;
             }
-            for (int lane = 0; lane < 3; lane++)
+            for (int lane = 0; lane < LaneSet.LaneCount; lane++)
             {
                 string name = LaneNames[lane];
                 for (int level = 0; level < GripLevels.Length; level++)
@@ -355,6 +357,21 @@ public sealed class LaneTrackFile
                     steer[lane][row] = float.Parse(cols[st], CultureInfo.InvariantCulture);
             }
             row++;
+        }
+        // A file from before the middle lane: what it knows of the side lanes
+        // stands in, the more careful of the two, until the middle is learned.
+        if (columns is not null && !columns.ContainsKey($"corner_middle@{Level(TopLevel)}"))
+        {
+            int middle = (int)LaneId.Middle, left = (int)LaneId.Left, right = (int)LaneId.Right;
+            for (int level = 0; level < GripLevels.Length; level++)
+            {
+                for (int i = 0; i < lanes.Count; i++)
+                {
+                    corner[level][middle][i] = MathF.Min(corner[level][left][i], corner[level][right][i]);
+                    brake[level][middle][i] = MathF.Min(brake[level][left][i], brake[level][right][i]);
+                }
+            }
+            steer[middle] = LaneSet.Between(steer[left], steer[right]);
         }
         var file = new LaneTrackFile(lanes, corner, brake, null);
         file._steer = steer;
