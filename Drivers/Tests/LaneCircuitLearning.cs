@@ -17,6 +17,7 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
 {
     private readonly ITestOutputHelper _output = output;
     private Action<string>? _progress;
+    private readonly object _gate = new();
 
     /// <summary>
     /// Every lane at every grip level, on a circuit's baked lanes, and the
@@ -63,7 +64,8 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         void Progress(string line)
         {
             if (progressPath is { Length: > 0 })
-                File.AppendAllText(progressPath, $"[{watch0.Elapsed.TotalMinutes,5:F1} min] {id} {line}{Environment.NewLine}");
+                lock (_gate)
+                    File.AppendAllText(progressPath, $"[{watch0.Elapsed.TotalMinutes,5:F1} min] {id} {line}{Environment.NewLine}");
         }
         _progress = Progress;
         var learner = new LaneLearner
@@ -82,9 +84,18 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
         // steering already in the learned file, and add the lower levels only.
         int lowest = append ? 0 : (Environment.GetEnvironmentVariable("STINTEGY_LEARN_TOP_ONLY") == "1" ? LaneTrackFile.TopLevel : 0);
         int highest = append ? LaneTrackFile.TopLevel - 1 : LaneTrackFile.TopLevel;
-        for (int level = highest; level >= lowest; level--)
+        // The three lanes learn side by side, each on its own copy of the
+        // file: a lane's factors and steering are its own, and a car settled
+        // on a side lane plans on that lane alone. Each lane still goes down
+        // the levels in order, as a level is capped by the ones above it.
+        // One after another, Silverstone took nine minutes at full grip.
+        LaneId[] lanes = [LaneId.Free, LaneId.Left, LaneId.Right];
+        LaneTrackFile[] byLane = new LaneTrackFile[lanes.Length];
+        System.Threading.Tasks.Parallel.For(0, lanes.Length, k =>
         {
-            foreach (LaneId lane in new[] { LaneId.Free, LaneId.Left, LaneId.Right })
+            LaneId lane = lanes[k];
+            LaneTrackFile mine = file.Clone();
+            for (int level = highest; level >= lowest; level--)
             {
                 // The pace first, until the lap gets round on the road: the
                 // steering learns from a lap's error and a lap off the road or
@@ -95,20 +106,30 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
                 // pace changed. The steering is one table a lane, learned at
                 // full grip.
                 int rounds = lane == LaneId.Free ? 20 : 15;
-                (file, bool paceLearned) = Pace(track, file, gains, learner, lane, level, rounds, watch);
+                (mine, bool paceLearned) = Pace(track, mine, gains, learner, lane, level, rounds, watch);
                 if (level == LaneTrackFile.TopLevel)
                 {
-                    (file, bool steerLearned) = Steer(track, file, gains, lane, 15, "steer");
+                    (mine, bool steerLearned) = Steer(track, mine, gains, lane, 15, "steer");
                     // Learning is deterministic: from the factors and steering
                     // the first pace began with, the second would drive every
                     // round of it again.
                     if (paceLearned || steerLearned)
-                        (file, _) = Pace(track, file, gains, learner, lane, level, rounds, watch);
+                        (mine, _) = Pace(track, mine, gains, learner, lane, level, rounds, watch);
                     else
                         _progress?.Invoke($"{lane} pace again skipped: it would begin where the first did");
-                    (file, _) = Steer(track, file, gains, lane, 10, "steer again");
+                    (mine, _) = Steer(track, mine, gains, lane, 10, "steer again");
                 }
             }
+            byLane[k] = mine;
+        });
+        for (int k = 0; k < lanes.Length; k++)
+        {
+            for (int level = highest; level >= lowest; level--)
+            {
+                byLane[k].Factors(lanes[k], level).CopyTo(file.Factors(lanes[k], level), 0);
+                byLane[k].BrakeFactors(lanes[k], level).CopyTo(file.BrakeFactors(lanes[k], level), 0);
+            }
+            byLane[k].Steer(lanes[k]).CopyTo(file.Steer(lanes[k]), 0);
         }
         file.MarkLearnedNow();
         string path = Path.Combine(LaneProbes.Dir, id);
@@ -125,14 +146,16 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
     private (LaneTrackFile, bool Learned) Pace(TrackData track, LaneTrackFile file, LaneDriverGains gains, LaneLearner learner, LaneId lane, int level, int rounds, System.Diagnostics.Stopwatch watch)
     {
         var (paced, lap, history) = learner.LearnSectors(track, file, rounds, gains, lane: lane, level: level);
-        _output.WriteLine($"{lane} @ {LaneTrackFile.GripLevels[level]:F2} pace: first {history[0].Result.FlyingLapSeconds:F2} better {history.Count(h => h.Kept)}/{history.Count} best {lap}  [{watch.Elapsed.TotalMinutes:F0} min]");
+        lock (_gate)
+            _output.WriteLine($"{lane} @ {LaneTrackFile.GripLevels[level]:F2} pace: first {history[0].Result.FlyingLapSeconds:F2} better {history.Count(h => h.Kept)}/{history.Count} best {lap}  [{watch.Elapsed.TotalMinutes:F0} min]");
         return (paced, history.Skip(1).Any(h => h.Kept));
     }
 
     private (LaneTrackFile, bool Learned) Steer(TrackData track, LaneTrackFile file, LaneDriverGains gains, LaneId lane, int iterations, string label)
     {
         var (steered, lap, history) = new LaneLearner { Progress = _progress }.LearnSteering(track, file, iterations, gains, lane);
-        _output.WriteLine($"{lane} {label}: error {history[0].Result.MeanAbsErrorMeters:F2}/{history[0].Result.WorstErrorMeters:F2} -> {lap.MeanAbsErrorMeters:F2}/{lap.WorstErrorMeters:F2} kept {history.Count(h => h.Kept)}/{history.Count}");
+        lock (_gate)
+            _output.WriteLine($"{lane} {label}: error {history[0].Result.MeanAbsErrorMeters:F2}/{history[0].Result.WorstErrorMeters:F2} -> {lap.MeanAbsErrorMeters:F2}/{lap.WorstErrorMeters:F2} kept {history.Count(h => h.Kept)}/{history.Count}");
         return (steered, history.Skip(1).Any(h => h.Kept));
     }
 }
