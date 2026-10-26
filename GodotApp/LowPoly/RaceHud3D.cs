@@ -152,7 +152,7 @@ public partial class RaceHud3D : CanvasLayer
         // Only what the car puts on its screen: its modes, its stores, its
         // tyres and its buttons, each where it has them.
         _dashboard.Refresh(car.Car, car.State, car.Strategy);
-        var lines = _dashboard.Modes.Select(mode => $"{mode.Label.ToUpperInvariant()}   {mode.Rung}").ToList();
+        var lines = _dashboard.Modes.Select(mode => $"{mode.Label.ToUpperInvariant()}   {mode.Nearest} {mode.Setting:0.00}").ToList();
         if (_dashboard.Resources.Count > 0)
             lines.Add(string.Join("  ", _dashboard.Resources.Select(resource => $"{resource.Label.ToUpperInvariant()} {resource.Fraction * 100:0}%")));
         if (_dashboard.Tires.Count > 0)

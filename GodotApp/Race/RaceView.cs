@@ -163,7 +163,10 @@ public partial class RaceView : Node2D
 
     public override void _UnhandledInput(InputEvent inputEvent)
     {
-        if (_playerCar == null || inputEvent is not InputEventKey key || !key.Pressed || key.Echo)
+        // The strategy keys repeat while held, so a setting can be swept
+        // along its travel; every other key acts once a press.
+        if (_playerCar == null || inputEvent is not InputEventKey key || !key.Pressed ||
+            key.Echo && key.Keycode is not (Key.Q or Key.E or Key.A or Key.D))
             return;
 
         if (key.Keycode == Key.F)
@@ -194,9 +197,9 @@ public partial class RaceView : Node2D
             return;
 
         // A/D move the first of the car's own ladders, whatever it is called.
-        CarStrategy strategy = _playerCar.Strategy.NudgedTires(tireDelta);
+        CarStrategy strategy = _playerCar.Strategy.NudgedTires(tireDelta * CarStrategy.Click);
         if (_playerCar.Car.Ladders.Count > 0)
-            strategy = strategy.Nudged(0, _playerCar.Car.Ladders[0], powerDelta);
+            strategy = strategy.Nudged(0, _playerCar.Car.Ladders[0], powerDelta * CarStrategy.Click);
         _playerCar.Strategy = strategy;
         RefreshTelemetry();
         GetViewport().SetInputAsHandled();
@@ -359,7 +362,7 @@ public partial class RaceView : Node2D
         {
             if (readout.Length > 0)
                 readout.Append("  ");
-            readout.Append($"{mode.Label} {mode.Rung} {mode.Ordinal}/{mode.RungCount}");
+            readout.Append($"{mode.Label} {mode.Nearest} {mode.Setting:0.00}");
         }
         return readout.ToString();
     }

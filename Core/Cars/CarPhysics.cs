@@ -63,8 +63,8 @@ public static class CarPhysics
             ? Math.Clamp(asked, 0.05f, LimiterGripShare)
             : LimiterGripShare;
 
-    private static int OutputRung(CarConfig config, in CarStrategy strategy) =>
-        strategy.Rung(OutputLadderIndex, config.Powertrain.OutputLadder);
+    private static float OutputSetting(CarConfig config, in CarStrategy strategy) =>
+        strategy.Setting(OutputLadderIndex, config.Powertrain.OutputLadder);
 
     private static readonly WheelId[] Wheels =
     {
@@ -197,7 +197,7 @@ public static class CarPhysics
 
         float powertrainDriveLimit = config.Powertrain.DriveAccelerationLimit(
             state.Chassis().Energy,
-            OutputRung(config, strategy),
+            OutputSetting(config, strategy),
             speed,
             massKg,
             config.MaxDriveAcceleration,
@@ -436,7 +436,7 @@ public static class CarPhysics
         {
             float available = config.Powertrain.DriveAccelerationLimit(
                 state.Chassis().Energy,
-                OutputRung(config, input.Strategy),
+                OutputSetting(config, input.Strategy),
                 state.Speed,
                 massKg,
                 config.MaxDriveAcceleration,

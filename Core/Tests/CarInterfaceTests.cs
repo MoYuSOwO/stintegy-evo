@@ -137,16 +137,16 @@ public sealed class CarInterfaceTests
         var maps = new ModeLadder("engine_map", "Engine map", ["Lean", "Rich", "Qualifying"]);
         var deploy = new ModeLadder("deployment", "Deployment", ["Harvest", "Balanced", "Deploy", "Overtake"]);
 
-        CarStrategy strategy = CarStrategy.Default.WithRung(1, 4);
-        Assert.Equal(2, strategy.Rung(0, maps));
-        Assert.Equal(4, strategy.Rung(1, deploy));
-        Assert.Equal(3, strategy.WithRung(0, 9).Rung(0, maps));
-        Assert.Equal(CarStrategy.Default.WithRung(1, 4), strategy);
+        CarStrategy strategy = CarStrategy.Default.WithSetting(1, 1f);
+        Assert.Equal(maps.DefaultSetting, strategy.Setting(0, maps));
+        Assert.Equal(1f, strategy.Setting(1, deploy));
+        Assert.Equal(1f, strategy.WithSetting(0, 9f).Setting(0, maps));
+        Assert.Equal(CarStrategy.Default.WithSetting(1, 1f), strategy);
 
         var dashboard = new CarDashboard();
         foreach ((ModeLadder ladder, int i) in new[] { (maps, 0), (deploy, 1) })
-            dashboard.AddMode(ladder, strategy.Rung(i, ladder));
-        Assert.Equal(["Rich", "Overtake"], dashboard.Modes.Select(m => m.Rung));
+            dashboard.AddMode(ladder, strategy.Setting(i, ladder));
+        Assert.Equal(["Rich", "Overtake"], dashboard.Modes.Select(m => m.Nearest));
     }
 
     /// <summary>
@@ -192,7 +192,7 @@ public sealed class CarInterfaceTests
 
         public ModeLadder OutputLadder { get; } = new("Box ladder", "Slow", "Fast");
 
-        public float DriveAccelerationLimit(in PowertrainState energy, int outputRung, float speed,
+        public float DriveAccelerationLimit(in PowertrainState energy, float output, float speed,
             float massKg, float chassisForceCeiling, bool pushToPass = false) => 5f;
 
         public PowertrainSettlement Settle(in PowertrainState energy, float driveAccel, float brakeAccel,
@@ -303,7 +303,7 @@ public sealed class CarInterfaceTests
         {
             foreach (string label in new[] { "FL", "FR", "RL", "RR" })
                 dashboard.AddTire(new DashboardTire(label, 1f, 70f, 70f, 2000f, Window));
-            dashboard.AddMode(_engine.OutputLadder, strategy.Rung(0, _engine.OutputLadder));
+            dashboard.AddMode(_engine.OutputLadder, strategy.Setting(0, _engine.OutputLadder));
             dashboard.SetMass(800f);
         }
 

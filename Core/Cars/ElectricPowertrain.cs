@@ -232,7 +232,7 @@ public sealed class ElectricPowertrain : IPowertrain
     /// </summary>
     public float DriveAccelerationLimit(
         in PowertrainState energy,
-        int outputRung,
+        float output,
         float speed,
         float massKg,
         float chassisForceCeiling,
@@ -240,7 +240,7 @@ public sealed class ElectricPowertrain : IPowertrain
     )
     {
         float powerLimitedAccel =
-            GetDrivePowerLimitWatts(outputRung) /
+            GetDrivePowerLimitWatts(output) /
             (massKg * Math.Max(speed, MinPowerSpeed));
 
         return Math.Min(chassisForceCeiling, powerLimitedAccel) *

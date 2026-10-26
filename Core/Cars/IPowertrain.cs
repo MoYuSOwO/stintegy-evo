@@ -102,6 +102,29 @@ public sealed class ModeLadder
     {
         return Math.Clamp(ordinal, 1, RungCount);
     }
+
+    /// <summary>
+    /// Where a named rung sits on the ladder's travel: the travel runs from
+    /// zero, the most conservative end, to one, the most aggressive, and the
+    /// names are marks on it, evenly spaced. A setting may sit anywhere
+    /// along it; the names are where the machinery's own settings are.
+    /// </summary>
+    public float Mark(int ordinal) => (Clamp(ordinal) - 1) / (float)(RungCount - 1);
+
+    /// <summary>Where the ladder sits when nobody has chosen: the mark of <see cref="DefaultRung"/>.</summary>
+    public float DefaultSetting => Mark(DefaultRung);
+
+    /// <summary>A setting on the travel, as rungs up from the bottom one: fractional between two marks.</summary>
+    public float RungsUp(float setting) => Settle(setting) * (RungCount - 1);
+
+    /// <summary>The named rung nearest a setting, counted from one.</summary>
+    public int Nearest(float setting) => Clamp((int)MathF.Round(RungsUp(setting)) + 1);
+
+    /// <summary>
+    /// A setting brought onto the travel: clamped to its ends, and the middle
+    /// for one that is not a number at all.
+    /// </summary>
+    public static float Settle(float setting) => float.IsFinite(setting) ? Math.Clamp(setting, 0f, 1f) : 0.5f;
 }
 
 /// <summary>
@@ -149,8 +172,10 @@ public interface IPowertrain
     /// limited: a motor cannot make its rated torque on a sagging pack, and
     /// an engine starved of fuel does not make its rated torque either.
     ///
-    /// <paramref name="outputRung"/> is where the strategist has set
-    /// <see cref="OutputLadder"/>, counted from one and already on it.
+    /// <paramref name="output"/> is where the strategist has set
+    /// <see cref="OutputLadder"/>, zero to one along its travel and already
+    /// on it (<see cref="ModeLadder.Mark"/>): on a mark, that named setting;
+    /// between two, somewhere between them, as the machinery has it.
     ///
     /// <paramref name="pushToPass"/> is whether a push is running this step
     /// (<see cref="PushToPassState"/>); machinery with nothing extra to give
@@ -158,7 +183,7 @@ public interface IPowertrain
     /// </summary>
     float DriveAccelerationLimit(
         in PowertrainState energy,
-        int outputRung,
+        float output,
         float speed,
         float massKg,
         float chassisForceCeiling,

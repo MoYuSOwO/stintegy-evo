@@ -36,22 +36,33 @@ public readonly record struct DriverInput(
 /// output setting on a pack, an engine map, a hybrid's deployment beside it.
 /// How many there are, how long each is and what its rungs are called are
 /// the car's to say, and this holds where each is set, in the car's order.
+///
+/// Each is set anywhere along its travel, zero the most conservative end and
+/// one the most aggressive, as a pit wall asks for a little more or a little
+/// less rather than a whole step: the rungs' names are marks on the travel
+/// (<see cref="ModeLadder.Mark"/>), and a setting between two is between
+/// them.
 /// </summary>
 public readonly record struct CarStrategy
 {
     /// <summary>The most ladders of its own a car may declare.</summary>
     public const int MaximumLadders = 4;
 
-    public TireUsageMode TireMode { get; init; }
+    /// <summary>
+    /// One click of the pit wall's dial along a ladder's travel: on a
+    /// five-rung ladder, five clicks from one named setting to the next.
+    /// </summary>
+    public const float Click = 0.05f;
 
-    // Where each of the car's ladders is set, counted from one; zero is a
+    // Where the tyre ladder and each of the car's ladders are set; none is a
     // ladder nobody has touched, which sits where the ladder itself says
-    // (ModeLadder.DefaultRung). Held inline rather than in an array so a
+    // (ModeLadder.DefaultSetting). Held inline rather than in an array so a
     // strategy compares by what it says and costs nothing to pass about.
-    private int R1 { get; init; }
-    private int R2 { get; init; }
-    private int R3 { get; init; }
-    private int R4 { get; init; }
+    private float? T { get; init; }
+    private float? S1 { get; init; }
+    private float? S2 { get; init; }
+    private float? S3 { get; init; }
+    private float? S4 { get; init; }
 
     // Which of the car's buttons are held, one bit each in the car's order
     // (ICarButtons.Buttons).
@@ -74,77 +85,86 @@ public readonly record struct CarStrategy
     private static int Bit(int button) =>
         button is >= 0 and < MaximumButtons ? 1 << button : throw new ArgumentOutOfRangeException(nameof(button));
 
-    /// <summary>A share of the tyres' grip to use in place of what the tyre rung allows.</summary>
+    /// <summary>A share of the tyres' grip to use in place of what the tyre setting allows.</summary>
     public float? TireGripUsageOverride { get; init; }
 
-    /// <param name="rungs">Where each of the car's ladders is set, in its order, counted from one.</param>
-    public CarStrategy(TireUsageMode tireMode, params int[] rungs)
+    /// <param name="tires">Where the tyre ladder is set, zero to one.</param>
+    /// <param name="settings">Where each of the car's ladders is set, in its order, zero to one.</param>
+    public CarStrategy(float tires, params float[] settings)
     {
-        TireMode = tireMode;
-        if (rungs.Length > MaximumLadders)
-            throw new ArgumentException($"A car has at most {MaximumLadders} ladders of its own.", nameof(rungs));
-        R1 = rungs.Length > 0 ? Math.Max(1, rungs[0]) : 0;
-        R2 = rungs.Length > 1 ? Math.Max(1, rungs[1]) : 0;
-        R3 = rungs.Length > 2 ? Math.Max(1, rungs[2]) : 0;
-        R4 = rungs.Length > 3 ? Math.Max(1, rungs[3]) : 0;
+        if (settings.Length > MaximumLadders)
+            throw new ArgumentException($"A car has at most {MaximumLadders} ladders of its own.", nameof(settings));
+        T = ModeLadder.Settle(tires);
+        S1 = settings.Length > 0 ? ModeLadder.Settle(settings[0]) : null;
+        S2 = settings.Length > 1 ? ModeLadder.Settle(settings[1]) : null;
+        S3 = settings.Length > 2 ? ModeLadder.Settle(settings[2]) : null;
+        S4 = settings.Length > 3 ? ModeLadder.Settle(settings[3]) : null;
         TireGripUsageOverride = null;
+    }
+
+    /// <summary>The tyres on one of their named marks, and every ladder of the car's where it says.</summary>
+    public CarStrategy(TireUsageMode tireMode)
+        : this(TireLadder.Usage.Mark((int)tireMode))
+    {
     }
 
     /// <summary>
     /// The readable form, for a car whose first ladder is a five-rung
-    /// output ladder like the one the game's own car has.
+    /// output ladder like the one the game's own car has: both on their
+    /// named marks.
     /// </summary>
     public CarStrategy(TireUsageMode tireMode, PowerOutputMode powerMode)
-        : this(tireMode, (int)powerMode)
+        : this(TireLadder.Usage.Mark((int)tireMode), TireLadder.Usage.Mark((int)powerMode))
     {
     }
+
+    /// <summary>Where the tyre ladder is set, zero (Protect) to one (Attack).</summary>
+    public float Tires => T ?? TireLadder.Usage.DefaultSetting;
 
     /// <summary>
-    /// Where the car's <paramref name="index"/>th ladder is set, as that
-    /// ladder has it. A rung past its end is not an error worth throwing
-    /// over: a strategy outlives the car it was written for, and one saved
-    /// against an engine with seven maps loads against one with five.
+    /// Where the car's <paramref name="index"/>th ladder is set, zero to one
+    /// along its travel. A strategy outlives the car it was written for, and
+    /// one saved against an engine with seven maps loads against one with
+    /// five at the same share of the way up.
     /// </summary>
-    public int Rung(int index, ModeLadder ladder)
-    {
-        int set = Raw(index);
-        return set == 0 ? ladder.DefaultRung : ladder.Clamp(set);
-    }
+    public float Setting(int index, ModeLadder ladder) => Raw(index) ?? ladder.DefaultSetting;
 
-    /// <summary>The same strategy with the car's <paramref name="index"/>th ladder set to <paramref name="ordinal"/>.</summary>
-    public CarStrategy WithRung(int index, int ordinal)
+    /// <summary>The same strategy with the car's <paramref name="index"/>th ladder set to <paramref name="setting"/>.</summary>
+    public CarStrategy WithSetting(int index, float setting)
     {
-        int rung = Math.Max(1, ordinal);
+        float settled = ModeLadder.Settle(setting);
         return index switch
         {
-            0 => this with { R1 = rung },
-            1 => this with { R2 = rung },
-            2 => this with { R3 = rung },
-            3 => this with { R4 = rung },
+            0 => this with { S1 = settled },
+            1 => this with { S2 = settled },
+            2 => this with { S3 = settled },
+            3 => this with { S4 = settled },
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
     }
 
-    /// <summary>The car's <paramref name="index"/>th ladder moved <paramref name="delta"/> rungs, stopping at its ends.</summary>
-    public CarStrategy Nudged(int index, ModeLadder ladder, int delta) =>
-        WithRung(index, ladder.Clamp(Rung(index, ladder) + delta));
+    /// <summary>The same strategy with the tyre ladder set to <paramref name="setting"/>.</summary>
+    public CarStrategy WithTires(float setting) => this with { T = ModeLadder.Settle(setting) };
 
-    /// <summary>The tyre ladder moved <paramref name="delta"/> rungs, stopping at its ends.</summary>
-    public CarStrategy NudgedTires(int delta) =>
-        this with { TireMode = (TireUsageMode)TireLadder.Usage.Clamp((int)TireMode + delta) };
+    /// <summary>The car's <paramref name="index"/>th ladder moved <paramref name="delta"/> along its travel, stopping at its ends.</summary>
+    public CarStrategy Nudged(int index, ModeLadder ladder, float delta) =>
+        WithSetting(index, Setting(index, ladder) + delta);
 
-    private int Raw(int index) => index switch
+    /// <summary>The tyre ladder moved <paramref name="delta"/> along its travel, stopping at its ends.</summary>
+    public CarStrategy NudgedTires(float delta) => WithTires(Tires + delta);
+
+    private float? Raw(int index) => index switch
     {
-        0 => R1,
-        1 => R2,
-        2 => R3,
-        3 => R4,
+        0 => S1,
+        1 => S2,
+        2 => S3,
+        3 => S4,
         _ => throw new ArgumentOutOfRangeException(nameof(index))
     };
 
     /// <summary>
-    /// Where a car sets off when nobody has told it anything: the tyres on
-    /// their middle rung and every ladder of the car's where it says.
+    /// Where a car sets off when nobody has told it anything: the tyres in
+    /// the middle and every ladder of the car's where it says.
     /// </summary>
     public static readonly CarStrategy Default = new(TireUsageMode.Normal);
 
