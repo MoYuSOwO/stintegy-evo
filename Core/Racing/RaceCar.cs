@@ -36,7 +36,7 @@ public sealed class RaceCar
     {
         IReadOnlyList<Type> missing = driver.Controller.Needs.MissingFrom(car);
         if (missing.Count > 0)
-            throw new CarUnfitForDriverException(driver, car, missing);
+            throw new CarUnfitForDriverException(driver.Profile.Id, car, missing);
     }
 
     /// <summary>A car on the game's own chassis, made of these numbers.</summary>
@@ -127,9 +127,9 @@ public sealed class CarCollisionConfig
 }
 
 /// <summary>A driver put in a car without something the driver cannot drive without.</summary>
-public sealed class CarUnfitForDriverException(Driver driver, ICar car, IReadOnlyList<Type> missing)
+public sealed class CarUnfitForDriverException(string who, ICar car, IReadOnlyList<Type> missing)
     : InvalidOperationException(
-        $"{driver.Profile.Id} cannot drive a {car.GetType().Name}: it has no {string.Join(", ", System.Linq.Enumerable.Select(missing, t => t.Name))}.")
+        $"{who} cannot drive a {car.GetType().Name}: it has no {string.Join(", ", System.Linq.Enumerable.Select(missing, t => t.Name))}.")
 {
     public IReadOnlyList<Type> Missing { get; } = missing;
 }

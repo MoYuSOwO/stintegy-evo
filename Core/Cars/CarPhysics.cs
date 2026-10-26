@@ -6,6 +6,13 @@ namespace StintegyEVO.Core.Cars;
 
 public static class CarPhysics
 {
+    /// <summary>
+    /// The physics' own version, raised whenever a change to it changes how
+    /// a car drives. Everything learned on any car was learned on a
+    /// revision, and is stale on another (<see cref="LoadedCar.Fingerprint"/>).
+    /// </summary>
+    public const int Revision = 1;
+
     private const float Gravity = 9.80665f;
     private const float Epsilon = 1e-5f;
     /// <summary>

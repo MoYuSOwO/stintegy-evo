@@ -28,6 +28,23 @@ public sealed class CarLibraryTests
         Assert.Null(CarLibrary.Origin(new SingleTrackCar(new CarConfig(), new TireConfig())));
     }
 
+    /// <summary>
+    /// A car is known by what it is, not by the bytes it was built into:
+    /// the same car is the same fingerprint every time it is asked, a new
+    /// version of it is another car, and so is the same pack under someone
+    /// else's name.
+    /// </summary>
+    [Fact]
+    public void ACarIsKnownByWhatItIsNotByItsBuild()
+    {
+        LoadedCar car = CarLibrary.Load("official:formula_a_mixed");
+        Assert.Equal(car.Fingerprint, CarLibrary.Fingerprint(car.Id, car.Manifest, car.Car));
+        Assert.NotEqual(car.Fingerprint,
+            CarLibrary.Fingerprint(car.Id, car.Manifest with { Version = car.Manifest.Version + 1 }, car.Car));
+        Assert.NotEqual(car.Fingerprint,
+            CarLibrary.Fingerprint(new ResourceId("someone", car.Id.Name), car.Manifest, car.Car));
+    }
+
     [Fact]
     public void TheGamesOwnCarIsNotPartOfTheGame()
     {

@@ -49,14 +49,28 @@ public readonly record struct ResourceId
 
     public override string ToString() => $"{Namespace}{Separator}{Name}";
 
+    /// <summary>
+    /// Whether <paramref name="part"/> may be one side of an id, and so a
+    /// folder's name on every file system: lower case letters, digits and
+    /// underscores, and at least one of them.
+    /// </summary>
+    public static bool IsPart(string? part)
+    {
+        if (string.IsNullOrEmpty(part))
+            return false;
+        foreach (char c in part)
+            if (!(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_'))
+                return false;
+        return true;
+    }
+
     private static string Check(string part, string what)
     {
         if (string.IsNullOrEmpty(part))
             throw new ArgumentException("An id needs a namespace and a name.", what);
-        foreach (char c in part)
-            if (!(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_'))
-                throw new ArgumentException(
-                    $"'{part}' is not an id: lower case letters, digits and underscores only.", what);
+        if (!IsPart(part))
+            throw new ArgumentException(
+                $"'{part}' is not an id: lower case letters, digits and underscores only.", what);
         return part;
     }
 }
