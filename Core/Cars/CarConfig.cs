@@ -212,6 +212,17 @@ public sealed class CarConfig
     /// as one that never had it.
     /// </summary>
     public float CombinedGripLimiterStrength { get; init; } = 1f;
+
+    /// <summary>
+    /// The brake balance as a fixed share of the braking at the front, as a
+    /// real car's is: set by the driver's dial (DriverInput.FrontBrakeBiasOffset
+    /// moves it), not by the car. Where it does not match the grip each axle
+    /// has, one of them locks first: the front and the car runs on, the rear
+    /// and it steps out. Null is the old car, whose brakes shared themselves
+    /// by the grip each axle had left at every instant and never locked one
+    /// before the other.
+    /// </summary>
+    public float? FixedFrontBrakeShare { get; init; }
     public float CombinedGripLimiterPastPeakMinimumSpeed { get; init; } = 10f;
     public float RollingDragAccel { get; init; } = 0.18f;
 
