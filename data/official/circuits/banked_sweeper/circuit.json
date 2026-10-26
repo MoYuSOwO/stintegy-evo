@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "id": "flat-sweeper",
-  "name": "Flat sweeper",
+  "id": "banked_sweeper",
+  "name": "Banked sweeper",
   "track": "track.csv",
   "lengthMeters": 4946,
   "startLineMeters": 0,
@@ -19,6 +19,6 @@
     "centreline": "Built from straights and arcs by Tools/Circuits",
     "license": "Project content, see CONTENT_LICENSE.md",
     "licenseFile": "",
-    "notes": "The banked sweeper\u0027s layout with only drainage crossfall."
+    "notes": "Corners from 60 to 400 m radius, banked up to 18 degrees with the radius."
   }
 }

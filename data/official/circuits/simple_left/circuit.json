@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "id": "simple-left",
+  "id": "simple_left",
   "name": "Simple test layout, mirrored",
   "track": "track.csv",
   "lengthMeters": 1804,

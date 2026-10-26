@@ -87,7 +87,7 @@ To watch it, open the project in Godot. The main scene, `Levels/lowpoly.tscn`, i
 
 - **World and physics:** vehicle state, slip-angle tyres, powertrain resources, heat and wear, grip, road attitude and banking, collisions, wakes, track limits and walls, deterministic stepping.
 - **Domain contracts:** stable identities, driver profiles with 0..100 ratings, car capabilities, typed resource slots, track geometry, immutable frame snapshots, and the controller interface.
-- **Content as data:** cars are namespaced packs (`data/<namespace>/cars/<name>/`: a `car.json` and an assembly built on the game's own chassis, see [`Cars/MODDING.md`](Cars/MODDING.md)); compounds come in tyre packs (`data/<namespace>/tyres/<name>/tyres.json`) that a car declares, on one tyre model shared by every car; circuits are folders (`Circuits/<id>/`: `circuit.json`, a `track.csv` with one row a metre, scenery), written by the offline tool `Tools/Circuits` from the surveyed sources, see [`Circuits/README.md`](Circuits/README.md).
+- **Content as data:** cars are namespaced packs (`data/<namespace>/cars/<name>/`: a `car.json` and an assembly built on the game's own chassis, see [`Cars/MODDING.md`](Cars/MODDING.md)); compounds come in tyre packs (`data/<namespace>/tyres/<name>/tyres.json`) that a car declares, on one tyre model shared by every car; circuits are namespaced packs too (`data/<namespace>/circuits/<name>/`: `circuit.json`, a `track.csv` with one row a metre, scenery), written by the offline tool `Tools/Circuits` from the surveyed sources, see [`Circuits/README.md`](Circuits/README.md).
 - **Presentation:** Godot 3D views, cameras, HUD and CSV recording of physical state. The old 2D `RaceView` / `Levels/root.tscn` is retained for compatibility only.
 
 What is **not** here: rule-based or learned drivers, racing-line solvers, observation vectors, neural networks, training programs and model files. The world does not prefer a line, and it does not hide a driver model in its physics.
@@ -120,4 +120,4 @@ This runs the source-boundary check, the Core tests, both app builds, the headle
 
 - **Code** is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 - **Content and assets** follow the separate [content licensing notice](CONTENT_LICENSE.md), which covers project assets, third-party material and official distributions.
-- **Third-party track data** under `Tools/Circuits/Sources/` (and the circuit folders under `Circuits/` made from it) keeps its original LGPL-3.0 or MIT terms; see [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md).
+- **Third-party track data** under `Tools/Circuits/Sources/` (and the circuit packs under `data/official/circuits/` made from it) keeps its original LGPL-3.0 or MIT terms; see [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md).

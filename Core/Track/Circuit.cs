@@ -5,6 +5,7 @@ using System.IO;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using StintegyEVO.Core.Content;
 
 namespace StintegyEVO.Core.Track;
 
@@ -233,66 +234,59 @@ public static class CircuitTrackFile
 }
 
 /// <summary>
-/// The circuits on disk: one folder per circuit under each root, found by
-/// id. The roots default to the checkout's <c>Circuits/</c> and
-/// <c>private/circuits/</c>; a host whose files are not plain files (a
-/// packed Godot build) sets <see cref="Roots"/> and <see cref="ReadText"/>.
+/// The circuits on disk: namespaced packs like cars and tyres, each a folder
+/// <c>&lt;root&gt;/&lt;namespace&gt;/circuits/&lt;name&gt;/</c> holding its
+/// <c>circuit.json</c>, found by id (<c>official:silverstone</c>; a bare
+/// name is the game's own). The roots default to the data folders cars are
+/// found in; a host whose files are not plain files (a packed Godot build)
+/// sets <see cref="Roots"/> and <see cref="ReadText"/>.
 /// </summary>
 public static class CircuitLibrary
 {
-    public const string FolderName = "Circuits";
-    public const string PrivateFolder = "private/circuits";
+    public const string CircuitsFolder = "circuits";
 
     /// <summary>Where to look, in order. The first root holding the circuit wins.</summary>
-    public static List<string> Roots { get; } = DefaultRoots();
+    public static List<string> Roots { get; } = new(DataFolders.Roots);
 
     /// <summary>Reads one file, or null when there is none.</summary>
     public static Func<string, string?> ReadText { get; set; } =
         path => File.Exists(path) ? File.ReadAllText(path) : null;
 
-    public static CircuitManifest Manifest(string id) => Find(id).Manifest;
+    public static CircuitManifest Manifest(string id) => Find(ResourceId.Parse(id)).Manifest;
+
+    /// <summary>The folder the circuit was found in, for whatever else it carries beside the road: its scenery.</summary>
+    public static string Folder(string id) => Find(ResourceId.Parse(id)).Folder;
 
     public static TrackData Load(string id)
     {
-        (string folder, CircuitManifest manifest) = Find(id);
+        ResourceId circuit = ResourceId.Parse(id);
+        (string folder, CircuitManifest manifest) = Find(circuit);
         string csv = ReadText($"{folder}/{manifest.Track}")
-            ?? throw new FileNotFoundException($"Circuit '{id}' has no {manifest.Track} in {folder}.");
+            ?? throw new FileNotFoundException($"Circuit '{circuit}' has no {manifest.Track} in {folder}.");
         return CircuitTrackFile.Parse(manifest, csv);
     }
 
-    private static (string Folder, CircuitManifest Manifest) Find(string id)
+    /// <summary>Where <paramref name="id"/> is found among other roots than the library's own.</summary>
+    internal static string FolderIn(IEnumerable<string> roots, string id) => Find(ResourceId.Parse(id), roots).Folder;
+
+    private static (string Folder, CircuitManifest Manifest) Find(ResourceId id) => Find(id, Roots);
+
+    private static (string Folder, CircuitManifest Manifest) Find(ResourceId id, IEnumerable<string> roots)
     {
-        foreach (string root in Roots)
+        foreach (string root in roots)
         {
-            string folder = $"{root.TrimEnd('/', '\\')}/{id}";
-            if (ReadText($"{folder}/{CircuitManifest.FileName}") is { } json)
-                return (folder, CircuitManifest.Parse(json));
+            string folder = $"{root.TrimEnd('/', '\\')}/{id.Namespace}/{CircuitsFolder}/{id.Name}";
+            if (ReadText($"{folder}/{CircuitManifest.FileName}") is not { } json)
+                continue;
+            CircuitManifest manifest = CircuitManifest.Parse(json);
+            if (manifest.Format > CircuitManifest.CurrentFormat)
+                throw new InvalidDataException($"Circuit '{id}' is format {manifest.Format}; this game reads up to {CircuitManifest.CurrentFormat}.");
+            if (manifest.Id != id.Name)
+                throw new InvalidDataException($"Circuit '{id}' calls itself '{manifest.Id}'; a pack's id is its folder's name.");
+            return (folder, manifest);
         }
         throw new FileNotFoundException(
-            $"No circuit '{id}' under {string.Join(", ", Roots)}."
+            $"No circuit '{id}' under {string.Join(", ", roots)}."
         );
-    }
-
-    private static List<string> DefaultRoots()
-    {
-        var roots = new List<string>();
-        if (Environment.GetEnvironmentVariable("STINTEGY_CIRCUITS") is { Length: > 0 } configured)
-            roots.AddRange(configured.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
-        foreach (string start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
-        {
-            for (DirectoryInfo? dir = new(start); dir is not null; dir = dir.Parent)
-            {
-                string circuits = Path.Combine(dir.FullName, FolderName);
-                if (!Directory.Exists(circuits))
-                    continue;
-                if (!roots.Contains(circuits))
-                {
-                    roots.Add(circuits);
-                    roots.Add(Path.Combine(dir.FullName, PrivateFolder));
-                }
-                break;
-            }
-        }
-        return roots;
     }
 }
