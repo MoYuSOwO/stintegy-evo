@@ -174,6 +174,21 @@ public sealed record LaneDriverGains
     public float RejoinFacingRadians { get; init; } = 0.5f;
     public float RejoinLateralMeters { get; init; } = 1.5f;
     public float RejoinHeadingRadians { get; init; } = 0.15f;
+
+    /// <summary>
+    /// Off the road or facing well off it, whether or not the physics called
+    /// a spin: the angle the road is crossed back onto at most, and the
+    /// distance over which the lane is closed at it; the speed the edge is
+    /// crossed at, which one side on grass and one on tarmac will take; and
+    /// the gap in time to the next car coming that must be there first.
+    /// </summary>
+    public float RejoinAngleRadians { get; init; } = 0.2f;
+    public float RejoinCloseMeters { get; init; } = 15f;
+    public float RejoinEdgeSpeed { get; init; } = 12f;
+    public float RejoinEdgeMeters { get; init; } = 5f;
+    public float RejoinGapSeconds { get; init; } = 3f;
+    public float RejoinLookBehindMeters { get; init; } = 300f;
+    public float RejoinWrongWayRadians { get; init; } = 1f;
 }
 
 /// <summary>
@@ -482,7 +497,7 @@ public sealed class LaneDriver : IDriverController
         // Where the body points, against the road: after a spin the car may
         // be crawling or facing across it, and the way it moves says little.
         float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
-        UpdateRejoin(car, leftError, facing);
+        UpdateRejoin(context, car, leftError, facing);
         float turnIn = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(speed);
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
@@ -564,8 +579,14 @@ public sealed class LaneDriver : IDriverController
         // Facing well off the road after a spin: round on full lock at a
         // walk, whichever way is shorter; the line's own steering reads the
         // way the car moves, and a car crawling backwards reads it wrong.
-        if (_phase == SlidePhase.Rejoin && MathF.Abs(facing) > Gains.RejoinFacingRadians)
-            curvature = MathF.Sign(facing) * car.Capabilities.MaxCurvatureRequest;
+        if (_phase == SlidePhase.Rejoin)
+        {
+            // And the corner the throttle leaves room for is this one: the
+            // lane's own, twenty metres off it, wanted the whole tyre and
+            // left the car crawling on no throttle at all.
+            curvature = RejoinCurvature(car, pathHeading, facing, leftError, feedforward);
+            wanted = curvature;
+        }
 
         // Longitudinal: follow the table with its own slope as feedforward,
         // and pay the drag the axles will be charged for.
@@ -604,7 +625,7 @@ public sealed class LaneDriver : IDriverController
         }
         if (_phase == SlidePhase.Rejoin)
         {
-            float creep = MathF.Abs(facing) > Gains.RejoinFacingRadians ? Gains.RejoinTurnSpeed : Gains.RejoinSpeed;
+            float creep = RejoinSpeedNow(context, car, facing);
             target = MathF.Min(target, creep);
             ahead = MathF.Min(ahead, creep);
         }
@@ -712,6 +733,13 @@ public sealed class LaneDriver : IDriverController
         // after the tyre, so it does not widen the tyre's circle.
         driveLimit = MathF.Min(driveLimit, tractionRoom);
         accel = Math.Clamp(accel, -_car.MaxBrakeAccel, MathF.Max(0f, driveLimit));
+        // Coming back, the pedals ask no more than the ground under the
+        // driven wheels will take: on grass a fraction of the tarmac's.
+        if (_phase == SlidePhase.Rejoin && Ground(car) < OnTarmac)
+        {
+            float pedals = RejoinPedalShare * RejoinGripAccel * Ground(car);
+            accel = Math.Clamp(accel, -pedals, pedals);
+        }
 
         // Brakes: eased the moment either axle is near the edge of its circle,
         // which is what the combined-grip limiter does at the Normal rung and
@@ -798,12 +826,15 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// A spin is the physics' from the moment it calls one: the wheel and
-    /// pedals do nothing until it hands the car back, slow and pointing the
-    /// way it is going. From there the driver creeps back onto the lane,
-    /// and is back when on it and pointing down it.
+    /// pedals do nothing until it hands the car back. Off the road, or
+    /// stopped facing well off it, is the driver's to sort out whether or
+    /// not the physics called a spin, once any slide being caught is over.
+    /// Either way the driver comes back slowly and is back when on the lane
+    /// and pointing down it.
     /// </summary>
-    private void UpdateRejoin(RaceCarSnapshot car, float leftError, float facing)
+    private void UpdateRejoin(in DriverContext context, RaceCarSnapshot car, float leftError, float facing)
     {
+        _outside = OutsideEdgeMeters(context, car);
         if (car.Spinning)
         {
             _phase = SlidePhase.Spun;
@@ -812,13 +843,119 @@ public sealed class LaneDriver : IDriverController
         }
         if (_phase == SlidePhase.Spun)
             _phase = SlidePhase.Rejoin;
+        if (_phase == SlidePhase.None &&
+            (_outside > 0.5f ||
+             (MathF.Abs(facing) > Gains.RejoinWrongWayRadians && car.SpeedMetersPerSecond < Gains.RejoinSpeed)))
+            _phase = SlidePhase.Rejoin;
+        // Back on the road and pointing down it, the driving is the
+        // ordinary kind again, whatever the speed: holding a car that has
+        // come back on at forty metres a second to a crawl only threw it
+        // round under the brakes.
         if (_phase == SlidePhase.Rejoin &&
-            MathF.Abs(leftError) < Gains.RejoinLateralMeters &&
-            MathF.Abs(facing) < Gains.RejoinHeadingRadians)
+            _outside < 0f &&
+            (MathF.Abs(facing) < Gains.RejoinHeadingRadians ||
+             (MathF.Abs(facing) < Gains.RejoinFacingRadians && car.SpeedMetersPerSecond > Gains.RejoinSpeed) ||
+             MathF.Abs(leftError) < Gains.RejoinLateralMeters && MathF.Abs(facing) < Gains.RejoinFacingRadians))
         {
             _phase = SlidePhase.None;
             _throttleReturn = 0f;
         }
+    }
+
+    /// <summary>How far the car is outside the road and its kerb, metres; negative on it.</summary>
+    private static float OutsideEdgeMeters(in DriverContext context, RaceCarSnapshot car) =>
+        MathF.Abs(car.TrackD) - context.Track.Sample(car.TrackS).HalfWidth - SurfaceGrip.KerbWidthMeters;
+
+    /// <summary>
+    /// The wheel while coming back. Facing well off the road: round on full
+    /// lock at a walk, the shorter way unless that sweeps the nose away from
+    /// the road, toward whatever is out there; off the road the other way
+    /// round is the one with room. Facing down it: onto the lane at a
+    /// shallow angle, not straight at it, and no more lock than the ground
+    /// under the tyres will take.
+    /// </summary>
+    private float RejoinCurvature(RaceCarSnapshot car, float pathHeading, float facing, float leftError, float feedforward)
+    {
+        float maxLock = car.Capabilities.MaxCurvatureRequest;
+        // Round on full lock only at a crawl: still going quickly, the car
+        // is slowed first and turned no more than the ground takes.
+        if (MathF.Abs(facing) > Gains.RejoinFacingRadians && car.SpeedMetersPerSecond < RejoinCatchSpeed)
+        {
+            float turn = MathF.Sign(facing);
+            if (_outside > 0f)
+            {
+                // The way off the road, as an angle from the nose: if the
+                // shorter way round reaches it first, go the long way.
+                // The road's positive side is clockwise of its heading.
+                float awayHeading = pathHeading - MathF.Sign(car.TrackD) * MathF.PI * 0.5f;
+                float away = MathHelper.NormalizeAngle(awayHeading - car.HeadingRadians);
+                if (MathF.Sign(away) == turn && MathF.Abs(away) < MathF.Abs(facing))
+                    turn = -turn;
+            }
+            return turn * maxLock;
+        }
+        float across = Math.Clamp(MathF.Atan(leftError / Gains.RejoinCloseMeters), -Gains.RejoinAngleRadians, Gains.RejoinAngleRadians);
+        float heading = car.SpeedMetersPerSecond > 3f ? car.VelocityHeadingRadians : car.HeadingRadians;
+        float pursuit = MathF.Max(Gains.MinimumPursuitMeters, car.SpeedMetersPerSecond * Gains.PursuitSeconds);
+        float wanted = feedforward + 2f * MathF.Sin(MathHelper.NormalizeAngle(pathHeading - across - heading)) / pursuit;
+        float speed = MathF.Max(car.SpeedMetersPerSecond, 3f);
+        float ground = Ground(car);
+        float held = ground < OnTarmac ? RejoinGripAccel * ground / (speed * speed) : maxLock;
+        return Math.Clamp(wanted, -MathF.Min(maxLock, held), MathF.Min(maxLock, held));
+    }
+
+    /// <summary>The grip of the ground under the worst-placed wheel, 1 on clean tarmac.</summary>
+    private static float Ground(RaceCarSnapshot car) =>
+        MathF.Min(MathF.Min(car.FrontLeft.SurfaceGrip, car.FrontRight.SurfaceGrip), MathF.Min(car.RearLeft.SurfaceGrip, car.RearRight.SurfaceGrip));
+
+    // A wheel on less than this is off the tarmac.
+    private const float OnTarmac = 0.95f;
+
+    // What the tyres give at a crawl on ground of full grip, m/s², and the
+    // share of it a driver coming back off it asks: all of it to turn, half
+    // of it on the pedals, since one wheel on grass and one on tarmac pull
+    // the car round under power or brakes.
+    private const float RejoinGripAccel = 12f;
+    private const float RejoinPedalShare = 0.5f;
+    private const float RejoinCatchSpeed = 10f;
+    private float _outside;
+
+    /// <summary>
+    /// The speed while coming back: a walk while turning round; off the
+    /// road, the speed that ground will take, and slow enough near the edge
+    /// for one side on grass and one on tarmac; at the edge, a stop while a
+    /// car is coming within the gap. Cars a long way back are no reason to
+    /// wait: they are gone by the time they matter, or not yet there.
+    /// </summary>
+    private float RejoinSpeedNow(in DriverContext context, RaceCarSnapshot car, float facing)
+    {
+        if (MathF.Abs(facing) > Gains.RejoinFacingRadians)
+            return Gains.RejoinTurnSpeed;
+        if (_outside <= 0f)
+            return Gains.RejoinSpeed;
+        if (_outside > Gains.RejoinEdgeMeters)
+            return Gains.RejoinSpeed;
+        return TrafficComing(context, car) ? 0f : Gains.RejoinEdgeSpeed;
+    }
+
+    /// <summary>A car within the gap in time behind, or still alongside, on the road.</summary>
+    private bool TrafficComing(in DriverContext context, RaceCarSnapshot car)
+    {
+        float length = MathF.Max(car.TrackLengthMeters, 1f);
+        for (int i = 0; i < context.Frame.Count; i++)
+        {
+            if (i == context.CarSnapshotIndex)
+                continue;
+            RaceCarSnapshot other = context.Frame[i];
+            float behind = ((car.TrackS - other.TrackS) % length + length) % length;
+            if (behind > length * 0.5f)
+                behind -= length;
+            if (behind < -10f || behind > Gains.RejoinLookBehindMeters)
+                continue;
+            if (behind <= 0f || behind / MathF.Max(other.SpeedMetersPerSecond, 1f) < Gains.RejoinGapSeconds)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -831,7 +968,9 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     private (float Over, float Under) Recover(RaceCarSnapshot car, ref float curvature, float dt)
     {
-        if (_phase is SlidePhase.Spun or SlidePhase.Rejoin)
+        // Coming back at a crawl is no slide to catch; coming back at speed,
+        // a slide is caught as any other.
+        if (_phase == SlidePhase.Spun || (_phase == SlidePhase.Rejoin && car.SpeedMetersPerSecond < RejoinCatchSpeed))
             return (0f, 0f);
         LanePerformance performance = _performance!;
         float speed = car.SpeedMetersPerSecond;
