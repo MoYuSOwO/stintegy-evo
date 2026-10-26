@@ -906,10 +906,12 @@ public sealed class LaneDriver : IDriverController
         // On the free lane with no move asked for, the side lanes are read by
         // nothing; they are planned again the step a move begins.
         bool sides = Range > 1e-3f || TargetRange > 1e-3f;
+        // Settled on one side lane, the other is read by nothing either.
+        int settled = SettledSideLane();
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
         for (int lane = 0; lane < 3; lane++)
         {
-            if (lane != (int)LaneId.Free && !sides)
+            if (lane != (int)LaneId.Free && (!sides || settled >= 0 && lane != settled))
             {
                 _planned[lane] = false;
                 continue;
@@ -993,6 +995,11 @@ public sealed class LaneDriver : IDriverController
     {
         if (Range <= 1e-3f && TargetRange <= 1e-3f)
             return Interpolate(_speed[0], station);
+        // Settled on a side lane, the blend is that lane, and its own plan
+        // is the blend's plan.
+        int settled = SettledSideLane();
+        if (settled >= 0)
+            return Interpolate(_speed[settled], station);
 
         // Off the free lane: plan the blend actually in force over a window,
         // ending on the slower of the pure lanes it lies between. The window
@@ -1012,10 +1019,24 @@ public sealed class LaneDriver : IDriverController
         return MathF.Min(planned, BlendTargetCeiling(station));
     }
 
+    /// <summary>
+    /// The side lane the car is settled on, all the way out and not moving,
+    /// or -1. There the blend is that lane, and planning a window for it
+    /// again every step made a lap held on a side lane six times as long to
+    /// drive as one on the free lane.
+    /// </summary>
+    private int SettledSideLane()
+    {
+        if (Range < 1f || TargetRange < 1f || MathF.Abs(Side) < 1f || TargetSide != Side ||
+            _rangeVelocity != 0f || _sideVelocity != 0f)
+            return -1;
+        return Side > 0f ? (int)LaneId.Left : (int)LaneId.Right;
+    }
+
     /// <summary>The blend's window, planned from the car's own station once a station.</summary>
     private void AnchorBlendWindow(float station)
     {
-        if (Range <= 1e-3f && TargetRange <= 1e-3f)
+        if (Range <= 1e-3f && TargetRange <= 1e-3f || SettledSideLane() >= 0)
             return;
         int start = (int)MathF.Floor(station);
         if (start != _windowStart || MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f)
