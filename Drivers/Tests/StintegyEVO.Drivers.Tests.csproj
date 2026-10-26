@@ -11,6 +11,10 @@
   <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Drivers.csproj" />
     <ProjectReference Include="../../Core/StintegyEVO.Core.csproj" />
+    <!-- Built so the driver is learned and tested on the game's own car,
+         loaded from its folder under data/ the way the game does; never referenced. -->
+    <ProjectReference Include="../../Cars/official/formula_a_mixed/formula_a_mixed.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
     <None Include="../Cars/**/*.csv;../Cars/**/*.json" CopyToOutputDirectory="PreserveNewest" Link="Cars/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>

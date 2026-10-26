@@ -139,7 +139,7 @@ public static class PhysicsFingerprint
     /// The stock car on the stock tyre: what the lanes are learned on. A
     /// car started with warm tyres or a part-filled pack is the same car.
     /// </summary>
-    public static string Stock { get; } = Of(new CarConfig(), new TireConfig());
+    public static string Stock { get; } = Of(StockCar.Config, new TireConfig());
 
     public static string Of(CarConfig car, TireConfig tires)
     {

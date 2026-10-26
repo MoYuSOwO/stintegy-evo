@@ -251,7 +251,7 @@ public sealed class LaneDriver : IDriverController
     public LaneDriver(LaneTrackFile file, CarConfig? car = null, TireConfig? tires = null)
     {
         _file = file ?? throw new ArgumentNullException(nameof(file));
-        _car = car ?? new CarConfig();
+        _car = car ?? StockCar.Config;
         _tires = tires ?? new TireConfig();
         _turnLag = TurnLag.Measure(_car, _tires);
     }
@@ -275,8 +275,8 @@ public sealed class LaneDriver : IDriverController
     private void ManageEnergy(RaceCarSnapshot car)
     {
         float[] table = _energyTable ??= _file.Energy?.LiftSeconds() ?? Gains.EnergyRungLiftSeconds;
-        float lift = CoastOverride ??
-                     (table.Length == 0 ? 0f : table[Math.Clamp(car.Strategy.Rung(0, _car.Powertrain.OutputLadder) - 1, 0, table.Length - 1)]);
+        float asked = car.Strategy.Rung(0, _car.Powertrain.OutputLadder) - 1 + (_performance?.EnergyRungDrift ?? 0f);
+        float lift = CoastOverride ?? (table.Length == 0 ? 0f : Rung(table, asked));
         CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);
     }
 
@@ -461,7 +461,7 @@ public sealed class LaneDriver : IDriverController
         ScaleMove(car, dt);
         MoveBlend(dt);
 
-        _axles = AxlesOf(car);
+        _axles = Felt(AxlesOf(car));
         float speed = car.SpeedMetersPerSecond;
         float station = _lanes.StationOf(car.TrackS);
 
@@ -733,7 +733,11 @@ public sealed class LaneDriver : IDriverController
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
         // The wheels turned for that curvature as a driver who knew the car
         // would turn them (SteeringEstimate); the hands are this driver's.
-        return new DriverInput(car.Steering.AngleFor(curvature), accel, FrontBrakeBiasOffset: _performance?.FrontBrakeBiasOffset ?? 0f);
+        // The lock for that curvature as a driver who knew the car exactly
+        // would put on (SteeringEstimate), misjudged by this driver's hands;
+        // the line takes up what is left.
+        float steer = car.Steering.AngleFor(curvature) * (1f + (_performance?.SteeringRead ?? 0f));
+        return new DriverInput(steer, accel, FrontBrakeBiasOffset: BrakeBias(tyres, dt), TyreWearExcess: _performance?.TyreWearExcess ?? 0f);
     }
 
     // What the car's own instruments say of its two axles this step.
@@ -745,6 +749,27 @@ public sealed class LaneDriver : IDriverController
     /// without them reads as no grip measured, and every use of them falls
     /// back to the envelope.
     /// </summary>
+    /// <summary>
+    /// The axles as the driver feels them, not as the instruments read: each
+    /// axle's grip a little more or less than it is, by this segment's
+    /// reading of it, and what is being used of it read against that.
+    /// </summary>
+    private AxleTelemetry Felt(AxleTelemetry axles)
+    {
+        if (_performance is null)
+            return axles;
+        float front = 1f + _performance.FrontGripRead, rear = 1f + _performance.RearGripRead;
+        return axles with
+        {
+            FrontGripAccel = axles.FrontGripAccel * front,
+            RearGripAccel = axles.RearGripAccel * rear,
+            FrontLateralUse = axles.FrontLateralUse / front,
+            RearLateralUse = axles.RearLateralUse / rear,
+            FrontLongitudinalUse = axles.FrontLongitudinalUse / front,
+            RearLongitudinalUse = axles.RearLongitudinalUse / rear,
+        };
+    }
+
     private static AxleTelemetry AxlesOf(RaceCarSnapshot car) => new(
         car.Instrument("front_grip_mps2") ?? 0f,
         car.Instrument("rear_grip_mps2") ?? 0f,
@@ -915,6 +940,55 @@ public sealed class LaneDriver : IDriverController
                 accel = MathF.Min(accel, _car.MaxDriveAcceleration * _throttleReturn);
         }
         return accel;
+    }
+
+    private float _brakeDial = float.NaN;
+
+    /// <summary>
+    /// The brake balance dial, on a car whose balance is a fixed split: the
+    /// share at the front the driver wants is the one each axle's grip left
+    /// would take, as the driver feels it, turned toward it as fast as the
+    /// driver can. A driver with feel is nearly there and nearly at once; one
+    /// without is late and off, and an axle locks. On a car whose brakes
+    /// share themselves it is only the driver's own error, as it always was.
+    /// </summary>
+    private float BrakeBias(AxleTelemetry tyres, float dt)
+    {
+        float error = _performance?.FrontBrakeBiasOffset ?? 0f;
+        if (_car.FixedFrontBrakeShare is not { } fixedShare)
+            return error;
+        float front = tyres.FrontGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.FrontLateralUse * tyres.FrontLateralUse));
+        float rear = tyres.RearGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.RearLateralUse * tyres.RearLateralUse));
+        float wanted = front + rear > 1f ? front / (front + rear) : fixedShare;
+        wanted += error;
+        if (float.IsNaN(_brakeDial))
+            _brakeDial = wanted;
+        float seconds = _performance?.BrakeDialSeconds ?? 0f;
+        float follow = seconds <= 0f ? 1f : 1f - MathF.Exp(-MathF.Max(0f, dt) / seconds);
+        _brakeDial += (wanted - _brakeDial) * follow;
+        return Math.Clamp(_brakeDial - fixedShare, -0.25f, 0.25f);
+    }
+
+    /// <summary>A rung between two of a table's, by the fraction past the lower one; clamped to its ends.</summary>
+    private static TyreStyle Rung(TyreStyle[] table, float at)
+    {
+        float x = Math.Clamp(at, 0f, table.Length - 1);
+        int i = Math.Min((int)MathF.Floor(x), table.Length - 2);
+        if (i < 0)
+            return table[0];
+        float u = x - i;
+        TyreStyle a = table[i], b = table[i + 1];
+        return new TyreStyle(a.Corner + (b.Corner - a.Corner) * u, a.Brake + (b.Brake - a.Brake) * u,
+            a.Traction + (b.Traction - a.Traction) * u, a.Cap + (b.Cap - a.Cap) * u);
+    }
+
+    private static float Rung(float[] table, float at)
+    {
+        float x = Math.Clamp(at, 0f, table.Length - 1);
+        int i = Math.Min((int)MathF.Floor(x), table.Length - 2);
+        if (i < 0)
+            return table[0];
+        return table[i] + (table[i + 1] - table[i]) * (x - i);
     }
 
     private static float Combined(float lateral, float longitudinal) =>
@@ -1167,8 +1241,11 @@ public sealed class LaneDriver : IDriverController
         _tyreAuthority = Gains.TyreRungAuthority
             ? CarPhysics.GripUsage(car.Strategy) / MathF.Max(CarPhysics.GripUsage(CarStrategy.Default), 0.5f)
             : 1f;
+        // The rung asked for, as this driver carries it out this lap: a
+        // driver who manages the tyres drives the rung, one who does not
+        // drifts off it, mostly harder.
         _style = Gains.TyreRungStyles
-            ? TyreStyles[Math.Clamp((int)car.Strategy.TireMode - 1, 0, TyreStyles.Length - 1)]
+            ? Rung(TyreStyles, (int)car.Strategy.TireMode - 1 + (_performance?.TyreRungDrift ?? 0f))
             : null;
         _planShares = _style is { } style
             ? Shares with { Lateral = Shares.Lateral * style.Corner, Brake = Shares.Brake * style.Brake }

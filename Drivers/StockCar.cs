@@ -1,0 +1,21 @@
+using StintegyEVO.Core.Cars;
+
+namespace StintegyEVO.Drivers;
+
+/// <summary>
+/// The car the driver is learned on, tested on and races in the tools: the
+/// game's own, loaded from its pack the way the game loads it, so what is
+/// learned is learned on the car that is raced and there is one definition
+/// of it, not a second copy in the chassis's defaults.
+/// </summary>
+public static class StockCar
+{
+    public const string Id = "official:" + DriverFiles.StockCar;
+
+    private static readonly Lazy<CarConfig> ConfigValue = new(() =>
+        CarLibrary.Load(Id).Car is SingleTrackCar car
+            ? car.Config
+            : throw new InvalidOperationException($"{Id} is not a single-track car; the driver drives only those."));
+
+    public static CarConfig Config => ConfigValue.Value;
+}

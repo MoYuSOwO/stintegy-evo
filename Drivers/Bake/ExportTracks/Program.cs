@@ -27,7 +27,7 @@ internal static class Program
         string[] ids = args.Length > 1 ? args[1..] : ["silverstone"];
         foreach (string id in ids)
             WriteBounds(id, Build(id), outDir);
-        WriteGg(new CarConfig(), new TireConfig(), Path.Combine(outDir, "stintegy_gg.csv"));
+        WriteGg(StockCar.Config, new TireConfig(), Path.Combine(outDir, "stintegy_gg.csv"));
         Console.WriteLine(outDir);
         return 0;
     }

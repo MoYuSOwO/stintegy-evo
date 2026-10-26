@@ -27,6 +27,36 @@ public sealed class LanePerformance
     /// <summary>The wandering every driver keeps, as a share of a zero-consistency driver's.</summary>
     public const float NoiseFloor = 0.08f;
 
+    /// <summary>
+    /// What the best driver keeps of every misjudgement a driver with no feel
+    /// makes: the grip each axle has, the lock a corner wants, the brake
+    /// balance, the limit and the day's grip. Nobody reads a tyre exactly.
+    /// </summary>
+    public const float FeelFloor = 0.15f;
+
+    // Feel for the grip each axle has left, as a share of it: how far one
+    // segment's reading wanders, and the lap's lean on top, at no feel.
+    private const float AxleGripMisreading = 0.05f;
+    private const float LapAxleGripMisreading = 0.025f;
+
+    // The lock a corner wants, as a share of it: a driver who knew the car
+    // exactly would turn the wheel just so; a real one is a little over or
+    // under and the line takes up the rest.
+    private const float SteeringMisjudgement = 0.05f;
+
+    // Tyre management: the wear a driver's hands add or save beyond what the
+    // physics resolves, from a tenth less at the top of the scale to two
+    // fifths more at the bottom, the default rating (80) the driver the
+    // tyre was calibrated with.
+    private const float CalibratedTyreManagement = 0.8f;
+    private const float WearExcessPerRating = 0.5f;
+
+    // And how closely the rung the pit wall asks for is the rung driven: a
+    // lap's drift off it in rungs, most at no management, and a lean toward
+    // driving harder than asked, which is what drivers do.
+    private const float RungDriftWithNoManagement = 0.6f;
+    private const float RungPushWithNoManagement = 0.3f;
+
     private const float BrakeMarkerSpreadMeters = 4.5f;
     private const float LateralSpreadMeters = 0.35f;
     private const float SpeedSpread = 0.012f;
@@ -39,6 +69,7 @@ public sealed class LanePerformance
     private float _sessionForm, _lapForm, _segmentForm;
     private float _targetMarker, _targetLateral, _targetSpeed, _targetOveruse, _targetBrakeBias;
     private float _lapBrakeBias, _gripBias;
+    private float _lapFrontRead, _lapRearRead, _targetFrontRead, _targetRearRead, _targetSteer;
 
     // Car control, as the historical driver had it: how near the limit a
     // driver leaves the tyre wanders from one segment to the next, by up to
@@ -122,8 +153,35 @@ public sealed class LanePerformance
     /// <summary>How much faster than the plan this segment is being taken, by mistake: 0 nearly always.</summary>
     public float CornerOverstep { get; private set; }
 
+    /// <summary>
+    /// How long the brake balance takes to follow what the axles want, s: a
+    /// driver with feel turns the dial with the corner coming, one without
+    /// is a beat behind every change. Never instant: the floor is a driver's.
+    /// </summary>
+    public float BrakeDialSeconds => 0.06f + (0.35f - 0.06f) * (1f - Control);
+
     /// <summary>The brake balance this driver has set, as a share moved forward of the best split.</summary>
     public float FrontBrakeBiasOffset { get; private set; }
+
+    /// <summary>
+    /// How much more grip than is there the driver feels at each axle, as a
+    /// share: positive and the tyre is asked for more than it has.
+    /// </summary>
+    public float FrontGripRead { get; private set; }
+    public float RearGripRead { get; private set; }
+
+    /// <summary>How much more lock than the corner wants the hands put on, as a share.</summary>
+    public float SteeringRead { get; private set; }
+
+    /// <summary>The share more wear this driver's hands put on the tyres than the reference driver's.</summary>
+    public float TyreWearExcess => (CalibratedTyreManagement - Score(_abilities.TireManagement)) * WearExcessPerRating;
+
+    /// <summary>
+    /// This lap, how far off the asked-for rung the driving is, in rungs:
+    /// positive harder. The tyre rung and the energy rung each their own.
+    /// </summary>
+    public float TyreRungDrift { get; private set; }
+    public float EnergyRungDrift { get; private set; }
 
     /// <summary>Adaptability as drawn this lap, 0..1.</summary>
     public float Adaptation { get; private set; } = 1f;
@@ -168,11 +226,18 @@ public sealed class LanePerformance
             Control = Sample(_abilities.CarControl, 0.38f * _sessionForm + 0.92f * _lapForm);
             PaceShare = SlowestPaceShare + (1f - SlowestPaceShare) * pace;
             ExtraBrakePreviewSeconds = (1f - pace) * MaximumExtraBrakePreview;
-            _lapBrakeBias = Normal() * LapBrakeBiasError * MathF.Pow(1f - Control, 1.25f);
+            float lapFeel = Feel(MathF.Pow(1f - Control, 1.25f));
+            _lapBrakeBias = Normal() * LapBrakeBiasError * lapFeel;
+            _lapFrontRead = Normal() * LapAxleGripMisreading * lapFeel;
+            _lapRearRead = Normal() * LapAxleGripMisreading * lapFeel;
+
+            float unmanaged = Feel(1f - Score(_abilities.TireManagement));
+            TyreRungDrift = RungPushWithNoManagement * (1f - Score(_abilities.TireManagement)) + Normal() * RungDriftWithNoManagement * unmanaged * 0.5f;
+            EnergyRungDrift = RungPushWithNoManagement * (1f - Score(_abilities.TireManagement)) + Normal() * RungDriftWithNoManagement * unmanaged * 0.5f;
 
             float longRun = 0.6f * _sessionForm + 0.8f * _lapForm;
             Adaptation = Sample(_abilities.Adaptability, longRun);
-            _gripBias = Normal() * GripMisreading * MathF.Pow(1f - Adaptation, 1.2f);
+            _gripBias = Normal() * GripMisreading * Feel(MathF.Pow(1f - Adaptation, 1.2f));
         }
 
         int segment = (int)MathF.Floor(MathF.Max(0f, s) / SegmentLengthMeters);
@@ -184,7 +249,10 @@ public sealed class LanePerformance
             _targetMarker = Normal() * BrakeMarkerSpreadMeters * error;
             _targetLateral = Normal() * LateralSpreadMeters * error;
             _targetSpeed = Normal() * SpeedSpread * error;
-            float limitError = MathF.Pow(1f - Control, 1.25f);
+            float limitError = Feel(MathF.Pow(1f - Control, 1.25f));
+            _targetFrontRead = _lapFrontRead + Normal() * AxleGripMisreading * limitError;
+            _targetRearRead = _lapRearRead + Normal() * AxleGripMisreading * limitError;
+            _targetSteer = Normal() * SteeringMisjudgement * limitError;
             float wander = 0.4f + 0.6f * Math.Clamp(error, 0f, 1f);
             _targetOveruse = Math.Clamp(
                 -LimitMarginWithNoFeel * (1f - Control) + Normal() * LimitJitter * limitError * wander,
@@ -211,6 +279,9 @@ public sealed class LanePerformance
         SpeedError += (_targetSpeed - SpeedError) * response;
         LimitOveruse += (_targetOveruse - LimitOveruse) * response;
         FrontBrakeBiasOffset += (_targetBrakeBias - FrontBrakeBiasOffset) * response;
+        FrontGripRead += (_targetFrontRead - FrontGripRead) * response;
+        RearGripRead += (_targetRearRead - RearGripRead) * response;
+        SteeringRead += (_targetSteer - SteeringRead) * response;
     }
 
     /// <summary>A rating as drawn on the day: a low consistency lets it swing with form.</summary>
@@ -231,6 +302,9 @@ public sealed class LanePerformance
     }
 
     private static float Score(float rating) => Math.Clamp(rating * 0.01f, 0f, 1f);
+
+    /// <summary>A misjudgement's size, from a driver's share of the worst: never below the floor.</summary>
+    private static float Feel(float share) => FeelFloor + (1f - FeelFloor) * Math.Clamp(share, 0f, 1f);
 
     private static uint StableHash(string value)
     {

@@ -92,7 +92,7 @@ public static class LaneLapRunner
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
         float heading = MathF.Atan2(next.Y - here.Y, next.X - here.X);
 
-        carConfig ??= new CarConfig();
+        carConfig ??= StockCar.Config;
         // The development compound unless a run asks for another: a lap that
         // goes wrong should have gone wrong in the driving.
         var tires = tireConfig ?? DevelopmentTyres.Super;

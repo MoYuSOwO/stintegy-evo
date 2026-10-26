@@ -3,6 +3,7 @@ using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
+using StintegyEVO.Drivers;
 using StintegyEVO.Drivers.Lanes;
 using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.LowPoly;
@@ -42,7 +43,7 @@ public partial class LaneDriverDemo : Node
         System.Numerics.Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station));
         System.Numerics.Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
 
-        var config = new CarConfig();
+        var config = StockCar.Config;
         var tires = DevelopmentTyres.Super;
         var driver = new LaneDriver(file, config, tires);
         var car = new RaceCar(
