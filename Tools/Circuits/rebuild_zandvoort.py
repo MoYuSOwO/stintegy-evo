@@ -28,7 +28,7 @@ from scipy.interpolate import CubicSpline, splprep, splev
 from scipy.spatial import cKDTree
 
 ROOT = Path(__file__).resolve().parents[2]
-CIRCUIT = ROOT / "Circuits" / "zandvoort"
+CIRCUIT = ROOT / "data" / "official" / "circuits" / "zandvoort"
 TRACK = CIRCUIT / "track.csv"
 PROFILE = CIRCUIT / "surface.json"
 

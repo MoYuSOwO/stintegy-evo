@@ -146,12 +146,14 @@ public sealed class SceneryPlanTests
     public void ATrackIsNamedByItsPlanFile()
     {
         Assert.Equal(
-            "silverstone",
-            SceneryPlan.TrackOf("res://Circuits/silverstone/scenery.json")
+            "official:silverstone",
+            SceneryPlan.TrackOf("res://data/official/circuits/silverstone/scenery.json")
         );
-        // A mod's plan is named for its track.
-        Assert.Equal("silverstone", SceneryPlan.TrackOf("user://mods/greener/scenery/silverstone.json"));
-        Assert.Equal("monaco", SceneryPlan.TrackOf("monaco.json"));
+        Assert.Equal("someone:their_ring", SceneryPlan.TrackOf("user://data/someone/circuits/their_ring/scenery.json"));
+        // A mod's plan is named for its circuit, namespace and name.
+        Assert.Equal("official:silverstone", SceneryPlan.TrackOf("user://mods/greener/scenery/official/silverstone.json"));
+        Assert.Equal("someone:their_ring", SceneryPlan.TrackOf("user://mods/greener/scenery/someone/their_ring.json"));
+        Assert.Equal("official:monaco", SceneryPlan.TrackOf("monaco.json"));
     }
 
     [Fact]

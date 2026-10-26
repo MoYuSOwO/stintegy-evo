@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using StintegyEVO.Core.Content;
 using StintegyEVO.GodotApp.Interop;
 
 namespace StintegyEVO.GodotApp.Scenery;
@@ -39,7 +40,7 @@ namespace StintegyEVO.GodotApp.Scenery;
 /// <code>
 ///   mods/greener-silverstone/
 ///     props/oak.glb
-///     scenery/silverstone.json      # "prop": "props/oak.glb"
+///     scenery/official/silverstone.json   # "prop": "props/oak.glb"
 /// </code>
 ///
 /// Paths inside a mod's plan are relative to that mod's own folder, so a
@@ -75,14 +76,16 @@ public static class SceneryMods
     }
 
     /// <summary>
-    /// What the mods add to one circuit, in the order the mods are listed.
-    /// A mod that says nothing about this circuit contributes nothing.
+    /// What the mods add to one circuit, by its id, in the order the mods
+    /// are listed. A mod that says nothing about this circuit contributes
+    /// nothing.
     /// </summary>
     public static IEnumerable<(SceneryPlan Plan, string Folder)> PlansFor(string track)
     {
+        ResourceId circuit = ResourceId.Parse(track);
         foreach (string mod in Installed())
         {
-            string path = $"{mod}/scenery/{track}.json";
+            string path = $"{mod}/scenery/{circuit.Namespace}/{circuit.Name}.json";
             if (!Godot.FileAccess.FileExists(path))
                 continue;
             using var file = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Read);

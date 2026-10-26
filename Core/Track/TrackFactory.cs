@@ -1,18 +1,18 @@
 namespace StintegyEVO.Core.Track;
 
 /// <summary>
-/// The shipped circuits by name. Each one is a folder under Circuits/,
+/// The shipped circuits by name. Each one is a pack under data/official/circuits/,
 /// written by Tools/Circuits; these only load them, so the many callers
 /// that ask for a circuit by its old name keep working.
 /// </summary>
 public static class TrackFactory
 {
     public static TrackData SimpleTestTrack(bool isLeft = false) =>
-        CircuitLibrary.Load(isLeft ? "simple-left" : "simple");
+        CircuitLibrary.Load(isLeft ? "simple_left" : "simple");
 
-    public static TrackData BankedSpeedwayTestTrack() => CircuitLibrary.Load("banked-speedway");
-    public static TrackData BankedSweeperTestTrack() => CircuitLibrary.Load("banked-sweeper");
-    public static TrackData FlatSweeperTestTrack() => CircuitLibrary.Load("flat-sweeper");
+    public static TrackData BankedSpeedwayTestTrack() => CircuitLibrary.Load("banked_speedway");
+    public static TrackData BankedSweeperTestTrack() => CircuitLibrary.Load("banked_sweeper");
+    public static TrackData FlatSweeperTestTrack() => CircuitLibrary.Load("flat_sweeper");
     public static TrackData DaytonaStyleTestTrack() => CircuitLibrary.Load("daytona");
 
     public static TrackData SilverstoneStyleTestTrack() => CircuitLibrary.Load("silverstone");

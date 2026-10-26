@@ -34,10 +34,11 @@ public partial class RaceView3D : Node3D
 
     /// <summary>
     /// Which circuit this is, for everything the view needs to look up by
-    /// name: its folder is <c>Circuits/&lt;id&gt;/</c>, road and scenery both. Set it
-    /// before the view enters the tree; the default is the practice circuit.
+    /// id (<see cref="CircuitLibrary"/>): its pack holds road and scenery both.
+    /// Set it before the view enters the tree; the default is the practice
+    /// circuit.
     /// </summary>
-    public string CircuitId { get; set; } = "silverstone";
+    public string CircuitId { get; set; } = "official:silverstone";
 
     /// <summary>
     /// Which car the view puts out when nobody has composed a race for it,
@@ -46,10 +47,12 @@ public partial class RaceView3D : Node3D
     /// </summary>
     public string CarId { get; set; } = "official:formula_a_mixed";
 
-    /// <summary>The circuit's name for the screen: the plan's, or the id if the plan gives none.</summary>
+    /// <summary>The circuit's name for the screen: the plan's, or the circuit's own if the plan gives none.</summary>
     public string CircuitName => _circuit.Plan?.Name is { Length: > 0 } name
         ? name
-        : CircuitId.Length > 0 ? char.ToUpperInvariant(CircuitId[0]) + CircuitId[1..] : "Circuit";
+        : _circuitName ?? "Circuit";
+    private string? _circuitName;
+    private string? _circuitFolder;
     public int SelectedCarIndex { get; private set; }
     public bool IsPaused { get; private set; }
     public int CameraMode => _camera.Mode;
@@ -140,6 +143,8 @@ public partial class RaceView3D : Node3D
             GodotCircuits.Use();
             string id = CircuitId;
             track = _composedSimulation?.Track ?? await Task.Run(() => CircuitLibrary.Load(id));
+            _circuitName = CircuitLibrary.Manifest(id).Name;
+            _circuitFolder = CircuitLibrary.Folder(id);
         }
         catch (Exception error)
         {
@@ -164,8 +169,8 @@ public partial class RaceView3D : Node3D
         RaceSeconds = Simulation.RaceTimeSeconds;
 
         AddChild(_circuit);
-        // The plan is the circuit's own, found by its id.
-        _circuit.Initialize(track, $"{GodotCircuits.Root}/{CircuitId}/{Scenery.SceneryPlan.FileName}");
+        // The plan is the circuit's own, in its pack.
+        _circuit.Initialize(track, $"{_circuitFolder}/{Scenery.SceneryPlan.FileName}");
         CreateLighting();
         CreateCarViews();
         if (_cars.Count == 0)

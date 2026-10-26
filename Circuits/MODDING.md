@@ -6,10 +6,13 @@ folder with models and a text file.
 ```
 mods/greener-silverstone/
   props/oak.glb
-  scenery/silverstone.json
+  scenery/official/silverstone.json
 ```
 
-`scenery/silverstone.json` is the same format the game's own circuits use
+The plan is named for the circuit's id, namespace and name: the game's own
+Silverstone is `official:silverstone`, so its plan is
+`scenery/official/silverstone.json`, and someone's `someone:their_ring` is
+`scenery/someone/their_ring.json`. It is the same format the game's own circuits use
 (see `SCENERY.md` beside this file):
 
 ```json

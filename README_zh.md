@@ -87,7 +87,7 @@ for (int i = 0; i < 60 * 240; i++)   // four simulated minutes
 
 - **世界与物理：** 车辆状态、滑移角轮胎、动力系统资源、温度与磨损、抓地、道路姿态与倾角、碰撞、尾流、赛道界限与墙、确定性步进。
 - **领域契约：** 稳定身份、带 0..100 能力评级的车手档案、车辆能力、有类型的资源槽位、赛道几何、不可变的帧快照，以及控制器接口。
-- **内容即数据：** 车是带命名空间的包（`data/<命名空间>/cars/<名字>/`：一个 `car.json` 加一个基于游戏自带底盘的程序集，见 [`Cars/MODDING.md`](Cars/MODDING.md)）；配方放在轮胎包里（`data/<命名空间>/tyres/<名字>/tyres.json`），由车声明，所有车共用同一个轮胎模型；赛道是文件夹（`Circuits/<id>/`：`circuit.json`、每米一行的 `track.csv`、布景），由离线工具 `Tools/Circuits` 从测绘源数据生成，见 [`Circuits/README.md`](Circuits/README.md)。
+- **内容即数据：** 车是带命名空间的包（`data/<命名空间>/cars/<名字>/`：一个 `car.json` 加一个基于游戏自带底盘的程序集，见 [`Cars/MODDING.md`](Cars/MODDING.md)）；配方放在轮胎包里（`data/<命名空间>/tyres/<名字>/tyres.json`），由车声明，所有车共用同一个轮胎模型；赛道同样是带命名空间的包（`data/<命名空间>/circuits/<名字>/`：`circuit.json`、每米一行的 `track.csv`、布景），由离线工具 `Tools/Circuits` 从测绘源数据生成，见 [`Circuits/README.md`](Circuits/README.md)。
 - **表现层：** Godot 3D 视图、相机、HUD 和物理状态 CSV 记录。旧的 2D `RaceView` / `Levels/root.tscn` 仅作兼容保留。
 
 这里**没有**：规则驾驶器或学习驾驶器、赛车线求解器、观测向量、神经网络、训练程序和模型文件。世界不偏好任何行车线，也不在物理里藏一个车手模型。
@@ -120,4 +120,4 @@ python3 Tools/verify_boundary.py --godot /path/to/godot-dotnet
 
 - **代码**采用 [GNU Affero 通用公共许可证 v3.0](LICENSE)。
 - **内容与素材**适用单独的[内容许可说明](CONTENT_LICENSE_zh.md)，涵盖项目素材、第三方材料和官方发行版。
-- `Tools/Circuits/Sources/` 及由它生成的 `Circuits/` 赛道文件夹中的**第三方赛道数据**保留原有的 LGPL-3.0 或 MIT 条款，详见 [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md)。
+- `Tools/Circuits/Sources/` 及由它生成的 `data/official/circuits/` 赛道包中的**第三方赛道数据**保留原有的 LGPL-3.0 或 MIT 条款，详见 [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md)。
