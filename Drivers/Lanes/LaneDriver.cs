@@ -347,7 +347,7 @@ public sealed class LaneDriver : IDriverController
     private void ManageEnergy(RaceCarSnapshot car)
     {
         float[] table = _energyTable ??= _file.Energy?.LiftSeconds() ?? Gains.EnergyRungLiftSeconds;
-        float asked = (_model.Ladders.Count > 0 ? car.Strategy.Rung(0, _model.Ladders[0]) : 1) - 1 + (_performance?.EnergyRungDrift ?? 0f);
+        float asked = (_model.Ladders.Count > 0 ? _model.Ladders[0].RungsUp(car.Strategy.Setting(0, _model.Ladders[0])) : 0f) + (_performance?.EnergyRungDrift ?? 0f);
         float lift = CoastOverride ?? (table.Length == 0 ? 0f : Rung(table, asked));
         CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);
     }
@@ -1297,7 +1297,7 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     private float DrivenRung(RaceCarSnapshot car)
     {
-        float asked = (int)car.Strategy.TireMode - 1 + (_performance?.TyreRungDrift ?? 0f);
+        float asked = TireLadder.Usage.RungsUp(car.Strategy.Tires) + (_performance?.TyreRungDrift ?? 0f);
         if (_performance is null)
             return asked;
         if (car.Tires.IsDefaultOrEmpty)
