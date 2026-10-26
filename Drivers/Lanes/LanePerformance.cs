@@ -169,13 +169,6 @@ public sealed class LanePerformance
     /// <summary>How much faster than the plan this segment is being taken, by mistake: 0 nearly always.</summary>
     public float CornerOverstep { get; private set; }
 
-    /// <summary>
-    /// How long the brake balance takes to follow what the axles want, s: a
-    /// driver with feel turns the dial with the corner coming, one without
-    /// is a beat behind every change. Never instant: the floor is a driver's.
-    /// </summary>
-    public float BrakeDialSeconds => 0.06f + (0.35f - 0.06f) * (1f - Control);
-
     /// <summary>The brake balance this driver has set, as a share moved forward of the best split.</summary>
     public float FrontBrakeBiasOffset { get; private set; }
 
