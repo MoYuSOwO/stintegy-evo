@@ -29,6 +29,9 @@ cd stintegy-evo && dotnet test Core/Tests/StintegyEVO.Core.Tests.csproj -c Relea
 ```csharp
 sealed class CentrelineFollower : IDriverController
 {
+    // 它按车自己的转向估计打方向，所以只开有这项功能的车。
+    public CarNeeds Needs => new([typeof(ICarEnvelope)], []);
+
     public DriverInput GetControl(in DriverContext context, float dt)
     {
         RaceCarSnapshot car = context.Car;
@@ -92,10 +95,11 @@ for (int i = 0; i < 60 * 240; i++)   // four simulated minutes
 ## 各部分如何衔接
 
 - **控制器。** `IDriverController.GetControl` 读取 `DriverContext`（车手档案、只读赛道视图和一帧冻结快照），返回 `DriverInput`：前轮要打到的角度、期望纵向加速度和可选的刹车配比偏移。车只把轮子打到车手给的角度，不会替车手修正；`RaceCarSnapshot.Steering` 给出一个完全了解这辆车的车手为某个曲率会选的角度。车也可以没有车手，此时由宿主设置 `RaceCar.ExternalInput`；零命令意味着滑行，不会把车冻住。
+- **车有什么。** 每辆车都是路上的一个刚体（`ICar`：运动、尺寸、仪表盘）。除此之外的东西，车通过实现对应的功能接口来声明：可换的轮胎（`ICarTires`）、消耗的储能（`ICarStores`）、车手按住的按钮（`ICarButtons`）、可供规划的性能包络（`ICarEnvelope`）、抓地的手感（`ICarGripFeel`）。只有具备某项功能的车，快照里才有这项功能的读数。控制器声明自己需要什么（`IDriverController.Needs`）：缺少必需功能的车，车手不会被放进去；可选功能有就用，没有就不用。
 - **冻结、收集、推进。** 每个子步里，所有控制器读同一帧冻结快照，全部命令收集并校验完之后物理才推进。没有哪个控制器会看到被其他控制器改过的世界。
 - **车上的装置。** 命令与轮胎之间的一切都是公示的装置，参数在 `CarConfig` 上。没装某个装置的车，该装置参数为零；接口不变。
   - **合成抓地限制器**（combined-grip limiter）是本系别允许的电子稳定装置。它裁剪每根轴的驱动与制动，使轮胎合成用量不超过摩擦圆的一个固定份额（各轮胎档位相同）；车速高于 10 m/s 时，滑移角过峰的那根轴驱动清零。它不碰转向。`CombinedGripLimiterStrength = 0` 即未装机。
-  - **推超车**（push-to-pass）按住时加功率，受系别规定约束（`PushToPassRules`：全场总秒数、单次上限、每次之后的冷却），由 Core 执行；什么时候按由宿主或车手决定。**主动空力**恢复一部分因前车尾流损失的下压力。
+  - **推超车**（push-to-pass）是这台底盘唯一的按钮，按住时加功率，受系别规定约束（`PushToPassRules`：全场总秒数、单次上限、每次之后的冷却），由 Core 执行；什么时候按由宿主或车手决定。**主动空力**恢复一部分因前车尾流损失的下压力。
 - **赛道是几何。** 赛道提供中心线、宽度、缓冲区、曲率、高程与倾角、路面和发车格，不提供赛车线。
 
 这些契约写在上述类型的 XML 文档注释里，并由 `Core/Tests` 中的测试守住。
