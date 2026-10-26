@@ -31,11 +31,12 @@ public sealed class TurnLag
 
     private TurnLag(float[] lag) => _lag = lag;
 
-    public static TurnLag Measure(CarConfig car, TireConfig tires)
+    /// <summary>Measured on the driver's own copy of the car, which must have tyres and an envelope.</summary>
+    public static TurnLag Measure(ICar car)
     {
         var lag = new float[Speeds.Length];
         for (int i = 0; i < Speeds.Length; i++)
-            lag[i] = At(car, tires, Speeds[i]);
+            lag[i] = At(car, Speeds[i]);
         return new TurnLag(lag);
     }
 
@@ -66,12 +67,14 @@ public sealed class TurnLag
     // not what was asked for, because at speed the car takes up less of the
     // ask than it was given, and that shortfall is the feedback's to close,
     // not a delay.
-    private static float At(CarConfig car, TireConfig tires, float speed)
+    private static float At(ICar car, float speed)
     {
         var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = speed };
-        state.Chassis().Energy = PowertrainState.Filled(0.8f);
-        state.Chassis().InstallFreshTires();
-        state.Chassis().WarmTires(90f, 90f);
+        (car as ICarStores)?.Fill(state, PowertrainState.Filled(0.8f));
+        var tyres = (ICarTires)car;
+        var envelope = (ICarEnvelope)car;
+        tyres.InstallFreshTires(state);
+        tyres.WarmTires(state, 90f, 90f);
         float settled = SettledLateralAccel / (speed * speed);
         float ask = StepLateralAccel / (speed * speed);
         int settle = (int)(SettleSeconds / Dt), window = (int)(WindowSeconds / Dt);
@@ -82,10 +85,10 @@ public sealed class TurnLag
             bool stepped = i >= settle;
             float wanted = settled + (stepped ? ask : 0f);
             var input = new CarPhysicsStepInput(
-                new DriverInput(CarPhysics.EstimateSteering(state, car, tires, RoadAttitude.Flat).AngleFor(wanted), 0f),
+                new DriverInput(envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(wanted), 0f),
                 CarStrategy.Default, 25f);
             Vector2 from = state.Position;
-            CarPhysics.Step(state, car, tires, input, Dt);
+            car.Step(state, input, Dt);
             Vector2 move = state.Position - from;
             float length = move.Length();
             if (length < 1e-4f)

@@ -99,7 +99,10 @@ public static class LaneLapRunner
         // The development compound unless a run asks for another: a lap that
         // goes wrong should have gone wrong in the driving.
         var tires = tireConfig ?? DevelopmentTyres.Super;
-        var driver = new LaneDriver(file, carConfig, tires)
+        // One kind of car, raced and planned with: the driver keeps its own
+        // copy of what it is, and knows it only by its features.
+        ICar model = new SingleTrackCar(carConfig, tires);
+        var driver = new LaneDriver(file, model)
         {
             Gains = gains ?? new LaneDriverGains(),
             Shares = shares ?? new LaneShares(),
@@ -109,8 +112,7 @@ public static class LaneLapRunner
         var profile = new DriverProfile("lanes", abilities ?? new DriverAbilities());
         var car = new RaceCar(
             "lanes",
-            carConfig,
-            tires,
+            model,
             new Driver(profile, driver),
             new CarState
             {

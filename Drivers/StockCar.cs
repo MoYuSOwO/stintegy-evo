@@ -19,10 +19,12 @@ public static class StockCar
 
     public static CarConfig Config => ConfigValue.Value;
 
-    private static readonly Lazy<ICarGripFeel> FeelValue = new(() =>
-        CarLibrary.Load(Id).Car as ICarGripFeel
-            ?? throw new InvalidOperationException($"{Id} does not say how its grip feels; the driver needs that."));
+    private static readonly Lazy<ICar> ModelValue = new(() => CarLibrary.Load(Id).Car);
+
+    /// <summary>The stock car as the game loads it, for a driver to plan with.</summary>
+    public static ICar Model => ModelValue.Value;
 
     /// <summary>How the stock car's grip feels: where its tyres peak, and what they hold.</summary>
-    public static ICarGripFeel Feel => FeelValue.Value;
+    public static ICarGripFeel Feel => Model as ICarGripFeel
+        ?? throw new InvalidOperationException($"{Id} does not say how its grip feels; the driver needs that.");
 }

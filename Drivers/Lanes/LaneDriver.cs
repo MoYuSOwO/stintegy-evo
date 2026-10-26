@@ -91,13 +91,13 @@ public sealed record LaneDriverGains
     /// holds, not its peak, so the physics' own figure for it. It was 0.90,
     /// set when a tyre held nine tenths of its peak, and stayed there when
     /// the steering stopped winding itself off and the tyre came to hold
-    /// 0.98 (ICarGripFeel.SustainablePeakShare). The envelope the plan is
+    /// 0.98 (the car's ICarGripFeel.SustainablePeakShare, when this is not set). The envelope the plan is
     /// drawn on moved with the physics and the hands did not: the plan asked
     /// 93% of the peak of hands that would give 90, and with nothing over to
     /// steer back with, a car a little late into a long corner ran wider all
     /// the way round it, at Zandvoort's Scheivlak off the road.
     /// </summary>
-    public float AxleCapShare { get; init; } = StockCar.Feel.SustainablePeakShare;
+    public float? AxleCapShare { get; init; }
 
     public float SpeedGain { get; init; } = 6f;
 
@@ -219,8 +219,18 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>The tyre rungs' styles: this circuit's where it has them, the general table where not.</summary>
     private TyreStyle[] TyreStyles => _tyreStyles ??= _file.Tyres?.Table() ?? Gains.TyreStyleTable;
-    private readonly CarConfig _car;
-    private readonly TireConfig _tires;
+    // The car, known only by what it says it has: an envelope to plan
+    // against, tyres, the feel of its grip, and stores and buttons where it
+    // has them (Needs).
+    private readonly ICar _model;
+    private readonly ICarEnvelope _carEnvelope;
+    private readonly ICarTires _tyres;
+    private readonly ICarGripFeel _feel;
+    private readonly ICarStores? _stores;
+    private readonly ICarButtons? _buttons;
+    private readonly AxleLayout _layout;
+    private readonly float _maxDrive;
+    private readonly float _maxBrake;
     private readonly TurnLag _turnLag;
     private readonly CarState _plan = new();
     private readonly float[][] _curvature = new float[LaneSet.LaneCount][];
@@ -263,12 +273,36 @@ public sealed class LaneDriver : IDriverController
     private float _windowRange = -1f;
     private float _windowSide;
 
-    public LaneDriver(LaneTrackFile file, CarConfig? car = null, TireConfig? tires = null)
+    /// <summary>What the driver cannot drive a car without, and what it uses when the car has it.</summary>
+    public static readonly CarNeeds CarNeeds = new(
+        [typeof(ICarEnvelope), typeof(ICarTires), typeof(ICarGripFeel)],
+        [typeof(ICarStores), typeof(ICarButtons)]);
+
+    public CarNeeds Needs => CarNeeds;
+
+    /// <param name="car">
+    /// The kind of car it drives, the driver's own copy to plan with: the
+    /// stock car's unless said. It must have what <see cref="CarNeeds"/>
+    /// requires.
+    /// </param>
+    public LaneDriver(LaneTrackFile file, ICar? car = null)
     {
         _file = file ?? throw new ArgumentNullException(nameof(file));
-        _car = car ?? StockCar.Config;
-        _tires = tires ?? new TireConfig();
-        _turnLag = TurnLag.Measure(_car, _tires);
+        _model = car ?? StockCar.Model;
+        IReadOnlyList<Type> missing = CarNeeds.MissingFrom(_model);
+        if (missing.Count > 0)
+            throw new ArgumentException(
+                $"The lane driver cannot drive a {_model.GetType().Name}: it has no {string.Join(", ", missing.Select(t => t.Name))}.",
+                nameof(car));
+        _carEnvelope = (ICarEnvelope)_model;
+        _tyres = (ICarTires)_model;
+        _feel = (ICarGripFeel)_model;
+        _stores = _model as ICarStores;
+        _buttons = _model as ICarButtons;
+        _layout = _carEnvelope.Layout;
+        _maxDrive = _carEnvelope.Capabilities(new CarState(), CarStrategy.Default).MaxDriveAcceleration;
+        _maxBrake = _model.Spec.MaximumBrakeDeceleration;
+        _turnLag = TurnLag.Measure(_model);
     }
 
     public LaneDriverGains Gains { get; init; } = new();
@@ -313,7 +347,7 @@ public sealed class LaneDriver : IDriverController
     private void ManageEnergy(RaceCarSnapshot car)
     {
         float[] table = _energyTable ??= _file.Energy?.LiftSeconds() ?? Gains.EnergyRungLiftSeconds;
-        float asked = car.Strategy.Rung(0, _car.Powertrain.OutputLadder) - 1 + (_performance?.EnergyRungDrift ?? 0f);
+        float asked = (_model.Ladders.Count > 0 ? car.Strategy.Rung(0, _model.Ladders[0]) : 1) - 1 + (_performance?.EnergyRungDrift ?? 0f);
         float lift = CoastOverride ?? (table.Length == 0 ? 0f : Rung(table, asked));
         CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);
     }
@@ -476,15 +510,11 @@ public sealed class LaneDriver : IDriverController
     private float ReferenceLateral()
     {
         var ideal = new CarState();
-        float temp = 0.5f * (_tires.IdealSurfaceTempLowC + _tires.IdealSurfaceTempHighC);
-        foreach (TireState tyre in new[] { ideal.Chassis().FrontLeft, ideal.Chassis().FrontRight, ideal.Chassis().RearLeft, ideal.Chassis().RearRight })
-        {
-            tyre.SurfaceTempC = temp;
-            tyre.CoreTempC = temp;
-            tyre.Wear = 0f;
-            tyre.SurfaceGrip = 1f;
-        }
-        return MathF.Max(1f, LaneEnvelope.From(ideal, _car, _tires, CarStrategy.Default).Lateral(40f));
+        TireWindow window = _tyres.Tire(ideal, WheelId.FrontLeft).Window;
+        float temp = 0.5f * (window.IdealSurfaceLowC + window.IdealSurfaceHighC);
+        var best = new TireReading(temp, temp, 0f, 0f, 1f);
+        _tyres.Assume(ideal, null, [best, best, best, best]);
+        return MathF.Max(1f, LaneEnvelope.From(ideal, _carEnvelope, _feel, CarStrategy.Default).Lateral(40f));
     }
 
     /// <summary>Grip as the driver reads it, as a share of this circuit at its best, from the last refresh.</summary>
@@ -573,7 +603,7 @@ public sealed class LaneDriver : IDriverController
         GripUse axles = _axles;
         if (Gains.CapFromAxles && axles.FrontGripAccel > 0.5f && axles.RearGripAccel > 0.5f && speed > 8f)
         {
-            float frontShare = Math.Clamp(_car.FrontStaticLoadShare, 0.05f, 0.95f);
+            float frontShare = Math.Clamp(_layout.FrontWeightShare, 0.05f, 0.95f);
             float frontLong = Math.Clamp(axles.FrontLongitudinal, 0f, 1f);
             float rearLong = Math.Clamp(axles.RearLongitudinal, 0f, 1f);
             float front = axles.FrontGripAccel * MathF.Sqrt(1f - frontLong * frontLong) / frontShare;
@@ -582,8 +612,8 @@ public sealed class LaneDriver : IDriverController
             // A mistake is a misreading of the grip, so the hands believe it too.
             float misread = _performance?.CornerOverstep ?? 0f;
             float capShare = _style is { } capStyle
-                ? (Gains.AxleCapShare * capStyle.Cap + (_performance?.LimitOveruse ?? 0f)) * (1f + 2f * misread)
-                : (Gains.AxleCapShare + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority * (1f + 2f * misread);
+                ? ((Gains.AxleCapShare ?? _feel.SustainablePeakShare) * capStyle.Cap + (_performance?.LimitOveruse ?? 0f)) * (1f + 2f * misread)
+                : ((Gains.AxleCapShare ?? _feel.SustainablePeakShare) + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority * (1f + 2f * misread);
             available = Gains.CommandLateralShare * capShare * MathF.Max(1f, MathF.Min(front, rear));
         }
         float lean = att.LateralGravityDemand(StandardGravity, speed);
@@ -647,7 +677,7 @@ public sealed class LaneDriver : IDriverController
         // look ahead that moves every braking point at once.
         float slowing = SpeedAt(station + 5f / _lanes.Spacing) < hereSpeed ? 1f : 0f;
         // The foot's beat onto the brakes is started half of it early.
-        float footLead = _performance is null ? 0f : 0.5f * _car.MaxBrakeAccel / FootBrakeRate;
+        float footLead = _performance is null ? 0f : 0.5f * _maxBrake / FootBrakeRate;
         float preview = MathF.Max(dt, 0f) + slowing * ((_performance?.ExtraBrakePreviewSeconds ?? 0f) + footLead);
         float target = SpeedAt(station + MathF.Max(0f, speed) * preview / _lanes.Spacing);
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
@@ -698,7 +728,7 @@ public sealed class LaneDriver : IDriverController
         // read as the plan being flat out the pedal went to the floor.
         bool capped = target < uncapped - 0.1f;
         if (!capped && target >= flatOut - FlatOutToleranceMps)
-            accel = MathF.Max(accel, _car.MaxDriveAcceleration);
+            accel = MathF.Max(accel, _maxDrive);
 
         // Lift and coast: off the throttle this long before a braking zone.
         // The speed given up would have gone into the brakes a moment later,
@@ -716,7 +746,7 @@ public sealed class LaneDriver : IDriverController
         // it is less, and the throttle comes in only as fast as it is taken.
         GripUse tyres = _axles;
         // The pedal's whole travel: the motor takes what it can of it.
-        float driveLimit = _car.MaxDriveAcceleration;
+        float driveLimit = _maxDrive;
         // What the tyres will carry of the coming corner on this road: a bank
         // takes its share off them, so the throttle is not held back on
         // banking by load the banking is carrying. The corner is the one the
@@ -746,16 +776,16 @@ public sealed class LaneDriver : IDriverController
             float lateralUse = Math.Clamp(MathF.Max(coming, carrying), 0f, 1f);
             return grip * MathF.Sqrt(MathF.Max(0f, circle * circle - lateralUse * lateralUse));
         }
-        float motorShare = Math.Clamp(_car.FrontDriveShare, 0f, 1f);
-        float rearRoom = Room(tyres.RearGripAccel, 1f - _car.FrontStaticLoadShare, tyres.RearLateral);
-        float frontRoom = Room(tyres.FrontGripAccel, _car.FrontStaticLoadShare, tyres.FrontLateral);
+        float motorShare = Math.Clamp(_layout.FrontDriveShare, 0f, 1f);
+        float rearRoom = Room(tyres.RearGripAccel, 1f - _layout.FrontWeightShare, tyres.RearLateral);
+        float frontRoom = Room(tyres.FrontGripAccel, _layout.FrontWeightShare, tyres.FrontLateral);
         float tractionRoom;
-        if (_car.AdaptiveDriveSplit)
+        if (_layout.DriveFollowsGrip)
         {
             // The car shares drive between its motors by the grip each axle
             // has left, so the room is the two together, each held to what
             // its own motor can give.
-            float drive = _car.MaxDriveAcceleration;
+            float drive = _maxDrive;
             tractionRoom = MathF.Min(frontRoom, drive * motorShare) +
                            MathF.Min(rearRoom, drive * (1f - motorShare));
         }
@@ -769,7 +799,7 @@ public sealed class LaneDriver : IDriverController
         // The command is what the axles are asked to push; drag comes off
         // after the tyre, so it does not widen the tyre's circle.
         driveLimit = MathF.Min(driveLimit, tractionRoom);
-        accel = Math.Clamp(accel, -_car.MaxBrakeAccel, MathF.Max(0f, driveLimit));
+        accel = Math.Clamp(accel, -_maxBrake, MathF.Max(0f, driveLimit));
         // Coming back, the pedals ask no more than the ground under the
         // driven wheels will take: on grass a fraction of the tarmac's.
         if (_phase == SlidePhase.Rejoin && Ground(car) < OnTarmac)
@@ -1094,7 +1124,7 @@ public sealed class LaneDriver : IDriverController
             float keepAtWorst = Gains.CatchThrottleKeepNoFeel + (Gains.CatchThrottleKeepFullFeel - Gains.CatchThrottleKeepNoFeel) * feel;
             float keep = 1f - over * (1f - keepAtWorst);
             if (accel > 0f)
-                accel = MathF.Min(accel, _car.MaxDriveAcceleration * keep);
+                accel = MathF.Min(accel, _maxDrive * keep);
             else
                 accel *= 1f - Gains.CatchBrakeRelease * over;
             _throttleReturn = MathF.Min(_throttleReturn, keep);
@@ -1107,7 +1137,7 @@ public sealed class LaneDriver : IDriverController
             float seconds = Gains.ThrottleReturnSecondsNoFeel + (Gains.ThrottleReturnSecondsFullFeel - Gains.ThrottleReturnSecondsNoFeel) * feel;
             _throttleReturn = MathF.Min(1f, _throttleReturn + MathF.Max(0f, dt) / MathF.Max(seconds, 0.05f));
             if (accel > 0f)
-                accel = MathF.Min(accel, _car.MaxDriveAcceleration * _throttleReturn);
+                accel = MathF.Min(accel, _maxDrive * _throttleReturn);
         }
         return accel;
     }
@@ -1218,7 +1248,7 @@ public sealed class LaneDriver : IDriverController
         if (_sinceThrottle < performance.ExitHesitationSeconds)
             return 0f;
         if (_sinceThrottle < performance.ExitHesitationSeconds + performance.PartThrottleSeconds)
-            return MathF.Min(accel, _car.MaxDriveAcceleration * performance.PartThrottleShare);
+            return MathF.Min(accel, _maxDrive * performance.PartThrottleShare);
         return accel;
     }
 
@@ -1237,7 +1267,7 @@ public sealed class LaneDriver : IDriverController
     private float BrakeBias(GripUse tyres, float accel)
     {
         float error = _performance?.FrontBrakeBiasOffset ?? 0f;
-        if (_car.FixedFrontBrakeShare is not { } fixedShare)
+        if (_layout.FixedFrontBrakeShare is not { } fixedShare)
             return error;
         float front = tyres.FrontGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.FrontLateral * tyres.FrontLateral));
         float rear = tyres.RearGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.RearLateral * tyres.RearLateral));
@@ -1548,9 +1578,9 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The live envelope and the learned factors at the grip the driver believes in.</summary>
     private void ReadGrip(RaceCarSnapshot car, float roadGrip, float sinceLastRead, int start, int count, bool sides)
     {
-        PlanState.Hydrate(_plan, car);
+        PlanState.Hydrate(_plan, car, _tyres, _stores, _buttons);
         _tyreAuthority = Gains.TyreRungAuthority
-            ? CarPhysics.GripUsage(car.Strategy) / MathF.Max(CarPhysics.GripUsage(CarStrategy.Default), 0.5f)
+            ? _carEnvelope.GripUsage(car.Strategy) / MathF.Max(_carEnvelope.GripUsage(CarStrategy.Default), 0.5f)
             : 1f;
         // The rung asked for, as this driver carries it out this lap: a
         // driver who manages the tyres drives the rung, one who does not
@@ -1568,13 +1598,13 @@ public sealed class LaneDriver : IDriverController
         // already in the envelope they multiply.
         float asphalt = _trackView?.AsphaltGrip ?? 1f;
         float road = roadGrip * asphalt;
-        LaneEnvelope truth = LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road);
+        LaneEnvelope truth = LaneEnvelope.From(_plan, _carEnvelope, _feel, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road);
         ActualGrip = truth.Lateral(40f) / (_referenceLateral * MathF.Max(asphalt, 0.05f));
         // Adaptability: the plan is made on the grip the driver believes in.
         // The hands still feel the axles as they are; only the plan is late.
         Grip = _performance?.PerceiveGrip(ActualGrip, sinceLastRead) ?? ActualGrip;
         float belief = Math.Clamp(Grip / MathF.Max(ActualGrip, 1e-3f), 0.9f, 1.1f);
-        _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _car, _tires, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road * belief);
+        _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _carEnvelope, _feel, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road * belief);
         for (int lane = 0; lane < (sides ? LaneSet.LaneCount : 1); lane++)
         {
             _file.FactorsAtGrip((LaneId)lane, Grip, start, count, _corner[lane], _brake[lane]);
@@ -1906,7 +1936,7 @@ public readonly record struct TyreStyle(float Corner, float Brake, float Tractio
 
 internal static class PlanState
 {
-    public static void Hydrate(CarState plan, RaceCarSnapshot car)
+    public static void Hydrate(CarState plan, RaceCarSnapshot car, ICarTires tyres, ICarStores? stores, ICarButtons? buttons)
     {
         plan.Position = car.Position;
         plan.Heading = car.HeadingRadians;
@@ -1917,32 +1947,24 @@ internal static class PlanState
         plan.AirVelocityDeficit = car.AirVelocityDeficit;
         plan.DownforceVelocityDeficit = car.DownforceVelocityDeficit;
         plan.WakeDownforceLoss = car.WakeDownforceLoss;
-        // The chassis trims its aero to the wake while push-to-pass runs.
-        plan.Chassis().ActiveAero = !car.Buttons.IsDefaultOrEmpty && car.Buttons[0].Running ? 1f : 0f;
-        if (car.Resources.Length > 0)
+        if (buttons is not null)
+            for (int i = 0; i < buttons.Buttons.Count && i < car.Buttons.Length; i++)
+                buttons.Assume(plan, i, car.Buttons[i].Running);
+        if (stores is not null && car.Resources.Length > 0)
         {
             float primary = car.Resources[0].Fraction;
             float secondary = car.Resources.Length > 1 ? car.Resources[1].Fraction : primary;
-            plan.Chassis().Energy = new PowertrainState(primary, secondary);
+            stores.Fill(plan, new PowertrainState(primary, secondary));
         }
         if (car.Tires.Length == 4)
         {
-            Copy(plan.Chassis().FrontLeft, car.Tires[0]);
-            Copy(plan.Chassis().FrontRight, car.Tires[1]);
-            Copy(plan.Chassis().RearLeft, car.Tires[2]);
-            Copy(plan.Chassis().RearRight, car.Tires[3]);
+            // The plan is for the racing surface, all lap. What the wheels are
+            // standing on this instant (a kerb, the day's rubber, the asphalt)
+            // is not the road ahead; the road's grip comes in once, in ReadGrip.
+            Span<TireReading> read = [car.Tires[0], car.Tires[1], car.Tires[2], car.Tires[3]];
+            for (int i = 0; i < 4; i++)
+                read[i] = read[i] with { SurfaceGrip = 1f };
+            tyres.Assume(plan, car.TireCompound, read);
         }
-    }
-
-    private static void Copy(TireState target, TireReading source)
-    {
-        target.SurfaceTempC = source.SurfaceTempC;
-        target.CoreTempC = source.CoreTempC;
-        target.Wear = source.Wear;
-        target.LoadN = source.LoadN;
-        // The plan is for the racing surface, all lap. What the wheels are
-        // standing on this instant (a kerb, the day's rubber, the asphalt)
-        // is not the road ahead; the road's grip comes in once, in ReadGrip.
-        target.SurfaceGrip = 1f;
     }
 }

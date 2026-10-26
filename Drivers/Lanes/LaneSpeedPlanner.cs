@@ -103,12 +103,12 @@ internal readonly struct LaneEnvelope
         return curvature > 0f ? _turns[0] : _turns[1];
     }
 
-    public static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy, bool turnAware)
+    public static LaneEnvelope From(CarState plan, ICarEnvelope car, ICarGripFeel feel, CarStrategy strategy, bool turnAware)
     {
-        LaneEnvelope straight = From(plan, car, tires, strategy);
+        LaneEnvelope straight = From(plan, car, feel, strategy);
         if (!turnAware)
             return straight;
-        var turns = new[] { From(plan, car, tires, strategy, +1f, straight), From(plan, car, tires, strategy, -1f, straight) };
+        var turns = new[] { From(plan, car, strategy, +1f, straight), From(plan, car, strategy, -1f, straight) };
         return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent, turns);
     }
 
@@ -117,28 +117,28 @@ internal readonly struct LaneEnvelope
     /// the car already at that limit, turning the way <paramref name="sign"/>
     /// says, so the load sits on the outside wheels while it is read.
     /// </summary>
-    private static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy, float sign, LaneEnvelope straight)
+    private static LaneEnvelope From(CarState plan, ICarEnvelope car, CarStrategy strategy, float sign, LaneEnvelope straight)
     {
-        float cornerGrip = CarPhysics.GripUsage(strategy);
+        float cornerGrip = car.GripUsage(strategy);
         var lateral = new float[Anchors.Length];
         var lateralBraking = new float[Anchors.Length];
         for (int i = 0; i < Anchors.Length; i++)
         {
             float v = Anchors[i];
-            CarPerformanceLimits coast = CarPhysics.EstimatePerformanceLimits(
-                plan, car, tires, strategy, v, curvature: 0f, cornerGrip);
+            CarPerformanceLimits coast = car.EstimatePerformanceLimits(
+                plan, strategy, v, curvature: 0f, cornerGrip);
             // Settled on itself: the limit read at the curvature it implies,
             // so the load on the outside wheels is the corner's own.
             float curvature = sign * straight._lateral[i] / (v * v);
             CarPerformanceLimits corner = default;
             for (int k = 0; k < 3; k++)
             {
-                corner = CarPhysics.EstimatePerformanceLimits(
-                    plan, car, tires, strategy, v, curvature, cornerGrip);
+                corner = car.EstimatePerformanceLimits(
+                    plan, strategy, v, curvature, cornerGrip);
                 curvature = sign * MathF.Max(1f, corner.LateralAccelerationLimit) / (v * v);
             }
-            CarPerformanceLimits cornerBraking = CarPhysics.EstimatePerformanceLimits(
-                plan, car, tires, strategy, v, curvature, cornerGrip,
+            CarPerformanceLimits cornerBraking = car.EstimatePerformanceLimits(
+                plan, strategy, v, curvature, cornerGrip,
                 assumedLongitudinalAcceleration: -coast.MaximumBrakeDeceleration);
             lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
             lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
@@ -146,14 +146,14 @@ internal readonly struct LaneEnvelope
         return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent);
     }
 
-    public static LaneEnvelope From(CarState plan, CarConfig car, TireConfig tires, CarStrategy strategy)
+    public static LaneEnvelope From(CarState plan, ICarEnvelope car, ICarGripFeel feel, CarStrategy strategy)
     {
         // The tyre rung is an allowance the combined-grip limiter enforces on
         // braking and drive; it does not give the tyre more corner. So the
         // corner is read at no more than the Normal rung, and the rung's own
         // allowance only moves the longitudinal figures. Below Normal the
         // corner comes down with it, which is what the wall asked for.
-        float grip = CarPhysics.GripUsage(strategy);
+        float grip = car.GripUsage(strategy);
         // The tyre rung is the driver's authority over the circle; the plan
         // spends what the rung allows, corner included.
         float cornerGrip = grip;
@@ -165,15 +165,15 @@ internal readonly struct LaneEnvelope
         for (int i = 0; i < Anchors.Length; i++)
         {
             float v = Anchors[i];
-            CarPerformanceLimits coast = CarPhysics.EstimatePerformanceLimits(
-                plan, car, tires, strategy, v, curvature: 0f, grip);
-            CarPerformanceLimits braking = CarPhysics.EstimatePerformanceLimits(
-                plan, car, tires, strategy, v, curvature: 0f, grip,
+            CarPerformanceLimits coast = car.EstimatePerformanceLimits(
+                plan, strategy, v, curvature: 0f, grip);
+            CarPerformanceLimits braking = car.EstimatePerformanceLimits(
+                plan, strategy, v, curvature: 0f, grip,
                 assumedLongitudinalAcceleration: -coast.MaximumBrakeDeceleration);
-            CarPerformanceLimits corner = CarPhysics.EstimatePerformanceLimits(
-                plan, car, tires, strategy, v, curvature: 0f, cornerGrip);
-            CarPerformanceLimits cornerBraking = CarPhysics.EstimatePerformanceLimits(
-                plan, car, tires, strategy, v, curvature: 0f, cornerGrip,
+            CarPerformanceLimits corner = car.EstimatePerformanceLimits(
+                plan, strategy, v, curvature: 0f, cornerGrip);
+            CarPerformanceLimits cornerBraking = car.EstimatePerformanceLimits(
+                plan, strategy, v, curvature: 0f, cornerGrip,
                 assumedLongitudinalAcceleration: -coast.MaximumBrakeDeceleration);
             lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
             lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
@@ -182,7 +182,7 @@ internal readonly struct LaneEnvelope
             loss[i] = MathF.Max(0f, coast.LossAcceleration);
         }
 
-        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss, 1f - Math.Clamp(tires.LoadSensitivity, 0f, 1f));
+        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss, 1f - Math.Clamp(feel.LoadSensitivity(plan), 0f, 1f));
     }
 
     /// <summary>
