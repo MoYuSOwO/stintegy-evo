@@ -296,6 +296,8 @@ public sealed class LaneDriver : IDriverController
     private float _adaptability = 1f;
     private int _familiarSegment = -1;
     private bool _scaredInSegment;
+    private float _segmentPeakUse;
+    private bool _segmentHeldBack;
     private int _familiarLap = int.MinValue;
 
     /// <summary>How long before each braking zone the driver lifts, seconds: the energy rung's.</summary>
@@ -1156,9 +1158,18 @@ public sealed class LaneDriver : IDriverController
         _scaredInSegment = true;
     }
 
+    // A segment is a corner taken at the limit when either axle used this
+    // much of its circle in it (the driver's own cap is about nine tenths);
+    // and taken as the driver meant to when never this far under the plan.
+    private const float LimitSegmentUse = 0.8f;
+    private const float UnderPlanShare = 0.97f;
+
     /// <summary>
-    /// Every segment left behind without a scare, driven normally, gives
-    /// back some of what is held there; and a lap's count.
+    /// Only a corner taken at the limit teaches anything: one taken at what
+    /// the driver dares now, on a rung that asks for it, and come through
+    /// clean, gives back some of what is held there. A straight, a corner
+    /// taken gently (held up, lifting, nursing the tyres on a gentle rung)
+    /// or one gone wrong gives nothing back. And a lap's count.
     /// </summary>
     private void Familiarise(RaceCarSnapshot car, int lap)
     {
@@ -1171,12 +1182,23 @@ public sealed class LaneDriver : IDriverController
             _familiarLap = lap;
         }
         int segment = familiar.SegmentOf(car.TrackS);
-        if (segment == _familiarSegment)
-            return;
-        if (_familiarSegment >= 0 && !_scaredInSegment && _phase == SlidePhase.None)
-            familiar.Clean(_familiarSegment, _adaptability);
-        _familiarSegment = segment;
-        _scaredInSegment = false;
+        if (segment != _familiarSegment)
+        {
+            if (_familiarSegment >= 0 && !_scaredInSegment && !_segmentHeldBack && _segmentPeakUse >= LimitSegmentUse)
+                familiar.Clean(_familiarSegment, _adaptability);
+            _familiarSegment = segment;
+            _scaredInSegment = false;
+            _segmentPeakUse = 0f;
+            _segmentHeldBack = false;
+        }
+        AxleTelemetry axles = AxlesOf(car);
+        _segmentPeakUse = MathF.Max(_segmentPeakUse, MathF.Max(
+            Combined(axles.FrontLateralUse, axles.FrontLongitudinalUse),
+            Combined(axles.RearLateralUse, axles.RearLongitudinalUse)));
+        bool gentleRung = (int)car.Strategy.TireMode - 1 < 2;
+        if (gentleRung || _phase != SlidePhase.None || SpeedCap is not null ||
+            car.SpeedMetersPerSecond < UnderPlanShare * PlannedSpeedAt(car.TrackS))
+            _segmentHeldBack = true;
     }
 
     /// <summary>

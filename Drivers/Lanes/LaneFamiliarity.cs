@@ -7,8 +7,9 @@ namespace StintegyEVO.Drivers.Lanes;
 /// What one driver has learned of one circuit in one car, on top of the car's
 /// notes: per forty-metre segment, how much of the noted corner speed,
 /// braking and throttle out of the corner this driver takes. One means all
-/// of it; a scare in a corner takes some back, and clean laps through it
-/// give it back again, at the driver's own pace (Adaptability).
+/// of it; a scare in a corner takes some back, and only taking it at the
+/// limit again and coming through gives it back, at the driver's own pace
+/// (Adaptability). A corner taken gently teaches nothing either way.
 ///
 /// It only ever holds back from the notes, never past them, and it learns
 /// what the notes learn, coarser: whatever the driver learns, the car's
@@ -37,8 +38,9 @@ public sealed class LaneFamiliarity
     private const float CornerBackMeters = 80f;
     private const float ThrottleBackMeters = 60f;
 
-    // A clean pass through a segment gives back this much of what is held,
-    // at the top and the bottom of the adaptability scale.
+    // A pass at the limit through a segment, come through clean, gives back
+    // this much of what is held, at the top and the bottom of the
+    // adaptability scale.
     private const float QuickestReturn = 0.25f;
     private const float SlowestReturn = 0.05f;
 
@@ -102,7 +104,7 @@ public sealed class LaneFamiliarity
         }
     }
 
-    /// <summary>A clean pass through segment <paramref name="i"/>: some of what is held back comes back.</summary>
+    /// <summary>Segment <paramref name="i"/> taken at the limit and come through clean: some of what is held back comes back.</summary>
     public void Clean(int i, float adaptability)
     {
         float share = SlowestReturn + (QuickestReturn - SlowestReturn) * Math.Clamp(adaptability, 0f, 1f);
