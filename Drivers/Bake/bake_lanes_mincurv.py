@@ -39,7 +39,9 @@ def centreline(track_id: str):
     width = np.array([float(r[3]) for r in rows])
     tangent = np.gradient(xy, axis=0)
     tangent /= np.linalg.norm(tangent, axis=1)[:, None]
-    left = np.column_stack([-tangent[:, 1], tangent[:, 0]])
+    # The game's left, TrackSample.Normal: the circuits' y axis points the other
+    # way from the usual one, so this is (ty, -tx), not (-ty, tx).
+    left = np.column_stack([tangent[:, 1], -tangent[:, 0]])
     return xy, width, left
 
 
