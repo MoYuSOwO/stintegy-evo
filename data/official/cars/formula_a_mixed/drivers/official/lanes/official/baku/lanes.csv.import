@@ -1,0 +1,16 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://hlmq34hggo2j"
+
+[deps]
+
+source_file="res://data/official/cars/formula_a_mixed/drivers/official/lanes/official/baku/lanes.csv"
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

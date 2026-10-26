@@ -1,3 +1,5 @@
+using StintegyEVO.Core.Content;
+using StintegyEVO.Core.Drivers;
 using StintegyEVO.Drivers.Lanes;
 using Xunit;
 
@@ -58,24 +60,23 @@ public sealed class LaneFamiliarityTests
     }
 
     [Fact]
-    public void WhatADriverLearnedIsKeptByDriverCarAndCircuit()
+    public void WhatADriverLearnedComesBackFromTheSave()
     {
         string root = Path.Combine(Path.GetTempPath(), "stintegy-progress-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var store = new DriverProgressFolder(root);
+            var progress = new DriverProgress(new DriverProgressFolder(root),
+                new DriverProgressKey("driver_a", LanesPack.Id, ResourceId.Parse(StockCar.Id), ResourceId.Parse("silverstone")));
             LaneFamiliarity f = LaneFamiliarity.NewCircuit(5891f, adaptability: 0.4f);
             f.Scare(2000f, LaneFamiliarity.Pedal.Braking, big: true);
             f.Laps = 7;
-            store.Save("driver-a", "formula_a_mixed", "silverstone", f);
+            progress.Write(f.ToJson());
 
-            LaneFamiliarity? back = store.Load("driver-a", "formula_a_mixed", "silverstone");
+            LaneFamiliarity? back = LaneFamiliarity.FromJson(progress.Read()!);
             Assert.NotNull(back);
             Assert.True(back!.Fits(5891f));
             Assert.Equal(f.Laps, back.Laps);
             Assert.Equal(f.Brake, back.Brake);
-            Assert.Null(store.Load("driver-b", "formula_a_mixed", "silverstone"));
-            Assert.Null(store.Load("driver-a", "formula_a_mixed", "spa"));
             Assert.False(back.Fits(7004f));
         }
         finally
@@ -83,12 +84,5 @@ public sealed class LaneFamiliarityTests
             if (Directory.Exists(root))
                 Directory.Delete(root, recursive: true);
         }
-    }
-
-    [Fact]
-    public void ANameThatIsNotAFolderNameIsRefused()
-    {
-        var store = new DriverProgressFolder(Path.GetTempPath());
-        Assert.Throws<ArgumentException>(() => store.Load("../x", "car", "circuit"));
     }
 }

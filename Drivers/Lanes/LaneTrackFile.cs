@@ -1,4 +1,6 @@
 using System.Globalization;
+using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Track;
 
@@ -190,7 +192,7 @@ public sealed class LaneTrackFile
         if (_steer.Length == LaneSet.LaneCount)
             copy._steer = _steer.Select(lane => (float[])lane.Clone()).ToArray();
         copy.Energy = Energy;
-        copy.LearnedFor = LearnedFor;
+        copy.Stamp = Stamp;
         copy.Tyres = Tyres;
         copy.Calibration = Calibration;
         return copy;
@@ -290,8 +292,8 @@ public sealed class LaneTrackFile
     /// </summary>
     public LaneEnergyRungs? Energy { get; set; }
 
-    /// <summary>What the car was when this was learned; null for a file that never said.</summary>
-    public LaneLearnedFor? LearnedFor { get; set; }
+    /// <summary>Which car this was learned on, and when; null for a file that never said.</summary>
+    public NotesStamp? Stamp { get; set; }
 
     /// <summary>The tyre rungs as this circuit's styles, or null where the driver's general table stands in.</summary>
     public LaneTyreRungs? Tyres { get; set; }
@@ -300,40 +302,50 @@ public sealed class LaneTrackFile
     public LaneCalibration? Calibration { get; set; }
 
     /// <summary>
-    /// Whether this was learned on the car as it is now: the stock car on
-    /// the stock tyre, as far as their numbers tell. A file from before a
-    /// change to the physics still drives, on notes about another car.
+    /// Whether this was learned on the stock car as it is now. A file from
+    /// before a change to the car still drives, on notes about another car.
     /// </summary>
-    public bool IsCurrent => LearnedFor is not null && LearnedFor.Physics == PhysicsFingerprint.Stock;
+    public bool IsCurrent => Stamp?.CarFingerprint == StockCar.Loaded.Fingerprint;
 
-    /// <summary>Stamps the file as learned today on the car as it is now.</summary>
+    /// <summary>Stamps the file as learned today by this driver on the stock car as it is now.</summary>
     public void MarkLearnedNow() =>
-        LearnedFor = new LaneLearnedFor
+        Stamp = new NotesStamp
         {
-            Physics = PhysicsFingerprint.Stock,
-            Date = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            Driver = LanesPack.Id.ToString(),
+            Car = StockCar.Id,
+            CarFingerprint = StockCar.Loaded.Fingerprint,
+            Learned = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
         };
 
     /// <summary>
-    /// This car's shipped folder for the circuit, <c>Cars/{car}/{id}/</c>,
-    /// or a fresh file baked on first use when it has none.
+    /// What this driver has learned of <paramref name="car"/> (the stock car
+    /// unless said) at the circuit, from the car's pack, or a fresh file
+    /// baked on first use where it has none.
     /// </summary>
-    public static LaneTrackFile ForCircuit(string id, TrackData track, string car = DriverFiles.StockCar)
+    public static LaneTrackFile ForCircuit(string id, TrackData track, LoadedCar? car = null) =>
+        FromNotes(DriverNotes.For(LanesPack.Id, car ?? StockCar.Loaded, ResourceId.Parse(id)), track);
+
+    /// <summary>The driver's notes as a lane file, or a fresh one where there are none.</summary>
+    public static LaneTrackFile FromNotes(DriverNotes notes, TrackData track)
     {
-        string? manifestPath = DriverFiles.FindFile($"{car}/{id}/{LaneCircuitManifest.FileName}");
-        if (manifestPath is null)
+        if (notes.ReadText(LaneCircuitManifest.FileName) is not { } json)
             return Fresh();
-        LaneCircuitManifest manifest = LaneCircuitManifest.Read(manifestPath);
-        string lanesPath = DriverFiles.FindFile($"{car}/{id}/{manifest.Lanes}")
-                           ?? throw new FileNotFoundException($"{car}/{id}/{LaneCircuitManifest.FileName} names {manifest.Lanes}, which is not there.");
-        return WithManifest(Load(lanesPath, track), manifest);
+        LaneCircuitManifest manifest = LaneCircuitManifest.Parse(json);
+        if (notes.ReadText(manifest.Lanes) is null)
+            throw new FileNotFoundException($"{notes.Folder}/{LaneCircuitManifest.FileName} names {manifest.Lanes}, which is not there.");
+        LaneTrackFile file = WithManifest(Load(Path.Combine(notes.Folder, manifest.Lanes), track), manifest);
+        file.Stamp = notes.Stamp;
+        return file;
     }
 
-    /// <summary>Reads a circuit folder from disk: its <c>driver.json</c> and what it names.</summary>
+    /// <summary>Reads a circuit folder from disk: its <c>lanes.json</c>, what it names, and its stamp.</summary>
     public static LaneTrackFile LoadCircuit(string folder, TrackData track)
     {
-        LaneCircuitManifest manifest = LaneCircuitManifest.Read(Path.Combine(folder, LaneCircuitManifest.FileName));
-        return WithManifest(Load(Path.Combine(folder, manifest.Lanes), track), manifest);
+        LaneCircuitManifest manifest = LaneCircuitManifest.Parse(File.ReadAllText(Path.Combine(folder, LaneCircuitManifest.FileName)));
+        LaneTrackFile file = WithManifest(Load(Path.Combine(folder, manifest.Lanes), track), manifest);
+        string stamp = Path.Combine(folder, DriverNotes.StampFile);
+        file.Stamp = File.Exists(stamp) ? NotesStamp.Parse(File.ReadAllText(stamp)) : null;
+        return file;
     }
 
     private static LaneTrackFile WithManifest(LaneTrackFile file, LaneCircuitManifest manifest)
@@ -341,22 +353,23 @@ public sealed class LaneTrackFile
         if (manifest.Format > LaneCircuitManifest.CurrentFormat)
             throw new InvalidDataException($"{manifest.Circuit}: format {manifest.Format} is newer than this driver reads.");
         file.Energy = manifest.Energy;
-        file.LearnedFor = manifest.LearnedFor;
         file.Tyres = manifest.Tyres;
         file.Calibration = manifest.Calibration;
         return file;
     }
 
-    /// <summary>Writes the circuit folder: <c>driver.json</c> and the lanes table beside it.</summary>
+    /// <summary>Writes the circuit folder: <c>lanes.json</c>, the lanes table beside it, and the stamp.</summary>
     public void SaveCircuit(string folder, string id)
     {
         Directory.CreateDirectory(folder);
         var manifest = new LaneCircuitManifest
         {
-            Circuit = id, LearnedFor = LearnedFor, Energy = Energy, Tyres = Tyres, Calibration = Calibration
+            Circuit = id, Energy = Energy, Tyres = Tyres, Calibration = Calibration
         };
         Save(Path.Combine(folder, manifest.Lanes));
-        manifest.Write(Path.Combine(folder, LaneCircuitManifest.FileName));
+        File.WriteAllText(Path.Combine(folder, LaneCircuitManifest.FileName), manifest.ToJson());
+        if (Stamp is not null)
+            File.WriteAllText(Path.Combine(folder, DriverNotes.StampFile), Stamp.ToJson());
     }
 
     public static LaneTrackFile Load(string path, TrackData track) =>

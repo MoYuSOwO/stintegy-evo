@@ -1,17 +1,28 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The lane driver, built as a pack like any other: it references Core and
+    nothing else, and its assembly goes into its folder under data/, where
+    the game finds it the way it finds anyone's. What it has learned about a
+    car is in that car's pack, not here.
+  -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <RollForward>Major</RollForward>
+    <AssemblyName>official.lanes</AssemblyName>
     <RootNamespace>StintegyEVO.Drivers</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <OutDir>$(MSBuildThisFileDirectory)../data/official/drivers/lanes/</OutDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
-    <ItemGroup>
-    <ProjectReference Include="../Core/StintegyEVO.Core.csproj" />
+  <ItemGroup>
+    <!-- Core is the game's: the pack is built against it, never ships it. -->
+    <ProjectReference Include="../Core/StintegyEVO.Core.csproj" Private="false" ExcludeAssets="runtime" />
     <Compile Remove="Tests/**/*.cs" />
     <Compile Remove="Bake/**/*.cs" />
-    <None Include="Cars/**/*.csv;Cars/**/*.json" CopyToOutputDirectory="PreserveNewest" />
-    <EmbeddedResource Include="Cars/**/*.csv;Cars/**/*.json" />
     <InternalsVisibleTo Include="StintegyEVO.Drivers.Tests" />
   </ItemGroup>
 </Project>

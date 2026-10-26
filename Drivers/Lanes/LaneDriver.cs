@@ -314,13 +314,19 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// What this driver has learned of this circuit in this car, on top of
-    /// the car's notes. Set it before the session from wherever the game
-    /// keeps drivers' progress (IDriverProgressStore) and read it back after
-    /// to keep what was learned; left unset, or learned on another layout,
-    /// the driver starts as on a circuit never driven. Only a driver with
-    /// ratings learns as it drives, and only when LearnsAsItDrives.
+    /// the car's notes. Read from <see cref="Progress"/> when the session
+    /// starts, where the game keeps it; left unset, or learned on another
+    /// layout, the driver starts as on a circuit never driven. Only a driver
+    /// with ratings learns as it drives, and only when LearnsAsItDrives.
     /// </summary>
     public LaneFamiliarity? Familiarity { get; set; }
+
+    /// <summary>
+    /// Where this person's experience of the car here is kept: read when the
+    /// session starts, written at the end of every lap. None, and what is
+    /// learned lasts the session.
+    /// </summary>
+    public DriverProgress? Progress { get; init; }
 
     /// <summary>Off for the offline learner: the car's notes are learned on the car, not a driver's nerves.</summary>
     public bool LearnsAsItDrives { get; init; } = true;
@@ -492,6 +498,8 @@ public sealed class LaneDriver : IDriverController
         _familiar = null;
         if (_performance is not null && LearnsAsItDrives)
         {
+            if (Familiarity is null && Progress?.Read() is { } kept)
+                Familiarity = LaneFamiliarity.FromJson(kept);
             if (Familiarity is null || !Familiarity.Fits(context.Track.LengthMeters))
                 Familiarity = LaneFamiliarity.NewCircuit(context.Track.LengthMeters, _adaptability);
             _familiar = Familiarity;
@@ -1200,7 +1208,10 @@ public sealed class LaneDriver : IDriverController
         if (lap != _familiarLap)
         {
             if (_familiarLap != int.MinValue)
+            {
                 familiar.Laps++;
+                Progress?.Write(familiar.ToJson());
+            }
             _familiarLap = lap;
         }
         int segment = familiar.SegmentOf(car.TrackS);

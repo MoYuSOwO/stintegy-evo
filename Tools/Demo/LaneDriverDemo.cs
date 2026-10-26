@@ -13,7 +13,7 @@ namespace StintegyEVO.Presentation.Demo;
 /// <summary>
 /// Local viewer: the three-lane driver on a circuit with its tuning file,
 /// from a standing start on the line, in the low-poly 3D view. The circuit
-/// is STINTEGY_CIRCUIT (a folder under Circuits/), Silverstone by default.
+/// is STINTEGY_CIRCUIT (a circuit's id), Silverstone by default.
 /// </summary>
 public partial class LaneDriverDemo : Node
 {
@@ -36,7 +36,7 @@ public partial class LaneDriverDemo : Node
         else
             file = LaneTrackFile.ForCircuit(id, track);
         if (!file.IsCurrent)
-            GD.PushWarning($"{id} was learned on another car ({file.LearnedFor?.Date ?? "unstamped"}); it drives on old notes until relearned");
+            GD.PushWarning($"{id} was learned on another car ({file.Stamp?.Learned ?? "unstamped"}); it drives on old notes until relearned");
         LaneSet lanes = file.LanesFor(track);
 
         int station = (int)System.MathF.Round(lanes.StationOf(track.StartingLineS));

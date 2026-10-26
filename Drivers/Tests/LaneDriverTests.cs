@@ -1,3 +1,5 @@
+using StintegyEVO.Core.Content;
+using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Drivers.Lanes;
 using Xunit;
@@ -91,7 +93,23 @@ public sealed class LaneDriverTests
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
         LaneTrackFile file = Silverstone(track);
         Assert.True(file.IsCurrent,
-            $"learned on {file.LearnedFor?.Physics ?? "an unstamped car"} ({file.LearnedFor?.Date}), the car is now {PhysicsFingerprint.Stock}: relearn it");
+            $"learned on {file.Stamp?.CarFingerprint ?? "an unstamped car"} ({file.Stamp?.Learned}), the car is now {StockCar.Loaded.Fingerprint}: relearn it");
+    }
+
+    /// <summary>
+    /// The lane driver is a pack like anyone's: found by its id, checked
+    /// against the game's car, which it has notes for at Silverstone, and
+    /// seated in it.
+    /// </summary>
+    [Fact]
+    public void TheLanesPackIsSeatedInTheGamesCarLikeAnyPack()
+    {
+        LoadedDriver lanes = DriverLibrary.Load("official:lanes");
+        DriverEntryCheck check = DriverLibrary.Check(lanes, StockCar.Loaded, ResourceId.Parse("silverstone"));
+        Assert.True(check.CanRace, string.Join(" ", check.Refusals));
+        Assert.Empty(check.Notices);
+        Driver seated = DriverLibrary.Seat(lanes, new DriverProfile("ana", new DriverAbilities()), StockCar.Loaded, "silverstone");
+        Assert.Equal(nameof(LaneDriver), seated.Controller.GetType().Name);
     }
 
     [Fact]
@@ -114,7 +132,7 @@ public sealed class LaneDriverTests
     public void TheShippedSilverstoneFolderLapsCleanly()
     {
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
-        Assert.NotNull(DriverFiles.FindFile("formula_a_mixed/silverstone/driver.json"));
+        Assert.NotNull(DriverNotes.For(LanesPack.Id, StockCar.Loaded, ResourceId.Parse("silverstone")).Stamp);
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track));
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());

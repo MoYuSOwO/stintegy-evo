@@ -10,7 +10,10 @@ namespace StintegyEVO.Drivers;
 /// </summary>
 public static class StockCar
 {
-    public const string Id = "official:" + DriverFiles.StockCar;
+    public const string Id = "official:formula_a_mixed";
+
+    /// <summary>The stock car's pack, as the game loads it: where its notes are kept, and what it is now.</summary>
+    public static LoadedCar Loaded => CarLibrary.Load(Id);
 
     private static readonly Lazy<CarConfig> ConfigValue = new(() =>
         CarLibrary.Load(Id).Car is SingleTrackCar car
@@ -19,10 +22,8 @@ public static class StockCar
 
     public static CarConfig Config => ConfigValue.Value;
 
-    private static readonly Lazy<ICar> ModelValue = new(() => CarLibrary.Load(Id).Car);
-
     /// <summary>The stock car as the game loads it, for a driver to plan with.</summary>
-    public static ICar Model => ModelValue.Value;
+    public static ICar Model => Loaded.Car;
 
     /// <summary>How the stock car's grip feels: where its tyres peak, and what they hold.</summary>
     public static ICarGripFeel Feel => Model as ICarGripFeel

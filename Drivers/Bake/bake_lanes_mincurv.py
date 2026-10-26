@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline lane bake by minimum curvature, with TUM's trajectory_planning_helpers.
 
-The lanes are drawn on the circuit's own centreline and widths (Circuits/<id>/track.csv),
+The lanes are drawn on the circuit's own centreline and widths (data/official/circuits/<id>/track.csv),
 each as the line that bends least within its part of the road: the free lane on the
 whole road, the left and right lanes each on their own half, the middle lane within
 a few metres of the centre. Speeds are not baked: the driver plans them from the car's
@@ -33,7 +33,7 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 
 
 def centreline(track_id: str):
-    path = os.path.join(REPO, "Circuits", track_id, "track.csv")
+    path = os.path.join(REPO, "data", "official", "circuits", track_id, "track.csv")
     rows = [r for r in csv.reader(line for line in open(path) if not line.startswith("#"))][1:]
     xy = np.array([[float(r[0]), float(r[1])] for r in rows])
     width = np.array([float(r[3]) for r in rows])

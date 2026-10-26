@@ -97,7 +97,7 @@ public sealed class RungCalibrator
         var notes = new LaneCalibration
         {
             Date = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            Physics = PhysicsFingerprint.Stock,
+            Physics = StockCar.Loaded.Fingerprint,
             Energy = energyNote,
             Tyres = tyreNote
         };
