@@ -63,6 +63,9 @@ public sealed class ZzLineSweep
 
     private sealed record Stretch(float StartS, float FromS, float ToS, float EndS);
 
+    /// <summary>The car as it arrives: the road's grip today, tyre wear and heat, and its speed.</summary>
+    private sealed record CarCondition(float RoadGrip, float Wear, float TyreTempC, float EntrySpeed);
+
     private sealed record Run(float Seconds, bool Spun, float Off, float Wall, float WorstError, float WorstSlip)
     {
         public bool Clean => !Spun && Off <= 0f && Wall <= 0f && WorstError <= 1.2f;
@@ -96,12 +99,18 @@ public sealed class ZzLineSweep
 
         var random = new Random(20261028);
         var knots = new float[lines][];
+        var states = new CarCondition[lines];
+        bool vary = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_STATE") == "1";
+        float Between(float a, float b) => a + (b - a) * (float)random.NextDouble();
         for (int n = 0; n < lines; n++)
         {
             knots[n] = new float[Knots];
+            states[n] = new CarCondition(1f, 0f, 90f, entrySpeed);
             if (n == 0) continue;
             for (int j = 0; j < Knots; j++)
                 knots[n][j] = (float)(random.NextDouble() * 2.0 - 1.0);
+            if (vary)
+                states[n] = new CarCondition(Between(0.85f, 1f), Between(0f, 0.5f), Between(70f, 110f), entrySpeed * Between(0.85f, 1f));
         }
 
         var rows = new string[lines][];
@@ -115,10 +124,11 @@ public sealed class ZzLineSweep
             {
                 LaneTrackFile file = shipped.WithLanes(drawn);
                 Prepare(file, lanes, stretch, shares[g]);
-                Run r = Drive(track, file, drawn, stretch, entrySpeed);
+                Run r = Drive(track, file, drawn, stretch, states[n]);
                 rows[n][g] = string.Join(",",
                     new[] { n.ToString(CultureInfo.InvariantCulture) }
                     .Concat(knots[n].Select(k => k.ToString("F4", CultureInfo.InvariantCulture)))
+                    .Concat(new[] { states[n].RoadGrip, states[n].Wear, states[n].TyreTempC, states[n].EntrySpeed }.Select(v => v.ToString("F4", CultureInfo.InvariantCulture)))
                     .Concat(new[]
                     {
                         shares[g].ToString("F2", CultureInfo.InvariantCulture),
@@ -137,7 +147,7 @@ public sealed class ZzLineSweep
         });
 
         var csv = new StringBuilder("line," + string.Join(",", Enumerable.Range(0, Knots).Select(j => $"k{j}")) +
-            ",share,seconds,clean,spun,off_s,wall_s,worst_error_m,worst_slip_rad\n");
+            ",road_grip,wear,tyre_temp_c,entry_mps,share,seconds,clean,spun,off_s,wall_s,worst_error_m,worst_slip_rad\n");
         foreach (string[] line in rows)
             foreach (string row in line)
                 csv.Append(row).Append('\n');
@@ -211,7 +221,7 @@ public sealed class ZzLineSweep
             steer[lanes.Wrap(i)] = 0f;
     }
 
-    private static Run Drive(TrackData track, LaneTrackFile file, LaneSet lanes, Stretch stretch, float entrySpeed)
+    private static Run Drive(TrackData track, LaneTrackFile file, LaneSet lanes, Stretch stretch, CarCondition condition)
     {
         int station = (int)MathF.Round(lanes.StationOf(stretch.StartS));
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station));
@@ -219,13 +229,15 @@ public sealed class ZzLineSweep
         ICar model = new SingleTrackCar(StockCar.Config, DevelopmentTyres.Super);
         var driver = new LaneDriver(file, model) { UseAbilities = UseAbilities, LearnsAsItDrives = false };
         var car = new RaceCar("sweep", model, new Driver(new DriverProfile("sweep", new DriverAbilities()), driver),
-            new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X), Speed = entrySpeed })
+            new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X), Speed = condition.EntrySpeed })
         {
             Strategy = CarStrategy.Default
         };
         car.State.Chassis().Energy = PowertrainState.Filled(0.8f);
-        car.State.Chassis().WarmTires(90f, 90f);
-        var simulation = new RaceSimulation(track, new RaceEnvironment());
+        car.State.Chassis().WarmTires(condition.TyreTempC, condition.TyreTempC);
+        foreach (TireState tyre in new[] { car.State.Chassis().FrontLeft, car.State.Chassis().FrontRight, car.State.Chassis().RearLeft, car.State.Chassis().RearRight })
+            tyre.Wear = condition.Wear;
+        var simulation = new RaceSimulation(track, new RaceEnvironment { SurfaceGripScalar = condition.RoadGrip });
         simulation.AddCar(car);
 
         const float dt = 1f / 60f;
