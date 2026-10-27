@@ -106,6 +106,16 @@ public sealed class LaneSet
     internal static float[] Between(float[] left, float[] right) =>
         left.Select((l, i) => 0.5f * (l + right[i])).ToArray();
 
+    /// <summary>The same road with one lane drawn somewhere else.</summary>
+    public LaneSet WithOffsets(LaneId lane, float[] offsets)
+    {
+        if (offsets.Length != Count)
+            throw new ArgumentException($"{offsets.Length} offsets for {Count} stations.", nameof(offsets));
+        float[][] offset = (float[][])_offset.Clone();
+        offset[(int)lane] = (float[])offsets.Clone();
+        return new LaneSet(LengthMeters, Spacing, _centre, _normal, _halfWidth, offset);
+    }
+
     public Vector2 Position(int station, float offset) =>
         Centre(station) + Normal(station) * offset;
 

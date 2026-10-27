@@ -198,6 +198,16 @@ public sealed class LaneTrackFile
         return copy;
     }
 
+    /// <summary>A copy of everything learned, on lanes drawn differently over the same road.</summary>
+    public LaneTrackFile WithLanes(LaneSet lanes)
+    {
+        if (_lanes is null || lanes.Count != _lanes.Count)
+            throw new ArgumentException("The lanes must lie on the same stations.", nameof(lanes));
+        LaneTrackFile copy = Clone();
+        copy._lanes = lanes;
+        return copy;
+    }
+
     /// <summary>
     /// Where each level starts before anything is learned: the slippery ones
     /// conservatively, and learning is what earns them more. A car on cold
