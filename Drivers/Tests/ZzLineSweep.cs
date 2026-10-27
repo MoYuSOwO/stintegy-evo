@@ -109,18 +109,24 @@ public sealed class ZzLineSweep
     /// both corner and braking, then at random corner and braking shares
     /// apart, close round where the ladder found the edge.
     /// </summary>
-    [Fact]
-    public void Sweep()
+    private sealed record Setup(
+        Stretch Stretch, TrackData Track, LaneTrackFile Shipped, LaneSet Lanes, string[] Compounds,
+        float EntrySpeed, float[][] Knots, Condition[] Conditions, int[] Seeds);
+
+    /// <summary>
+    /// The stretch, and every line and condition drawn from one seed, so a
+    /// later replay meets exactly the same lines. STINTEGY_SWEEP_FULL=1 draws
+    /// the car's whole condition; otherwise only the road's grip, the tyres'
+    /// heat and wear front and rear, and the speed in, everything else as a
+    /// learning lap has it.
+    /// </summary>
+    private static Setup Build(int lines)
     {
-        if (!LaneProbes.Enabled) return;
-        int lines = (int)Env("STINTEGY_SWEEP_LINES", 50);
-        int near = (int)Env("STINTEGY_SWEEP_NEAR", 12);
-        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "line-sweep.csv");
         // Default: Brooklands and Luffield, Wellington's braking zone and both corners.
         var stretch = new Stretch(StartS: Env("STINTEGY_SWEEP_START", 1350f), FromS: Env("STINTEGY_SWEEP_FROM", 1650f),
             ToS: Env("STINTEGY_SWEEP_TO", 2550f), EndS: Env("STINTEGY_SWEEP_END", 2700f));
-        float[] ladder = [0.70f, 0.79f, 0.88f, 0.97f, 1.06f, 1.15f, 1.24f];
         const int Knots = 5;
+        bool full = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_FULL") == "1";
 
         TrackData track = TrackFactory.SilverstoneStyleTestTrack();
         LaneTrackFile shipped = LaneTrackFile.ForCircuit("silverstone", track);
@@ -137,30 +143,68 @@ public sealed class ZzLineSweep
         var conditions = new Condition[lines];
         var seeds = new int[lines];
         int super = Array.FindIndex(compounds, c => c == DevelopmentTyres.SuperId);
+        var asLearned = new Condition(1f, 35f, super, 90f, 90f, 0f, 0f, 0.8f, 0.8f, PowerOutputMode.Normal, TireUsageMode.Normal,
+            entrySpeed, 0f, 0f, 0f, 100f, 100f, 100f, 100f, 100f, 100f);
         for (int n = 0; n < lines; n++)
         {
             knots[n] = new float[Knots];
             seeds[n] = random.Next();
+            conditions[n] = asLearned;
             if (n == 0)
-            {
-                conditions[n] = new Condition(1f, 35f, super, 90f, 90f, 0f, 0f, 0.8f, 0.8f, PowerOutputMode.Normal, TireUsageMode.Normal,
-                    entrySpeed, 0f, 0f, 0f, 100f, 100f, 100f, 100f, 100f, 100f);
                 continue;
-            }
             for (int j = 0; j < Knots; j++)
                 knots[n][j] = Between(-1f, 1f);
-            conditions[n] = new Condition(
-                RoadGrip: Between(0.85f, 1f), TrackTempC: Between(20f, 50f),
-                Compound: random.Next(compounds.Length),
-                FrontTempC: Between(70f, 110f), RearTempC: Between(70f, 110f),
-                FrontWear: Between(0f, 0.5f), RearWear: Between(0f, 0.5f),
-                Fuel: Between(0.05f, 1f), Charge: Between(0.2f, 0.9f),
-                Power: (PowerOutputMode)random.Next(1, 6), TyreMode: (TireUsageMode)random.Next(1, 6),
-                EntrySpeed: entrySpeed * Between(0.85f, 1f), EntryOffset: Between(-0.7f, 0.7f), EntryHeading: Between(-0.03f, 0.03f),
-                LeadGap: random.NextDouble() < 0.5 ? 0f : Between(3f, 30f),
-                Pace: Between(60f, 100f), Consistency: Between(60f, 100f), Precision: Between(60f, 100f),
-                Focus: Between(60f, 100f), Recovery: Between(60f, 100f), Reactions: Between(60f, 100f));
+            conditions[n] = full
+                ? new Condition(
+                    RoadGrip: Between(0.85f, 1f), TrackTempC: Between(20f, 50f),
+                    Compound: random.Next(compounds.Length),
+                    FrontTempC: Between(70f, 110f), RearTempC: Between(70f, 110f),
+                    FrontWear: Between(0f, 0.5f), RearWear: Between(0f, 0.5f),
+                    Fuel: Between(0.05f, 1f), Charge: Between(0.2f, 0.9f),
+                    Power: (PowerOutputMode)random.Next(1, 6), TyreMode: (TireUsageMode)random.Next(1, 6),
+                    EntrySpeed: entrySpeed * Between(0.85f, 1f), EntryOffset: Between(-0.7f, 0.7f), EntryHeading: Between(-0.03f, 0.03f),
+                    LeadGap: random.NextDouble() < 0.5 ? 0f : Between(3f, 30f),
+                    Pace: Between(60f, 100f), Consistency: Between(60f, 100f), Precision: Between(60f, 100f),
+                    Focus: Between(60f, 100f), Recovery: Between(60f, 100f), Reactions: Between(60f, 100f))
+                : asLearned with
+                {
+                    RoadGrip = Between(0.85f, 1f),
+                    FrontTempC = Between(70f, 110f), RearTempC = Between(70f, 110f),
+                    FrontWear = Between(0f, 0.5f), RearWear = Between(0f, 0.5f),
+                    EntrySpeed = entrySpeed * Between(0.85f, 1f)
+                };
         }
+        return new Setup(stretch, track, shipped, lanes, compounds, entrySpeed, knots, conditions, seeds);
+    }
+
+    private static Run Try(Setup setup, int n, LaneSet drawn, float corner, float brake)
+    {
+        LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+        Prepare(file, setup.Lanes, setup.Stretch, corner, brake);
+        return Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, setup.Conditions[n], setup.Compounds);
+    }
+
+    private static string Header =>
+        "line," + string.Join(",", Enumerable.Range(0, 5).Select(j => $"k{j}")) + "," +
+        Condition.Header + ",phase,corner_share,brake_share," + Run.Header + "\n";
+
+    /// <summary>
+    /// STINTEGY_SWEEP_LINES lines (line 0 the learned free line itself, car
+    /// as it comes). Each is driven first on a coarse ladder of one share for
+    /// both corner and braking, then at random corner and braking shares
+    /// apart, close round where the ladder found the edge.
+    /// </summary>
+    [Fact]
+    public void Sweep()
+    {
+        if (!LaneProbes.Enabled) return;
+        int lines = (int)Env("STINTEGY_SWEEP_LINES", 50);
+        int near = (int)Env("STINTEGY_SWEEP_NEAR", 12);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "line-sweep.csv");
+        float[] ladder = [0.70f, 0.79f, 0.88f, 0.97f, 1.06f, 1.15f, 1.24f];
+        Setup setup = Build(lines);
+        (Stretch stretch, LaneSet lanes, float[][] knots, Condition[] conditions, int[] seeds, float entrySpeed) =
+            (setup.Stretch, setup.Lanes, setup.Knots, setup.Conditions, setup.Seeds, setup.EntrySpeed);
 
         var rows = new List<string>[lines];
         var watch = Stopwatch.StartNew();
@@ -170,17 +214,11 @@ public sealed class ZzLineSweep
             LaneSet drawn = lanes.WithOffsets(LaneId.Free, Draw(lanes, stretch, knots[n]));
             string head = $"{n}," + string.Join(",", knots[n].Select(F)) + "," + conditions[n].Row();
             rows[n] = new List<string>();
-            Run Try(float corner, float brake)
-            {
-                LaneTrackFile file = shipped.WithLanes(drawn);
-                Prepare(file, lanes, stretch, corner, brake);
-                return Drive(track, shipped, file, drawn, stretch, conditions[n], compounds);
-            }
             float edge = ladder[0];
             bool clean = true;
             foreach (float share in ladder)
             {
-                Run r = Try(share, share);
+                Run r = Try(setup, n, drawn, share, share);
                 rows[n].Add($"{head},ladder,{F(share)},{F(share)},{r.Row()}");
                 clean &= r.Clean;
                 if (clean)
@@ -191,7 +229,7 @@ public sealed class ZzLineSweep
             {
                 float corner = Math.Clamp(edge - 0.10f + 0.25f * (float)local.NextDouble(), 0.6f, 1.35f);
                 float brake = Math.Clamp(edge - 0.10f + 0.25f * (float)local.NextDouble(), 0.6f, 1.35f);
-                Run r = Try(corner, brake);
+                Run r = Try(setup, n, drawn, corner, brake);
                 rows[n].Add($"{head},near,{F(corner)},{F(brake)},{r.Row()}");
             }
             int now = System.Threading.Interlocked.Increment(ref done);
@@ -199,8 +237,7 @@ public sealed class ZzLineSweep
                 Console.WriteLine($"{now}/{lines} lines, {watch.Elapsed.TotalSeconds:F0} s");
         });
 
-        var csv = new StringBuilder("line," + string.Join(",", Enumerable.Range(0, Knots).Select(j => $"k{j}")) + "," +
-            Condition.Header + ",phase,corner_share,brake_share," + Run.Header + "\n");
+        var csv = new StringBuilder(Header);
         foreach (List<string> line in rows)
             foreach (string row in line)
                 csv.Append(row).Append('\n');
@@ -217,6 +254,33 @@ public sealed class ZzLineSweep
         }
         File.WriteAllText(Path.ChangeExtension(output, ".offsets.csv"), offsets.ToString());
         _output.WriteLine($"{lines} lines x ({ladder.Length} + {near}) runs in {watch.Elapsed.TotalSeconds:F0} s, entry {entrySpeed:F1} m/s -> {output}");
+    }
+
+    /// <summary>
+    /// Drives the shares a model picked for lines it never saw: one row of
+    /// STINTEGY_SWEEP_PICKS (line,label,corner_share,brake_share) each, the
+    /// lines and conditions rebuilt from the same seed and count.
+    /// </summary>
+    [Fact]
+    public void Replay()
+    {
+        if (!LaneProbes.Enabled) return;
+        string? picks = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_PICKS");
+        if (picks is null) return;
+        Setup setup = Build((int)Env("STINTEGY_SWEEP_LINES", 50));
+        var wanted = File.ReadAllLines(picks).Skip(1).Where(l => l.Length > 0).Select(l => l.Split(',')).ToArray();
+        var rows = new string[wanted.Length];
+        Parallel.For(0, wanted.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i =>
+        {
+            int n = int.Parse(wanted[i][0], CultureInfo.InvariantCulture);
+            float corner = float.Parse(wanted[i][2], CultureInfo.InvariantCulture);
+            float brake = float.Parse(wanted[i][3], CultureInfo.InvariantCulture);
+            LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, setup.Knots[n]));
+            Run r = Try(setup, n, drawn, corner, brake);
+            rows[i] = $"{n},{wanted[i][1]},{F(corner)},{F(brake)},{r.Row()}";
+        });
+        File.WriteAllLines(Path.ChangeExtension(picks, ".driven.csv"), new[] { "line,label,corner_share,brake_share," + Run.Header }.Concat(rows));
+        _output.WriteLine($"{rows.Length} picks driven");
     }
 
     /// <summary>
