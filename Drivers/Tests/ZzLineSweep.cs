@@ -324,6 +324,88 @@ public sealed class ZzLineSweep
         _output.WriteLine($"{rows.Length} jobs driven");
     }
 
+    /// <summary>The stations a profile covers: from the braking zone before the stretch to its end.</summary>
+    private static (int First, int Last) ProfileStations(LaneSet lanes, Stretch stretch) =>
+        ((int)MathF.Floor(lanes.StationOf(stretch.FromS - 150f)), (int)MathF.Ceiling(lanes.StationOf(stretch.ToS)));
+
+    /// <summary>
+    /// The road under the stretch for a learner outside, one row a station
+    /// from the braking zone before it to its end: where the centre is, which
+    /// way is left, how wide, where the free line runs, and whether the line
+    /// is drawn there. Written to STINTEGY_SWEEP_GEOMETRY.
+    /// </summary>
+    [Fact]
+    public void Geometry()
+    {
+        if (!LaneProbes.Enabled) return;
+        string? path = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_GEOMETRY");
+        if (path is null) return;
+        Setup setup = Build(1);
+        LaneSet lanes = setup.Lanes;
+        (int first, int last) = ProfileStations(lanes, setup.Stretch);
+        var rows = new List<string> { $"# spacing_m={F(lanes.Spacing)} from_s={F(setup.Stretch.FromS)} to_s={F(setup.Stretch.ToS)} entry_mps={F(setup.EntrySpeed)}",
+            "station,s_m,x,y,normal_x,normal_y,half_width_m,free_m" };
+        for (int i = first; i <= last; i++)
+        {
+            Vector2 c = lanes.Centre(i), n = lanes.Normal(i);
+            rows.Add($"{i},{F(i * lanes.Spacing)},{F(c.X)},{F(c.Y)},{F(n.X)},{F(n.Y)},{F(lanes.HalfWidth(i))},{F(lanes.Offset(LaneId.Free, i))}");
+        }
+        File.WriteAllLines(path, rows);
+        _output.WriteLine($"{last - first + 1} stations -> {path}");
+    }
+
+    /// <summary>
+    /// For a learner that sets every station: STINTEGY_SWEEP_JOBS rows of
+    /// id, k0..k4, road_grip, front_temp_c, rear_temp_c, front_wear, rear_wear,
+    /// entry_share, then the corner factors at every station Geometry lists,
+    /// then the braking factors, then the traction factors.
+    /// </summary>
+    [Fact]
+    public void BatchPoints()
+    {
+        if (!LaneProbes.Enabled) return;
+        string? jobs = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_JOBS");
+        if (jobs is null) return;
+        Setup setup = Build(1);
+        Condition learned = setup.Conditions[0];
+        (int first, int last) = ProfileStations(setup.Lanes, setup.Stretch);
+        int count = last - first + 1;
+        string[] lines = File.ReadAllLines(jobs).Skip(1).Where(l => l.Length > 0).ToArray();
+        var rows = new string[lines.Length];
+        Parallel.For(0, lines.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i =>
+        {
+            float[] v = lines[i].Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+            if (v.Length != 12 + 3 * count)
+                throw new InvalidDataException($"job {i}: {v.Length} values, wanted {12 + 3 * count}");
+            Condition c = learned with
+            {
+                RoadGrip = v[6], FrontTempC = v[7], RearTempC = v[8], FrontWear = v[9], RearWear = v[10],
+                EntrySpeed = setup.EntrySpeed * v[11]
+            };
+            LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, v[1..6]));
+            LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+            for (int level = 0; level < LaneTrackFile.GripLevels.Length; level++)
+            {
+                float[] corner = file.Factors(LaneId.Free, level), brake = file.BrakeFactors(LaneId.Free, level),
+                    traction = file.TractionFactors(LaneId.Free, level);
+                for (int k = 0; k < count; k++)
+                {
+                    int at = setup.Lanes.Wrap(first + k);
+                    corner[at] = v[12 + k];
+                    brake[at] = v[12 + count + k];
+                    traction[at] = v[12 + 2 * count + k];
+                }
+            }
+            float[] steer = file.Steer(LaneId.Free);
+            for (int k = 0; k < count; k++)
+                steer[setup.Lanes.Wrap(first + k)] = 0f;
+            Run r = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, c, setup.Compounds);
+            rows[i] = $"{(int)v[0]},{r.Row()}";
+        });
+        File.WriteAllLines(Path.ChangeExtension(jobs, ".driven.csv"), new[] { "id," + Run.Header }.Concat(rows));
+        _output.WriteLine($"{rows.Length} jobs driven");
+    }
+
     /// <summary>
     /// Corner, braking and traction factors through the stretch from the
     /// braking zone before it, each a straight line between evenly spaced
