@@ -6,6 +6,7 @@ using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Saves;
 using Xunit;
 
 namespace StintegyEVO.Core.Tests;
@@ -13,8 +14,7 @@ namespace StintegyEVO.Core.Tests;
 /// <summary>
 /// A driver is a mod's registered definition: checked against the car
 /// before the race, and seated with what was learned about that car there,
-/// kept in the car's folder, and with the person's own experience, kept
-/// where the save says.
+/// kept in the car's folder, and with a slot in the save.
 /// </summary>
 public sealed class DriverSeatTests
 {
@@ -98,29 +98,31 @@ public sealed class DriverSeatTests
 
     /// <summary>
     /// Seated, the driver is given the person, the car, the circuit, its
-    /// notes there and the person's own experience of it; a car without
-    /// what it needs is refused.
+    /// notes there and a slot in the save for what it learns of this person
+    /// there; a car without what it needs is refused.
     /// </summary>
     [Fact]
-    public void ADriverIsSeatedWithItsNotesAndThePersonsExperience()
+    public void ADriverIsSeatedWithItsNotesAndASaveSlot()
     {
         (ModCar car, string folder) = OfficialCarInTempFolder();
-        string saves = TempFolder();
         try
         {
             var definition = new PackDriver();
             var person = new DriverProfile("ana", new DriverAbilities());
-            var store = new DriverProgressFolder(saves);
+            var saves = new ThrowawaySave();
 
-            Driver seated = ModDrivers.Seat(Mods, Lanes, definition, person, car, Silverstone, store);
+            Driver seated = ModDrivers.Seat(Mods, Lanes, definition, person, car, Silverstone, saves);
             Assert.Same(person, seated.Profile);
             DriverSeat seat = definition.LastSeat!;
             Assert.Equal(Silverstone, seat.Circuit);
             Assert.Equal(DriverNotes.For(Lanes, car, Silverstone).Folder, seat.Notes.Folder);
             Assert.True(seat.Track.LengthMeters > 0f);
 
-            seat.Progress!.Write("{\"laps\":3}");
-            Assert.Equal("{\"laps\":3}", store.Load(new DriverProgressKey("ana", Lanes, car.Id, Silverstone)));
+            seat.Save!.Write("laps.json", "{\"laps\":3}");
+            Assert.Equal("{\"laps\":3}", saves.Slot(new SaveKey(Lanes, "ana", car.Id, Silverstone)).Read("laps.json"));
+
+            ModDrivers.Seat(Mods, Lanes, definition, person, car, Silverstone);
+            Assert.Null(definition.LastSeat!.Save);
 
             var fussy = new PackDriver(new CarNeeds([typeof(NoSuchFeature)], []));
             Assert.Throws<CarUnfitForDriverException>(() => ModDrivers.Seat(Mods, Lanes, fussy, person, car, Silverstone));
@@ -128,39 +130,6 @@ public sealed class DriverSeatTests
         finally
         {
             Directory.Delete(folder, recursive: true);
-            Directory.Delete(saves, recursive: true);
-        }
-    }
-
-    /// <summary>
-    /// A person's experience is theirs, with that driver pack, in that car,
-    /// at that circuit: each kept apart, every id split into folders, and a
-    /// person named only as a folder can be named everywhere.
-    /// </summary>
-    [Fact]
-    public void ExperienceIsKeptPerPersonDriverCarAndCircuit()
-    {
-        string saves = TempFolder();
-        try
-        {
-            var store = new DriverProgressFolder(saves);
-            ResourceId car = new("official", "formula_a_mixed");
-            var key = new DriverProgressKey("ana", Lanes, car, Silverstone);
-            store.Save(key, "a");
-            Assert.Equal("a", store.Load(key));
-            Assert.Null(store.Load(new DriverProgressKey("ben", Lanes, car, Silverstone)));
-            Assert.Null(store.Load(new DriverProgressKey("ana", new ResourceId("official", "lanes"), car, Silverstone)));
-            Assert.Null(store.Load(new DriverProgressKey("ana", Lanes, new ResourceId("someone", "formula_a_mixed"), Silverstone)));
-            Assert.Null(store.Load(new DriverProgressKey("ana", Lanes, car, new ResourceId("official", "spa"))));
-
-            foreach (string file in Directory.GetFiles(saves, "*", SearchOption.AllDirectories))
-                Assert.DoesNotContain(':', Path.GetRelativePath(saves, file));
-            Assert.Throws<ArgumentException>(() => new DriverProgressKey("Ana", Lanes, car, Silverstone));
-            Assert.Throws<ArgumentException>(() => new DriverProgressKey("../x", Lanes, car, Silverstone));
-        }
-        finally
-        {
-            Directory.Delete(saves, recursive: true);
         }
     }
 

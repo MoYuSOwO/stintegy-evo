@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Mods;
+using StintegyEVO.Core.Saves;
 using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Core.Drivers;
@@ -36,7 +37,11 @@ public interface IDriverDefinition
 /// <param name="Circuit">The circuit's id.</param>
 /// <param name="Track">The circuit's road.</param>
 /// <param name="Notes">What has been learned about this car at this circuit, by this driver.</param>
-/// <param name="Progress">This person's own experience of the car there, if the game keeps it.</param>
+/// <param name="Save">
+/// Where this driver keeps what it learns of this person in this car there,
+/// between sessions (<see cref="SaveKey"/>: the driver, the person, the car,
+/// the circuit); none when the game keeps nothing.
+/// </param>
 public sealed record DriverSeat(
     DriverProfile Person,
     ResourceId Driver,
@@ -44,7 +49,7 @@ public sealed record DriverSeat(
     ResourceId Circuit,
     TrackData Track,
     DriverNotes Notes,
-    DriverProgress? Progress);
+    ISaveSlot? Save);
 
 /// <summary>
 /// What stands between a driver and a car at a circuit, asked before the

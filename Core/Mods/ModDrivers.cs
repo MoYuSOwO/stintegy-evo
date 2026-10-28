@@ -6,6 +6,7 @@ using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Saves;
 
 namespace StintegyEVO.Core.Mods;
 
@@ -42,8 +43,8 @@ public static class ModDrivers
     /// <summary>
     /// <paramref name="person"/> in <paramref name="car"/> at
     /// <paramref name="circuit"/>, driven by <paramref name="driver"/>, with
-    /// what has been learned there and, when the game keeps it, this
-    /// person's own experience. Refused, as <see cref="CarUnfitForDriverException"/>,
+    /// what has been learned there and, when the game keeps one, a slot in
+    /// <paramref name="saves"/> for what it learns of this person there. Refused, as <see cref="CarUnfitForDriverException"/>,
     /// when the car lacks what the driver needs.
     /// </summary>
     public static Driver Seat(
@@ -52,8 +53,8 @@ public static class ModDrivers
         DriverProfile person,
         ModCar car,
         ResourceId circuit,
-        IDriverProgressStore? progress = null) =>
-        Seat(registry, driver, registry.Drivers.Get(driver), person, car, circuit, progress);
+        ISaveStore? saves = null) =>
+        Seat(registry, driver, registry.Drivers.Get(driver), person, car, circuit, saves);
 
     internal static Driver Seat(
         ModRegistry registry,
@@ -62,7 +63,7 @@ public static class ModDrivers
         DriverProfile person,
         ModCar car,
         ResourceId circuit,
-        IDriverProgressStore? progress = null)
+        ISaveStore? saves = null)
     {
         IReadOnlyList<Type> missing = definition.Needs.MissingFrom(car.Car);
         if (missing.Count > 0)
@@ -74,7 +75,7 @@ public static class ModDrivers
             circuit,
             registry.Circuits.Get(circuit).Track,
             DriverNotes.For(driver, car, circuit),
-            progress is null ? null : new DriverProgress(progress, new DriverProgressKey(person.Id, driver, car.Id, circuit)));
+            saves?.Slot(new SaveKey(driver, person.Id, car.Id, circuit)));
         IDriverController controller = definition.Seat(seat)
             ?? throw new InvalidDataException($"Driver '{driver}' seated nobody.");
         return new Driver(person, controller);

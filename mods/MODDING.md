@@ -358,7 +358,11 @@ car has none.
 
 Seated, the driver is given the person driving, the car, the circuit, what
 it has learned about that car there (`DriverSeat.Notes`) and, where the
-game keeps it, this person's own experience of it (`DriverSeat.Progress`).
+game keeps a save, a slot in it for what it learns of this person in this
+car there (`DriverSeat.Save`). A driver never chooses where anything is
+kept: it reads and writes its slot, and the game decides whether that is a
+folder or something thrown away with the session. Mods are read only;
+whatever is written while the game runs goes into the save.
 Each decision it reads one `DriverContext` — its profile, a read-only track
 view and a frozen frame of every car — and returns a `DriverInput`. Every
 driver reads the same frozen frame; no driver sees a world another has
