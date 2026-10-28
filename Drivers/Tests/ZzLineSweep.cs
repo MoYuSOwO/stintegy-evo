@@ -100,6 +100,14 @@ public sealed class ZzLineSweep
         /// <summary>Whether it was braking when it strayed.</summary>
         public bool StrayBraking { get; init; }
 
+        /// <summary>Per station, as a learning lap keeps it: how far off and how sideways, off the road, braking, on the throttle.</summary>
+        public float[] StationError { get; init; } = [];
+        public float[] StationSlip { get; init; } = [];
+        public bool[] StationOff { get; init; } = [];
+        public bool[] StationBraking { get; init; } = [];
+        public bool[] StationThrottle { get; init; } = [];
+        public float SpinS { get; init; } = float.NaN;
+
         /// <summary>Kept on the road and on the line; touching the car ahead is counted apart.</summary>
         public bool Clean => !Spun && Off <= 0f && Wall <= 0f && WorstError <= 1.2f;
 
@@ -573,7 +581,7 @@ public sealed class ZzLineSweep
                         i, s, tm.LateralErrorMeters, car.State.Speed, d.PlannedSpeedAt(car.Progress.CurrentS), tm.CommandAccel,
                         tm.WantedCurvature, tm.CurvatureCap, tm.FeedforwardCurvature, LineCurvature(drawn, car.Progress.CurrentS),
                         car.State.SideslipAngleRadians, car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
-                        g.FrontGripAccel, g.RearGripAccel, g.FrontLateral, g.RearLateral, c[k], b[k]
+                        g.FrontGripAccel, g.RearGripAccel, g.FrontLateral, g.RearLateral, c[k], b[k], t[k]
                     }.Select(v => v.ToString("F4", CultureInfo.InvariantCulture))));
                 });
             });
@@ -593,53 +601,118 @@ public sealed class ZzLineSweep
             return y;
         }
 
-        var log = new List<string> { "round,trouble,spins,clean_mean_s,corner_mean,brake_mean,corner_min,brake_min" };
+        // The lap learner's rules, over a batch: trouble at a station (off
+        // the line, sideways, off the road) charges the 150 m before it and
+        // the 20 m after to whatever the driver was doing there, braking to
+        // braking, throttle to traction, the rest to corner; a station no line
+        // was in trouble near and every line passed cleanly takes a little
+        // more. Steps shrink when the table stops getting better, and the best
+        // table on a fixed set of check lines is the one kept.
+        int back = (int)MathF.Ceiling(learner.LookBackMeters / spacing), ahead = (int)MathF.Ceiling(learner.LookAheadMeters / spacing);
+        float[][] check = Lines(batch);
+        (int Trouble, float Time) Score(Run[] runs) =>
+            (runs.Count(r => !r.Clean), runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.PositiveInfinity).Average());
+        static bool Better((int Trouble, float Time) a, (int Trouble, float Time) b) => a.Trouble < b.Trouble || (a.Trouble == b.Trouble && a.Time < b.Time);
+        (float[] C, float[] B, float[] T) best = ((float[])corner.Clone(), (float[])brake.Clone(), (float[])traction.Clone());
+        (int Trouble, float Time) bestScore = Score(DriveAll(check, corner, brake, traction));
+        float step = 1f;
+        int stale = 0;
+        var log = new List<string> { "round,batch_trouble,check_trouble,check_clean_mean_s,step,kept,corner_mean,brake_mean,traction_mean,corner_min,brake_min,traction_min" };
         for (int round = 1; round <= rounds; round++)
         {
-            Run[] runs = DriveAll(Lines(batch), corner, brake, traction);
-            var cornerCut = new float[count];
-            var brakeCut = new float[count];
-            foreach (Run r in runs.Where(r => !r.Clean && !float.IsNaN(r.StrayS)))
+            if (stale >= learner.Patience)
             {
-                float cut = r.Spun ? learner.SpinPenalty : (r.Off > 0f || r.Wall > 0f || r.WorstError > learner.SevereErrorMeters) ? learner.SeverePenalty : learner.Penalty;
-                int from = Math.Max(0, (int)MathF.Floor((r.StrayS - learner.LookBackMeters) / spacing) - first);
-                int to = Math.Min(count - 1, (int)MathF.Ceiling((r.StrayS + learner.LookAheadMeters) / spacing) - first);
-                for (int k = from; k <= to; k++)
+                step *= learner.StepDecay;
+                stale = 0;
+            }
+            Run[] runs = DriveAll(Lines(batch), corner, brake, traction);
+            var cs = Enumerable.Repeat(1f, count).ToArray();
+            var bs = Enumerable.Repeat(1f, count).ToArray();
+            var ts = Enumerable.Repeat(1f, count).ToArray();
+            var troubled = new bool[count];
+            var unclean = new bool[count];
+            foreach (Run r in runs)
+            {
+                void Punish(int at, float penalty, bool both)
                 {
-                    cornerCut[k] = MathF.Max(cornerCut[k], cut);
-                    if (r.StrayBraking)
-                        brakeCut[k] = MathF.Max(brakeCut[k], cut);
+                    for (int d = -back; d <= ahead; d++)
+                    {
+                        int k = at + d - first;
+                        if (k < 0 || k >= count) continue;
+                        int i = setup.Lanes.Wrap(first + k);
+                        troubled[k] = true;
+                        bool braking = r.StationBraking[i];
+                        bool throttle = r.StationThrottle[i] && !braking;
+                        if (both || (!braking && !throttle) || (d >= 0 && !throttle))
+                            cs[k] = MathF.Min(cs[k], 1f - penalty);
+                        if (both || braking)
+                            bs[k] = MathF.Min(bs[k], 1f - penalty);
+                        if (both || throttle)
+                            ts[k] = MathF.Min(ts[k], 1f - penalty);
+                    }
+                }
+                if (r.Spun)
+                    Punish((int)MathF.Round(setup.Lanes.StationOf(r.SpinS)), learner.SpinPenalty * step, both: true);
+                for (int k = 0; k < count; k++)
+                {
+                    int i = setup.Lanes.Wrap(first + k);
+                    if (r.StationError[i] > learner.TroubleErrorMeters || r.StationSlip[i] > learner.TroubleSlipRadians || r.StationOff[i])
+                    {
+                        bool severe = r.StationError[i] > learner.SevereErrorMeters || r.StationOff[i];
+                        Punish(first + k, (severe ? learner.SeverePenalty : learner.Penalty) * step, both: severe);
+                    }
+                    if (r.StationError[i] >= learner.CleanErrorMeters || r.StationSlip[i] >= learner.CleanSlipRadians)
+                        unclean[k] = true;
                 }
             }
             for (int k = 0; k < count; k++)
             {
-                corner[k] = cornerCut[k] > 0f ? corner[k] * (1f - cornerCut[k]) : corner[k] * (1f + learner.Reward);
-                brake[k] = brakeCut[k] > 0f ? brake[k] * (1f - brakeCut[k]) : cornerCut[k] > 0f ? brake[k] : brake[k] * (1f + learner.Reward);
-                corner[k] = Math.Clamp(corner[k], learner.MinimumFactor, learner.MaximumFactor);
-                brake[k] = Math.Clamp(brake[k], learner.MinimumFactor, learner.MaximumBrakeFactor);
+                if (troubled[k] || unclean[k]) continue;
+                int i = setup.Lanes.Wrap(first + k);
+                cs[k] = 1f + learner.Reward * step;
+                if (runs.Any(r => r.StationBraking[i])) bs[k] = 1f + learner.Reward * step;
+                if (runs.Any(r => r.StationThrottle[i])) ts[k] = 1f + learner.Reward * step;
+            }
+            for (int k = 0; k < count; k++)
+            {
+                corner[k] = Math.Clamp(corner[k] * cs[k], learner.MinimumFactor, learner.MaximumFactor);
+                brake[k] = Math.Clamp(brake[k] * bs[k], learner.MinimumFactor, learner.MaximumBrakeFactor);
+                traction[k] = Math.Clamp(traction[k] * ts[k], learner.MinimumFactor, learner.MaximumFactor);
             }
             corner = Smooth(corner, learner.SmoothStations / 2);
             brake = Smooth(brake, learner.SmoothStations / 2);
-            int trouble = runs.Count(r => !r.Clean);
-            float time = runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.NaN).Average();
-            log.Add(string.Join(",", new[] { round, trouble, runs.Count(r => r.Spun) }.Select(v => v.ToString(CultureInfo.InvariantCulture))
-                .Concat(new[] { time, corner.Average(), brake.Average(), corner.Min(), brake.Min() }.Select(F))));
+            traction = Smooth(traction, learner.SmoothStations / 2);
+
+            (int Trouble, float Time) score = Score(DriveAll(check, corner, brake, traction));
+            bool kept = Better(score, bestScore);
+            if (kept)
+            {
+                best = ((float[])corner.Clone(), (float[])brake.Clone(), (float[])traction.Clone());
+                bestScore = score;
+                stale = 0;
+            }
+            else
+                stale++;
+            log.Add(string.Join(",", new[] { round, runs.Count(r => !r.Clean), score.Trouble }.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                .Concat(new[] { score.Time, step }.Select(F)).Append(kept ? "1" : "0")
+                .Concat(new[] { corner.Average(), brake.Average(), traction.Average(), corner.Min(), brake.Min(), traction.Min() }.Select(F))));
             Console.WriteLine(log[^1]);
         }
+        (corner, brake, traction) = best;
 
         // The exam: fresh lines, the learned table beside one number for the stretch.
         float[][] exam = Lines(300);
         var rows = new List<string> { "table,trouble,spins,clean_mean_s" };
         var perLine = new List<string> { "table,line,k1,k2,k3,k4,k5," + Run.Header };
         var examTraces = new List<string>[exam.Length];
-        foreach ((string name, float[] c, float[] b) in new[]
+        foreach ((string name, float[] c, float[] b, float[] t) in new[]
         {
-            ("learned", corner, brake),
-            ("flat 0.95", Enumerable.Repeat(0.95f, count).ToArray(), Enumerable.Repeat(0.95f, count).ToArray()),
-            ("flat 1.00", Enumerable.Repeat(1f, count).ToArray(), Enumerable.Repeat(1f, count).ToArray())
+            ("learned", corner, brake, traction),
+            ("flat 0.95", Enumerable.Repeat(0.95f, count).ToArray(), Enumerable.Repeat(0.95f, count).ToArray(), Enumerable.Repeat(1f, count).ToArray()),
+            ("flat 1.00", Enumerable.Repeat(1f, count).ToArray(), Enumerable.Repeat(1f, count).ToArray(), Enumerable.Repeat(1f, count).ToArray())
         })
         {
-            Run[] runs = DriveAll(exam, c, b, traction, name == "learned" ? examTraces : null);
+            Run[] runs = DriveAll(exam, c, b, t, name == "learned" ? examTraces : null);
             perLine.AddRange(runs.Select((r, i) => $"{name},{i},{string.Join(",", exam[i].Select(F))},{r.Row()}"));
             float time = runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.NaN).Average();
             rows.Add($"{name},{runs.Count(r => !r.Clean)},{runs.Count(r => r.Spun)},{F(time)}");
@@ -648,10 +721,10 @@ public sealed class ZzLineSweep
         File.WriteAllLines(output, log.Concat(new[] { "" }).Concat(rows));
         File.WriteAllLines(Path.ChangeExtension(output, ".exam.csv"), perLine);
         File.WriteAllLines(Path.ChangeExtension(output, ".traces.csv"),
-            new[] { "line,s_m,error_m,speed,plan,command_accel,wanted_k,cap_k,feedforward_k,line_k,sideslip,lat_accel,long_accel,front_grip,rear_grip,front_lat,rear_lat,corner_factor,brake_factor" }
+            new[] { "line,s_m,error_m,speed,plan,command_accel,wanted_k,cap_k,feedforward_k,line_k,sideslip,lat_accel,long_accel,front_grip,rear_grip,front_lat,rear_lat,corner_factor,brake_factor,traction_factor" }
                 .Concat(examTraces.SelectMany(t => t)));
-        File.WriteAllLines(Path.ChangeExtension(output, ".table.csv"), new[] { "station,s_m,corner,brake" }
-            .Concat(Enumerable.Range(0, count).Select(k => $"{first + k},{F((first + k) * spacing)},{F(corner[k])},{F(brake[k])}")));
+        File.WriteAllLines(Path.ChangeExtension(output, ".table.csv"), new[] { "station,s_m,corner,brake,traction" }
+            .Concat(Enumerable.Range(0, count).Select(k => $"{first + k},{F((first + k) * spacing)},{F(corner[k])},{F(brake[k])},{F(traction[k])}")));
     }
 
     /// <summary>The drawn free line's curvature where the car is.</summary>
@@ -777,6 +850,11 @@ public sealed class ZzLineSweep
         bool touched = false;
         float strayS = float.NaN;
         bool strayBraking = false;
+        var stationError = new float[lanes.Count];
+        var stationSlip = new float[lanes.Count];
+        var stationOff = new bool[lanes.Count];
+        var stationBraking = new bool[lanes.Count];
+        var stationThrottle = new bool[lanes.Count];
         var lanesDriver = (LaneDriver)car.Driver!.Controller;
         float lead0 = stretch.FromS - stretch.StartS, through = stretch.ToS - stretch.StartS, tail = stretch.EndS - stretch.StartS;
         float previous = 0f;
@@ -787,10 +865,22 @@ public sealed class ZzLineSweep
                 return new Run(float.NaN, true, off, wall, worstError, worstSlip, touched, wakeSamples > 0 ? wake / wakeSamples : 0f)
                 {
                     StrayS = float.IsNaN(strayS) ? stretch.StartS + car.Progress.TotalDistance - startDistance : strayS,
-                    StrayBraking = float.IsNaN(strayS) ? lanesDriver.LastTelemetry.CommandAccel < -3f : strayBraking
+                    StrayBraking = float.IsNaN(strayS) ? lanesDriver.LastTelemetry.CommandAccel < -3f : strayBraking,
+                    StationError = stationError, StationSlip = stationSlip, StationOff = stationOff,
+                    StationBraking = stationBraking, StationThrottle = stationThrottle, SpinS = car.Progress.CurrentS
                 };
             float travelled = car.Progress.TotalDistance - startDistance;
             float t = (i + 1) * dt;
+            {
+                LaneDriverTelemetry tel = lanesDriver.LastTelemetry;
+                int k = lanes.Wrap((int)MathF.Round(lanes.StationOf(car.Progress.CurrentS)));
+                stationError[k] = MathF.Max(stationError[k], MathF.Abs(tel.LateralErrorMeters));
+                float sideways = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Telemetry.ActualCurvature);
+                stationSlip[k] = MathF.Max(stationSlip[k], MathF.Abs(car.State.SideslipAngleRadians - sideways));
+                stationOff[k] |= car.Progress.Region != TrackRegion.RacingSurface;
+                stationBraking[k] |= tel.CommandAccel < -3f;
+                stationThrottle[k] |= tel.CommandAccel > 1f;
+            }
             if (fromAt < 0f && travelled >= lead0)
                 fromAt = t - (travelled - lead0) / MathF.Max(travelled - previous, 1e-3f) * dt;
             if (toAt < 0f && travelled >= through)
@@ -827,7 +917,9 @@ public sealed class ZzLineSweep
         return new Run(toAt > 0f ? toAt - fromAt : float.NaN, false, off, wall, worstError, worstSlip, touched, wakeSamples > 0 ? wake / wakeSamples : 0f)
         {
             StrayS = strayS,
-            StrayBraking = strayBraking
+            StrayBraking = strayBraking,
+            StationError = stationError, StationSlip = stationSlip, StationOff = stationOff,
+            StationBraking = stationBraking, StationThrottle = stationThrottle
         };
     }
 }
