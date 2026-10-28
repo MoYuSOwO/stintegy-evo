@@ -818,6 +818,44 @@ public sealed class ZzLineSweep
                 .Select(k => $"{F(LaneTrackFile.GripLevels[level])},{first + k},{F((first + k) * spacing)},{F(t.Corner[k])},{F(t.Brake[k])},{F(t.Traction[k])}"))));
     }
 
+    /// <summary>
+    /// Where the robust learner's time goes: STINTEGY_SWEEP_LINES lines
+    /// prepared (line drawn, file cloned, factors written) and driven, once on
+    /// one thread and once on every core.
+    /// </summary>
+    [Fact]
+    public void Timing()
+    {
+        if (!LaneProbes.Enabled) return;
+        int lines = (int)Env("STINTEGY_SWEEP_LINES", 200);
+        Setup setup = Build(lines);
+        Condition learned = setup.Conditions[0];
+        (int first, int last) = ProfileStations(setup.Lanes, setup.Stretch);
+        float[] flat = Enumerable.Repeat(0.95f, 3 * ProfileKnots).ToArray();
+        double Ms(long ticks) => ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        foreach (int threads in new[] { 1, Environment.ProcessorCount })
+        {
+            _placeTicks = _stepTicks = _loopTicks = _steps = _driverTicks = 0;
+            long prepare = 0;
+            var wall = System.Diagnostics.Stopwatch.StartNew();
+            Parallel.For(0, lines, new ParallelOptions { MaxDegreeOfParallelism = threads }, n =>
+            {
+                long began = System.Diagnostics.Stopwatch.GetTimestamp();
+                LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, setup.Knots[n]));
+                LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                SetProfile(file, setup.Lanes, setup.Stretch, flat);
+                Interlocked.Add(ref prepare, System.Diagnostics.Stopwatch.GetTimestamp() - began);
+                Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds);
+            });
+            wall.Stop();
+            _output.WriteLine($"threads {threads}: {lines} lines in {wall.Elapsed.TotalSeconds:F2} s, {lines / wall.Elapsed.TotalSeconds:F0} lines/s, {_steps / wall.Elapsed.TotalSeconds:F0} steps/s");
+            _output.WriteLine($"  per line: prepare {Ms(prepare) / lines:F2} ms, set up the car and race {Ms(_placeTicks) / lines:F2} ms, " +
+                              $"steps {Ms(_stepTicks) / lines:F2} ms ({_steps / lines} steps, {Ms(_stepTicks) * 1000 / Math.Max(_steps, 1):F1} us each), " +
+                              $"the probe's own bookkeeping {(Ms(_loopTicks - _placeTicks - _stepTicks)) / lines:F2} ms");
+            _output.WriteLine($"  of a step: the driver {Ms(_driverTicks) * 1000 / Math.Max(_steps, 1):F1} us, the world {Ms(_stepTicks - _driverTicks) * 1000 / Math.Max(_steps, 1):F1} us");
+        }
+    }
+
     /// <summary>A stretch's factors, one per station from the profile's first.</summary>
     private sealed record Table(float[] Corner, float[] Brake, float[] Traction);
 
@@ -890,8 +928,8 @@ public sealed class ZzLineSweep
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station) + offset);
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1) + offset);
         ICar model = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
-        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, Gains = new LaneDriverGains { CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0" } };
-        var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), driver),
+        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, PlanIntervalSeconds = Env("STINTEGY_PLAN_INTERVAL", 0.1f), Gains = new LaneDriverGains { CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0" } };
+        var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })
         {
             Strategy = new CarStrategy(c.TyreMode, c.Power)
@@ -912,8 +950,40 @@ public sealed class ZzLineSweep
         return car;
     }
 
+    /// <summary>Where a drive's time goes, summed over every drive since the last reset, in stopwatch ticks.</summary>
+    private static long _placeTicks, _stepTicks, _loopTicks, _steps, _driverTicks;
+
+    /// <summary>The driver, timed: how much of a step is the driver thinking rather than the world moving.</summary>
+    private sealed class Timed(IDriverController inner) : IDriverController
+    {
+        public IDriverController Inner => inner;
+        public CarNeeds Needs => inner.Needs;
+        public void Initialize(in DriverContext context) => inner.Initialize(context);
+        public DriverInput GetControl(in DriverContext context, float dt)
+        {
+            long began = Stopwatch.GetTimestamp();
+            DriverInput input = inner.GetControl(context, dt);
+            Interlocked.Add(ref _driverTicks, Stopwatch.GetTimestamp() - began);
+            return input;
+        }
+    }
+
     private static Run Drive(TrackData track, LaneTrackFile shipped, LaneTrackFile file, LaneSet lanes, Stretch stretch, Condition c, string[] compounds,
         Action<RaceCar, LaneDriver, float>? onStep = null)
+    {
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return DriveTimed(track, shipped, file, lanes, stretch, c, compounds, onStep, began);
+        }
+        finally
+        {
+            Interlocked.Add(ref _loopTicks, System.Diagnostics.Stopwatch.GetTimestamp() - began);
+        }
+    }
+
+    private static Run DriveTimed(TrackData track, LaneTrackFile shipped, LaneTrackFile file, LaneSet lanes, Stretch stretch, Condition c, string[] compounds,
+        Action<RaceCar, LaneDriver, float>? onStep, long began)
     {
         var abilities = new DriverAbilities
         {
@@ -937,6 +1007,7 @@ public sealed class ZzLineSweep
             simulation.AddCar(lead);
         }
 
+        Interlocked.Add(ref _placeTicks, System.Diagnostics.Stopwatch.GetTimestamp() - began);
         const float dt = 1f / 60f;
         float startDistance = car.Progress.TotalDistance;
         float fromAt = -1f, toAt = -1f, off = 0f, wall = 0f, worstError = 0f, worstSlip = 0f, wake = 0f;
@@ -950,12 +1021,15 @@ public sealed class ZzLineSweep
         var stationBraking = new bool[lanes.Count];
         var stationThrottle = new bool[lanes.Count];
         var stationSeconds = new float[lanes.Count];
-        var lanesDriver = (LaneDriver)car.Driver!.Controller;
+        var lanesDriver = (LaneDriver)((Timed)car.Driver!.Controller).Inner;
         float lead0 = stretch.FromS - stretch.StartS, through = stretch.ToS - stretch.StartS, tail = stretch.EndS - stretch.StartS;
         float previous = 0f;
         for (int i = 0; i < 60 * 60; i++)
         {
+            long stepBegan = System.Diagnostics.Stopwatch.GetTimestamp();
             simulation.Step(dt);
+            Interlocked.Add(ref _stepTicks, System.Diagnostics.Stopwatch.GetTimestamp() - stepBegan);
+            Interlocked.Increment(ref _steps);
             if (car.State.SpinEvents > 0)
                 return new Run(float.NaN, true, off, wall, worstError, worstSlip, touched, wakeSamples > 0 ? wake / wakeSamples : 0f)
                 {
