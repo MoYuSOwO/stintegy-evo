@@ -524,6 +524,34 @@ public sealed class ZzLineSweep
             _output.WriteLine($"{g.Key,-22} {g.Count()}");
     }
 
+    /// <summary>A whole lap on a side lane, as LaneDriverTests drives it, with every moment off the road and the felt lag then.</summary>
+    [Fact]
+    public void SideLaneOff()
+    {
+        if (!LaneProbes.Enabled) return;
+        float side = Env("STINTEGY_SIDE", -1f);
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
+        foreach (bool feel in new[] { false, true })
+        {
+            var notes = new List<string>();
+            float lastS = -100f;
+            LaneLapResult r = LaneLapRunner.Run(track, file, new LaneDriverGains { FeelTurnLag = feel }, onStep: (car, d, t) =>
+            {
+                d.TargetRange = 1f;
+                d.TargetSide = side;
+                LaneDriverTelemetry tm = d.LastTelemetry;
+                if (car.Progress.Region != TrackRegion.RacingSurface && car.Progress.CurrentS - lastS > 20f)
+                {
+                    lastS = car.Progress.CurrentS;
+                    notes.Add($"  off at {car.Progress.CurrentS:F0} m, t {t:F1}, speed {car.State.Speed:F1}, error {tm.LateralErrorMeters:F2}, braking {-tm.CommandAccel:F1}, felt {string.Join("/", d.FeltExtraLags.Select(x => x.ToString("F3")))}");
+                }
+            });
+            _output.WriteLine($"feel {feel}: {r}");
+            notes.ForEach(_output.WriteLine);
+        }
+    }
+
     /// <summary>
     /// Every step of every line between STINTEGY_TIMELINE_FROM and _TO on
     /// one flat factor: the line's curvature under the car, what the hands
