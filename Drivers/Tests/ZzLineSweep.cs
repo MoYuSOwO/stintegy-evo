@@ -689,6 +689,87 @@ public sealed class ZzLineSweep
     }
 
     /// <summary>
+    /// Worked out, not driven: how late the car's path answers the wheel,
+    /// from the single-track model linearised where the tyres are working
+    /// (the slope of the tyre's own curve at the share each axle is using,
+    /// with braking's share of the circle out), as the area method TurnLag
+    /// uses reads it. Beside it, the turn lag the hands read ahead by and
+    /// what was driven at Maggotts' turn-in.
+    /// </summary>
+    [Fact]
+    public void TransientLag()
+    {
+        if (!LaneProbes.Enabled) return;
+        CarConfig config = StockCar.Config;
+        var car = new SingleTrackCar(config, ((ICarTires)StockCar.Model).Compounds);
+        float m = config.MassKg, iz = config.YawInertiaKgM2, a = config.FrontAxleOffsetMeters, b = config.RearAxleOffsetMeters, l = a + b;
+        float peak = config.FrontPeakSlipAngleRatio;
+        // The tyre's curve (TireSlipCurve), its shape and its slope.
+        const float tail = 0.7f, peakSlip = 0.13962634f;
+        float shape = 2f - 2f / MathF.PI * MathF.Asin(tail);
+        float stiffness = MathF.Tan(MathF.PI / (2f * shape)) / peakSlip;
+        float Curve(float slip, float scale) => MathF.Sin(shape * MathF.Atan(stiffness * slip / scale));
+        float Inverse(float share, float scale) => scale * MathF.Tan(MathF.Asin(Math.Clamp(share, -0.995f, 0.995f)) / shape) / stiffness;
+        float Slope(float share, float scale)
+        {
+            float slip = Inverse(share, scale);
+            return (Curve(slip + 1e-4f, scale) - Curve(slip - 1e-4f, scale)) / 2e-4f;
+        }
+        // N/rad for an axle with this much grip (per kg of car) using this
+        // share of it sideways and this share lengthways.
+        float Cornering(float grip, float lateralUse, float longitudinalUse, float scale)
+        {
+            float circle = MathF.Sqrt(MathF.Max(0.01f, 1f - longitudinalUse * longitudinalUse));
+            return m * grip * circle * Slope(lateralUse / circle, scale);
+        }
+        float Lag(float v, float cf, float cr)
+        {
+            // A small step of the wheel; the path's pull answering it, by the area method.
+            const float dt = 1e-4f;
+            int steps = (int)(1.5f / dt);
+            float beta = 0f, r = 0f, delta = 0.001f;
+            var pull = new float[steps];
+            for (int i = 0; i < steps; i++)
+            {
+                float alphaF = beta + a * r / v - delta, alphaR = beta - b * r / v;
+                float fy = -cf * alphaF - cr * alphaR;
+                float mz = -a * cf * alphaF + b * cr * alphaR;
+                float betaDot = fy / (m * v) - r;
+                r += mz / iz * dt;
+                beta += betaDot * dt;
+                pull[i] = v * (betaDot + r);
+            }
+            float end = pull[^1];
+            float behind = 0f;
+            for (int i = 0; i < steps; i++) behind += (1f - pull[i] / end) * dt;
+            return behind;
+        }
+        // Where TurnLag measured: a corner of 12 m/s², fresh tyres, coasting.
+        foreach (float v in new[] { 45f, 51f, 55f })
+        {
+            var state = new CarState { Speed = v };
+            ((ICarStores)car).Fill(state, PowertrainState.Filled(0.8f));
+            ((ICarTires)car).InstallFreshTires(state);
+            ((ICarTires)car).WarmTires(state, 90f, 90f);
+            state.FilteredLateralAccel = 12f;
+            SteeringEstimate est = ((ICarEnvelope)car).EstimateSteering(state, RoadAttitude.Flat);
+            float cf = Cornering(est.FrontGripAccel, b / l * 12f / est.FrontGripAccel, 0f, peak);
+            float cr = Cornering(est.RearGripAccel, a / l * 12f / est.RearGripAccel, 0f, 1f);
+            _output.WriteLine($"settled corner of 12, v {v:F0}: worked out {Lag(v, cf, cr):F3} s; TurnLag measured {TurnLag.Measure(car).Seconds(v):F3} s");
+        }
+        // Maggotts' turn-in, 3700-3725 m, the medians of 300 random lines on factor 1.0.
+        foreach ((string name, float v, float gf, float gr, float lf, float lr, float uf, float ur, float driven) in new[]
+        {
+            ("lines that stayed on", 54.66f, 24.76f, 23.02f, 0.572f, 0.643f, 0.209f, 0.186f, 0.067f),
+            ("lines that ran wide", 50.61f, 23.29f, 21.57f, 0.700f, 0.819f, 0.182f, 0.149f, 0.100f)
+        })
+        {
+            float cf = Cornering(gf, lf, uf, peak), cr = Cornering(gr, lr, ur, 1f);
+            _output.WriteLine($"{name}, v {v:F1}: worked out {Lag(v, cf, cr):F3} s, the same without the braking {Lag(v, Cornering(gf, lf, 0f, peak), Cornering(gr, lr, 0f, 1f)):F3} s; driven, path behind the command {driven:F3} s; hands read ahead {TurnLag.Measure(car).Seconds(v):F3} s");
+        }
+    }
+
+    /// <summary>
     /// Worked out from the tyre's own rule, not driven: in a steady corner
     /// under the brakes, the angle the steering estimate asks for against the
     /// angle the tyres need once braking has taken its share of each axle's
