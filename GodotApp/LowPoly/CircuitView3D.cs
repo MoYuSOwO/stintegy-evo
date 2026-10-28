@@ -1,6 +1,8 @@
 using System;
 using Godot;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Track;
+using StintegyEVO.GodotApp.Interop;
 using NVector2 = System.Numerics.Vector2;
 
 namespace StintegyEVO.GodotApp.LowPoly;
@@ -19,7 +21,7 @@ public partial class CircuitView3D : Node3D
     public Scenery.SceneryPlan? Plan { get; private set; }
 
     private const float CornerBarrierCurvature = 1f / 160f;
-    public void Initialize(TrackData track) => Initialize(track, null, null);
+    public void Initialize(TrackData track) => Initialize(track, null);
 
     /// <summary>
     /// Builds the circuit, and its scenery when a plan is named: the road
@@ -27,12 +29,12 @@ public partial class CircuitView3D : Node3D
     /// somebody wrote. A plan that is not there is not an error — a
     /// circuit with no scenery is a circuit with no scenery.
     /// </summary>
-    public void Initialize(TrackData track, string? sceneryPlanPath, string? circuitId)
+    public void Initialize(TrackData track, ModCircuit? circuit)
     {
         Surface = new(track);
-        _circuitId = circuitId;
+        _registered = circuit;
         // Read first: the plan says what colour the ground is before any of it is built.
-        Plan = ReadPlan(sceneryPlanPath);
+        Plan = circuit is null ? null : ReadPlan(circuit.Resources, ModResources.Join(circuit.Folder, Scenery.SceneryPlan.FileName));
         Look = Scenery.CircuitLook.From(Plan?.Environment ?? new Scenery.SceneryEnvironment());
         BuildTerrain();
         var landscape = new Landscape3D { Name = "Landscape" };
@@ -80,52 +82,53 @@ public partial class CircuitView3D : Node3D
         var dressing = new TrackDressing3D { Name = "Dressing" };
         AddChild(dressing);
         dressing.Initialize(this, Plan?.Furniture ?? new Scenery.SceneryFurniture());
-        BuildScenery(sceneryPlanPath);
+        BuildScenery();
     }
 
-    private static Scenery.SceneryPlan? ReadPlan(string? planPath)
+    // A plan in a mod's files, read whether the mod is packed or not.
+    private static Scenery.SceneryPlan? ReadPlan(IModResources mod, string path)
     {
-        if (string.IsNullOrWhiteSpace(planPath) || !Godot.FileAccess.FileExists(planPath))
+        if (!mod.Exists(path))
             return null;
         try
         {
-            using var file = Godot.FileAccess.Open(planPath, Godot.FileAccess.ModeFlags.Read);
-            return Scenery.SceneryPlan.Parse(file.GetAsText());
+            return Scenery.SceneryPlan.Parse(mod.ReadAllText(path));
         }
         catch (Exception error)
         {
             // A malformed plan costs the circuit its scenery and its look,
             // and nothing else: the road is the domain's.
-            GD.PushWarning($"scenery: {planPath} could not be read -- {error.Message}");
+            GD.PushWarning($"scenery: {path} in {mod.Location} could not be read -- {error.Message}");
             return null;
         }
     }
 
-    private string? _circuitId;
+    private ModCircuit? _registered;
 
-    private void BuildScenery(string? planPath)
+    private void BuildScenery()
     {
-        if (string.IsNullOrWhiteSpace(planPath))
+        if (_registered is not { } circuit)
             return;
-        string track = _circuitId ?? Scenery.SceneryPlan.TrackOf(planPath);
         var scenery = new Scenery.SceneryLoader { Name = "Scenery" };
         AddChild(scenery);
         try
         {
             if (Plan is not null)
-                scenery.Build(Plan, Surface);
-            // Then whatever the player has added. A mod's scenery is drawn
-            // after the circuit's own, from the mod's own folder, and can
-            // no more touch the simulation than the circuit's own can.
-            foreach ((Scenery.SceneryPlan plan, string folder) in
-                     Scenery.SceneryMods.PlansFor(track))
+                scenery.Build(Plan, Surface, new Scenery.SceneryFiles(circuit.Resources, circuit.Folder));
+            // Then what other mods add to it, each from its own files, after
+            // the circuit's own and in the order the mods load. It can no
+            // more touch the simulation than the circuit's own can.
+            foreach (ModSceneryOverlay overlay in GodotMods.Registry.SceneryFor(circuit.Id))
             {
-                scenery.Build(plan, Surface, folder);
+                if (ReadPlan(overlay.Resources, overlay.File) is not { } plan)
+                    continue;
+                int slash = overlay.File.LastIndexOf('/');
+                scenery.Build(plan, Surface, new Scenery.SceneryFiles(overlay.Resources, slash < 0 ? "" : overlay.File[..slash]));
             }
         }
         catch (Exception error)
         {
-            GD.PushWarning($"scenery: {planPath} could not be built -- {error.Message}");
+            GD.PushWarning($"scenery: {circuit.Id}'s scenery could not be built -- {error.Message}");
         }
     }
 

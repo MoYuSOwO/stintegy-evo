@@ -53,8 +53,7 @@ public partial class RaceView3D : Node3D
         ? name
         : _circuitName ?? "Circuit";
     private string? _circuitName;
-    private string? _circuitFolder;
-    private string? _circuitId;
+    private ModCircuit? _registeredCircuit;
     public int SelectedCarIndex { get; private set; }
     public bool IsPaused { get; private set; }
     public int CameraMode => _camera.Mode;
@@ -145,8 +144,7 @@ public partial class RaceView3D : Node3D
             ModCircuit circuit = GodotMods.Registry.Circuits.Get(CircuitId);
             track = _composedSimulation?.Track ?? await Task.Run(() => circuit.Track);
             _circuitName = circuit.Manifest.Name;
-            _circuitFolder = circuit.DiskFolder;
-            _circuitId = circuit.Id.ToString();
+            _registeredCircuit = circuit;
         }
         catch (Exception error)
         {
@@ -172,7 +170,7 @@ public partial class RaceView3D : Node3D
 
         AddChild(_circuit);
         // The plan is the circuit's own, in its pack.
-        _circuit.Initialize(track, _circuitFolder is null ? null : $"{_circuitFolder}/{Scenery.SceneryPlan.FileName}", _circuitId);
+        _circuit.Initialize(track, _registeredCircuit);
         CreateLighting();
         CreateCarViews();
         if (_cars.Count == 0)

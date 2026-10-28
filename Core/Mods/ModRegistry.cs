@@ -222,11 +222,6 @@ public sealed class ModCircuit
 
     /// <summary>The road, read from its track file the first time it is asked for.</summary>
     public TrackData Track => _track.Value;
-
-    /// <summary>Where its folder is on disk, when its mod is a folder and not packed.</summary>
-    public string? DiskFolder => Directory.Exists(Resources.Location)
-        ? Path.Combine(Resources.Location, Folder.Replace('/', Path.DirectorySeparatorChar))
-        : null;
 }
 
 /// <summary>

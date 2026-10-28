@@ -143,16 +143,6 @@ public sealed class SceneryPlanTests
     }
 
     [Fact]
-    public void ATrackIsNamedByItsPlanFile()
-    {
-        // A circuit's own plan is named by the circuit the registry has it
-        // in, not by its path. A mod's plan is named for its circuit, namespace and name.
-        Assert.Equal("official:silverstone", SceneryPlan.TrackOf("user://mods/greener/scenery/official/silverstone.json"));
-        Assert.Equal("someone:their_ring", SceneryPlan.TrackOf("user://mods/greener/scenery/someone/their_ring.json"));
-        Assert.Equal("official:monaco", SceneryPlan.TrackOf("monaco.json"));
-    }
-
-    [Fact]
     public void ACircuitSaysOnlyWhatMakesItDifferent()
     {
         SceneryPlan plan = SceneryPlan.Parse("""

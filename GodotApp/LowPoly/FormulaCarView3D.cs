@@ -1,6 +1,7 @@
 using System;
 using Godot;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.GodotApp.Interop;
 
@@ -34,8 +35,8 @@ public partial class FormulaCarView3D : Node3D
         // Drawn where the physics has its axles: the centre of mass is this
         // node's origin, the axles sit the car's own distances either side.
         CarSpec spec = car.Car.Spec;
-        bool packModel = GodotMods.Registry.Origin(car.Car) is { Model: not null, DiskFolder: { } folder } registered &&
-                         BindPackModel(System.IO.Path.Combine(folder, registered.Manifest.Model!));
+        bool packModel = GodotMods.Registry.Origin(car.Car) is { Manifest.Model: { Length: > 0 } model } registered &&
+                         BindPackModel(RuntimeModels.Load(registered.Resources, ModResources.Join(registered.Folder, model), "car"));
         if (!packModel)
             BuildGameModel(color, spec.FrontAxleOffsetMeters, -spec.RearAxleOffsetMeters, spec.TrackWidthMeters / 2f);
         for (int i = 0; i < _wheels.Length; i++)
@@ -104,9 +105,9 @@ public partial class FormulaCarView3D : Node3D
     /// wheel_rl and wheel_rr are its wheels; the front two steer. A model
     /// that will not load leaves the car drawn the game's way.
     /// </summary>
-    private bool BindPackModel(string path)
+    private bool BindPackModel(PackedScene? scene)
     {
-        if (RuntimeModels.Load(path, "car")?.Instantiate() is not Node3D model)
+        if (scene?.Instantiate() is not Node3D model)
             return false;
         // glTF's forward onto this node's, which is +X.
         model.Rotation = new Vector3(0f, Mathf.Pi / 2f, 0f);
