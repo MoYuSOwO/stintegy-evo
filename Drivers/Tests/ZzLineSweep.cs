@@ -11,6 +11,7 @@ using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
+using StintegyEVO.Core.Util;
 using StintegyEVO.Drivers.Lanes;
 using Xunit;
 using Xunit.Abstractions;
@@ -521,6 +522,72 @@ public sealed class ZzLineSweep
             new[] { "line,clean,s_m,error_m,over_plan_mps,wheel_bound,command_accel,speed,plan,sideslip,lat_accel,front_grip,rear_grip,front_lat,rear_lat,front_long,rear_long,wanted_k,cap_k,yaw,yaw_ref,long_accel,line_k_here,feedforward_k" }.Concat(traces.Values.SelectMany(t => t)));
         foreach (var g in rows.Skip(1).Select(r => r.Split(',')[2]).GroupBy(x => x))
             _output.WriteLine($"{g.Key,-22} {g.Count()}");
+    }
+
+    /// <summary>
+    /// The car's turn-in delay measured the way TurnLag measures it (a car
+    /// in a settled corner asked for a little more, the area between its
+    /// path coming round and an instant answer), but from other starts:
+    /// from straight as well as from a corner, asked for a little more or a
+    /// lot more, coasting or braking.
+    /// </summary>
+    [Fact]
+    public void TurnDelay()
+    {
+        if (!LaneProbes.Enabled) return;
+        const float dt = 1f / 60f;
+        float At(float speed, float settledAccel, float stepAccel, float braking)
+        {
+            ICar car = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
+            var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = speed };
+            (car as ICarStores)?.Fill(state, PowertrainState.Filled(0.8f));
+            var tyres = (ICarTires)car;
+            var envelope = (ICarEnvelope)car;
+            tyres.InstallFreshTires(state);
+            tyres.WarmTires(state, 90f, 90f);
+            int settle = 90, window = 60;
+            var path = new float[window];
+            float heading = 0f, start = 0f;
+            for (int i = 0; i < settle + window; i++)
+            {
+                bool stepped = i >= settle;
+                float v = MathF.Max(state.Speed, 5f);
+                float wanted = (settledAccel + (stepped ? stepAccel : 0f)) / (v * v);
+                var input = new CarPhysicsStepInput(
+                    new DriverInput(envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(wanted), i >= settle - 18 ? braking : 0f),
+                    CarStrategy.Default, 25f);
+                Vector2 from = state.Position;
+                car.Step(state, input, dt);
+                Vector2 move = state.Position - from;
+                float length = move.Length();
+                if (length < 1e-4f) return float.NaN;
+                float now = MathF.Atan2(move.Y, move.X);
+                float curvature = MathHelper.NormalizeAngle(now - heading) / length;
+                heading = now;
+                // As sideways pull, so a car slowing under the brakes is not read as turning tighter.
+                float pull = curvature * MathF.Max(state.Speed, 5f) * MathF.Max(state.Speed, 5f);
+                if (stepped) path[i - settle] = pull; else start = pull;
+            }
+            float end = 0f;
+            for (int k = window / 2; k < window; k++) end += path[k];
+            end /= window - window / 2;
+            float taken = end - start;
+            if (MathF.Abs(taken) < 0.1f * stepAccel) return float.NaN;
+            float behind = 0f;
+            for (int k = 0; k < window / 2; k++)
+                behind += (1f - Math.Clamp((path[k] - start) / taken, 0f, 1f)) * dt;
+            return behind;
+        }
+        var rows = new List<string> { "speed,settled_accel,step_accel,braking,delay_s" };
+        foreach (float speed in new[] { 30f, 45f, 60f })
+            foreach ((float settled, float step) in new[] { (12f, 2f), (0f, 2f), (0f, 10f), (0f, 20f), (12f, 15f) })
+                foreach (float braking in new[] { 0f, -15f })
+                {
+                    float delay = At(speed, settled, step, braking);
+                    rows.Add($"{speed:F0},{settled:F0},{step:F0},{braking:F0},{F(delay)}");
+                    _output.WriteLine(rows[^1]);
+                }
+        File.WriteAllLines(Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "turndelay.csv"), rows);
     }
 
     /// <summary>
