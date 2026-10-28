@@ -40,6 +40,21 @@ public sealed class CarConfig
     public IAero Aero { get; init; } = new StandardAero();
     public float WheelBaseMeters { get; init; } = 3.1f;
     public float TrackWidthMeters { get; init; } = 1.65f;
+
+    /// <summary>
+    /// The body other cars and the walls meet (<see cref="CarBody"/>). The
+    /// chassis's own is the box every car collided as before cars declared
+    /// theirs: 4.8 by 1.9 m.
+    /// </summary>
+    public CarBody Body { get; init; } = new()
+    {
+        LengthMeters = 4.8f,
+        WidthMeters = 1.9f,
+        Restitution = 0.05f,
+        Friction = 0.35f,
+        WallRestitution = 0.1f,
+        WallFriction = 0.5f,
+    };
     public float CenterOfGravityHeightMeters { get; init; } = 0.32f;
     public float FrontStaticLoadShare { get; init; } = 0.47f;
 

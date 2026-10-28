@@ -35,6 +35,15 @@ public sealed class FormulaAMixed : ICarDefinition
         },
         WheelBaseMeters = 3.1f,
         TrackWidthMeters = 1.65f,
+        Body = new CarBody
+        {
+            LengthMeters = 4.8f,
+            WidthMeters = 1.9f,
+            Restitution = 0.05f,
+            Friction = 0.35f,
+            WallRestitution = 0.1f,
+            WallFriction = 0.5f,
+        },
         CenterOfGravityHeightMeters = 0.32f,
         FrontStaticLoadShare = 0.47f,
         FrontLateralLoadTransferShare = 0.55f,

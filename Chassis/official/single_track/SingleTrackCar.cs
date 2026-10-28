@@ -43,6 +43,7 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
             YawInertiaKgM2 = config.YawInertiaKgM2,
             MaximumBrakeDeceleration = config.MaxBrakeAccel,
             KinematicBelowSpeed = CarPhysics.DynamicYawMinimumSpeed,
+            Body = config.Body,
             Wake = new CarWake
             {
                 VelocityDeficit = config.WakeVelocityDeficit,

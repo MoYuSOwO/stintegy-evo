@@ -32,7 +32,7 @@ namespace StintegyEVO.Core.Tests;
 /// </summary>
 public sealed class WallSweepRecoveryTests
 {
-    private static readonly CarCollisionConfig Collision = new();
+    private static readonly CarCollisionConfig Collision = new(new CarConfig().Body);
 
     [Fact]
     public void ARotationTheWallRefusesDoesNotCancelATranslationItAllows()

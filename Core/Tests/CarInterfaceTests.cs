@@ -126,6 +126,24 @@ public sealed class CarInterfaceTests
     }
 
     /// <summary>
+    /// The world reads a car's body, its wake and how it takes dirty air
+    /// from the car alone, so a car that declares one of them wrongly is
+    /// refused before it races, by the field it got wrong.
+    /// </summary>
+    [Fact]
+    public void ACarThatDeclaresItselfWronglyIsRefusedByTheField()
+    {
+        var flat = new BareBody(new BareBody().Spec with { Body = BoxBody with { WidthMeters = 0f } });
+        var bouncy = new BareBody(new BareBody().Spec with { Body = BoxBody with { WallRestitution = 1.5f } });
+        var sucking = new BareBody(new BareBody().Spec with { DirtyAirSensitivity = -1f });
+
+        Assert.Contains("Body.WidthMeters", Assert.Throws<ArgumentException>(() => new RaceCar("flat", flat)).Message);
+        Assert.Contains("Body.WallRestitution", Assert.Throws<ArgumentException>(() => new RaceCar("bouncy", bouncy)).Message);
+        Assert.Contains("DirtyAirSensitivity", Assert.Throws<ArgumentException>(() => new RaceCar("sucking", sucking)).Message);
+        Assert.Empty(new BareBody().Spec.Problems());
+    }
+
+    /// <summary>
     /// A driver who cannot drive without feeling the grip is not put in a
     /// car that does not say; one who only uses it when it is there is.
     /// </summary>
@@ -228,10 +246,29 @@ public sealed class CarInterfaceTests
         public float OutputAvailability(in PowertrainState energy) => 1f;
     }
 
-    /// <summary>A body that rolls straight on at its speed, and has nothing else at all.</summary>
-    private sealed class BareBody : ICar
+    private static readonly CarBody BoxBody = new()
     {
-        public CarSpec Spec { get; } = new()
+        LengthMeters = 4f,
+        WidthMeters = 1.8f,
+        Restitution = 0.1f,
+        Friction = 0.3f,
+        WallRestitution = 0.1f,
+        WallFriction = 0.5f,
+    };
+
+    private static readonly CarWake BoxWake = new()
+    {
+        VelocityDeficit = 0f,
+        TowHalfDistanceMeters = 10f,
+        DownforceDecayLengthMeters = 10f,
+        DownforceDisruption = 0f,
+        DirtyAirDecayLengthMeters = 10f,
+    };
+
+    /// <summary>A body that rolls straight on at its speed, and has nothing else at all.</summary>
+    private sealed class BareBody(CarSpec? spec = null) : ICar
+    {
+        public CarSpec Spec { get; } = spec ?? new()
         {
             WheelBaseMeters = 2.5f,
             FrontAxleOffsetMeters = 1.2f,
@@ -240,6 +277,9 @@ public sealed class CarInterfaceTests
             YawInertiaKgM2 = 1200f,
             MaximumBrakeDeceleration = 9f,
             KinematicBelowSpeed = 1f,
+            Body = BoxBody,
+            Wake = BoxWake,
+            DirtyAirSensitivity = 0f,
         };
 
         public IReadOnlyList<ModeLadder> Ladders => [];
@@ -285,6 +325,9 @@ public sealed class CarInterfaceTests
             YawInertiaKgM2 = 1200f,
             MaximumBrakeDeceleration = Brake,
             KinematicBelowSpeed = 1f,
+            Body = BoxBody,
+            Wake = BoxWake,
+            DirtyAirSensitivity = 0f,
         };
 
         private readonly BoxEngine _engine = new();

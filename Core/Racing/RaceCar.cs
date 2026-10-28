@@ -12,17 +12,19 @@ public sealed class RaceCar
         ICar car,
         Driver? driver = null,
         CarState? state = null,
-        CarCollisionConfig? collision = null,
         bool installFreshTires = true
     )
     {
         Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("Car id is required.", nameof(id)) : id;
         Car = car ?? throw new ArgumentNullException(nameof(car));
+        if (car.Spec.Problems().ToArray() is { Length: > 0 } undeclared)
+            throw new ArgumentException(
+                $"A {car.GetType().Name} declares itself wrongly: {string.Join("; ", undeclared)}.", nameof(car));
         if (driver is not null)
             CheckFits(driver, car);
         Driver = driver;
         State = state ?? new CarState();
-        Collision = collision ?? new CarCollisionConfig();
+        Collision = CarCollisionConfig.For(car);
 
         if (installFreshTires && Car is ICarTires tires)
             tires.InstallFreshTires(State);
@@ -89,25 +91,33 @@ public sealed class RaceCar
     public void InstallFreshTires() => (Car as ICarTires)?.InstallFreshTires(State);
 }
 
+/// <summary>
+/// A car's body as the world's contacts use it: the body the car declares
+/// (<see cref="CarSpec.Body"/>), paired with the world's own contact solver.
+/// </summary>
 public sealed class CarCollisionConfig
 {
-    public float LengthMeters { get; init; } = 4.8f;
-    public float WidthMeters { get; init; } = 1.9f;
-    public float Restitution { get; init; } = 0.05f;
-    public float Friction { get; init; } = 0.35f;
-    /// <summary>
-    /// How much of the speed into the barrier comes back out of it. Full-scale
-    /// crash tests into rigid barriers measure about a tenth: the car
-    /// crumples and the barrier hardly gives.
-    /// </summary>
-    public float WallRestitution { get; init; } = 0.1f;
+    /// <summary>How many passes the world's contact solver makes: the world's, not the car's.</summary>
+    public const int DefaultSolverIterations = 6;
 
-    /// <summary>
-    /// Sliding friction between the car and the barrier: carbon, aluminium
-    /// and tyre sidewall on steel and concrete.
-    /// </summary>
-    public float WallFriction { get; init; } = 0.5f;
-    public int SolverIterations { get; init; } = 6;
+    public CarCollisionConfig(CarBody body, int solverIterations = DefaultSolverIterations)
+    {
+        Body = body ?? throw new ArgumentNullException(nameof(body));
+        SolverIterations = solverIterations;
+    }
+
+    /// <summary>The body <paramref name="car"/> declares, with the world's solver.</summary>
+    public static CarCollisionConfig For(ICar car) => new(car.Spec.Body);
+
+    public CarBody Body { get; }
+    public int SolverIterations { get; }
+
+    public float LengthMeters => Body.LengthMeters;
+    public float WidthMeters => Body.WidthMeters;
+    public float Restitution => Body.Restitution;
+    public float Friction => Body.Friction;
+    public float WallRestitution => Body.WallRestitution;
+    public float WallFriction => Body.WallFriction;
 
     public float HalfLengthMeters => LengthMeters * 0.5f;
     public float HalfWidthMeters => WidthMeters * 0.5f;

@@ -195,6 +195,8 @@ public static class CarLibrary
                 ? tires.Compounds.Count == 0 || tires.Compounds.Any(c => !compounds.Contains(c))
                 : compounds.Count > 0)
             throw new InvalidDataException($"Car '{id}' must run the compounds it declares and only those.");
+        if (car.Spec.Problems().ToArray() is { Length: > 0 } undeclared)
+            throw new InvalidDataException($"Car '{id}' declares itself wrongly: {string.Join("; ", undeclared)}.");
         if (car.Ladders.Count > CarStrategy.MaximumLadders)
             throw new InvalidDataException($"Car '{id}' declares {car.Ladders.Count} ladders; at most {CarStrategy.MaximumLadders}.");
 

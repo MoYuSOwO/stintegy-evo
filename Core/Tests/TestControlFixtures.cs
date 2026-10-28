@@ -17,15 +17,13 @@ internal static class TestControlFixtures
         CarState state,
         DriverInput input = default,
         CarConfig? config = null,
-        TireConfig? tires = null,
-        CarCollisionConfig? collision = null
+        TireConfig? tires = null
     )
     {
         RaceCar car = new(
             id,
             new SingleTrackCar(config ?? new CarConfig(), tires ?? WarmTires()),
-            state: state,
-            collision: collision
+            state: state
         );
         car.ExternalInput = input;
         return car;
@@ -45,14 +43,12 @@ internal static class TestControlFixtures
         CarState state,
         Func<RaceCarSnapshot, (float Curvature, float Accel)> command,
         CarConfig? config = null,
-        TireConfig? tires = null,
-        CarCollisionConfig? collision = null
+        TireConfig? tires = null
     ) => new(
         id,
         new SingleTrackCar(config ?? new CarConfig(), tires ?? WarmTires()),
         new Driver(new DriverProfile(id, new(), 42), new CurvatureDriver(command)),
-        state,
-        collision: collision
+        state
     );
 }
 
