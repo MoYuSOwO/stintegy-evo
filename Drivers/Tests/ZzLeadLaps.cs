@@ -56,6 +56,7 @@ public sealed class ZzLeadLaps
         {
             ("as they are", new LaneDriverGains()),
             ("by the turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
+            ("no steer notes", new LaneDriverGains()),
         };
         var jobs = (from l in laps from w in ways select (l.Circuit, l.Side, w.Name, w.Gains)).ToArray();
         var rows = new List<string>[jobs.Length];
@@ -65,6 +66,8 @@ public sealed class ZzLeadLaps
             TrackData track = CircuitLibrary.Load(circuit);
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
             LaneSet lanes = file.LanesFor(track);
+            if (name.StartsWith("no steer notes"))
+                WithoutSteerNotes(file, track);
             LaneId laneId = side == 0f ? LaneId.Free : side > 0f ? LaneId.Left : LaneId.Right;
             var mine = new List<string>();
             int lap0 = -1;
@@ -99,6 +102,14 @@ public sealed class ZzLeadLaps
         _output.WriteLine($"{rows.Sum(r => r.Count)} steps to {output}");
     }
 
+    /// <summary>The learned steering notes wiped, every lane: the hands on the line's own curvature alone.</summary>
+    private static void WithoutSteerNotes(LaneTrackFile file, TrackData track)
+    {
+        file.LanesFor(track);
+        for (int lane = 0; lane < LaneSet.LaneCount; lane++)
+            Array.Clear(file.Steer((LaneId)lane));
+    }
+
     [Fact]
     public void Laps()
     {
@@ -109,10 +120,10 @@ public sealed class ZzLeadLaps
         {
             ("as they are", new LaneDriverGains()),
             ("flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
-            ("from the rear's grip", new LaneDriverGains { LeadFromGrip = true }),
             ("by the turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
-            ("smooth brakes", new LaneDriverGains { BrakeOnlyOverPlan = false }),
-            ("smooth brakes + turn-in", new LaneDriverGains { BrakeOnlyOverPlan = false, LeadFromTurnIn = true }),
+            ("no steer notes", new LaneDriverGains()),
+            ("no steer notes + flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
+            ("no steer notes + turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
@@ -121,6 +132,8 @@ public sealed class ZzLeadLaps
             (string circuit, float side, var way) = jobs[j];
             TrackData track = CircuitLibrary.Load(circuit);
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
+            if (way.Name.StartsWith("no steer notes"))
+                WithoutSteerNotes(file, track);
             LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, onStep: side == 0f ? null : (car, d, t) =>
             {
                 d.TargetRange = 1f;
