@@ -621,11 +621,15 @@ public sealed class LaneDriver : IDriverController
         GripUse axles = _axles;
         if (Gains.CapFromAxles && axles.FrontGripAccel > 0.5f && axles.RearGripAccel > 0.5f && speed > 8f)
         {
+            // Each axle's whole circle, not what the brakes or the motor leave
+            // of it this instant: the combined-grip limiter trims either of
+            // them the moment the wheel asks that axle for corner, so the
+            // corner is there to be had. Taking this step's braking out of it
+            // held the wheel short through every corner braked into, and the
+            // car ran wide with the grip unasked for.
             float frontShare = Math.Clamp(_layout.FrontWeightShare, 0.05f, 0.95f);
-            float frontLong = Math.Clamp(axles.FrontLongitudinal, 0f, 1f);
-            float rearLong = Math.Clamp(axles.RearLongitudinal, 0f, 1f);
-            float front = axles.FrontGripAccel * MathF.Sqrt(1f - frontLong * frontLong) / frontShare;
-            float rear = axles.RearGripAccel * MathF.Sqrt(1f - rearLong * rearLong) / (1f - frontShare);
+            float front = axles.FrontGripAccel / frontShare;
+            float rear = axles.RearGripAccel / (1f - frontShare);
             // A driver with less feel leaves the tyre nearer its peak.
             // A mistake is a misreading of the grip, so the hands believe it too.
             float misread = _performance?.CornerOverstep ?? 0f;
