@@ -110,13 +110,6 @@ public sealed record LaneDriverGains
     public float BrakeFeelFloor { get; init; } = 0.5f;
 
     /// <summary>
-    /// Probe switch: when the line wants more corner than the axles have
-    /// left beside the braking, ease the brakes until it fits, as a driver
-    /// trail-braking does, instead of holding the brakes and running wide.
-    /// </summary>
-    public bool BrakeYieldsToWheel { get; init; }
-
-    /// <summary>
     /// The energy rungs as ways of driving, Save to Attack: seconds of lift
     /// before each braking zone. The player picks the rung and watches the
     /// pack; the driver only lifts as the rung says. A circuit sets its own
@@ -626,7 +619,6 @@ public sealed class LaneDriver : IDriverController
         // more than it has, so this is a cliff, not a slope, and the only
         // number accurate enough to stand at the edge of it is its own.
         GripUse axles = _axles;
-        _brakeRoom = 1f;
         if (Gains.CapFromAxles && axles.FrontGripAccel > 0.5f && axles.RearGripAccel > 0.5f && speed > 8f)
         {
             float frontShare = Math.Clamp(_layout.FrontWeightShare, 0.05f, 0.95f);
@@ -641,19 +633,6 @@ public sealed class LaneDriver : IDriverController
                 ? ((Gains.AxleCapShare ?? _feel.SustainablePeakShare) * capStyle.Cap + (_performance?.LimitOveruse ?? 0f)) * (1f + 2f * misread)
                 : ((Gains.AxleCapShare ?? _feel.SustainablePeakShare) + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority * (1f + 2f * misread);
             available = Gains.CommandLateralShare * capShare * MathF.Max(1f, MathF.Min(front, rear));
-            // The corner the line wants, and how much braking each axle could
-            // keep beside it: what is left of its circle once that corner is in.
-            float needed = MathF.Abs(curvature) * MathF.Max(speed * speed, 1f);
-            if (needed > available && (frontLong > 0.05f || rearLong > 0.05f))
-            {
-                float Keep(float grip, float share, float used)
-                {
-                    float q = needed * share / MathF.Max(Gains.CommandLateralShare * capShare * grip, 1e-3f);
-                    float room = q >= 1f ? 0f : MathF.Sqrt(1f - q * q);
-                    return used > 0.05f ? Math.Clamp(room / used, 0f, 1f) : 1f;
-                }
-                _brakeRoom = MathF.Min(Keep(axles.FrontGripAccel, frontShare, frontLong), Keep(axles.RearGripAccel, 1f - frontShare, rearLong));
-            }
         }
         float lean = att.LateralGravityDemand(StandardGravity, speed);
         float scale = MathF.Max(att.CurvatureDemandScale * MathF.Max(speed * speed, 1f), 1e-3f);
@@ -858,8 +837,6 @@ public sealed class LaneDriver : IDriverController
             float over = MathF.Max(front, rear) - MathF.Min(0.995f, feel) - 2f * (_performance?.CornerOverstep ?? 0f);
             if (over > 0f)
                 accel *= Math.Clamp(1f - over / Gains.BrakeFeelBand, Gains.BrakeFeelFloor, 1f);
-            if (Gains.BrakeYieldsToWheel && _brakeRoom < 1f)
-                accel *= MathF.Max(_brakeRoom, 0.2f);
         }
         if (_performance is null)
         {
@@ -893,9 +870,6 @@ public sealed class LaneDriver : IDriverController
 
     // What the driver feels of the two axles this step.
     private GripUse _axles;
-
-    /// <summary>How much of this step's braking the corner the line wants leaves room for, one all of it.</summary>
-    private float _brakeRoom = 1f;
 
     /// <summary>
     /// The axles as the driver feels them (<see cref="ICarGripFeel"/>). A car

@@ -562,7 +562,7 @@ public sealed class ZzLineSweep
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station) + offset);
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1) + offset);
         ICar model = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
-        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, Gains = new LaneDriverGains { BrakeYieldsToWheel = Environment.GetEnvironmentVariable("STINTEGY_BRAKE_YIELDS") == "1" } };
+        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), driver),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })
         {

@@ -221,11 +221,16 @@ public static class CarPhysics
             config.MaxDriveAcceleration,
             Math.Min(gripDriveLimit, powertrainDriveLimit)
         );
-        float frontBrakeShare = BiasedFrontBrakeShare(
-            frontLongitudinal,
-            rearLongitudinal,
-            frontBrakeBiasOffset
-        );
+        // The brakes split the way the car splits them (AllocateBrakeRequest):
+        // a car with a fixed balance puts that share on the front whatever
+        // the front has left, so the axle that runs out first sets the limit.
+        float frontBrakeShare = config.FixedFrontBrakeShare is { } fixedShare
+            ? Math.Clamp(fixedShare + (float.IsFinite(frontBrakeBiasOffset) ? Math.Clamp(frontBrakeBiasOffset, -0.25f, 0.25f) : 0f), 0f, 1f)
+            : BiasedFrontBrakeShare(
+                frontLongitudinal,
+                rearLongitudinal,
+                frontBrakeBiasOffset
+            );
         float maximumBrake = Math.Min(
             config.MaxBrakeAccel,
             DistributedLongitudinalLimit(
