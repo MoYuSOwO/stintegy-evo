@@ -133,7 +133,7 @@ public sealed class ZzLeadLaps
             WithoutSteerNotes(file, track);
             var mine = new List<string>();
             int lap0 = -1;
-            LaneLapRunner.Run(track, file, new LaneDriverGains(), onStep: (car, d, t) =>
+            LaneLapRunner.Run(track, file, new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", SmoothHeading = Environment.GetEnvironmentVariable("STINTEGY_SMOOTH_HEADING") == "1" }, onStep: (car, d, t) =>
             {
                 if (side != 0f)
                 {
@@ -184,9 +184,11 @@ public sealed class ZzLeadLaps
             ("no steer notes", new LaneDriverGains()),
             ("no steer notes + flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
             ("no steer notes + turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
-            ("no steer notes + lock held 0.3 s", new LaneDriverGains { LockIntegralSeconds = 0.3f }),
-            ("no steer notes + lock held 0.1 s", new LaneDriverGains { LockIntegralSeconds = 0.1f }),
-            ("lock held 0.3 s", new LaneDriverGains { LockIntegralSeconds = 0.3f }),
+            ("no steer notes + own lock", new LaneDriverGains { OwnLock = true }),
+            ("no steer notes + smooth heading", new LaneDriverGains { SmoothHeading = true }),
+            ("no steer notes + smooth heading + own lock", new LaneDriverGains { SmoothHeading = true, OwnLock = true }),
+            ("no steer notes + smooth heading + turn-in", new LaneDriverGains { SmoothHeading = true, LeadFromTurnIn = true }),
+            ("smooth heading", new LaneDriverGains { SmoothHeading = true }),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];

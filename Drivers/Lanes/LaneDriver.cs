@@ -60,6 +60,23 @@ public sealed record LaneDriverGains
     /// </summary>
     public float? LockIntegralSeconds { get; init; }
 
+    /// <summary>
+    /// The hands work out the lock themselves rather than take the car's
+    /// estimate: the same geometry and slip angles, but each axle cornering
+    /// on what the pedals leave of it and on the grip it is felt to have
+    /// now, not the whole circle read off last step's loads. Off by default.
+    /// </summary>
+    public bool OwnLock { get; init; }
+
+    /// <summary>
+    /// The line's heading turned smoothly from one station to the next, as
+    /// the line itself does, rather than held along each two-metre chord
+    /// and snapped round at the next station. Off, round a bend the heading
+    /// error jumped by the bend's turn over a station every few frames and
+    /// the wheel chattered with it. For probes.
+    /// </summary>
+    public bool SmoothHeading { get; init; }
+
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
 
@@ -924,7 +941,8 @@ public sealed class LaneDriver : IDriverController
         // The lock for that curvature as a driver who knew the car exactly
         // would put on (SteeringEstimate), misjudged by this driver's hands;
         // the line takes up what is left.
-        float steer = car.Steering.AngleFor(curvature) * (1f + (_performance?.SteeringRead ?? 0f));
+        float steer = (Gains.OwnLock ? LockFor(car.Steering, curvature) : car.Steering.AngleFor(curvature)) *
+                      (1f + (_performance?.SteeringRead ?? 0f));
         if (Gains.LockIntegralSeconds is { } hold && hold > 0f)
         {
             _lock = Math.Clamp(_lock + car.Steering.WheelBaseMeters * (curvature - car.Telemetry.ActualCurvature) * dt / hold, -0.03f, 0.03f);
@@ -936,6 +954,44 @@ public sealed class LaneDriver : IDriverController
 
     // What the driver feels of the two axles this step.
     private GripUse _axles;
+
+    /// <summary>
+    /// The lock for a curvature as these hands judge it (LaneDriverGains.OwnLock):
+    /// the estimate's own reckoning, the wheels turned past the corner's
+    /// angle by the front's slip angle less the rear's, but each end read
+    /// off what the brakes or the drive leave it, as the tyres themselves
+    /// share it out, and off the grip the seat feels it has this step.
+    /// Under the brakes the rear sits near the top of its curve, where a
+    /// couple of hundredths of grip misread is a slip angle twice the
+    /// size; read off the whole circle it came out bigger than the front's,
+    /// and the hands took lock off a car that was not sliding.
+    /// </summary>
+    private float LockFor(SteeringEstimate estimate, float curvature)
+    {
+        const float epsilon = 1e-4f;
+        float wheelBase = MathF.Max(estimate.WheelBaseMeters, epsilon);
+        float frontArm = MathF.Max(estimate.FrontArmMeters, epsilon);
+        float rearArm = MathF.Max(estimate.RearArmMeters, epsilon);
+        static float Circle(float use)
+        {
+            float u = Math.Clamp(use, 0f, 0.99f);
+            return MathF.Sqrt(1f - u * u);
+        }
+        float frontGrip = _axles.FrontGripAccel > epsilon ? _axles.FrontGripAccel : estimate.FrontGripAccel;
+        float rearGrip = _axles.RearGripAccel > epsilon ? _axles.RearGripAccel : estimate.RearGripAccel;
+        float frontCapacity = MathF.Max(frontGrip * Circle(_axles.FrontLongitudinal), epsilon);
+        float rearCapacity = MathF.Max(rearGrip * Circle(_axles.RearLongitudinal), epsilon);
+        float holdable = SteeringEstimate.InversionShare * MathF.Min(frontCapacity * wheelBase / rearArm, rearCapacity * wheelBase / frontArm);
+        float corner = Math.Clamp(estimate.LateralDemand(curvature), -holdable, holdable);
+        float slip = estimate.FrontPeakSlipAngleRatio * _feel.SlipAngleAtShare(rearArm / wheelBase * corner / frontCapacity) -
+                     _feel.SlipAngleAtShare(frontArm / wheelBase * corner / rearCapacity);
+        float loaded = SteeringEstimate.FullSlipCompensationShare * MathF.Max(estimate.FrontGripAccel + estimate.RearGripAccel, epsilon);
+        float load = Math.Clamp(MathF.Abs(estimate.ActualLateralAccel) / loaded, 0f, 1f);
+        float angle = MathF.Atan(wheelBase * curvature) + slip * load +
+                      estimate.CurvatureFeedbackGain * wheelBase * (curvature - estimate.ActualCurvature);
+        float maximum = MathF.Max(estimate.MaxSteerAngleRadians, 0f);
+        return Math.Clamp(angle, -maximum, maximum);
+    }
 
     // Lock wound on beyond the estimate's, radians (LockIntegralSeconds).
     private float _lock;
@@ -2191,6 +2247,14 @@ public sealed class LaneDriver : IDriverController
         Vector2 a = BlendedPosition(i0, Range, Side);
         Vector2 b = BlendedPosition(i0 + 1, Range, Side);
         Vector2 tangent = b - a;
+        if (Gains.SmoothHeading)
+        {
+            // Each station's own heading, through its neighbours, turned
+            // between them as the car goes.
+            Vector2 before = Vector2.Normalize(b - BlendedPosition(i0 - 1, Range, Side));
+            Vector2 after = Vector2.Normalize(BlendedPosition(i0 + 2, Range, Side) - a);
+            tangent = before + (after - before) * u;
+        }
         float length = tangent.Length();
         tangent = length > 1e-5f ? tangent / length : new Vector2(1f, 0f);
         return (a + (b - a) * u, tangent);
