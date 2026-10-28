@@ -176,19 +176,14 @@ public sealed class ZzLeadLaps
         if (!LaneProbes.Enabled) return;
         string[] only = Environment.GetEnvironmentVariable("STINTEGY_LEAD_CIRCUITS")?.Split(',') ?? Circuits;
         string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "lead-laps.csv");
+        var old = new LaneDriverGains { LeadFromTurnIn = false, SmoothHeading = false, UseSteerNotes = true };
         var ways = new (string Name, LaneDriverGains Gains)[]
         {
+            ("old hands", old),
+            ("old hands without steer notes", old with { UseSteerNotes = false }),
             ("as they are", new LaneDriverGains()),
-            ("flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
-            ("by the turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
-            ("no steer notes", new LaneDriverGains()),
-            ("no steer notes + flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
-            ("no steer notes + turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
-            ("no steer notes + own lock", new LaneDriverGains { OwnLock = true }),
-            ("no steer notes + smooth heading", new LaneDriverGains { SmoothHeading = true }),
-            ("no steer notes + smooth heading + own lock", new LaneDriverGains { SmoothHeading = true, OwnLock = true }),
-            ("no steer notes + smooth heading + turn-in", new LaneDriverGains { SmoothHeading = true, LeadFromTurnIn = true }),
-            ("smooth heading", new LaneDriverGains { SmoothHeading = true }),
+            ("as they are but small-step lag", new LaneDriverGains { LeadFromTurnIn = false }),
+            ("as they are but chord heading", new LaneDriverGains { SmoothHeading = false }),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
@@ -197,8 +192,6 @@ public sealed class ZzLeadLaps
             (string circuit, float side, var way) = jobs[j];
             TrackData track = CircuitLibrary.Load(circuit);
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
-            if (way.Name.StartsWith("no steer notes"))
-                WithoutSteerNotes(file, track);
             LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, onStep: side == 0f ? null : (car, d, t) =>
             {
                 d.TargetRange = 1f;

@@ -43,7 +43,14 @@ public sealed record LaneDriverGains
     /// at this speed under the braking it has on (TurnLag, a turn-in the
     /// size corners are turned into), in place of the small-step turn lag.
     /// </summary>
-    public bool LeadFromTurnIn { get; init; } = false;
+    public bool LeadFromTurnIn { get; init; } = true;
+
+    /// <summary>
+    /// The steering learned into the notes, station by station, added to
+    /// the hands' feedforward. Off: those notes were learned on another
+    /// car and other hands, and drove the car into the inside walls.
+    /// </summary>
+    public bool UseSteerNotes { get; init; }
 
     /// <summary>
     /// Brakes only over the plan, Simplix's way: a car a little under the
@@ -73,9 +80,9 @@ public sealed record LaneDriverGains
     /// the line itself does, rather than held along each two-metre chord
     /// and snapped round at the next station. Off, round a bend the heading
     /// error jumped by the bend's turn over a station every few frames and
-    /// the wheel chattered with it. For probes.
+    /// the wheel chattered with it.
     /// </summary>
-    public bool SmoothHeading { get; init; }
+    public bool SmoothHeading { get; init; } = true;
 
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
@@ -2233,6 +2240,8 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The learned steering correction under the blend in force.</summary>
     private float BlendedSteer(float station)
     {
+        if (!Gains.UseSteerNotes)
+            return 0f;
         int i0 = (int)MathF.Floor(station);
         float u = station - i0;
         float a = BlendOf(_file.Steer, i0, Range, Side);

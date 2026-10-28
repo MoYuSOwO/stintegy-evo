@@ -659,21 +659,21 @@ public sealed class ZzLineSweep
             Condition learned = setup.Conditions[0];
             int a = (int)MathF.Ceiling(setup.Lanes.StationOf(stretch.FromS)), b = (int)MathF.Floor(setup.Lanes.StationOf(stretch.ToS));
             int n = setup.Lanes.Count;
-            foreach ((string name, float? lead, bool grip, bool turnIn) in new[] { ("as they are", (float?)null, false, false), ("flat 0.10 s", 0.10f, false, false), ("from the rear's grip", null, true, false), ("by the turn-in", null, false, true) })
+            foreach ((string name, float? lead, bool grip, bool turnIn) in new[] { ("old hands", (float?)null, false, false), ("as they are", null, false, true) })
             {
                 var runs = new Run[lines.Length];
                 Parallel.For(0, lines.Length, i =>
                 {
                     _steerLead = lead;
                     _gripLead = grip;
-                    _turnInLead = turnIn;
+                    _oldHands = !turnIn;
                     LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
                     LaneTrackFile file = setup.Shipped.WithLanes(drawn);
                     SetProfile(file, setup.Lanes, stretch, flat);
                     runs[i] = Drive(setup.Track, setup.Shipped, file, drawn, stretch, learned, setup.Compounds);
                     _steerLead = null;
                     _gripLead = false;
-                    _turnInLead = false;
+                    _oldHands = false;
                 });
                 float Mean(Run r) => Enumerable.Range(a, b - a + 1).Average(i => r.StationError.Length == n ? r.StationError[setup.Lanes.Wrap(i)] : 0f);
                 for (int i = 0; i < runs.Length; i++)
@@ -972,7 +972,7 @@ public sealed class ZzLineSweep
         foreach (int i in picks)
             foreach ((string name, bool turnIn) in new[] { ("as they are", false), ("by the turn-in", true) })
             {
-                _turnInLead = turnIn;
+                _oldHands = !turnIn;
                 LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
                 LaneTrackFile file = setup.Shipped.WithLanes(drawn);
                 SetProfile(file, setup.Lanes, stretch, flat);
@@ -990,7 +990,7 @@ public sealed class ZzLineSweep
                         t.WantedCurvature, t.CurvatureCap, car.State.SideslipAngleRadians
                     }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture))));
                 });
-                _turnInLead = false;
+                _oldHands = false;
             }
         File.WriteAllLines(output, rows);
     }
@@ -1749,7 +1749,8 @@ public sealed class ZzLineSweep
     [ThreadStatic] private static float[]? _leadExtra;
     [ThreadStatic] private static float? _steerLead;
     [ThreadStatic] private static bool _gripLead;
-    [ThreadStatic] private static bool _turnInLead;
+    // The hands as they were before the turn-in lead and the smooth heading: for the drives on this thread.
+    [ThreadStatic] private static bool _oldHands;
     // The wheels' top speed for the drives on this thread, as a multiple of the car's: a diagnosis, not a change to the car.
     [ThreadStatic] private static float _rateScale;
 
@@ -1779,7 +1780,8 @@ public sealed class ZzLineSweep
             SteerLeadSeconds = _steerLead ?? (Environment.GetEnvironmentVariable("STINTEGY_STEER_LEAD") is { } steerLead ? float.Parse(steerLead, CultureInfo.InvariantCulture) : null),
             SteerLeadExtra = _leadExtra,
             LeadFromGrip = _gripLead,
-            LeadFromTurnIn = _turnInLead,
+            LeadFromTurnIn = !_oldHands,
+            SmoothHeading = !_oldHands,
             BrakeOnlyOverPlan = Environment.GetEnvironmentVariable("STINTEGY_BRAKE_ZERO") != "0"
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
