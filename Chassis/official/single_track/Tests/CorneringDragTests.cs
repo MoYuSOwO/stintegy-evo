@@ -116,7 +116,7 @@ public sealed class CorneringDragTests
             Drive(state, car, tires, 0.006f);
 
         AxleTelemetry telemetry = state.Axles();
-        float lateral = MathF.Abs(state.Telemetry.ActualLateralAccel);
+        float lateral = MathF.Abs(state.Chassis().Telemetry.ActualLateralAccel);
         Assert.True(lateral > 5f, "the fixture stopped cornering");
         Assert.True(
             telemetry.InducedDragAccel > 0f,
@@ -146,7 +146,7 @@ public sealed class CorneringDragTests
 
         AxleTelemetry telemetry = state.Axles();
         float bodyReading = MathF.Abs(
-            state.Telemetry.ActualLateralAccel *
+            state.Chassis().Telemetry.ActualLateralAccel *
             MathF.Sin(state.SideslipAngleRadians)
         );
         Assert.True(
@@ -187,7 +187,7 @@ public sealed class CorneringDragTests
         CarPerformanceLimits limits = CarPhysics.EstimatePerformanceLimits(
             state, car, tires, CarStrategy.Default, state.Speed, curvature
         );
-        float charged = state.Telemetry.LossAccel;
+        float charged = state.Chassis().Telemetry.LossAccel;
         Assert.InRange(limits.LossAcceleration, charged * 0.95f, charged * 1.05f);
     }
 

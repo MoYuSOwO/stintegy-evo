@@ -145,9 +145,9 @@ public sealed class SingleTrackDynamicsTests
         const float gentle = 0.004f;
         HoldSpeed(reasonable, car, tires, gentle, 60f, 180);
         float asked = 60f * 60f * gentle;
-        float gentleShare = MathF.Abs(reasonable.Telemetry.ActualLateralAccel) / asked;
+        float gentleShare = MathF.Abs(reasonable.Chassis().Telemetry.ActualLateralAccel) / asked;
         _output.WriteLine(
-            $"gentle: asked {asked:0.00} got {reasonable.Telemetry.ActualLateralAccel:0.00}"
+            $"gentle: asked {asked:0.00} got {reasonable.Chassis().Telemetry.ActualLateralAccel:0.00}"
         );
 
         // Inside the envelope a driver who steers as SteeringEstimate does
@@ -215,8 +215,8 @@ public sealed class SingleTrackDynamicsTests
         HoldSpeed(state, car, tires, 0.005f, 60f, 240);
 
         float kinematic = car.WheelBaseMeters *
-                          MathF.Abs(state.Telemetry.ActualCurvature);
-        float actual = MathF.Abs(state.SteerAngleRadians);
+                          MathF.Abs(state.Chassis().Telemetry.ActualCurvature);
+        float actual = MathF.Abs(state.Chassis().SteerAngleRadians);
         _output.WriteLine(
             $"geometry would need {kinematic:0.0000} rad, the car is holding " +
             $"{actual:0.0000} rad"
@@ -314,12 +314,12 @@ public sealed class SingleTrackDynamicsTests
         Settle(braking, car, tires, trailing, 60);
 
         _output.WriteLine(
-            $"coasting lateral {free.Telemetry.ActualLateralAccel:0.00}, " +
-            $"braking lateral {braking.Telemetry.ActualLateralAccel:0.00}"
+            $"coasting lateral {free.Chassis().Telemetry.ActualLateralAccel:0.00}, " +
+            $"braking lateral {braking.Chassis().Telemetry.ActualLateralAccel:0.00}"
         );
         Assert.True(
-            MathF.Abs(braking.Telemetry.ActualLateralAccel) <
-            MathF.Abs(free.Telemetry.ActualLateralAccel),
+            MathF.Abs(braking.Chassis().Telemetry.ActualLateralAccel) <
+            MathF.Abs(free.Chassis().Telemetry.ActualLateralAccel),
             "braking should take cornering off the same corner"
         );
         Assert.True(
@@ -343,7 +343,7 @@ public sealed class SingleTrackDynamicsTests
         Ask hard = new(car.MaxCurvatureRequest, 0f);
 
         CarPhysics.Step(state, car, tires, PhysicsInput(hard.For(state, car, tires)), Dt);
-        float afterOne = state.SteerAngleRadians;
+        float afterOne = state.Chassis().SteerAngleRadians;
 
         Assert.True(afterOne > 0f, "the wheels should have started moving");
         Assert.True(
@@ -360,11 +360,11 @@ public sealed class SingleTrackDynamicsTests
         for (int i = 0; i < 14; i++)
             CarPhysics.Step(state, car, tires, PhysicsInput(hard.For(state, car, tires)), Dt);
         Assert.True(
-            state.SteerAngleRadians > afterOne,
+            state.Chassis().SteerAngleRadians > afterOne,
             "held there, the wheels should keep going"
         );
         Assert.True(
-            state.SteerAngleRadians <= car.MaxSteerAngleRadians + 1e-6f,
+            state.Chassis().SteerAngleRadians <= car.MaxSteerAngleRadians + 1e-6f,
             "and should stop at the lock stops"
         );
     }
@@ -421,7 +421,7 @@ public sealed class SingleTrackDynamicsTests
         Vector2 bentEnd = leftHasRoad.Position;
         for (int i = 0; i < 60 * 12; i++)
         {
-            if (even.Spinning)
+            if (even.Chassis().Spinning)
             {
                 CarPhysics.Step(
                     even, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
@@ -429,7 +429,7 @@ public sealed class SingleTrackDynamicsTests
                 evenTravel = even.VelocityHeading;
                 evenEnd = even.Position;
             }
-            if (leftHasRoad.Spinning)
+            if (leftHasRoad.Chassis().Spinning)
             {
                 CarPhysics.Step(
                     leftHasRoad,
@@ -444,7 +444,7 @@ public sealed class SingleTrackDynamicsTests
                 bentTravel = leftHasRoad.VelocityHeading;
                 bentEnd = leftHasRoad.Position;
             }
-            if (!even.Spinning && !leftHasRoad.Spinning)
+            if (!even.Chassis().Spinning && !leftHasRoad.Chassis().Spinning)
                 break;
         }
 
@@ -515,7 +515,7 @@ public sealed class SingleTrackDynamicsTests
                 gone, car, tires, PhysicsInput(new DriverInput(0f, 0f)), Dt
             );
             peak = MathF.Max(peak, gone.Chassis().FrontLeft.SurfaceTempC);
-            if (!gone.Spinning && i > 10)
+            if (!gone.Chassis().Spinning && i > 10)
                 break;
         }
 
@@ -552,17 +552,17 @@ public sealed class SingleTrackDynamicsTests
         float verdict = SingleTrackDynamicsLimits.SpinVerdictHoldSeconds;
 
         CarState flicked = HeldSideways(car, tires, past, verdict * 0.5f);
-        Assert.False(flicked.Spinning, "half the verdict time is a save");
-        Assert.Equal(0, flicked.SpinEvents);
+        Assert.False(flicked.Chassis().Spinning, "half the verdict time is a save");
+        Assert.Equal(0, flicked.Chassis().SpinEvents);
 
         CarState gone = HeldSideways(car, tires, past, verdict * 2f);
-        Assert.True(gone.Spinning, "twice the verdict time is a spin");
-        Assert.Equal(1, gone.SpinEvents);
+        Assert.True(gone.Chassis().Spinning, "twice the verdict time is a spin");
+        Assert.Equal(1, gone.Chassis().SpinEvents);
 
         int steps = 0;
         Ask desperate = new(car.MaxCurvatureRequest, car.MaxDriveAcceleration);
         float entrySpeed = gone.Speed;
-        while (gone.Spinning && steps < 30 * 60)
+        while (gone.Chassis().Spinning && steps < 30 * 60)
         {
             float before = gone.Speed;
             CarPhysics.Step(gone, car, tires, PhysicsInput(desperate.For(gone, car, tires)), Dt);
@@ -574,13 +574,13 @@ public sealed class SingleTrackDynamicsTests
         }
 
         _output.WriteLine($"spin lasted {steps * Dt:0.00} s, {entrySpeed:0.0} -> {gone.Speed:0.0} m/s");
-        Assert.False(gone.Spinning, "the spin should end on its own");
+        Assert.False(gone.Chassis().Spinning, "the spin should end on its own");
         Assert.True(
             gone.Speed >=
             SingleTrackDynamicsLimits.SpinReleaseSpeedMetersPerSecond - 1f,
             $"handed back moving, not parked: {gone.Speed:0.0} m/s"
         );
-        Assert.Equal(1, gone.SpinEvents);
+        Assert.Equal(1, gone.Chassis().SpinEvents);
     }
 
 
@@ -598,12 +598,12 @@ public sealed class SingleTrackDynamicsTests
         for (int i = 0; i < 300; i++)
         {
             StepHoldingSpeed(state, car, tires, curvature, speed);
-            if (state.Spinning)
+            if (state.Chassis().Spinning)
                 spun = true;
             if (i > 60 && !spun &&
-                MathF.Abs(state.Telemetry.ActualLateralAccel) > peak)
+                MathF.Abs(state.Chassis().Telemetry.ActualLateralAccel) > peak)
             {
-                peak = MathF.Abs(state.Telemetry.ActualLateralAccel);
+                peak = MathF.Abs(state.Chassis().Telemetry.ActualLateralAccel);
                 grip = state.Axles().FrontGripAccel + state.Axles().RearGripAccel;
             }
         }
@@ -664,7 +664,7 @@ public sealed class SingleTrackDynamicsTests
             PhysicsInput(new Ask(curvature, throttle).For(state, car, tires)),
             Dt
         );
-        if (!state.Spinning)
+        if (!state.Chassis().Spinning)
             state.Speed = speed;
     }
 
@@ -677,7 +677,7 @@ public sealed class SingleTrackDynamicsTests
     {
         CarState state = CreateState(55f, tires);
         int steps = (int)MathF.Round(seconds / Dt);
-        for (int i = 0; i < steps && !state.Spinning; i++)
+        for (int i = 0; i < steps && !state.Chassis().Spinning; i++)
         {
             state.SideslipAngleRadians = sideslip;
             CarPhysics.Step(

@@ -187,6 +187,25 @@ public readonly record struct GripUse(
     float FrontLateral, float RearLateral, float FrontLongitudinal, float RearLongitudinal, float RearSlideSeverity);
 
 /// <summary>
+/// What a car's body is doing beyond where it is and how it moves: what a
+/// camera, a dashboard or a driver's seat feels. Read only; the world never
+/// sets any of it.
+/// </summary>
+public interface ICarMotion
+{
+    CarMotion Motion(CarState state);
+}
+
+/// <param name="WheelAngleRadians">Where the steered wheels actually point, relative to the body: not the driver's request, which they take time to reach.</param>
+/// <param name="LongitudinalAccel">Acceleration along the body, as the seat feels it, m/s².</param>
+/// <param name="LateralAccel">Acceleration across the body, as the seat feels it, m/s².</param>
+/// <param name="Spinning">Whether the car is spinning: the driver's hands are off it until it hands back.</param>
+/// <param name="Spins">How many times it has spun.</param>
+/// <param name="OverLimit">How far past its grip it is being asked to go, zero within it.</param>
+public readonly record struct CarMotion(
+    float WheelAngleRadians, float LongitudinalAccel, float LateralAccel, bool Spinning, int Spins, float OverLimit);
+
+/// <summary>
 /// A car whose grip a driver can feel being used, and whose tyres say where
 /// their peak is: what a driver needs to drive at the limit and not past it.
 /// </summary>

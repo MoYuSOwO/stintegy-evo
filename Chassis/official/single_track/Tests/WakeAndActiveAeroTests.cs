@@ -54,16 +54,15 @@ public sealed class WakeAndActiveAeroTests
     {
         CarConfig config = new();
         CarState cleanAir = new();
-        CarState inWake = new()
+        CarState InWake()
         {
-            AirVelocityDeficit = 0.08f,
-            WakeDownforceLoss = 0.05f
-        };
-        CarState inWakeAssisted = new()
-        {
-            AirVelocityDeficit = 0.08f,
-            WakeDownforceLoss = 0.05f
-        };
+            CarState state = new();
+            state.Chassis().AirVelocityDeficit = 0.08f;
+            state.Chassis().WakeDownforceLoss = 0.05f;
+            return state;
+        }
+        CarState inWake = InWake();
+        CarState inWakeAssisted = InWake();
         inWakeAssisted.Chassis().ActiveAero = 1f;
         CarState cleanAirAssisted = new();
         cleanAirAssisted.Chassis().ActiveAero = 1f;
@@ -130,12 +129,12 @@ public sealed class WakeAndActiveAeroTests
         RaceCar chaser = ChaserAtGap(40f, new CarConfig());
 
         Assert.True(
-            chaser.State.AirVelocityDeficit > 0.015f,
-            $"the tow must survive at 40 m; got {chaser.State.AirVelocityDeficit:0.0000}"
+            chaser.State.Chassis().AirVelocityDeficit > 0.015f,
+            $"the tow must survive at 40 m; got {chaser.State.Chassis().AirVelocityDeficit:0.0000}"
         );
-        float metAir = 1f - chaser.State.DownforceVelocityDeficit;
+        float metAir = 1f - chaser.State.Chassis().DownforceVelocityDeficit;
         float downforceLoss =
-            1f - metAir * metAir * (1f - chaser.State.WakeDownforceLoss);
+            1f - metAir * metAir * (1f - chaser.State.Chassis().WakeDownforceLoss);
         Assert.True(
             downforceLoss < 0.01f,
             $"the downforce penalty must be gone at 40 m; got {downforceLoss:0.0000}"
@@ -151,18 +150,18 @@ public sealed class WakeAndActiveAeroTests
         );
 
         Assert.True(
-            chaser.State.AirVelocityDeficit > 0.04f,
+            chaser.State.Chassis().AirVelocityDeficit > 0.04f,
             "the drag relief of a tow is universal"
         );
-        Assert.Equal(0f, chaser.State.DownforceVelocityDeficit);
-        Assert.Equal(0f, chaser.State.WakeDownforceLoss);
+        Assert.Equal(0f, chaser.State.Chassis().DownforceVelocityDeficit);
+        Assert.Equal(0f, chaser.State.Chassis().WakeDownforceLoss);
     }
 
     private static float TotalDownforceLossAtGap(float bodyGapMeters)
     {
         RaceCar chaser = ChaserAtGap(bodyGapMeters, new CarConfig());
-        float metAir = 1f - chaser.State.DownforceVelocityDeficit;
-        return 1f - metAir * metAir * (1f - chaser.State.WakeDownforceLoss);
+        float metAir = 1f - chaser.State.Chassis().DownforceVelocityDeficit;
+        return 1f - metAir * metAir * (1f - chaser.State.Chassis().WakeDownforceLoss);
     }
 
     private static RaceCar ChaserAtGap(float bodyGapMeters, CarConfig chaserConfig)

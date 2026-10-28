@@ -40,7 +40,7 @@ public sealed class ReadmeExampleTests
             $"covered {car.Progress.TotalDistance:F0} m of a " +
             $"{track.LengthMeters:F0} m lap"
         );
-        Assert.Equal(0, car.State.SpinEvents);
+        Assert.Equal(0, ((ICarMotion)car.Car).Motion(car.State).Spins);
     }
 
     // --- README example: controller ---

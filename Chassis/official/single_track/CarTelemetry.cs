@@ -1,4 +1,6 @@
-namespace StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Cars;
+
+namespace Official.SingleTrack;
 
 /// <summary>
 /// What every car reports each step, whatever it is built like: what it was

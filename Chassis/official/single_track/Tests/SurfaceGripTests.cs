@@ -230,14 +230,14 @@ public sealed class SurfaceGripTests
                     },
                     1f / 60f
                 );
-                if (!probe.Spinning)
+                if (!probe.Chassis().Spinning)
                     probe.Speed = 55f;
             }
-            if (!probe.Spinning)
+            if (!probe.Chassis().Spinning)
             {
                 best = MathF.Max(
                     best,
-                    MathF.Abs(probe.Telemetry.ActualLateralAccel)
+                    MathF.Abs(probe.Chassis().Telemetry.ActualLateralAccel)
                 );
             }
         }

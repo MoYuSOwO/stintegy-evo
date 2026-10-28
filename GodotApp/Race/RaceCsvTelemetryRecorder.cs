@@ -30,9 +30,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
     private const string CommonColumns =
         "time_s,car_id,controller_status,lap,total_distance_m,s_m,d_m,x_m,y_m,heading_rad," +
         "speed_mps,desired_steer_angle_rad,desired_accel_mps2,front_brake_bias_offset," +
-        "actual_accel_mps2,actual_lateral_accel_mps2,actual_curvature_1pm,front_steer_angle_rad," +
-        "over_limit,loss_accel_mps2,drive_power_kw,regen_power_kw," +
-        "sideslip_angle_rad,yaw_rate_radps,yaw_accel_radps2," +
+        "sideslip_angle_rad,yaw_rate_radps," +
         "primary_energy,air_temp_c,track_temp_c,fl_surface_temp_c,fr_surface_temp_c," +
         "rl_surface_temp_c,rr_surface_temp_c,fl_core_temp_c,fr_core_temp_c,rl_core_temp_c," +
         "rr_core_temp_c,fl_wear,fr_wear,rl_wear,rr_wear,fl_load_n,fr_load_n,rl_load_n,rr_load_n," +
@@ -71,8 +69,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
         }
 
         TrackPose pose = track.Project(car.State.Position);
-        CarTelemetry telemetry = car.State.Telemetry;
-        DriverInput input = telemetry.Input;
+        DriverInput input = car.LastInput;
         CarState state = car.State;
         // Stores and tyres only where the car has them; blank where it has not.
         object primary = car.Car is ICarStores stores ? stores.Stores(state).Primary : "";
@@ -106,20 +103,8 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             input.SteerAngleRadians,
             input.DesiredAccel,
             input.FrontBrakeBiasOffset,
-            telemetry.ActualLongitudinalAccel,
-            telemetry.ActualLateralAccel,
-            telemetry.ActualCurvature,
-            // The road wheels' angle beside the corner asked for and the one
-            // driven: the three together show the steering's answer, which
-            // once wound the lock off near the limit unseen.
-            state.SteerAngleRadians,
-            telemetry.OverLimit,
-            telemetry.LossAccel,
-            telemetry.DrivePowerWatts * 0.001f,
-            telemetry.RegenPowerWatts * 0.001f,
-            telemetry.SideslipAngleRadians,
-            telemetry.YawRateRadiansPerSecond,
-            telemetry.YawAccelerationRadiansPerSecondSquared,
+            state.SideslipAngleRadians,
+            state.YawRateRadiansPerSecond,
             primary,
             environment.AirTempC,
             environment.TrackTempC,

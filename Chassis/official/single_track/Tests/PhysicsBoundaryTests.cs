@@ -55,11 +55,11 @@ public sealed class PhysicsBoundaryTests
 
         Near.Equal(protect.Speed, attack.Speed);
         Near.Equal(
-            protect.Telemetry.ActualLongitudinalAccel,
-            attack.Telemetry.ActualLongitudinalAccel);
+            protect.Chassis().Telemetry.ActualLongitudinalAccel,
+            attack.Chassis().Telemetry.ActualLongitudinalAccel);
         Near.Equal(
-            protect.Telemetry.ActualLateralAccel,
-            attack.Telemetry.ActualLateralAccel);
+            protect.Chassis().Telemetry.ActualLateralAccel,
+            attack.Chassis().Telemetry.ActualLateralAccel);
         Near.Equal(protect.Chassis().FrontLeft.Wear, attack.Chassis().FrontLeft.Wear, abs: 0f);
         Near.Equal(protect.Chassis().RearLeft.SurfaceTempC, attack.Chassis().RearLeft.SurfaceTempC);
     }

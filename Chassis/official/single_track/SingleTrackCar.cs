@@ -16,7 +16,7 @@ namespace Official.SingleTrack;
 /// <see cref="ICar"/> itself. The tyres are the game's either way
 /// (<see cref="Tire"/>).
 /// </summary>
-public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnvelope, ICarGripFeel
+public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnvelope, ICarGripFeel, ICarMotion
 {
     /// <summary>One compound in no pack, built to <paramref name="tires"/>: for tests and probes.</summary>
     public SingleTrackCar(CarConfig config, TireConfig tires)
@@ -131,6 +131,13 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         state.Chassis().WarmTires(surfaceTempC, coreTempC);
 
     public virtual PowertrainState Stores(CarState state) => state.Chassis().Energy;
+
+    public virtual CarMotion Motion(CarState state)
+    {
+        SingleTrackState own = state.Chassis();
+        return new CarMotion(own.SteerAngleRadians, own.FilteredLongitudinalAccel, own.FilteredLateralAccel,
+            own.Spinning, own.SpinEvents, own.Telemetry.OverLimit);
+    }
 
     public virtual void Fill(CarState state, PowertrainState stores)
     {
@@ -276,6 +283,16 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         new("grip_limiter_cut_mps2", "Grip limiter cut", "m/s2"),
         new("induced_drag_mps2", "Induced drag", "m/s2"),
         new("rear_slide_severity", "Rear slide severity", "share"),
+        new("actual_accel_mps2", "Acceleration", "m/s2"),
+        new("actual_lateral_accel_mps2", "Lateral acceleration", "m/s2"),
+        new("actual_curvature_1pm", "Curvature", "1/m"),
+        new("front_steer_angle_rad", "Wheel angle", "rad"),
+        new("over_limit", "Over limit", "share"),
+        new("loss_accel_mps2", "Losses", "m/s2"),
+        new("drive_power_kw", "Drive power", "kW"),
+        new("regen_power_kw", "Regen power", "kW"),
+        new("reference_yaw_rate_radps", "Reference yaw rate", "rad/s"),
+        new("yaw_accel_radps2", "Yaw acceleration", "rad/s2"),
     ];
 
     public virtual IReadOnlyList<TelemetryChannel> TelemetryChannels => Channels;
@@ -283,11 +300,17 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
     public virtual void ReadTelemetry(CarState state, Span<float> values)
     {
         AxleTelemetry t = state.Axles();
+        SingleTrackState own = state.Chassis();
+        CarTelemetry step = own.Telemetry;
         ReadOnlySpan<float> readings =
         [
             t.FrontLateralUse, t.RearLateralUse, t.FrontLongitudinalUse, t.RearLongitudinalUse,
             t.FrontGripAccel, t.RearGripAccel, t.CombinedGripLimiterCutAccel, t.InducedDragAccel,
             t.RearSlideSeverity,
+            step.ActualLongitudinalAccel, step.ActualLateralAccel, step.ActualCurvature,
+            own.SteerAngleRadians, step.OverLimit, step.LossAccel,
+            step.DrivePowerWatts * 0.001f, step.RegenPowerWatts * 0.001f,
+            step.ReferenceYawRateRadiansPerSecond, step.YawAccelerationRadiansPerSecondSquared,
         ];
         readings[..Math.Min(readings.Length, values.Length)].CopyTo(values);
     }

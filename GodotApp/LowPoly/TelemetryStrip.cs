@@ -62,7 +62,7 @@ public partial class TelemetryStrip : Control
         float motor = car.Car is ICarEnvelope envelope
             ? MathF.Max(0.1f, envelope.Capabilities(car.State, car.Strategy).AvailableDriveAcceleration)
             : brakeFull;
-        float steerDegrees = car.State.SteerAngleRadians * SteeringRatio * 180f / MathF.PI;
+        float steerDegrees = ((car.Car as ICarMotion)?.Motion(car.State).WheelAngleRadians ?? 0f) * SteeringRatio * 180f / MathF.PI;
         _samples.Add((
             time,
             Mathf.Clamp(accel / motor, 0f, 1f),

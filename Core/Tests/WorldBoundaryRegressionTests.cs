@@ -171,7 +171,7 @@ public sealed class WorldBoundaryRegressionTests
         return new(
             car.State.Speed,
             car.Progress.TotalDistance,
-            car.State.Telemetry.ActualLongitudinalAccel,
+            car.State.Chassis().Telemetry.ActualLongitudinalAccel,
             car.LastInput
         );
     }

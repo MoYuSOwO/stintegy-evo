@@ -56,7 +56,7 @@ public sealed class CarPhysicsTests
                 AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
 
         Assert.True(corner.Axles().RearLateralUse > 0.1f);
-        Assert.Equal(0, corner.SpinEvents);
+        Assert.Equal(0, corner.Chassis().SpinEvents);
         Assert.InRange(Math.Abs(AverageRearSurfaceTemp(corner) -
             AverageRearSurfaceTemp(straight)), 0f, 0.01f);
         Assert.True(AverageRearSurfaceTemp(corner) <= 90f, "nothing heats a tyre the compound makes no heat in");
@@ -77,8 +77,8 @@ public sealed class CarPhysicsTests
 
         Assert.True(state.Speed > startSpeed, "speed should increase under positive drive request");
         Assert.True(state.Chassis().Energy.Primary < startSoc, "battery SOC should fall when drive power is used");
-        Assert.True(state.Telemetry.DrivePowerWatts > 0f, "drive power should be reported");
-        Assert.True(state.Telemetry.ActualLongitudinalAccel > 0f, "net longitudinal accel should remain positive");
+        Assert.True(state.Chassis().Telemetry.DrivePowerWatts > 0f, "drive power should be reported");
+        Assert.True(state.Chassis().Telemetry.ActualLongitudinalAccel > 0f, "net longitudinal accel should remain positive");
     }
 
     [Fact]
@@ -94,8 +94,8 @@ public sealed class CarPhysicsTests
 
         Assert.True(state.Speed < startSpeed, "speed should fall under brake request");
         Assert.True(state.Chassis().Energy.Primary > startSoc, "battery SOC should rise from regen during braking");
-        Assert.True(state.Telemetry.RegenPowerWatts > 0f, "regen power should be reported");
-        Assert.True(state.Telemetry.ActualLongitudinalAccel < 0f, "net longitudinal accel should be negative");
+        Assert.True(state.Chassis().Telemetry.RegenPowerWatts > 0f, "regen power should be reported");
+        Assert.True(state.Chassis().Telemetry.ActualLongitudinalAccel < 0f, "net longitudinal accel should be negative");
     }
 
     /// <summary>
@@ -194,8 +194,8 @@ public sealed class CarPhysicsTests
 
         Near.Equal(free.Speed, governed.Speed);
         Near.Equal(
-            free.Telemetry.ActualLongitudinalAccel,
-            governed.Telemetry.ActualLongitudinalAccel);
+            free.Chassis().Telemetry.ActualLongitudinalAccel,
+            governed.Chassis().Telemetry.ActualLongitudinalAccel);
     }
 
     /// <summary>
@@ -282,12 +282,12 @@ public sealed class CarPhysicsTests
 
         CarPhysics.Step(state, car, tires, PhysicsInput(new DriverInput(0f, -12f)), 1f / 60f);
 
-        Assert.True(state.Telemetry.OverLimit > 0f, "brake demand above low-grip capacity should be reported as over limit");
+        Assert.True(state.Chassis().Telemetry.OverLimit > 0f, "brake demand above low-grip capacity should be reported as over limit");
         Assert.True(
-            Math.Abs(state.Telemetry.ActualLongitudinalAccel) < Math.Abs(state.Telemetry.RequestedLongitudinalAccel),
+            Math.Abs(state.Chassis().Telemetry.ActualLongitudinalAccel) < Math.Abs(state.Chassis().Telemetry.RequestedLongitudinalAccel),
             "actual braking should be clipped below the requested braking acceleration"
         );
-        Assert.True(state.Telemetry.RegenPowerWatts > 0f, "clipped braking should still produce regen");
+        Assert.True(state.Chassis().Telemetry.RegenPowerWatts > 0f, "clipped braking should still produce regen");
     }
 
     [Fact]
@@ -313,13 +313,13 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(noEfficiencyLossState, noEfficiencyLoss, tires, input, 1f / 60f);
         CarPhysics.Step(defaultEfficiencyLossState, defaultEfficiencyLoss, tires, input, 1f / 60f);
 
-        Assert.True(defaultEfficiencyLossState.Telemetry.OverLimit > 0f, "brake demand should still be reported as over limit");
+        Assert.True(defaultEfficiencyLossState.Chassis().Telemetry.OverLimit > 0f, "brake demand should still be reported as over limit");
         Assert.True(
-            defaultEfficiencyLossState.Telemetry.RegenPowerWatts < noEfficiencyLossState.Telemetry.RegenPowerWatts,
+            defaultEfficiencyLossState.Chassis().Telemetry.RegenPowerWatts < noEfficiencyLossState.Chassis().Telemetry.RegenPowerWatts,
             "over-limit braking should deliver less actual braking work"
         );
         Assert.True(
-            defaultEfficiencyLossState.Telemetry.ActualLongitudinalAccel > noEfficiencyLossState.Telemetry.ActualLongitudinalAccel,
+            defaultEfficiencyLossState.Chassis().Telemetry.ActualLongitudinalAccel > noEfficiencyLossState.Chassis().Telemetry.ActualLongitudinalAccel,
             "over-limit braking should be less negative, not faster"
         );
     }
@@ -335,11 +335,11 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, input), 1f / 60f);
 
         Assert.True(
-            Math.Abs(state.Telemetry.RequestedLateralAccel) > Math.Abs(state.Telemetry.ActualLateralAccel),
+            Math.Abs(state.Chassis().Telemetry.RequestedLateralAccel) > Math.Abs(state.Chassis().Telemetry.ActualLateralAccel),
             "actual lateral accel should be clipped when requested curvature exceeds grip"
         );
         Assert.True(
-            Math.Abs(state.Telemetry.ActualCurvature) < Math.Abs(input.Curvature),
+            Math.Abs(state.Chassis().Telemetry.ActualCurvature) < Math.Abs(input.Curvature),
             "delivered curvature should be below requested curvature under front grip limit"
         );
     }
@@ -362,7 +362,7 @@ public sealed class CarPhysicsTests
         for (int i = 0; i < 60; i++)
         {
             CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, absurd), 1f / 60f);
-            worstOverLimit = Math.Max(worstOverLimit, state.Telemetry.OverLimit);
+            worstOverLimit = Math.Max(worstOverLimit, state.Chassis().Telemetry.OverLimit);
         }
 
         Assert.True(
@@ -371,7 +371,7 @@ public sealed class CarPhysicsTests
         );
         Assert.True(state.Speed > 30f, "the cost should saturate rather than delete the speed");
         Assert.True(
-            Math.Abs(state.Telemetry.ActualCurvature) < car.MaxCurvatureRequest,
+            Math.Abs(state.Chassis().Telemetry.ActualCurvature) < car.MaxCurvatureRequest,
             "actual curvature should still be limited by available grip"
         );
     }
@@ -393,7 +393,7 @@ public sealed class CarPhysicsTests
             "the rear should be spending a real share of its circle on drive"
         );
         Assert.True(
-            state.Telemetry.ActualLongitudinalAccel < state.Telemetry.RequestedLongitudinalAccel,
+            state.Chassis().Telemetry.ActualLongitudinalAccel < state.Chassis().Telemetry.RequestedLongitudinalAccel,
             "delivered longitudinal acceleration should be lower after rear traction is cut"
         );
     }
@@ -426,8 +426,8 @@ public sealed class CarPhysicsTests
 
         Assert.True(powered.Axles().RearLongitudinalUse > 0.5f);
         Assert.True(
-            Math.Abs(powered.Telemetry.ActualLateralAccel) <
-            Math.Abs(cornering.Telemetry.ActualLateralAccel),
+            Math.Abs(powered.Chassis().Telemetry.ActualLateralAccel) <
+            Math.Abs(cornering.Chassis().Telemetry.ActualLateralAccel),
             "rear combined saturation should reduce lateral force instead of preserving it at all costs"
         );
         Assert.True(powered.Axles().RearLongitudinalUse > 0f);
@@ -449,7 +449,7 @@ public sealed class CarPhysicsTests
             1f / 60f
         );
 
-        Assert.InRange(state.Telemetry.OverLimit, 0f, 1e-3f);
+        Assert.InRange(state.Chassis().Telemetry.OverLimit, 0f, 1e-3f);
         float frontRemainingUse = MathF.Sqrt(MathF.Max(
             0f,
             1f - state.Axles().FrontLateralUse *
@@ -504,11 +504,11 @@ public sealed class CarPhysicsTests
         // share of the circle the tyre rung authorises, so neither car drives
         // a tyre past what it has, and what the bias costs is braking the car
         // never gets.
-        Near.Equal(0f, optimal.Telemetry.OverLimit);
-        Near.Equal(0f, frontBiased.Telemetry.OverLimit);
+        Near.Equal(0f, optimal.Chassis().Telemetry.OverLimit);
+        Near.Equal(0f, frontBiased.Chassis().Telemetry.OverLimit);
         Assert.True(
-            frontBiased.Telemetry.ActualLongitudinalAccel >
-            optimal.Telemetry.ActualLongitudinalAccel + 0.1f,
+            frontBiased.Chassis().Telemetry.ActualLongitudinalAccel >
+            optimal.Chassis().Telemetry.ActualLongitudinalAccel + 0.1f,
             "a biased split should clip one axle before all remaining grip is used"
         );
         // Cornering is not pinned here. The anti-lock this test used to
@@ -633,12 +633,12 @@ public sealed class CarPhysicsTests
             steps: 120
         );
 
-        Assert.True(state.Telemetry.ReferenceYawRateRadiansPerSecond > 0f);
+        Assert.True(state.Chassis().Telemetry.ReferenceYawRateRadiansPerSecond > 0f);
         Assert.True(state.YawRateRadiansPerSecond > 0f);
         Assert.InRange(
             Math.Abs(
                 state.YawRateRadiansPerSecond -
-                state.Telemetry.ReferenceYawRateRadiansPerSecond
+                state.Chassis().Telemetry.ReferenceYawRateRadiansPerSecond
             ),
             0f,
             0.15f
@@ -675,7 +675,7 @@ public sealed class CarPhysicsTests
             );
             maximumYawDeficit = MathF.Max(
                 maximumYawDeficit,
-                state.Telemetry.ReferenceYawRateRadiansPerSecond -
+                state.Chassis().Telemetry.ReferenceYawRateRadiansPerSecond -
                 state.YawRateRadiansPerSecond
             );
         }
@@ -733,7 +733,7 @@ public sealed class CarPhysicsTests
             "the limiter should reduce rear drive use before the physics grip clip"
         );
         Assert.True(
-            controlled.Telemetry.ActualLongitudinalAccel < uncontrolled.Telemetry.ActualLongitudinalAccel,
+            controlled.Chassis().Telemetry.ActualLongitudinalAccel < uncontrolled.Chassis().Telemetry.ActualLongitudinalAccel,
             "the limiter should trade acceleration for rear stability"
         );
     }
@@ -765,7 +765,7 @@ public sealed class CarPhysicsTests
         Assert.True(sliding.Axles().CombinedGripLimiterCutAccel > 0f);
         Assert.True(sliding.Axles().InducedDragAccel > 0.5f);
         Assert.True(
-            sliding.Telemetry.ActualLongitudinalAccel < aligned.Telemetry.ActualLongitudinalAccel,
+            sliding.Chassis().Telemetry.ActualLongitudinalAccel < aligned.Chassis().Telemetry.ActualLongitudinalAccel,
             "existing lateral slip should dissipate speed independently of the limiter"
         );
         Assert.True(
@@ -910,7 +910,7 @@ public sealed class CarPhysicsTests
 
         Assert.True(attack.Speed > save.Speed, "attack battery mode should produce more straight-line speed");
         Assert.True(attack.Chassis().Energy.Primary < save.Chassis().Energy.Primary, "attack battery mode should spend more energy");
-        Assert.True(attack.Telemetry.DrivePowerWatts > save.Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
+        Assert.True(attack.Chassis().Telemetry.DrivePowerWatts > save.Chassis().Telemetry.DrivePowerWatts, "attack mode should report higher drive power");
     }
 
     [Fact]
@@ -960,8 +960,8 @@ public sealed class CarPhysicsTests
         );
 
         Near.Equal(
-            save.Telemetry.RequestedLongitudinalAccel,
-            attack.Telemetry.RequestedLongitudinalAccel);
+            save.Chassis().Telemetry.RequestedLongitudinalAccel,
+            attack.Chassis().Telemetry.RequestedLongitudinalAccel);
         Near.Equal(save.Chassis().Energy.Primary, attack.Chassis().Energy.Primary);
     }
 
@@ -982,11 +982,11 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(low, car, tires, PhysicsInput(input, strategy), 1f / 60f);
 
         Assert.True(
-            low.Telemetry.RequestedLongitudinalAccel < full.Telemetry.RequestedLongitudinalAccel,
+            low.Chassis().Telemetry.RequestedLongitudinalAccel < full.Chassis().Telemetry.RequestedLongitudinalAccel,
             "low SOC should reduce the drive acceleration accepted from the battery envelope"
         );
         Assert.True(
-            low.Telemetry.DrivePowerWatts < full.Telemetry.DrivePowerWatts,
+            low.Chassis().Telemetry.DrivePowerWatts < full.Chassis().Telemetry.DrivePowerWatts,
             "low SOC should reduce actual drive power"
         );
     }
@@ -1004,8 +1004,8 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(attack, car, tires, PhysicsInput(attack, car, tires, input, new CarStrategy(TireUsageMode.Attack, PowerOutputMode.Normal)), 1f / 60f);
 
         Near.Equal(
-            protect.Telemetry.ActualCurvature,
-            attack.Telemetry.ActualCurvature);
+            protect.Chassis().Telemetry.ActualCurvature,
+            attack.Chassis().Telemetry.ActualCurvature);
         Near.Equal(
             protect.Axles().FrontGripAccel,
             attack.Axles().FrontGripAccel);
@@ -1027,7 +1027,7 @@ public sealed class CarPhysicsTests
         Assert.True(worn.Axles().FrontGripAccel < fresh.Axles().FrontGripAccel, "hot worn front tires should have less grip");
         Assert.True(worn.Axles().RearGripAccel < fresh.Axles().RearGripAccel, "hot worn rear tires should have less grip");
         Assert.True(
-            Math.Abs(worn.Telemetry.ActualCurvature) < Math.Abs(fresh.Telemetry.ActualCurvature),
+            Math.Abs(worn.Chassis().Telemetry.ActualCurvature) < Math.Abs(fresh.Chassis().Telemetry.ActualCurvature),
             "hot worn tires should deliver less curvature under the same request"
         );
     }
@@ -1238,8 +1238,8 @@ public sealed class CarPhysicsTests
 
         Assert.InRange(
             MathF.Abs(
-                slow.Telemetry.ActualLateralAccel -
-                fast.Telemetry.ActualLateralAccel
+                slow.Chassis().Telemetry.ActualLateralAccel -
+                fast.Chassis().Telemetry.ActualLateralAccel
             ),
             0f,
             0.05f
@@ -1259,7 +1259,7 @@ public sealed class CarPhysicsTests
         }, 90f, 90f);
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState dirtyAir = cleanAir.Clone();
-        dirtyAir.WakeDownforceLoss = 0.1f;
+        dirtyAir.Chassis().WakeDownforceLoss = 0.1f;
 
         CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
             cleanAir,
@@ -1298,9 +1298,9 @@ public sealed class CarPhysicsTests
         // downforce model reads. A body-only tow must leave cornering alone;
         // the surface deficit must take it away.
         CarState bodyOnlyTow = cleanAir.Clone();
-        bodyOnlyTow.AirVelocityDeficit = 0.08f;
+        bodyOnlyTow.Chassis().AirVelocityDeficit = 0.08f;
         CarState surfaceWake = cleanAir.Clone();
-        surfaceWake.DownforceVelocityDeficit = 0.08f;
+        surfaceWake.Chassis().DownforceVelocityDeficit = 0.08f;
 
         CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
             cleanAir,
@@ -1346,7 +1346,7 @@ public sealed class CarPhysicsTests
         }, 90f, 90f);
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState tow = cleanAir.Clone();
-        tow.AirVelocityDeficit = 0.08f;
+        tow.Chassis().AirVelocityDeficit = 0.08f;
 
         CarPerformanceLimits cleanLimits = CarPhysics.EstimatePerformanceLimits(
             cleanAir,
@@ -1383,7 +1383,7 @@ public sealed class CarPhysicsTests
         StepMany(cornering, car, tires, new Ask(0.01f, 0f), CarStrategy.Default, steps: 120);
 
         Assert.True(cornering.Speed < straight.Speed, "cornering scrub should cost more speed than straight coasting");
-        Assert.True(cornering.Telemetry.LossAccel > straight.Telemetry.LossAccel, "cornering should report higher loss accel");
+        Assert.True(cornering.Chassis().Telemetry.LossAccel > straight.Chassis().Telemetry.LossAccel, "cornering should report higher loss accel");
     }
 
     [Fact]
@@ -1396,9 +1396,9 @@ public sealed class CarPhysicsTests
         StepMany(state, car, tires, new DriverInput(0f, 0f), CarStrategy.Default, steps: 300);
 
         Assert.True(state.Speed < 55.5f, "five seconds of zero-throttle coasting should lose visible speed");
-        Assert.True(state.Telemetry.ActualLongitudinalAccel < -1.3f, "high-speed drag should keep slowing the car");
-        Near.Equal(-state.Telemetry.LossAccel, state.Telemetry.ActualLongitudinalAccel);
-        Near.Equal(0f, state.Telemetry.DrivePowerWatts, abs: 1f);
+        Assert.True(state.Chassis().Telemetry.ActualLongitudinalAccel < -1.3f, "high-speed drag should keep slowing the car");
+        Near.Equal(-state.Chassis().Telemetry.LossAccel, state.Chassis().Telemetry.ActualLongitudinalAccel);
+        Near.Equal(0f, state.Chassis().Telemetry.DrivePowerWatts, abs: 1f);
     }
 
     [Fact]
@@ -1530,8 +1530,8 @@ public sealed class CarPhysicsTests
             equalFrontWear + equalRearWear,
             shiftedFrontWear + shiftedRearWear, abs: 0f);
         Near.Equal(
-            equal.Telemetry.ActualLateralAccel,
-            frontWorkingHarder.Telemetry.ActualLateralAccel);
+            equal.Chassis().Telemetry.ActualLateralAccel,
+            frontWorkingHarder.Chassis().Telemetry.ActualLateralAccel);
     }
 
     [Fact]
@@ -2125,7 +2125,7 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState cleanAir = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState wake = cleanAir.Clone();
-        wake.AirVelocityDeficit = 0.08f;
+        wake.Chassis().AirVelocityDeficit = 0.08f;
         SetTireTemps(cleanAir, surfaceTempC: 112f, coreTempC: 104f);
         SetTireTemps(wake, surfaceTempC: 112f, coreTempC: 104f);
         CarStepInput input = new(
@@ -2160,7 +2160,7 @@ public sealed class CarPhysicsTests
         TestTires tires = WarmTires();
         CarState cleanCorner = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState dirtyCorner = cleanCorner.Clone();
-        dirtyCorner.WakeDownforceLoss = 0.08f;
+        dirtyCorner.Chassis().WakeDownforceLoss = 0.08f;
         float cleanCurvature = CurvatureForGripShare(
             cleanCorner,
             car,
@@ -2178,7 +2178,7 @@ public sealed class CarPhysicsTests
 
         CarState cleanStraight = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState dirtyStraight = cleanStraight.Clone();
-        dirtyStraight.WakeDownforceLoss = 0.08f;
+        dirtyStraight.Chassis().WakeDownforceLoss = 0.08f;
         CarStepInput cleanCornerInput = PhysicsInput(
             new DriverInput(0f, 0f)
         );
@@ -2236,15 +2236,15 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(cornering, car, tires, PhysicsInput(cornering, car, tires, new Ask(0.018f, -10f)), 1f / 60f);
 
         Assert.True(
-            cornering.Telemetry.RegenPowerWatts < straight.Telemetry.RegenPowerWatts,
+            cornering.Chassis().Telemetry.RegenPowerWatts < straight.Chassis().Telemetry.RegenPowerWatts,
             "cornering should leave less tire capacity for braking and therefore less regen power"
         );
         Assert.True(
-            cornering.Telemetry.RegenPowerWatts > 0f,
+            cornering.Chassis().Telemetry.RegenPowerWatts > 0f,
             "cornering brake should remain continuous instead of being pre-clipped to zero"
         );
         Assert.True(
-            Math.Abs(cornering.Telemetry.ActualLateralAccel) > Math.Abs(straight.Telemetry.ActualLateralAccel),
+            Math.Abs(cornering.Chassis().Telemetry.ActualLateralAccel) > Math.Abs(straight.Chassis().Telemetry.ActualLateralAccel),
             "cornering case should still be doing lateral work"
         );
     }
@@ -2267,15 +2267,15 @@ public sealed class CarPhysicsTests
         CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, heavy), 1f / 60f);
 
         Assert.True(
-            state.Telemetry.OverLimit > 0f,
+            state.Chassis().Telemetry.OverLimit > 0f,
             "heavy cornering and braking together should have something past " +
             "what it has - a wheel asked to stop harder than it can, or rubber " +
             "dragged past the angle where it stops paying"
         );
-        Assert.True(state.Telemetry.RegenPowerWatts > 0f, "brake request should still produce some braking work");
-        Assert.True(state.Telemetry.ActualLongitudinalAccel < 0f, "net acceleration should be braking, not coasting");
+        Assert.True(state.Chassis().Telemetry.RegenPowerWatts > 0f, "brake request should still produce some braking work");
+        Assert.True(state.Chassis().Telemetry.ActualLongitudinalAccel < 0f, "net acceleration should be braking, not coasting");
         Assert.True(
-            Math.Abs(state.Telemetry.ActualCurvature) < Math.Abs(heavy.Curvature),
+            Math.Abs(state.Chassis().Telemetry.ActualCurvature) < Math.Abs(heavy.Curvature),
             "front axle clipping should turn excess trail braking into understeer"
         );
     }
@@ -2371,7 +2371,7 @@ public sealed class CarPhysicsTests
                 if (i >= 10)
                 {
                     asked += curvature * state.Speed * state.Speed;
-                    got += MathF.Abs(state.Telemetry.ActualLateralAccel);
+                    got += MathF.Abs(state.Chassis().Telemetry.ActualLateralAccel);
                 }
             }
             return (asked / 20f, got / 20f);
@@ -2515,16 +2515,16 @@ public sealed class CarPhysicsTests
             rehearsal.Chassis().RearLeft.CopyFrom(state.Chassis().RearLeft);
             rehearsal.Chassis().RearRight.CopyFrom(state.Chassis().RearRight);
         }
-        state.SteerAngleRadians = rehearsal.SteerAngleRadians;
+        state.Chassis().SteerAngleRadians = rehearsal.Chassis().SteerAngleRadians;
         state.SideslipAngleRadians = rehearsal.SideslipAngleRadians;
         state.YawRateRadiansPerSecond = rehearsal.YawRateRadiansPerSecond;
         // The weight has to have moved too. Load transfer runs off these,
         // the wheel loads run off the transfer, and the grip runs off the
         // loads - so a car handed a corner's attitude with its weight still
         // sitting flat is a different car from the one that drove into it.
-        state.FilteredLongitudinalAccel = rehearsal.FilteredLongitudinalAccel;
-        state.FilteredLateralAccel = rehearsal.FilteredLateralAccel;
-        state.Telemetry = rehearsal.Telemetry;
+        state.Chassis().FilteredLongitudinalAccel = rehearsal.Chassis().FilteredLongitudinalAccel;
+        state.Chassis().FilteredLateralAccel = rehearsal.Chassis().FilteredLateralAccel;
+        state.Chassis().Telemetry = rehearsal.Chassis().Telemetry;
     }
 
     private static void StepAtMatchingAmbient(

@@ -302,7 +302,8 @@ public partial class RaceView : Node2D
         }
 
         CarState state = _playerCar.State;
-        CarTelemetry telemetry = state.Telemetry;
+        DriverInput input = _playerCar.LastInput;
+        CarMotion motion = (_playerCar.Car as ICarMotion)?.Motion(state) ?? default;
         ICarTires? tyres = _playerCar.Car as ICarTires;
         TireReading Read(WheelId wheel) => tyres?.Tire(state, wheel) ?? default;
         TireReading fl = Read(WheelId.FrontLeft), fr = Read(WheelId.FrontRight);
@@ -313,11 +314,11 @@ public partial class RaceView : Node2D
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
             $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {(_playerCar.Car.Ladders.Count > 0 ? _playerCar.Car.Ladders[0].Label.ToLowerInvariant() : "-")}\n" +
-            $"Input steer/accel {telemetry.Input.SteerAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
-            $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
+            $"Input steer/accel {input.SteerAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  {input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
+            $"Over-limit {motion.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(fl)}  |  FR {WheelStatus(fr)}\n" +
             $"                         RL {WheelStatus(rl)}  |  RR {WheelStatus(rr)}\n" +
-            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
     }
 
     private float[] _channelReadings = [];

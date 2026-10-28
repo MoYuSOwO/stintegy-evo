@@ -44,9 +44,9 @@ public readonly record struct AeroAir(
 )
 {
     public static AeroAir Of(CarState state) => new(
-        state.AirVelocityDeficit,
-        state.DownforceVelocityDeficit,
-        state.WakeDownforceLoss,
+        state.Chassis().AirVelocityDeficit,
+        state.Chassis().DownforceVelocityDeficit,
+        state.Chassis().WakeDownforceLoss,
         state.Chassis().ActiveAero
     );
 }

@@ -20,6 +20,7 @@ public sealed class RaceSimulation
     private bool _stepping;
     private DriverInput[] _stepInputs = [];
     private CarStrategy[] _stepStrategies = [];
+    private CarAir[] _stepAir = [];
     private TrackPose[] _stepPoses = [];
     private TrackBoundaryContact?[] _preStepContacts = [];
     private TrackBoundaryContact?[] _sweepContacts = [];
@@ -204,9 +205,7 @@ public sealed class RaceSimulation
                 car.BoundaryContactSeconds = 0f;
                 car.HitCarThisStep = false;
             }
-            car.State.AirVelocityDeficit = frame[i].AirVelocityDeficit;
-            car.State.DownforceVelocityDeficit = frame[i].DownforceVelocityDeficit;
-            car.State.WakeDownforceLoss = frame[i].WakeDownforceLoss;
+            _stepAir[i] = new CarAir(frame[i].AirVelocityDeficit, frame[i].DownforceVelocityDeficit, frame[i].WakeDownforceLoss);
             _cars[i].LastInput = _stepInputs[i];
             if (_preStepContacts[i].HasValue)
                 _cars[i].LastBoundaryContact = _preStepContacts[i];
@@ -363,7 +362,8 @@ public sealed class RaceSimulation
             {
                 RoadAttitude = SampleRoadAttitude(car),
                 SurfaceGrip = SampleWheelSurfaceGrip(car),
-                SurfaceAbrasion = Track.AsphaltAbrasion
+                SurfaceAbrasion = Track.AsphaltAbrasion,
+                Air = _stepAir[i]
             };
 
             CarState startState = _startStates[i];
@@ -422,6 +422,7 @@ public sealed class RaceSimulation
         int capacity = Math.Max(required, Math.Max(4, previousCapacity * 2));
         Array.Resize(ref _stepInputs, capacity);
         Array.Resize(ref _stepStrategies, capacity);
+        Array.Resize(ref _stepAir, capacity);
         Array.Resize(ref _stepPoses, capacity);
         Array.Resize(ref _preStepContacts, capacity);
         Array.Resize(ref _sweepContacts, capacity);

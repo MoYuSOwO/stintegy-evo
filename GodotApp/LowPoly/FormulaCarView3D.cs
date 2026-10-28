@@ -58,7 +58,7 @@ public partial class FormulaCarView3D : Node3D
         AddChild(_number);
         _smoke = Plume("Smoke", new Color(0.9f, 0.9f, 0.88f, 0.38f), 0.55f, 1.6f);
         _dust = Plume("Dust", new Color(0.78f, 0.72f, 0.55f, 0.42f), 0.7f, 1.2f);
-        var pose = MakePose(Car.State.Position, Car.State.Heading, Car.State.SteerAngleRadians);
+        var pose = MakePose(Car.State.Position, Car.State.Heading, (Car.Car as ICarMotion)?.Motion(Car.State).WheelAngleRadians ?? 0f);
         _poses = new SnapshotTimeline<RenderPose>(pose); Transform = pose.Transform;
     }
     /// <summary>

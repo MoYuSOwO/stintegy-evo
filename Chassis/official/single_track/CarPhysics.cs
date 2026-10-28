@@ -94,8 +94,8 @@ public static class CarPhysics
     {
         return EffectiveDownforcePerSpeedSquared(
             config,
-            state.DownforceVelocityDeficit,
-            state.WakeDownforceLoss,
+            state.Chassis().DownforceVelocityDeficit,
+            state.Chassis().WakeDownforceLoss,
             state.Chassis().ActiveAero
         );
     }
@@ -157,8 +157,8 @@ public static class CarPhysics
             assumedLongitudinalAcceleration,
             lateralAcceleration,
             speed,
-            state.DownforceVelocityDeficit,
-            state.WakeDownforceLoss,
+            state.Chassis().DownforceVelocityDeficit,
+            state.Chassis().WakeDownforceLoss,
             state.Chassis().ActiveAero
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
@@ -234,7 +234,7 @@ public static class CarPhysics
         float loss = CalculateLossAccel(
             config,
             speed,
-            state.AirVelocityDeficit,
+            state.Chassis().AirVelocityDeficit,
             massKg
         ) + SteadyInducedDragAccel(
             config, speed, frontLateral, rearLateral, frontGrip, rearGrip
@@ -276,8 +276,8 @@ public static class CarPhysics
             assumedLongitudinalAcceleration,
             speed * speed * curvature,
             speed,
-            state.DownforceVelocityDeficit,
-            state.WakeDownforceLoss,
+            state.Chassis().DownforceVelocityDeficit,
+            state.Chassis().WakeDownforceLoss,
             state.Chassis().ActiveAero
         );
         float usage = Math.Clamp(gripUsage, 0.05f, 1f);
@@ -321,6 +321,15 @@ public static class CarPhysics
         float dt
     )
     {
+        // The air the world says the car sits in, for this step and for
+        // whatever plans from the state after it.
+        if (input.Air is { } air)
+        {
+            SingleTrackState own = state.Chassis();
+            own.AirVelocityDeficit = air.VelocityDeficit;
+            own.DownforceVelocityDeficit = air.DownforceVelocityDeficit;
+            own.WakeDownforceLoss = air.DownforceLoss;
+        }
         if (dt <= 0f)
             return;
 
@@ -333,7 +342,7 @@ public static class CarPhysics
         state.Chassis().PushToPass = PushToPassState.Advance(
             state.Chassis().PushToPass,
             config.PushToPass,
-            input.Strategy.Holding(PushToPassButton) && !state.Spinning,
+            input.Strategy.Holding(PushToPassButton) && !state.Chassis().Spinning,
             dt
         );
         state.Chassis().ActiveAero = state.Chassis().PushToPass.Active ? 1f : 0f;
@@ -349,7 +358,7 @@ public static class CarPhysics
         // A car that has been declared lost is not being driven, so nothing
         // below this line runs: no request is read, no axle is resolved,
         // and the rotation is played rather than integrated.
-        if (state.Spinning)
+        if (state.Chassis().Spinning)
         {
             StepScriptedSpin(state, config, tires, input, dt);
             return;
@@ -359,7 +368,7 @@ public static class CarPhysics
         float roadNormalGravity = road.NormalGravity(
             Gravity,
             state.Speed,
-            state.Telemetry.ActualCurvature
+            state.Chassis().Telemetry.ActualCurvature
         );
         float roadAlongGravity = road.AlongTrackGravity(Gravity, state.Speed);
         float roadLateralDemand =
@@ -592,7 +601,7 @@ public static class CarPhysics
         float lossAccel = CalculateLossAccel(
             config,
             state.Speed,
-            state.AirVelocityDeficit,
+            state.Chassis().AirVelocityDeficit,
             massKg
         ) + inducedDragAccel;
         float actualLongitudinalAccel =
@@ -635,7 +644,7 @@ public static class CarPhysics
         state.SideslipAngleRadians = nextSideslipAngle;
         state.YawRateRadiansPerSecond = lateral.YawRate;
         state.Heading = nextBodyHeading;
-        state.SteerAngleRadians = steerAngle;
+        state.Chassis().SteerAngleRadians = steerAngle;
         state.Speed = newSpeed;
         UpdateSpinVerdict(state, dt);
         PowertrainSettlement settlement = config.Powertrain.Settle(
@@ -684,7 +693,7 @@ public static class CarPhysics
         float coolingAirSpeed = averageSpeed *
                                 (
                                     1f - Math.Clamp(
-                                        state.AirVelocityDeficit,
+                                        state.Chassis().AirVelocityDeficit,
                                         0f,
                                         1f
                                     )
@@ -773,10 +782,10 @@ public static class CarPhysics
         );
 
         float response = 1f - MathF.Exp(-config.LoadTransferResponse * dt);
-        state.FilteredLongitudinalAccel = Lerp(state.FilteredLongitudinalAccel, actualLongitudinalAccel, response);
-        state.FilteredLateralAccel = Lerp(state.FilteredLateralAccel, actualLateralAccel, response);
+        state.Chassis().FilteredLongitudinalAccel = Lerp(state.Chassis().FilteredLongitudinalAccel, actualLongitudinalAccel, response);
+        state.Chassis().FilteredLateralAccel = Lerp(state.Chassis().FilteredLateralAccel, actualLateralAccel, response);
 
-        state.Telemetry = new CarTelemetry(
+        state.Chassis().Telemetry = new CarTelemetry(
             input.DriverInput,
             input.Strategy,
             requestedLateralAccel,
@@ -823,21 +832,21 @@ public static class CarPhysics
     private static void UpdateSpinVerdict(CarState state, float dt)
     {
         float sideslip = MathF.Abs(state.SideslipAngleRadians);
-        state.SideslipHoldSeconds =
+        state.Chassis().SideslipHoldSeconds =
             sideslip >= SingleTrackDynamicsLimits.SpinVerdictSideslipRadians
-                ? state.SideslipHoldSeconds + dt
+                ? state.Chassis().SideslipHoldSeconds + dt
                 : 0f;
 
-        if (state.SideslipHoldSeconds <=
+        if (state.Chassis().SideslipHoldSeconds <=
             SingleTrackDynamicsLimits.SpinVerdictHoldSeconds)
         {
             return;
         }
 
-        state.Spinning = true;
-        state.SpinSeconds = 0f;
-        state.SideslipHoldSeconds = 0f;
-        state.SpinEvents++;
+        state.Chassis().Spinning = true;
+        state.Chassis().SpinSeconds = 0f;
+        state.Chassis().SideslipHoldSeconds = 0f;
+        state.Chassis().SpinEvents++;
     }
 
     /// <summary>
@@ -864,7 +873,7 @@ public static class CarPhysics
         float dt
     )
     {
-        state.SpinSeconds += dt;
+        state.Chassis().SpinSeconds += dt;
 
         // Down to the speed it is handed back at and no further. A spin
         // that parked the car would retire it, and a spin is meant to cost
@@ -969,8 +978,8 @@ public static class CarPhysics
             maximumSteer
         );
         float steerStep = MathF.Max(config.SteerRateLimitRadiansPerSecond, 0f) * dt;
-        state.SteerAngleRadians += Math.Clamp(
-            steerTarget - state.SteerAngleRadians,
+        state.Chassis().SteerAngleRadians += Math.Clamp(
+            steerTarget - state.Chassis().SteerAngleRadians,
             -steerStep,
             steerStep
         );
@@ -1000,7 +1009,7 @@ public static class CarPhysics
         // with a shape of their own belong to a damage model that does not
         // exist yet, and one lump charge stands in until it does.
         float coolingAirSpeed = averageSpeed *
-                                (1f - Math.Clamp(state.AirVelocityDeficit, 0f, 1f));
+                                (1f - Math.Clamp(state.Chassis().AirVelocityDeficit, 0f, 1f));
         float tireWakeDownforceLoss =
             EffectiveTireWakeDownforceLoss(state, config);
         float frontSpinGrip = CalculateAxleGripAccel(
@@ -1064,14 +1073,14 @@ public static class CarPhysics
 
         float actualLongitudinalAccel = (newSpeed - oldSpeed) / dt;
         float response = 1f - MathF.Exp(-config.LoadTransferResponse * dt);
-        state.FilteredLongitudinalAccel = Lerp(
-            state.FilteredLongitudinalAccel,
+        state.Chassis().FilteredLongitudinalAccel = Lerp(
+            state.Chassis().FilteredLongitudinalAccel,
             actualLongitudinalAccel,
             response
         );
-        state.FilteredLateralAccel = Lerp(state.FilteredLateralAccel, 0f, response);
+        state.Chassis().FilteredLateralAccel = Lerp(state.Chassis().FilteredLateralAccel, 0f, response);
 
-        state.Telemetry = new CarTelemetry(
+        state.Chassis().Telemetry = new CarTelemetry(
             input.DriverInput,
             input.Strategy,
             0f,
@@ -1099,9 +1108,9 @@ public static class CarPhysics
             MathF.Abs(state.SideslipAngleRadians) <=
             SingleTrackDynamicsLimits.SpinReleaseSideslipRadians)
         {
-            state.Spinning = false;
-            state.SpinSeconds = 0f;
-            state.SideslipHoldSeconds = 0f;
+            state.Chassis().Spinning = false;
+            state.Chassis().SpinSeconds = 0f;
+            state.Chassis().SideslipHoldSeconds = 0f;
         }
 
         state.Normalize();
@@ -1232,10 +1241,10 @@ public static class CarPhysics
         // runs past its peak and the car washes wide; too little and it
         // does not turn; the wrong way on a slide and it spins.
         float maximum = MathF.Max(config.MaxSteerAngleRadians, 0f);
-        float target = float.IsFinite(requestedAngle) ? Math.Clamp(requestedAngle, -maximum, maximum) : state.SteerAngleRadians;
+        float target = float.IsFinite(requestedAngle) ? Math.Clamp(requestedAngle, -maximum, maximum) : state.Chassis().SteerAngleRadians;
         float step = MathF.Max(config.SteerRateLimitRadiansPerSecond, 0f) * dt;
-        float change = Math.Clamp(target - state.SteerAngleRadians, -step, step);
-        return Math.Clamp(state.SteerAngleRadians + change, -maximum, maximum);
+        float change = Math.Clamp(target - state.Chassis().SteerAngleRadians, -step, step);
+        return Math.Clamp(state.Chassis().SteerAngleRadians + change, -maximum, maximum);
     }
 
     /// <summary>
@@ -1254,7 +1263,7 @@ public static class CarPhysics
         // step itself reads it, not at whatever the tyres last carried.
         float massKg = TotalMassKg(config, state.Chassis().Energy);
         WheelLoads loads = CalculateWheelLoads(
-            state, config, massKg, road.NormalGravity(Gravity, state.Speed, state.Telemetry.ActualCurvature));
+            state, config, massKg, road.NormalGravity(Gravity, state.Speed, state.Chassis().Telemetry.ActualCurvature));
         float Axle(TireState left, float leftLoad, TireState right, float rightLoad, bool front) =>
             (WheelGripForce(config, tires, left, leftLoad, front) * MathF.Max(0f, left.SurfaceGrip) +
              WheelGripForce(config, tires, right, rightLoad, front) * MathF.Max(0f, right.SurfaceGrip)) /
@@ -1269,8 +1278,8 @@ public static class CarPhysics
             config.FrontPeakSlipAngleRatio,
             config.SteerCurvatureFeedbackGain,
             config.MaxSteerAngleRadians,
-            state.Telemetry.ActualLateralAccel,
-            state.Telemetry.ActualCurvature,
+            state.Chassis().Telemetry.ActualLateralAccel,
+            state.Chassis().Telemetry.ActualCurvature,
             road.CurvatureDemandScale,
             road.LateralGravityDemand(Gravity, state.Speed));
     }
@@ -2198,11 +2207,11 @@ public static class CarPhysics
         return CalculateWheelLoads(
             config,
             massKg,
-            state.FilteredLongitudinalAccel,
-            state.FilteredLateralAccel,
+            state.Chassis().FilteredLongitudinalAccel,
+            state.Chassis().FilteredLateralAccel,
             state.Speed,
-            state.DownforceVelocityDeficit,
-            state.WakeDownforceLoss,
+            state.Chassis().DownforceVelocityDeficit,
+            state.Chassis().WakeDownforceLoss,
             state.Chassis().ActiveAero,
             normalGravity
         );

@@ -202,6 +202,26 @@ public readonly record struct CarStepInput(
     /// track says otherwise.
     /// </summary>
     public float SurfaceAbrasion { get; init; } = 1f;
+
+    /// <summary>
+    /// The air the car sits in this step, worked out by the world from where
+    /// every car was at the start of the frame. None leaves the car with the
+    /// air it last had: a bench test or a predictor that sets it itself.
+    /// </summary>
+    public CarAir? Air { get; init; }
+}
+
+/// <summary>
+/// The air a car sits in, as shares of the oncoming air's speed and of the
+/// downforce it would make: what the cars ahead have done to it. Zero is
+/// clean air.
+/// </summary>
+/// <param name="VelocityDeficit">How much of its own speed the air around the body already carries: the tow.</param>
+/// <param name="DownforceVelocityDeficit">How much of the oncoming air's speed is missing at the working aero surfaces.</param>
+/// <param name="DownforceLoss">How much downforce the turbulent part of the wake takes, beyond the slower air.</param>
+public readonly record struct CarAir(float VelocityDeficit, float DownforceVelocityDeficit, float DownforceLoss)
+{
+    public static readonly CarAir Clean = default;
 }
 
 /// <summary>

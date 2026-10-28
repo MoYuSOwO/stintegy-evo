@@ -668,8 +668,8 @@ public sealed class RaceSimulationTests
         simulation.Step(1f / 120f);
 
         return (
-            follower.State.AirVelocityDeficit,
-            follower.State.WakeDownforceLoss
+            follower.State.Chassis().AirVelocityDeficit,
+            follower.State.Chassis().WakeDownforceLoss
         );
     }
 

@@ -365,7 +365,7 @@ public sealed class PowertrainInterfaceTests
             state.InstallFreshTires(tires);
             CarPhysics.Step(state, config, tires, new CarStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 28f), Dt);
             float mass = config.MassKg + FullTankMassKg * tankFraction;
-            return (-state.Telemetry.ActualLongitudinalAccel - config.RollingDragAccel) * mass;
+            return (-state.Chassis().Telemetry.ActualLongitudinalAccel - config.RollingDragAccel) * mass;
         }
         Assert.Equal(Drag(0f), Drag(1f), 0);
         Assert.True(Drag(0f) > 1000f, "at 70 m/s the air is a few kilonewtons");

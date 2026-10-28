@@ -123,15 +123,19 @@ public sealed class WallSweepRecoveryTests
         );
     }
 
-    private static CarState FrozenStart() => new()
+    private static CarState FrozenStart()
     {
-        Position = new Vector2(539.8531f, -23.242304f),
-        Heading = -3.0143077f,
-        Speed = 6.2218313f,
-        SideslipAngleRadians = 2.465298E-06f,
-        YawRateRadiansPerSecond = 0.99164987f,
-        SteerAngleRadians = 0.40112853f
-    };
+        CarState state = new()
+        {
+            Position = new Vector2(539.8531f, -23.242304f),
+            Heading = -3.0143077f,
+            Speed = 6.2218313f,
+            SideslipAngleRadians = 2.465298E-06f,
+            YawRateRadiansPerSecond = 0.99164987f,
+        };
+        state.Chassis().SteerAngleRadians = 0.40112853f;
+        return state;
+    }
 
     // The same car one 1/120 s substep later, as the vehicle model predicted
     // it before the wall had its say.
