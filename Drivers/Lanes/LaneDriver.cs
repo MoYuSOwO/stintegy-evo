@@ -127,7 +127,7 @@ public sealed record LaneDriverGains
     /// seconds of travel ahead, so the correction's lateral acceleration does
     /// not grow with the square of the speed.
     /// </summary>
-    public float PursuitSeconds { get; init; } = 0.6f;
+    public float PursuitSeconds { get; init; } = 0.3f;
     public float MinimumPursuitMeters { get; init; } = 10f;
 
     /// <summary>
