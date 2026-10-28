@@ -525,6 +525,52 @@ public sealed class ZzLineSweep
     }
 
     /// <summary>
+    /// Every step of every line between STINTEGY_TIMELINE_FROM and _TO on
+    /// one flat factor: the line's curvature under the car, what the hands
+    /// read ahead, what they asked for after the feedback and the cap, the
+    /// wheel's angle and the path the car actually made, so where the car
+    /// falls behind the line can be read off in time.
+    /// </summary>
+    [Fact]
+    public void Timeline()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_SWEEP_LINES", 300);
+        float factor = Env("STINTEGY_CLASSIFY_FACTOR", 1f);
+        float from = Env("STINTEGY_TIMELINE_FROM", 3600f), to = Env("STINTEGY_TIMELINE_TO", 3760f);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "timeline.csv");
+        Setup setup = Build(count);
+        Condition learned = setup.Conditions[0];
+        float[] flat = Enumerable.Repeat(factor, 3 * ProfileKnots).ToArray();
+        var lines = new List<string>[count];
+        Parallel.For(1, count, n =>
+        {
+            LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, setup.Knots[n]));
+            LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+            SetProfile(file, setup.Lanes, setup.Stretch, flat);
+            var rows = new List<string>();
+            int step = 0;
+            Run r = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds, (car, d, travelled) =>
+            {
+                step++;
+                float s = car.Progress.CurrentS;
+                if (s < from || s > to) return;
+                LaneDriverTelemetry t = d.LastTelemetry;
+                rows.Add(string.Join(",", new float[]
+                {
+                    n, step / 60f, s, t.LateralErrorMeters, car.State.Speed, t.CommandAccel, LineCurvature(drawn, s), t.FeedforwardCurvature,
+                    t.WantedCurvature, t.CommandCurvature, t.CurvatureCap, car.State.SteerAngleRadians, car.State.Telemetry.ActualCurvature,
+                    car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel
+                }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture))));
+            });
+            rows.Insert(0, $"#{n},{(r.Clean ? 1 : 0)}");
+            lines[n] = rows;
+        });
+        File.WriteAllLines(output, new[] { "line,t,s,error,speed,command_accel,line_k,feedforward_k,wanted_k,command_k,cap_k,steer,actual_k,lat,long" }
+            .Concat(lines.Skip(1).SelectMany(l => l)));
+    }
+
+    /// <summary>
     /// Worked out from the tyre's own rule, not driven: in a steady corner
     /// under the brakes, the angle the steering estimate asks for against the
     /// angle the tyres need once braking has taken its share of each axle's
