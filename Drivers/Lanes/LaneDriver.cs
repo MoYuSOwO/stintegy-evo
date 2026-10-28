@@ -52,6 +52,14 @@ public sealed record LaneDriverGains
     /// </summary>
     public bool BrakeOnlyOverPlan { get; init; } = true;
 
+    /// <summary>
+    /// The hands keep winding on lock while the car turns less than they
+    /// asked, and take it off while it turns more: what is left of the
+    /// curvature over this many seconds is added to the wheel. None, the
+    /// wheel is the estimate's alone. For probes.
+    /// </summary>
+    public float? LockIntegralSeconds { get; init; }
+
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
 
@@ -917,11 +925,23 @@ public sealed class LaneDriver : IDriverController
         // would put on (SteeringEstimate), misjudged by this driver's hands;
         // the line takes up what is left.
         float steer = car.Steering.AngleFor(curvature) * (1f + (_performance?.SteeringRead ?? 0f));
+        if (Gains.LockIntegralSeconds is { } hold && hold > 0f)
+        {
+            _lock = Math.Clamp(_lock + car.Steering.WheelBaseMeters * (curvature - car.Telemetry.ActualCurvature) * dt / hold, -0.03f, 0.03f);
+            steer += _lock;
+        }
+        LastLock = _lock;
         return new DriverInput(steer, accel, FrontBrakeBiasOffset: BrakeBias(tyres, accel), TyreWearExcess: _performance?.TyreWearExcess ?? 0f);
     }
 
     // What the driver feels of the two axles this step.
     private GripUse _axles;
+
+    // Lock wound on beyond the estimate's, radians (LockIntegralSeconds).
+    private float _lock;
+
+    /// <summary>Lock wound on beyond the estimate's this step, radians. For probes.</summary>
+    public float LastLock { get; private set; }
 
     /// <summary>How far ahead the hands read the corner this step, seconds. For probes.</summary>
     public float LastLeadSeconds { get; private set; }

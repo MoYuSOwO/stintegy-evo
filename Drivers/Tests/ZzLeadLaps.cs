@@ -110,6 +110,66 @@ public sealed class ZzLeadLaps
             Array.Clear(file.Steer((LaneId)lane));
     }
 
+    /// <summary>
+    /// The wheel on laps with the steering notes wiped: what the steering
+    /// estimate made of the command, piece by piece, beside the slip angles
+    /// the car then actually ran at each end and how much of each end's grip
+    /// the pedals were using.
+    /// </summary>
+    [Fact]
+    public void WheelTrace()
+    {
+        if (!LaneProbes.Enabled) return;
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "wheel.csv");
+        string[] circuits = Environment.GetEnvironmentVariable("STINTEGY_LEAD_CIRCUITS")?.Split(',') ?? Circuits;
+        var jobs = (from c in circuits from side in new[] { 0f, 1f, -1f } select (c, side)).ToArray();
+        var rows = new List<string>[jobs.Length];
+        StintegyEVO.Core.Cars.CarConfig config = StockCar.Config;
+        Parallel.For(0, jobs.Length, j =>
+        {
+            (string circuit, float side) = jobs[j];
+            TrackData track = CircuitLibrary.Load(circuit);
+            LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
+            WithoutSteerNotes(file, track);
+            var mine = new List<string>();
+            int lap0 = -1;
+            LaneLapRunner.Run(track, file, new LaneDriverGains(), onStep: (car, d, t) =>
+            {
+                if (side != 0f)
+                {
+                    d.TargetRange = 1f;
+                    d.TargetSide = side;
+                }
+                if (lap0 < 0) lap0 = car.Progress.Lap;
+                if (car.Progress.Lap <= lap0) return;
+                LaneDriverTelemetry tel = d.LastTelemetry;
+                var state = car.State;
+                var est = ((StintegyEVO.Core.Cars.ICarEnvelope)car.Car).EstimateSteering(state, StintegyEVO.Core.Cars.RoadAttitude.Flat);
+                var grip = ((StintegyEVO.Core.Cars.ICarGripFeel)car.Car).GripUse(state);
+                float k = tel.CommandCurvature;
+                float wb = est.WheelBaseMeters, a = est.FrontArmMeters, b = est.RearArmMeters;
+                // The full slip-angle part alone: the estimate as if fully loaded and already on the curve.
+                float slip = (est with { ActualLateralAccel = 1e6f, ActualCurvature = k }).AngleFor(k) - MathF.Atan(wb * k);
+                float load = Math.Clamp(MathF.Abs(est.ActualLateralAccel) / (StintegyEVO.Core.Cars.SteeringEstimate.FullSlipCompensationShare * (est.FrontGripAccel + est.RearGripAccel)), 0f, 1f);
+                float v = MathF.Max(state.Speed, 1f);
+                float af = state.SteerAngleRadians - state.SideslipAngleRadians - a * state.YawRateRadiansPerSecond / v;
+                float ar = -state.SideslipAngleRadians + b * state.YawRateRadiansPerSecond / v;
+                mine.Add(string.Join(",", circuit, side == 0f ? "free" : side > 0f ? "left" : "right",
+                    string.Join(",", new float[]
+                    {
+                        t, car.Progress.CurrentS, state.Speed, tel.CommandAccel, d.LastHereCurvature, k, state.Telemetry.ActualCurvature, tel.LateralErrorMeters,
+                        state.SteerAngleRadians, MathF.Atan(wb * k), slip, load, est.CurvatureFeedbackGain * wb * (k - est.ActualCurvature), est.AngleFor(k),
+                        af, ar, grip.FrontLongitudinal, grip.RearLongitudinal, grip.FrontLateral, grip.RearLateral,
+                        state.Telemetry.ActualLateralAccel, est.FrontGripAccel, est.RearGripAccel, grip.FrontGripAccel, grip.RearGripAccel, state.Telemetry.ActualLongitudinalAccel
+                    }.Select(x => x.ToString("F6", CultureInfo.InvariantCulture)))));
+            });
+            rows[j] = mine;
+        });
+        File.WriteAllLines(output, new[] { "circuit,lane,t,s,speed,command_accel,line_k,cmd_k,actual_k,error,steer,kin,slip_full,load,fb,est_angle,af,ar,front_long,rear_long,front_lat,rear_lat,lat,front_grip,rear_grip,car_front_grip,car_rear_grip,long" }
+            .Concat(rows.SelectMany(r => r)));
+        _output.WriteLine($"{rows.Sum(r => r.Count)} steps to {output}");
+    }
+
     [Fact]
     public void Laps()
     {
@@ -124,6 +184,9 @@ public sealed class ZzLeadLaps
             ("no steer notes", new LaneDriverGains()),
             ("no steer notes + flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
             ("no steer notes + turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
+            ("no steer notes + lock held 0.3 s", new LaneDriverGains { LockIntegralSeconds = 0.3f }),
+            ("no steer notes + lock held 0.1 s", new LaneDriverGains { LockIntegralSeconds = 0.1f }),
+            ("lock held 0.3 s", new LaneDriverGains { LockIntegralSeconds = 0.3f }),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
