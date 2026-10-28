@@ -283,6 +283,81 @@ public sealed class ZzLineSweep
         _output.WriteLine($"{rows.Length} picks driven");
     }
 
+    /// <summary>How many knots each kind of factor has through a stretch.</summary>
+    private const int ProfileKnots = 8;
+
+    /// <summary>
+    /// For a learner outside: STINTEGY_SWEEP_JOBS rows of
+    /// id, k0..k4, road_grip, front_temp_c, rear_temp_c, front_wear, rear_wear,
+    /// entry_share, then the corner, braking and traction factors at
+    /// ProfileKnots knots each, set outright through the stretch at every
+    /// grip level. One row out per job.
+    /// </summary>
+    [Fact]
+    public void Batch()
+    {
+        if (!LaneProbes.Enabled) return;
+        string? jobs = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_JOBS");
+        if (jobs is null) return;
+        Setup setup = Build(1);
+        Condition learned = setup.Conditions[0];
+        var wanted = File.ReadAllLines(jobs).Skip(1).Where(l => l.Length > 0)
+            .Select(l => l.Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray()).ToArray();
+        var rows = new string[wanted.Length];
+        Parallel.For(0, wanted.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i =>
+        {
+            float[] v = wanted[i];
+            float[] knots = v[1..6];
+            Condition c = learned with
+            {
+                RoadGrip = v[6], FrontTempC = v[7], RearTempC = v[8], FrontWear = v[9], RearWear = v[10],
+                EntrySpeed = setup.EntrySpeed * v[11]
+            };
+            float[] profile = v[12..];
+            LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, knots));
+            LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+            SetProfile(file, setup.Lanes, setup.Stretch, profile);
+            Run r = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, c, setup.Compounds);
+            rows[i] = $"{(int)v[0]},{r.Row()}";
+        });
+        File.WriteAllLines(Path.ChangeExtension(jobs, ".driven.csv"), new[] { "id," + Run.Header }.Concat(rows));
+        _output.WriteLine($"{rows.Length} jobs driven");
+    }
+
+    /// <summary>
+    /// Corner, braking and traction factors through the stretch from the
+    /// braking zone before it, each a straight line between evenly spaced
+    /// knots, the same at every grip level; the steering learned for the old
+    /// line forgotten there.
+    /// </summary>
+    private static void SetProfile(LaneTrackFile file, LaneSet lanes, Stretch stretch, float[] profile)
+    {
+        float from = stretch.FromS - 150f, to = stretch.ToS;
+        int first = (int)MathF.Floor(lanes.StationOf(from));
+        int last = (int)MathF.Ceiling(lanes.StationOf(to));
+        float At(int kind, int i)
+        {
+            float u = Math.Clamp((i * lanes.Spacing - from) / (to - from), 0f, 1f) * (ProfileKnots - 1);
+            int k = Math.Min((int)u, ProfileKnots - 2);
+            float t = u - k;
+            return profile[kind * ProfileKnots + k] * (1f - t) + profile[kind * ProfileKnots + k + 1] * t;
+        }
+        for (int level = 0; level < LaneTrackFile.GripLevels.Length; level++)
+        {
+            float[] corner = file.Factors(LaneId.Free, level), brake = file.BrakeFactors(LaneId.Free, level),
+                traction = file.TractionFactors(LaneId.Free, level);
+            for (int i = first; i <= last; i++)
+            {
+                corner[lanes.Wrap(i)] = At(0, i);
+                brake[lanes.Wrap(i)] = At(1, i);
+                traction[lanes.Wrap(i)] = At(2, i);
+            }
+        }
+        float[] steer = file.Steer(LaneId.Free);
+        for (int i = first; i <= last; i++)
+            steer[lanes.Wrap(i)] = 0f;
+    }
+
     /// <summary>
     /// The free line, moved across the road by a Catmull-Rom curve through
     /// evenly spaced knots, nothing at either end of the stretch. A knot of
