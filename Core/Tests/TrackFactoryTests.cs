@@ -62,7 +62,7 @@ public sealed class TrackFactoryTests
     [Fact]
     public void SilverstoneUsesPublishedArenaGrandPrixGeometry()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
 
         Assert.Equal(5_891f, track.LengthMeters);
         // The line is authored 98 m along the source centreline, not at its
@@ -80,7 +80,7 @@ public sealed class TrackFactoryTests
     [Fact]
     public void MonacoUsesPublishedGrandPrixGeometry()
     {
-        TrackData track = TrackFactory.MonacoStyleTestTrack();
+        TrackData track = TestTracks.MonacoStyleTestTrack();
 
         Assert.Equal(3_337f, track.LengthMeters);
         Assert.Equal(0f, track.StartingLineS);
@@ -105,7 +105,7 @@ public sealed class TrackFactoryTests
     [Fact]
     public void ShanghaiUsesPublishedGrandPrixGeometry()
     {
-        TrackData track = TrackFactory.ShanghaiStyleTestTrack();
+        TrackData track = TestTracks.ShanghaiStyleTestTrack();
 
         Assert.Equal(5_451f, track.LengthMeters);
         Assert.Equal(0f, track.StartingLineS);
@@ -120,7 +120,7 @@ public sealed class TrackFactoryTests
     [Fact]
     public void SepangUsesPublishedGrandPrixGeometry()
     {
-        TrackData track = TrackFactory.SepangStyleTestTrack();
+        TrackData track = TestTracks.SepangStyleTestTrack();
 
         Assert.Equal(5_543f, track.LengthMeters);
         Assert.Equal(0f, track.StartingLineS);
@@ -134,10 +134,10 @@ public sealed class TrackFactoryTests
     [Fact]
     public void GrandPrixStyleBenchmarksHaveDistinctExpectedLengths()
     {
-        TrackData silverstone = TrackFactory.SilverstoneStyleTestTrack();
-        TrackData monaco = TrackFactory.MonacoStyleTestTrack();
-        TrackData shanghai = TrackFactory.ShanghaiStyleTestTrack();
-        TrackData sepang = TrackFactory.SepangStyleTestTrack();
+        TrackData silverstone = TestTracks.SilverstoneStyleTestTrack();
+        TrackData monaco = TestTracks.MonacoStyleTestTrack();
+        TrackData shanghai = TestTracks.ShanghaiStyleTestTrack();
+        TrackData sepang = TestTracks.SepangStyleTestTrack();
 
         Assert.InRange(silverstone.LengthMeters, 5840f, 5920f);
         Assert.InRange(monaco.LengthMeters, 3290f, 3390f);

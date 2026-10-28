@@ -37,7 +37,7 @@ public sealed class WallSweepRecoveryTests
     [Fact]
     public void ARotationTheWallRefusesDoesNotCancelATranslationItAllows()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         CarState start = FrozenStart();
         CarState target = FrozenTarget();
 
@@ -75,7 +75,7 @@ public sealed class WallSweepRecoveryTests
     [Fact]
     public void ACarPinnedByItsOwnRotationDrivesAwayFromTheWall()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         CarState state = FrozenStart();
         state.Chassis().Energy = PowertrainState.Filled(0.9f);
         state.InstallFreshTires(new TestTires(new TireConfig

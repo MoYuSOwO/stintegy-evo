@@ -106,7 +106,7 @@ public partial class CompositionSmoke : Node
     private static RaceCar Car(TrackData track, string id, float s, float speed, Driver? driver = null)
     {
         TrackSample at = track.Sample(s);
-        return new RaceCar(id, GodotCars.Load("official:formula_a_mixed").Car, driver,
+        return new RaceCar(id, GodotMods.Registry.Cars.Get("official:formula_a_mixed").Car, driver,
             new CarState { Position = at.Center, Heading = at.Heading, Speed = speed });
     }
 

@@ -44,7 +44,7 @@ public sealed class DriverAbilityTests
     [Fact]
     public void AbilitiesAreDeliveredButDoNotSecretlyChangePhysicalResults()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         TrackSample at = track.Sample(100f);
         (RaceSimulation Race, RaceCar Car, FixedController Controller) Entry(float ability)
         {

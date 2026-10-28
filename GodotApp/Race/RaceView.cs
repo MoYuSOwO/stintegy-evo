@@ -9,6 +9,7 @@ using StintegyEVO.GodotApp.Debug;
 using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.Track;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using GVector2 = Godot.Vector2;
@@ -25,7 +26,7 @@ public partial class RaceView : Node2D
 {
     /// <summary>
     /// Which car fills the grid when nobody has composed a race, by its
-    /// pack's id (<see cref="CarLibrary"/>). The default is the game's own.
+    /// id (<see cref="ModRegistry.Cars"/>). The default is the game's own.
     /// </summary>
     public string CarId { get; set; } = "official:formula_a_mixed";
 
@@ -102,8 +103,7 @@ public partial class RaceView : Node2D
         }
         else
         {
-            GodotCircuits.Use();
-            track = TrackFactory.SilverstoneStyleTestTrack();
+            track = GodotMods.Registry.Circuits.Get("official:silverstone").Track;
             _simulation = new RaceSimulation(
                 track,
                 new RaceEnvironment { AirTempC = 25f, TrackTempC = 35f }
@@ -225,7 +225,7 @@ public partial class RaceView : Node2D
             TrackSample sample = track.Sample(start.S);
             RaceCar car = new(
                 $"display-{gridPosition:D2}",
-                GodotCars.Load(CarId).Car,
+                GodotMods.Registry.Cars.Get(CarId).Car,
                 state: new CarState
                 {
                     Position = sample.Center,

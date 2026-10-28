@@ -54,6 +54,13 @@ public sealed record ModManifest
     /// <summary>Its circuits: each a folder holding a <c>circuit.json</c>.</summary>
     public IReadOnlyList<string> Circuits { get; init; } = [];
 
+    /// <summary>
+    /// Its cars' declarations: each a folder holding a <c>car.json</c>. The
+    /// code that builds each is registered by the mod's entrypoint under the
+    /// same name (<see cref="ModRegistrar.Cars"/>).
+    /// </summary>
+    public IReadOnlyList<string> Cars { get; init; } = [];
+
     /// <summary>Its tyre packs: each a file in the form of a <c>tyres.json</c>.</summary>
     public IReadOnlyList<string> Tyres { get; init; } = [];
 

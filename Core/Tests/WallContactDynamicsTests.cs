@@ -22,7 +22,7 @@ namespace StintegyEVO.Core.Tests;
 /// </summary>
 public sealed class WallContactDynamicsTests
 {
-    private static readonly TrackData Track = TrackFactory.SimpleTestTrack();
+    private static readonly TrackData Track = TestTracks.SimpleTestTrack();
     internal static TrackData TrackForTrace => Track;
     internal static (Vector2 Position, float Heading) NearLeftWallForTrace(float s, float offset, float heading) => NearLeftWall(s, offset, heading);
 

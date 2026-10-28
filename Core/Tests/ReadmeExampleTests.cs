@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
@@ -20,13 +21,14 @@ public sealed class ReadmeExampleTests
     public void TheReadmeExampleDrivesALap()
     {
         // --- README example: host loop ---
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        ModRegistry mods = GameMods.Registry;   // every mod, the game's own included
+        TrackData track = mods.Circuits.Get("official:silverstone").Track;
         var simulation = new RaceSimulation(track);
         var profile = new DriverProfile("example", new DriverAbilities());
         TrackSample start = track.Sample(track.StartingLineS);
         var car = new RaceCar(
             "car-1",
-            CarLibrary.Load("official:formula_a_mixed").Car,
+            mods.Cars.Get("official:formula_a_mixed").Car,
             new Driver(profile, new CentrelineFollower()),
             new CarState { Position = start.Center, Heading = start.Heading }
         );

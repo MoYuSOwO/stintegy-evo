@@ -277,6 +277,149 @@ public sealed class ModRegistryTests : IDisposable
 
     // --- Throwaway mods ---
 
+    /// <summary>
+    /// A car is its <c>car.json</c> and the code its mod registers under the
+    /// same name: built once when the mods load, on the chassis and the
+    /// tyres it names, and known by a fingerprint of what it is.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ACarIsItsDeclarationJoinedToItsCode(bool packed)
+    {
+        string game = Folder("game");
+        WriteCarMod(game, BoxJson(), packed: packed);
+
+        ModRegistry registry = ModLoader.Load([new ModRoot(game, ModOrigin.Game)]);
+
+        ModCar box = registry.Cars.Get("alpha:box");
+        Assert.Equal("Box", box.Manifest.Name);
+        Assert.Equal("alpha", box.Mod);
+        Assert.Matches("^[0-9a-f]{12}$", box.Fingerprint);
+        Assert.Equal(registry.Tyres.Get("alpha:slicks").Compounds, ((ICarTires)box.Car).Compounds);
+        Assert.Same(box, registry.Origin(box.Car));
+        Assert.Equal(packed, box.DiskFolder is null);
+        Assert.Equal(new ChassisDeclaration("Frame", 1), registry.Chassis.Get("alpha:frame"));
+    }
+
+    /// <summary>A car runs a whole pack or the one compound of it it names, and nothing else.</summary>
+    [Fact]
+    public void ACarNamesAWholePackOrOneCompoundOfIt()
+    {
+        string game = Folder("game");
+        WriteCarMod(game, BoxJson(tyres: "\"alpha:slicks/medium\""));
+
+        ModRegistry registry = ModLoader.Load([new ModRoot(game, ModOrigin.Game)]);
+
+        Assert.Equal("alpha:slicks/medium", Assert.Single(((ICarTires)registry.Cars.Get("alpha:box").Car).Compounds).Id);
+    }
+
+    /// <summary>
+    /// A car the race could not run is refused when the mods load, by what
+    /// is wrong with it: no tyres, tyres or a chassis nobody registered, a
+    /// declaration with no code to build it, or code with no declaration.
+    /// </summary>
+    [Theory]
+    [InlineData("Alpha.AlphaCars", "\"tyres\": []", "names no tyres")]
+    [InlineData("Alpha.AlphaCars", "\"tyres\": [\"alpha:slicks/ice\"]", "no compound 'ice'")]
+    [InlineData("Alpha.AlphaCars", "\"tyres\": [\"alpha:wets\"]", "'alpha:wets' is not registered")]
+    [InlineData("Alpha.AlphaCars", "\"chassis\": \"alpha:nowhere\"", "'alpha:nowhere' is not registered")]
+    [InlineData("Alpha.AlphaStrayCar", null, "registers no code")]
+    public void ACarTheRaceCouldNotRunIsRefusedWhenTheModsLoad(string entrypoint, string? change, string problem)
+    {
+        string game = Folder("game");
+        string json = BoxJson();
+        if (change is not null)
+        {
+            string field = change[..change.IndexOf(':')];
+            json = System.Text.RegularExpressions.Regex.Replace(json, field + @": (\[[^\]]*\]|""[^""]*"")", change);
+        }
+        WriteCarMod(game, json, entrypoint: entrypoint);
+
+        ModLoadException refused = Assert.Throws<ModLoadException>(() => ModLoader.Load([new ModRoot(game, ModOrigin.Game)]));
+
+        Assert.Contains(refused.Problems, p => p.StartsWith("alpha:") && p.Contains(problem));
+        if (entrypoint == "Alpha.AlphaStrayCar")
+            Assert.Contains(refused.Problems, p => p.Contains("'alpha:stray'") && p.Contains("lists no car.json"));
+    }
+
+    /// <summary>A car may run another mod's tyres only if its mod depends on that mod.</summary>
+    [Fact]
+    public void ACarRunsAnotherModsTyresOnlyByDependingOnIt()
+    {
+        string game = Folder("game");
+        WriteMod(game, Manifest("trackside", extra: new() { ["tyres"] = new[] { "slicks.json" } }), new()
+        {
+            ["slicks.json"] = Text(OfficialTyres().Replace("\"formula_a\"", "\"slicks\"")),
+        });
+        WriteCarMod(game, BoxJson(tyres: "\"trackside:slicks\""));
+
+        ModLoadException refused = Assert.Throws<ModLoadException>(() => ModLoader.Load([new ModRoot(game, ModOrigin.Game)]));
+        Assert.Contains(refused.Problems, p => p.Contains("trackside's tyres without depending on trackside"));
+
+        Directory.Delete(Path.Combine(game, "alpha"), recursive: true);
+        WriteCarMod(game, BoxJson(tyres: "\"trackside:slicks\""), depends: new() { ["trackside"] = ">=1.0.0" });
+        ModRegistry registry = ModLoader.Load([new ModRoot(game, ModOrigin.Game)]);
+        Assert.Equal(registry.Tyres.Get("trackside:slicks").Compounds, ((ICarTires)registry.Cars.Get("alpha:box").Car).Compounds);
+    }
+
+    /// <summary>
+    /// The game's own car is the official mod's, loaded the way anyone's is:
+    /// the same car each time it is asked for, by its full id or its bare
+    /// name, and the game's code never refers to it.
+    /// </summary>
+    [Fact]
+    public void TheGamesOwnCarIsTheOfficialModsLikeAnyMods()
+    {
+        ModCar car = GameMods.Registry.Cars.Get("official:formula_a_mixed");
+
+        Assert.Equal("Formula A (mixed)", car.Manifest.Name);
+        Assert.Matches("^[0-9a-f]{12}$", car.Fingerprint);
+        Assert.Single(car.Car.Ladders);
+        Assert.Same(car, GameMods.Registry.Cars.Get("formula_a_mixed"));
+        Assert.Same(car, GameMods.Registry.Origin(car.Car));
+        Assert.Equal(GameMods.Registry.Tyres.Get("official:formula_a").Compounds, car.Compounds);
+        Assert.Equal("official", GameMods.Registry.Chassis.Owner(new ResourceId("official", "single_track")));
+        Assert.DoesNotContain(typeof(ICar).Assembly.GetReferencedAssemblies(), name => name.Name == "official");
+    }
+
+    /// <summary>
+    /// A car is known by what it is, not by the bytes it was built into: the
+    /// same car is the same fingerprint every time, and a new version of it,
+    /// of its chassis, or the same car under someone else's name is another.
+    /// </summary>
+    [Fact]
+    public void ACarIsKnownByWhatItIsNotByItsBuild()
+    {
+        ModRegistry registry = GameMods.Registry;
+        ModCar car = registry.Cars.Get("official:formula_a_mixed");
+        var declaration = new CarDeclaration(car.Id, car.Manifest, car.Folder, car.Resources);
+        int chassis = registry.Chassis.Get("official:single_track").Version;
+
+        Assert.Equal(car.Fingerprint, ModCarBuilder.Fingerprint(registry, declaration, chassis, car.Car));
+        Assert.NotEqual(car.Fingerprint, ModCarBuilder.Fingerprint(registry,
+            declaration with { Manifest = car.Manifest with { Version = car.Manifest.Version + 1 } }, chassis, car.Car));
+        Assert.NotEqual(car.Fingerprint, ModCarBuilder.Fingerprint(registry, declaration, chassis + 1, car.Car));
+        Assert.NotEqual(car.Fingerprint, ModCarBuilder.Fingerprint(registry,
+            declaration with { Id = new ResourceId("someone", car.Id.Name) }, chassis, car.Car));
+    }
+
+    private static string BoxJson(string tyres = "\"alpha:slicks\"") =>
+        $$"""{ "format": 1, "id": "box", "name": "Box", "version": 1, "chassis": "alpha:frame", "tyres": [{{tyres}}] }""";
+
+    /// <summary>The alpha fixture as a mod with a car: its declaration, its own tyres, its code.</summary>
+    private void WriteCarMod(string game, string carJson, string entrypoint = "Alpha.AlphaCars", bool packed = false,
+        Dictionary<string, string>? depends = null) =>
+        WriteCodeMod(game, "alpha", entrypoint, packed, depends: depends, files: new()
+        {
+            ["data/cars/box/car.json"] = Text(carJson),
+            ["data/tyres/slicks.json"] = Text(OfficialTyres().Replace("\"formula_a\"", "\"slicks\"")),
+        }, extra: new()
+        {
+            ["cars"] = new[] { "data/cars/box" },
+            ["tyres"] = new[] { "data/tyres/slicks.json" },
+        });
+
     private string Folder(string name) => Directory.CreateDirectory(Path.Combine(_root, name)).FullName;
 
     private static byte[] Text(string text) => System.Text.Encoding.UTF8.GetBytes(text);
@@ -321,7 +464,8 @@ public sealed class ModRegistryTests : IDisposable
 
     /// <summary>A mod carrying one of the fixture assemblies (Core/Tests/ModFixtures) as its code.</summary>
     private static void WriteCodeMod(string root, string id, string entrypoint, bool packed,
-        Dictionary<string, string>? depends = null, Dictionary<string, byte[]>? files = null, string? assembly = null)
+        Dictionary<string, string>? depends = null, Dictionary<string, byte[]>? files = null, string? assembly = null,
+        Dictionary<string, object>? extra = null)
     {
         string built = Path.Combine(FixturesFolder(), assembly ?? id);
         string dll = $"{assembly ?? id}_mod.dll";
@@ -332,11 +476,12 @@ public sealed class ModRegistryTests : IDisposable
         string pdb = Path.ChangeExtension(dll, ".pdb");
         if (File.Exists(Path.Combine(built, pdb)))
             all[$"code/{pdb}"] = File.ReadAllBytes(Path.Combine(built, pdb));
-        WriteMod(root, Manifest(id, depends: depends, extra: new()
+        var listed = new Dictionary<string, object>(extra ?? [])
         {
             ["assembly"] = $"code/{dll}",
             ["entrypoint"] = entrypoint,
-        }), all, packed);
+        };
+        WriteMod(root, Manifest(id, depends: depends, extra: listed), all, packed);
     }
 
     private static string FixturesFolder()
@@ -351,8 +496,7 @@ public sealed class ModRegistryTests : IDisposable
     }
 
     private static string OfficialTyres() =>
-        File.ReadAllText(Path.Combine(DataFolders.Find(new ResourceId("official", "formula_a"), TireLibrary.TyresFolder,
-            TirePackManifest.FileName)!, TirePackManifest.FileName));
+        GameMods.Registry.Mod("official").Resources.ReadAllText("data/tyres/formula_a.json");
 
     // A round road of whole metres: made here for the test, registered nowhere else.
     private static CircuitManifest Ring(string id, int metres) => new()

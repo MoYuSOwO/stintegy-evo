@@ -100,6 +100,11 @@ public static class ModLoader
             }
         Stop(problems);
 
+        // Cars once every mod has registered: a car's chassis and tyres may
+        // be any mod's it depends on.
+        problems.AddRange(ModCarBuilder.Build(registry, mod => DependsOn(registry, mod)));
+        Stop(problems);
+
         foreach (Func<ModRegistry, IEnumerable<string>> check in Checks)
             problems.AddRange(check(registry));
         Stop(problems);
@@ -192,6 +197,7 @@ internal sealed record ModDataKind(string Field, Func<ModManifest, IReadOnlyList
     [
         new("circuits", m => m.Circuits, ReadCircuit),
         new("tyres", m => m.Tyres, ReadTyres),
+        new("cars", m => m.Cars, (registry, mod, folder) => ModCarBuilder.Read(registry, mod, folder, name => Own(mod, name))),
         new("props", m => m.Props, ReadProps),
     ];
 
@@ -220,7 +226,7 @@ internal sealed record ModDataKind(string Field, Func<ModManifest, IReadOnlyList
     {
         string text = mod.Resources.ReadAllText(file);
         ResourceId id = Own(mod, TirePackManifest.Parse(text).Id);
-        registry.Tyres.Add(mod.Id, id, TireLibrary.Read(id, text, file));
+        registry.Tyres.Add(mod.Id, id, TirePack.Read(id, text, file));
     }
 
     private static void ReadProps(ModRegistry registry, LoadedMod mod, string file)

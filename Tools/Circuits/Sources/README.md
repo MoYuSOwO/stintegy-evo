@@ -1,7 +1,7 @@
 # Source track centreline data
 
 These are the sources `Tools/Circuits` makes the circuit folders under
-`data/official/circuits/` from; nothing in the game reads them directly.
+`mods/official/data/circuits/` from; nothing in the game reads them directly.
 
 `Silverstone.csv` is sourced from
 [TUMFTM/racetrack-database](https://github.com/TUMFTM/racetrack-database/blob/2b44832e938e707103a0975ff5677a6be80362c4/tracks/Silverstone.csv)

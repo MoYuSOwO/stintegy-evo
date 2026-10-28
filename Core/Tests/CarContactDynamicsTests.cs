@@ -147,7 +147,7 @@ public sealed class CarContactDynamicsTests
     [Fact]
     public void ASidewaysCarFromAContactIsTakenOverByTheDynamics()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         TrackSample at = track.Sample(track.StartingLineS + 300f);
         Vector2 left = new(-MathF.Sin(at.Heading), MathF.Cos(at.Heading));
         RaceCar stopped = new(

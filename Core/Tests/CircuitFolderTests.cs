@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using StintegyEVO.Core.Content;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Track;
 using Xunit;
 
@@ -10,21 +11,21 @@ namespace StintegyEVO.Core.Tests;
 public sealed class CircuitFolderTests
 {
     /// <summary>
-    /// Every circuit pack the game ships is a circuit it can load: the
+    /// Every circuit the game ships is a circuit it can load: the
     /// manifest's length is the track file's, the start line is on the lap,
     /// and the rows are a metre apart.
     /// </summary>
     [Fact]
     public void EveryShippedCircuitLoads()
     {
-        ResourceId[] ids = DataFolders.Available(CircuitLibrary.CircuitsFolder, CircuitManifest.FileName)
+        ResourceId[] ids = GameMods.Registry.Circuits.Ids
             .Where(id => id.Namespace == ResourceId.Official)
             .ToArray();
         Assert.NotEmpty(ids);
         foreach (ResourceId id in ids)
         {
-            CircuitManifest manifest = CircuitLibrary.Manifest(id.ToString());
-            TrackData track = CircuitLibrary.Load(id.ToString());
+            CircuitManifest manifest = GameMods.Registry.Circuits.Get(id).Manifest;
+            TrackData track = GameMods.Registry.Circuits.Get(id).Track;
             Assert.Equal(id.Name, manifest.Id);
             Assert.Equal(manifest.LengthMeters, (int)track.LengthMeters);
             Assert.InRange(manifest.StartLineMeters, 0, manifest.LengthMeters - 1);
@@ -36,47 +37,7 @@ public sealed class CircuitFolderTests
     [Fact]
     public void ABareNameIsTheOfficialCircuit()
     {
-        Assert.Equal(
-            CircuitLibrary.Folder("official:silverstone"),
-            CircuitLibrary.Folder("silverstone"));
-        Assert.Equal(
-            CircuitLibrary.Load("official:silverstone").LengthMeters,
-            CircuitLibrary.Load("silverstone").LengthMeters);
-    }
-
-    /// <summary>
-    /// Someone else's circuit is theirs, under their namespace, and never
-    /// stands in for the game's own of the same name; a pack whose manifest
-    /// calls it something other than its folder is refused, and a name that
-    /// cannot be a folder on every system is not an id.
-    /// </summary>
-    [Fact]
-    public void ACircuitIsFoundUnderItsOwnNamespace()
-    {
-        string root = Path.Combine(Path.GetTempPath(), "stintegy-circuits-" + Guid.NewGuid().ToString("N"));
-        string official = CircuitLibrary.Folder("silverstone");
-        try
-        {
-            string theirs = Path.Combine(root, "someone", CircuitLibrary.CircuitsFolder, "silverstone");
-            Directory.CreateDirectory(theirs);
-            CircuitManifest manifest = CircuitLibrary.Manifest("silverstone");
-            File.WriteAllText(Path.Combine(theirs, CircuitManifest.FileName), manifest.ToJson());
-            File.Copy(Path.Combine(official, manifest.Track), Path.Combine(theirs, manifest.Track));
-            string wrong = Path.Combine(root, "someone", CircuitLibrary.CircuitsFolder, "elsewhere");
-            Directory.CreateDirectory(wrong);
-            File.WriteAllText(Path.Combine(wrong, CircuitManifest.FileName), manifest.ToJson());
-
-            string[] roots = [root, .. CircuitLibrary.Roots];
-            Assert.Equal(official, CircuitLibrary.FolderIn(roots, "silverstone"));
-            Assert.Equal($"{root}/someone/{CircuitLibrary.CircuitsFolder}/silverstone", CircuitLibrary.FolderIn(roots, "someone:silverstone"));
-            Assert.Throws<InvalidDataException>(() => CircuitLibrary.FolderIn(roots, "someone:elsewhere"));
-            Assert.Throws<FileNotFoundException>(() => CircuitLibrary.FolderIn(roots, "nobody:silverstone"));
-            Assert.Throws<ArgumentException>(() => CircuitLibrary.FolderIn(roots, "banked-speedway"));
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
+        Assert.Same(GameMods.Registry.Circuits.Get("official:silverstone"), GameMods.Registry.Circuits.Get("silverstone"));
     }
 
     /// <summary>
@@ -102,7 +63,7 @@ public sealed class CircuitFolderTests
     {
         const float SlowRadius = 45f;
         const float FurthestRun = 900f;
-        TrackData track = CircuitLibrary.Load(id);
+        TrackData track = GameMods.Registry.Circuits.Get(id).Track;
         float line = track.StartingLineS;
         float run = 0f;
         while (run < track.LengthMeters && MathF.Abs(track.Sample(track.WrapS(line + run)).Curvature) < 1f / SlowRadius)

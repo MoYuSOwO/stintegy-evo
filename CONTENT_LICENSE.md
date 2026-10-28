@@ -21,7 +21,7 @@ Adding an asset to the public repository means that the community may copy, modi
 
 Third-party material does not change its original license merely by being included in this repository. Its author, source, license text, and required attribution must be preserved in the relevant file, directory notice, or distribution legal notices.
 
-For example, some circuit centreline data under `Tools/Circuits/Sources/` (and the circuit packs under `data/official/circuits/` made from it) comes from TUMFTM/racetrack-database and bacinger/f1-circuits and remains subject to the LGPL-3.0 or MIT notices identified in that directory. See [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md) for exact sources and transformations.
+For example, some circuit centreline data under `Tools/Circuits/Sources/` (and the circuits under `mods/official/data/circuits/` made from it) comes from TUMFTM/racetrack-database and bacinger/f1-circuits and remains subject to the LGPL-3.0 or MIT notices identified in that directory. See [`Tools/Circuits/Sources/README.md`](Tools/Circuits/Sources/README.md) for exact sources and transformations.
 
 Contributors must not submit music, artwork, track data, or other material of unknown origin, material they cannot license, or material whose terms are incompatible with the Project's distribution.
 

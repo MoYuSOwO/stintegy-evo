@@ -176,14 +176,22 @@ public sealed class ModRegistrar
     internal ModRegistrar(ModRegistry registry, string mod)
     {
         Mod = mod;
-        Cars = new ModSlot<ICarDefinition>(registry.Cars, this);
+        Chassis = new ModSlot<ChassisDeclaration>(registry.Chassis, this);
+        Cars = new ModSlot<ICarDefinition>(registry.CarDefinitions, this);
         Drivers = new ModSlot<IDriverDefinition>(registry.Drivers, this);
     }
 
     /// <summary>The mod writing, and the namespace it writes in.</summary>
     public string Mod { get; }
 
+    public ModSlot<ChassisDeclaration> Chassis { get; }
+
+    /// <summary>
+    /// The code that builds each car the mod's <c>mod.json</c> lists, under
+    /// the name its <c>car.json</c> gives: the two are one car.
+    /// </summary>
     public ModSlot<ICarDefinition> Cars { get; }
+
     public ModSlot<IDriverDefinition> Drivers { get; }
 
     internal bool Closed { get; set; }
@@ -214,6 +222,11 @@ public sealed class ModCircuit
 
     /// <summary>The road, read from its track file the first time it is asked for.</summary>
     public TrackData Track => _track.Value;
+
+    /// <summary>Where its folder is on disk, when its mod is a folder and not packed.</summary>
+    public string? DiskFolder => Directory.Exists(Resources.Location)
+        ? Path.Combine(Resources.Location, Folder.Replace('/', Path.DirectorySeparatorChar))
+        : null;
 }
 
 /// <summary>
@@ -242,7 +255,10 @@ public sealed class ModRegistry
         Circuits = new RegistrySlot<ModCircuit>(this, "circuit");
         Tyres = new RegistrySlot<LoadedTires>(this, "tyre pack");
         Props = new RegistrySlot<ModProp>(this, "prop");
-        Cars = new RegistrySlot<ICarDefinition>(this, "car");
+        Chassis = new RegistrySlot<ChassisDeclaration>(this, "chassis");
+        CarDeclarations = new RegistrySlot<CarDeclaration>(this, "car");
+        CarDefinitions = new RegistrySlot<ICarDefinition>(this, "car's code");
+        Cars = new RegistrySlot<ModCar>(this, "car");
         Drivers = new RegistrySlot<IDriverDefinition>(this, "driver");
     }
 
@@ -252,8 +268,22 @@ public sealed class ModRegistry
     public RegistrySlot<ModCircuit> Circuits { get; }
     public RegistrySlot<LoadedTires> Tyres { get; }
     public RegistrySlot<ModProp> Props { get; }
-    public RegistrySlot<ICarDefinition> Cars { get; }
+    public RegistrySlot<ChassisDeclaration> Chassis { get; }
+
+    /// <summary>Every car, declared, built and checked.</summary>
+    public RegistrySlot<ModCar> Cars { get; }
+
     public RegistrySlot<IDriverDefinition> Drivers { get; }
+
+    internal RegistrySlot<CarDeclaration> CarDeclarations { get; }
+    internal RegistrySlot<ICarDefinition> CarDefinitions { get; }
+
+    /// <summary>
+    /// The car <paramref name="car"/> was built as, for whoever draws it or
+    /// files what was learned on it; none for a car made some other way, as
+    /// a test makes one.
+    /// </summary>
+    public ModCar? Origin(ICar car) => Cars.Ids.Select(Cars.Get).FirstOrDefault(c => ReferenceEquals(c.Car, car));
 
     /// <summary>What the player should be told about loading: nothing that stopped it.</summary>
     public IReadOnlyList<string> Notices => _notices;

@@ -9,7 +9,7 @@ namespace StintegyEVO.Core.Cars;
 ///
 /// There is one tyre model and every car runs it, its own chassis or not;
 /// a compound tunes it (<see cref="TireConfig"/>) and a tyre pack offers
-/// compounds (<see cref="TireLibrary"/>). It is fixed because the drivers
+/// compounds (<see cref="TirePack"/>). It is fixed because the drivers
 /// read it: how hot is too hot, how much grip is left, what pushing costs
 /// mean the same on every car only if every car's tyres are this one.
 ///

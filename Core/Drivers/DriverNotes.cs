@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Content;
+using StintegyEVO.Core.Mods;
 
 namespace StintegyEVO.Core.Drivers;
 
@@ -21,7 +22,7 @@ public sealed record NotesStamp
     public string Driver { get; init; } = "";
     public string Car { get; init; } = "";
 
-    /// <summary>The car's fingerprint when the notes were learned (<see cref="LoadedCar.Fingerprint"/>).</summary>
+    /// <summary>The car's fingerprint when the notes were learned (<see cref="ModCar.Fingerprint"/>).</summary>
     public string CarFingerprint { get; init; } = "";
 
     /// <summary>The day they were learned, <c>yyyy-MM-dd</c>.</summary>
@@ -64,7 +65,7 @@ public sealed class DriverNotes
     /// <summary>Where the notes are, or would be.</summary>
     public string Folder { get; }
 
-    /// <summary>The car as it is now (<see cref="LoadedCar.Fingerprint"/>).</summary>
+    /// <summary>The car as it is now (<see cref="ModCar.Fingerprint"/>).</summary>
     public string CarFingerprint { get; }
 
     /// <summary>What the notes say of themselves; none when there are none.</summary>
@@ -74,9 +75,13 @@ public sealed class DriverNotes
     public bool IsCurrent => Stamp is { } stamp && stamp.CarFingerprint == CarFingerprint;
 
     /// <summary>The notes <paramref name="driver"/> keeps for <paramref name="car"/> at <paramref name="circuit"/>.</summary>
-    public static DriverNotes For(ResourceId driver, LoadedCar car, ResourceId circuit)
+    public static DriverNotes For(ResourceId driver, ModCar car, ResourceId circuit)
     {
-        string folder = Path.Combine(car.Folder, NotesFolder, driver.Namespace, driver.Name, circuit.Namespace, circuit.Name);
+        // Kept in the car's folder while its mod is a folder: a packed mod
+        // is read only, and its notes are none until the save keeps them.
+        if (car.DiskFolder is not { } carFolder)
+            return new DriverNotes("", car.Fingerprint, null);
+        string folder = Path.Combine(carFolder, NotesFolder, driver.Namespace, driver.Name, circuit.Namespace, circuit.Name);
         string stampPath = Path.Combine(folder, StampFile);
         NotesStamp? stamp = File.Exists(stampPath) ? NotesStamp.Parse(File.ReadAllText(stampPath)) : null;
         if (stamp is not null && stamp.Format > NotesStamp.CurrentFormat)
@@ -87,6 +92,8 @@ public sealed class DriverNotes
     /// <summary>One of the driver's own files in the notes, or none when it is not there.</summary>
     public string? ReadText(string file)
     {
+        if (Folder.Length == 0)
+            return null;
         string path = PathOf(file);
         return File.Exists(path) ? File.ReadAllText(path) : null;
     }
@@ -103,7 +110,7 @@ public sealed class DriverNotes
     /// Stamps the notes as learned today by <paramref name="driver"/> on
     /// <paramref name="car"/> as it is now.
     /// </summary>
-    public void StampLearned(ResourceId driver, LoadedCar car, DateTime today) =>
+    public void StampLearned(ResourceId driver, ModCar car, DateTime today) =>
         WriteText(StampFile, new NotesStamp
         {
             Driver = driver.ToString(),
@@ -115,6 +122,8 @@ public sealed class DriverNotes
     // A file the driver names is inside its notes and nowhere else.
     private string PathOf(string file)
     {
+        if (Folder.Length == 0)
+            throw new InvalidOperationException("The car's mod is packed: notes on it cannot be kept in it.");
         if (string.IsNullOrWhiteSpace(file) || Path.IsPathRooted(file) ||
             file.Replace('\\', '/').Split('/').Any(part => part is "" or "." or ".."))
             throw new ArgumentException($"'{file}' is not a file in the notes.", nameof(file));

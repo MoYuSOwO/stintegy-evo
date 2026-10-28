@@ -16,7 +16,7 @@ public sealed class ZandvoortTests
     [Fact]
     public void TheTwoBankedCornersAreBanked()
     {
-        TrackData track = TrackFactory.ZandvoortStyleTestTrack();
+        TrackData track = TestTracks.ZandvoortStyleTestTrack();
 
         // Hugenholtz, the slow hairpin, and Arie Luyendijk, the fast final
         // corner. Both were rebanked to about eighteen degrees for the 2021
@@ -39,7 +39,7 @@ public sealed class ZandvoortTests
     [Fact]
     public void TheRestOfTheLapIsAnOrdinaryRoadCircuit()
     {
-        TrackData track = TrackFactory.ZandvoortStyleTestTrack();
+        TrackData track = TestTracks.ZandvoortStyleTestTrack();
         int metres = (int)track.LengthMeters;
         int steep = 0;
         for (int s = 0; s < metres; s++)
@@ -54,7 +54,7 @@ public sealed class ZandvoortTests
     [Fact]
     public void ItClimbsTheDunesAndComesBackDown()
     {
-        TrackData track = TrackFactory.ZandvoortStyleTestTrack();
+        TrackData track = TestTracks.ZandvoortStyleTestTrack();
         int metres = (int)track.LengthMeters;
         float height = 0f, lowest = 0f, highest = 0f;
         for (int s = 0; s < metres; s++)

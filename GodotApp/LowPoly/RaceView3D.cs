@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Godot;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using StintegyEVO.GodotApp.Interop;
@@ -34,7 +35,7 @@ public partial class RaceView3D : Node3D
 
     /// <summary>
     /// Which circuit this is, for everything the view needs to look up by
-    /// id (<see cref="CircuitLibrary"/>): its pack holds road and scenery both.
+    /// id (<see cref="ModRegistry.Circuits"/>): its folder holds road and scenery both.
     /// Set it before the view enters the tree; the default is the practice
     /// circuit.
     /// </summary>
@@ -42,7 +43,7 @@ public partial class RaceView3D : Node3D
 
     /// <summary>
     /// Which car the view puts out when nobody has composed a race for it,
-    /// by its pack's id (<see cref="CarLibrary"/>). Set it before the view
+    /// by its id (<see cref="ModRegistry.Cars"/>). Set it before the view
     /// enters the tree; the default is the game's own.
     /// </summary>
     public string CarId { get; set; } = "official:formula_a_mixed";
@@ -53,6 +54,7 @@ public partial class RaceView3D : Node3D
         : _circuitName ?? "Circuit";
     private string? _circuitName;
     private string? _circuitFolder;
+    private string? _circuitId;
     public int SelectedCarIndex { get; private set; }
     public bool IsPaused { get; private set; }
     public int CameraMode => _camera.Mode;
@@ -140,11 +142,11 @@ public partial class RaceView3D : Node3D
         TrackData track;
         try
         {
-            GodotCircuits.Use();
-            string id = CircuitId;
-            track = _composedSimulation?.Track ?? await Task.Run(() => CircuitLibrary.Load(id));
-            _circuitName = CircuitLibrary.Manifest(id).Name;
-            _circuitFolder = CircuitLibrary.Folder(id);
+            ModCircuit circuit = GodotMods.Registry.Circuits.Get(CircuitId);
+            track = _composedSimulation?.Track ?? await Task.Run(() => circuit.Track);
+            _circuitName = circuit.Manifest.Name;
+            _circuitFolder = circuit.DiskFolder;
+            _circuitId = circuit.Id.ToString();
         }
         catch (Exception error)
         {
@@ -170,7 +172,7 @@ public partial class RaceView3D : Node3D
 
         AddChild(_circuit);
         // The plan is the circuit's own, in its pack.
-        _circuit.Initialize(track, $"{_circuitFolder}/{Scenery.SceneryPlan.FileName}");
+        _circuit.Initialize(track, _circuitFolder is null ? null : $"{_circuitFolder}/{Scenery.SceneryPlan.FileName}", _circuitId);
         CreateLighting();
         CreateCarViews();
         if (_cars.Count == 0)
@@ -203,7 +205,7 @@ public partial class RaceView3D : Node3D
         TrackSample sample = track.Sample(start.S);
         var car = new RaceCar(
             "display-01",
-            GodotCars.Load(CarId).Car,
+            GodotMods.Registry.Cars.Get(CarId).Car,
             state: new CarState
             {
                 Position = sample.Center,

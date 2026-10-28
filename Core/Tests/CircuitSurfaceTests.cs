@@ -28,7 +28,7 @@ public sealed class CircuitSurfaceTests
     [Fact]
     public void SlipperyAsphaltCostsTheRoadAndTheKerbButNotTheGrass()
     {
-        TrackSample sample = TrackFactory.SimpleTestTrack().Sample(120f);
+        TrackSample sample = TestTracks.SimpleTestTrack().Sample(120f);
         float half = sample.HalfWidth;
         float grass = half + SurfaceGrip.KerbWidthMeters + SurfaceGrip.TransitionMeters + 1f;
 
@@ -61,7 +61,7 @@ public sealed class CircuitSurfaceTests
 
     private static float WheelGripOn(float asphalt)
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         track.AsphaltGrip = asphalt;
         TrackSample sample = track.Sample(0f);
         RaceCar car = TestControlFixtures.ExternalCar("on-road", new CarState

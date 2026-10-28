@@ -19,7 +19,7 @@ public partial class CircuitView3D : Node3D
     public Scenery.SceneryPlan? Plan { get; private set; }
 
     private const float CornerBarrierCurvature = 1f / 160f;
-    public void Initialize(TrackData track) => Initialize(track, null);
+    public void Initialize(TrackData track) => Initialize(track, null, null);
 
     /// <summary>
     /// Builds the circuit, and its scenery when a plan is named: the road
@@ -27,9 +27,10 @@ public partial class CircuitView3D : Node3D
     /// somebody wrote. A plan that is not there is not an error — a
     /// circuit with no scenery is a circuit with no scenery.
     /// </summary>
-    public void Initialize(TrackData track, string? sceneryPlanPath)
+    public void Initialize(TrackData track, string? sceneryPlanPath, string? circuitId)
     {
         Surface = new(track);
+        _circuitId = circuitId;
         // Read first: the plan says what colour the ground is before any of it is built.
         Plan = ReadPlan(sceneryPlanPath);
         Look = Scenery.CircuitLook.From(Plan?.Environment ?? new Scenery.SceneryEnvironment());
@@ -100,11 +101,13 @@ public partial class CircuitView3D : Node3D
         }
     }
 
+    private string? _circuitId;
+
     private void BuildScenery(string? planPath)
     {
         if (string.IsNullOrWhiteSpace(planPath))
             return;
-        string track = Scenery.SceneryPlan.TrackOf(planPath);
+        string track = _circuitId ?? Scenery.SceneryPlan.TrackOf(planPath);
         var scenery = new Scenery.SceneryLoader { Name = "Scenery" };
         AddChild(scenery);
         try

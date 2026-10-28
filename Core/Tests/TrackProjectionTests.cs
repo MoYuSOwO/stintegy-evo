@@ -131,12 +131,12 @@ public sealed class TrackProjectionTests
 
     private static TrackData Build(string name) => name switch
     {
-        "zandvoort" => TrackFactory.ZandvoortStyleTestTrack(),
-        "silverstone" => TrackFactory.SilverstoneStyleTestTrack(),
-        "monaco" => TrackFactory.MonacoStyleTestTrack(),
-        "daytona" => TrackFactory.DaytonaStyleTestTrack(),
-        "spa" => TrackFactory.SpaStyleTestTrack(),
-        "singapore" => TrackFactory.SingaporeStyleTestTrack(),
+        "zandvoort" => TestTracks.ZandvoortStyleTestTrack(),
+        "silverstone" => TestTracks.SilverstoneStyleTestTrack(),
+        "monaco" => TestTracks.MonacoStyleTestTrack(),
+        "daytona" => TestTracks.DaytonaStyleTestTrack(),
+        "spa" => TestTracks.SpaStyleTestTrack(),
+        "singapore" => TestTracks.SingaporeStyleTestTrack(),
         _ => throw new ArgumentOutOfRangeException(nameof(name))
     };
 }
