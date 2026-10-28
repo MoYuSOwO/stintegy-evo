@@ -175,6 +175,19 @@ public sealed class ZzLeadLaps
         _output.WriteLine($"{rows.Sum(r => r.Count)} steps to {output}");
     }
 
+    /// <summary>The learned corner factors, and the braking ones too if asked, put back to one: the plan on the envelope alone.</summary>
+    private static void FlatFactors(LaneTrackFile file, TrackData track, bool brakes)
+    {
+        file.LanesFor(track);
+        for (int lane = 0; lane < LaneSet.LaneCount; lane++)
+            for (int level = 0; level < LaneTrackFile.GripLevels.Length; level++)
+            {
+                Array.Fill(file.Factors((LaneId)lane, level), 1f);
+                if (brakes)
+                    Array.Fill(file.BrakeFactors((LaneId)lane, level), 1f);
+            }
+    }
+
     [Fact]
     public void Laps()
     {
@@ -193,6 +206,8 @@ public sealed class ZzLeadLaps
             ("lock where the car is", new LaneDriverGains { LockWhereTheCarIs = true }),
             ("lock for both", new LaneDriverGains { LockForRotation = true, LockWhereTheCarIs = true }),
             ("as they are but faded by all the grip", new LaneDriverGains { FadeByAsk = false }),
+            ("flat factors", new LaneDriverGains()),
+            ("flat corner factors", new LaneDriverGains()),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
@@ -201,6 +216,8 @@ public sealed class ZzLeadLaps
             (string circuit, float side, var way) = jobs[j];
             TrackData track = CircuitLibrary.Load(circuit);
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
+            if (way.Name.StartsWith("flat"))
+                FlatFactors(file, track, brakes: way.Name == "flat factors");
             LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, onStep: side == 0f ? null : (car, d, t) =>
             {
                 d.TargetRange = 1f;
