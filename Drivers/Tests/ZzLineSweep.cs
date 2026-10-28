@@ -540,7 +540,7 @@ public sealed class ZzLineSweep
         var random = new Random(4242);
         float[][] Lines(int n) => Enumerable.Range(0, n).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
 
-        Run[] DriveAll(float[][] knots, float[] c, float[] b, float[] t)
+        Run[] DriveAll(float[][] knots, float[] c, float[] b, float[] t, List<string>[]? traces = null)
         {
             var runs = new Run[knots.Length];
             Parallel.For(0, knots.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i =>
@@ -559,7 +559,23 @@ public sealed class ZzLineSweep
                 float[] steer = file.Steer(LaneId.Free);
                 for (int k = 0; k < count; k++)
                     steer[setup.Lanes.Wrap(first + k)] = 0f;
-                runs[i] = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds);
+                List<string>? trace = traces is null ? null : traces[i] = new List<string>();
+                float startS = setup.Stretch.StartS;
+                runs[i] = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds, trace is null ? null : (car, d, travelled) =>
+                {
+                    float s = startS + travelled;
+                    if (s < setup.Stretch.FromS - 100f || s > setup.Stretch.ToS) return;
+                    LaneDriverTelemetry tm = d.LastTelemetry;
+                    int k = Math.Clamp((int)MathF.Round(s / spacing) - first, 0, count - 1);
+                    GripUse g = ((ICarGripFeel)car.Car).GripUse(car.State);
+                    trace.Add(string.Join(",", new float[]
+                    {
+                        i, s, tm.LateralErrorMeters, car.State.Speed, d.PlannedSpeedAt(car.Progress.CurrentS), tm.CommandAccel,
+                        tm.WantedCurvature, tm.CurvatureCap, tm.FeedforwardCurvature, LineCurvature(drawn, car.Progress.CurrentS),
+                        car.State.SideslipAngleRadians, car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
+                        g.FrontGripAccel, g.RearGripAccel, g.FrontLateral, g.RearLateral, c[k], b[k]
+                    }.Select(v => v.ToString("F4", CultureInfo.InvariantCulture))));
+                });
             });
             return runs;
         }
@@ -578,7 +594,6 @@ public sealed class ZzLineSweep
         }
 
         var log = new List<string> { "round,trouble,spins,clean_mean_s,corner_mean,brake_mean,corner_min,brake_min" };
-        (float[] C, float[] B, float Trouble, float Time)? best = null;
         for (int round = 1; round <= rounds; round++)
         {
             Run[] runs = DriveAll(Lines(batch), corner, brake, traction);
@@ -615,6 +630,8 @@ public sealed class ZzLineSweep
         // The exam: fresh lines, the learned table beside one number for the stretch.
         float[][] exam = Lines(300);
         var rows = new List<string> { "table,trouble,spins,clean_mean_s" };
+        var perLine = new List<string> { "table,line,k1,k2,k3,k4,k5," + Run.Header };
+        var examTraces = new List<string>[exam.Length];
         foreach ((string name, float[] c, float[] b) in new[]
         {
             ("learned", corner, brake),
@@ -622,12 +639,17 @@ public sealed class ZzLineSweep
             ("flat 1.00", Enumerable.Repeat(1f, count).ToArray(), Enumerable.Repeat(1f, count).ToArray())
         })
         {
-            Run[] runs = DriveAll(exam, c, b, traction);
+            Run[] runs = DriveAll(exam, c, b, traction, name == "learned" ? examTraces : null);
+            perLine.AddRange(runs.Select((r, i) => $"{name},{i},{string.Join(",", exam[i].Select(F))},{r.Row()}"));
             float time = runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.NaN).Average();
             rows.Add($"{name},{runs.Count(r => !r.Clean)},{runs.Count(r => r.Spun)},{F(time)}");
             _output.WriteLine(rows[^1]);
         }
         File.WriteAllLines(output, log.Concat(new[] { "" }).Concat(rows));
+        File.WriteAllLines(Path.ChangeExtension(output, ".exam.csv"), perLine);
+        File.WriteAllLines(Path.ChangeExtension(output, ".traces.csv"),
+            new[] { "line,s_m,error_m,speed,plan,command_accel,wanted_k,cap_k,feedforward_k,line_k,sideslip,lat_accel,long_accel,front_grip,rear_grip,front_lat,rear_lat,corner_factor,brake_factor" }
+                .Concat(examTraces.SelectMany(t => t)));
         File.WriteAllLines(Path.ChangeExtension(output, ".table.csv"), new[] { "station,s_m,corner,brake" }
             .Concat(Enumerable.Range(0, count).Select(k => $"{first + k},{F((first + k) * spacing)},{F(corner[k])},{F(brake[k])}")));
     }
