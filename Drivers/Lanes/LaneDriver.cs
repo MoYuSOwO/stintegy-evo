@@ -29,7 +29,7 @@ public sealed record LaneDriverGains
     /// much later than that they have felt the car answer, braking about as
     /// hard as now (LaneDriver.FeelTurnLag). Off, by the turn lag alone.
     /// </summary>
-    public bool FeelTurnLag { get; init; } = true;
+    public bool FeelTurnLag { get; init; } = false;
 
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
