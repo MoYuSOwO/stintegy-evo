@@ -524,6 +524,56 @@ public sealed class ZzLineSweep
     }
 
     /// <summary>
+    /// Where the plan asks too much: STINTEGY_SWEEP_LINES random lines on
+    /// every factor 1.0, then again with one window of the stretch (40 m at a
+    /// time) at 0.95, its corner factor alone, its braking alone, or both.
+    /// The window whose easing takes the trouble away is where it comes from.
+    /// </summary>
+    [Fact]
+    public void Ablate()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_SWEEP_LINES", 300);
+        float width = Env("STINTEGY_ABLATE_WIDTH", 40f);
+        float low = Env("STINTEGY_ABLATE_FACTOR", 0.95f);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "ablate.csv");
+        Setup setup = Build(count);
+        Condition learned = setup.Conditions[0];
+        float[] flat = Enumerable.Repeat(1f, 3 * ProfileKnots).ToArray();
+        float from = Env("STINTEGY_ABLATE_FROM", setup.Stretch.FromS), to = Env("STINTEGY_ABLATE_TO", setup.Stretch.ToS);
+        var cases = new List<(string Name, float A, float B, bool Corner, bool Brake)> { ("all 1.00", 0f, 0f, false, false), ("all " + F(low), -1e9f, 1e9f, true, true) };
+        for (float a = from; a < to; a += width)
+            foreach ((string kind, bool c, bool b) in new[] { ("corner", true, false), ("brake", false, true), ("both", true, true) })
+                cases.Add(($"{kind} {a:F0}-{a + width:F0}", a, a + width, c, b));
+        var rows = new List<string> { "case,from_s,to_s,trouble,spins,first_stray_median_s,clean_mean_s" };
+        foreach (var k in cases)
+        {
+            var runs = new Run[count];
+            Parallel.For(1, count, n =>
+            {
+                LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, setup.Knots[n]));
+                LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                SetProfile(file, setup.Lanes, setup.Stretch, flat);
+                int a = (int)MathF.Ceiling(setup.Lanes.StationOf(Math.Max(k.A, setup.Stretch.FromS - 150f)));
+                int b = (int)MathF.Floor(setup.Lanes.StationOf(Math.Min(k.B, setup.Stretch.ToS)));
+                for (int level = 0; level < LaneTrackFile.GripLevels.Length; level++)
+                    for (int i = a; i <= b && k.A < k.B; i++)
+                    {
+                        if (k.Corner) file.Factors(LaneId.Free, level)[setup.Lanes.Wrap(i)] = low;
+                        if (k.Brake) file.BrakeFactors(LaneId.Free, level)[setup.Lanes.Wrap(i)] = low;
+                    }
+                runs[n] = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds);
+            });
+            Run[] driven = runs.Skip(1).ToArray();
+            float[] strays = driven.Where(r => !r.Clean && !float.IsNaN(r.StrayS)).Select(r => r.StrayS).OrderBy(x => x).ToArray();
+            rows.Add(string.Join(",", k.Name, F(k.A), F(k.B), driven.Count(r => !r.Clean), driven.Count(r => r.Spun),
+                strays.Length > 0 ? F(strays[strays.Length / 2]) : "", F(driven.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.NaN).Average())));
+            _output.WriteLine(rows[^1]);
+        }
+        File.WriteAllLines(output, rows);
+    }
+
+    /// <summary>
     /// The lap learner's way of learning, every station of the stretch, but
     /// each round driven on a batch of random lines instead of one: a station
     /// any of them strayed near gives a little, one they all passed cleanly
