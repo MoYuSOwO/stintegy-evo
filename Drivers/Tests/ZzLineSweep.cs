@@ -1000,7 +1000,12 @@ public sealed class ZzLineSweep
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station) + offset);
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1) + offset);
         ICar model = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
-        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, PlanIntervalSeconds = Env("STINTEGY_PLAN_INTERVAL", 0.1f), Gains = new LaneDriverGains { CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0" } };
+        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, PlanIntervalSeconds = Env("STINTEGY_PLAN_INTERVAL", 0.1f), Gains = new LaneDriverGains
+        {
+            CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0",
+            CurvaturePreviewSeconds = Environment.GetEnvironmentVariable("STINTEGY_PREVIEW") is { } preview ? float.Parse(preview, CultureInfo.InvariantCulture) : null,
+            PursuitSeconds = Env("STINTEGY_PURSUIT", new LaneDriverGains().PursuitSeconds)
+        } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })
         {
