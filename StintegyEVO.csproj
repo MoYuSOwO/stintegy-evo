@@ -12,9 +12,9 @@
   <ItemGroup>
     <ProjectReference Include="Core/StintegyEVO.Core.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
     <ProjectReference Include="Drivers/StintegyEVO.Drivers.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" />
-    <!-- The game's own car is a pack the game loads from data/ like anyone's:
-         built with the game, never referenced by it. -->
-    <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" ReferenceOutputAssembly="false" Private="false" />
+    <!-- The game's own content is a mod the game loads from mods/ like
+         anyone's: built with the game, never referenced by it. -->
+    <ProjectReference Include="mods/official/official.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,9 +22,9 @@
     <Compile Remove="Core/**/*.cs" />
     <Compile Remove="Training/**/*.cs" />
     <Compile Remove="Drivers/**/*.cs" />
-    <!-- Car packs are their own assemblies. -->
-    <Compile Remove="Cars/**/*.cs" />
-    <!-- The circuit tool writes data/official/circuits/ offline; it is not part of the game. -->
+    <!-- Mods are their own assemblies. -->
+    <Compile Remove="mods/**/*.cs" />
+    <!-- The circuit tool writes mods/official/data/circuits/ offline; it is not part of the game. -->
     <Compile Remove="Tools/Circuits/**/*.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->
     <Compile Remove="Tools/Tests/**/*.cs" />

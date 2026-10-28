@@ -34,8 +34,8 @@ public partial class FormulaCarView3D : Node3D
         // Drawn where the physics has its axles: the centre of mass is this
         // node's origin, the axles sit the car's own distances either side.
         CarSpec spec = car.Car.Spec;
-        bool packModel = CarLibrary.Origin(car.Car) is { Manifest.Model: { Length: > 0 } model } pack &&
-                         BindPackModel(System.IO.Path.Combine(pack.Folder, model));
+        bool packModel = GodotMods.Registry.Origin(car.Car) is { Model: not null, DiskFolder: { } folder } registered &&
+                         BindPackModel(System.IO.Path.Combine(folder, registered.Manifest.Model!));
         if (!packModel)
             BuildGameModel(color, spec.FrontAxleOffsetMeters, -spec.RearAxleOffsetMeters, spec.TrackWidthMeters / 2f);
         for (int i = 0; i < _wheels.Length; i++)
@@ -58,7 +58,7 @@ public partial class FormulaCarView3D : Node3D
         AddChild(_number);
         _smoke = Plume("Smoke", new Color(0.9f, 0.9f, 0.88f, 0.38f), 0.55f, 1.6f);
         _dust = Plume("Dust", new Color(0.78f, 0.72f, 0.55f, 0.42f), 0.7f, 1.2f);
-        var pose = MakePose(Car.State.Position, Car.State.Heading, Car.State.SteerAngleRadians);
+        var pose = MakePose(Car.State.Position, Car.State.Heading, (Car.Car as ICarMotion)?.Motion(Car.State).WheelAngleRadians ?? 0f);
         _poses = new SnapshotTimeline<RenderPose>(pose); Transform = pose.Transform;
     }
     /// <summary>

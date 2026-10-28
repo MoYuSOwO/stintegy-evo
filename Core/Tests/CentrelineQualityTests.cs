@@ -144,17 +144,17 @@ public sealed class CentrelineQualityTests
 
     private static TrackData Build(string name) => name switch
     {
-        "silverstone" => TrackFactory.SilverstoneStyleTestTrack(),
-        "shanghai" => TrackFactory.ShanghaiStyleTestTrack(),
-        "monaco" => TrackFactory.MonacoStyleTestTrack(),
-        "zandvoort" => TrackFactory.ZandvoortStyleTestTrack(),
-        "sepang" => TrackFactory.SepangStyleTestTrack(),
-        "baku" => TrackFactory.BakuStyleTestTrack(),
-        "spa" => TrackFactory.SpaStyleTestTrack(),
-        "monza" => TrackFactory.MonzaStyleTestTrack(),
-        "interlagos" => TrackFactory.InterlagosStyleTestTrack(),
-        "singapore" => TrackFactory.SingaporeStyleTestTrack(),
-        "portimao" => TrackFactory.PortimaoStyleTestTrack(),
+        "silverstone" => TestTracks.SilverstoneStyleTestTrack(),
+        "shanghai" => TestTracks.ShanghaiStyleTestTrack(),
+        "monaco" => TestTracks.MonacoStyleTestTrack(),
+        "zandvoort" => TestTracks.ZandvoortStyleTestTrack(),
+        "sepang" => TestTracks.SepangStyleTestTrack(),
+        "baku" => TestTracks.BakuStyleTestTrack(),
+        "spa" => TestTracks.SpaStyleTestTrack(),
+        "monza" => TestTracks.MonzaStyleTestTrack(),
+        "interlagos" => TestTracks.InterlagosStyleTestTrack(),
+        "singapore" => TestTracks.SingaporeStyleTestTrack(),
+        "portimao" => TestTracks.PortimaoStyleTestTrack(),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 

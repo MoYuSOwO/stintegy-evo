@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -170,7 +171,7 @@ public sealed class WorldBoundaryRegressionTests
         return new(
             car.State.Speed,
             car.Progress.TotalDistance,
-            car.State.Telemetry.ActualLongitudinalAccel,
+            car.State.Chassis().Telemetry.ActualLongitudinalAccel,
             car.LastInput
         );
     }

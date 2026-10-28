@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A throwaway mod's code for the registry tests: built with them, never referenced by them. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AssemblyName>beta_mod</AssemblyName>
+    <OutDir>$(MSBuildThisFileDirectory)../../bin/ModFixtures/beta/</OutDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../StintegyEVO.Core.csproj" Private="false" ExcludeAssets="runtime" />
+    <!-- Its mod depends on alpha, which brings this. -->
+    <ProjectReference Include="../alpha/alpha.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

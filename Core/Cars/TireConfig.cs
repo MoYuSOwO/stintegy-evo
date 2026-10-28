@@ -4,7 +4,7 @@ namespace StintegyEVO.Core.Cars;
 
 /// <summary>
 /// One compound's numbers: what a tyre pack sets for each compound it
-/// offers (<see cref="TireLibrary"/>). The tyre itself is the game's own and
+/// offers (<see cref="TirePack"/>). The tyre itself is the game's own and
 /// fixed (<see cref="Tire"/>); a compound tunes it with these ten numbers
 /// and nothing else. Everything else here is a constant of the model, the
 /// same for every compound: how the heat and the wear are split between

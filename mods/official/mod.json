@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "official",
+  "name": "StintegyEVO",
+  "version": "1.0.0",
+  "assembly": "official.dll",
+  "entrypoint": "Official.OfficialMod",
+  "circuits": [
+    "data/circuits/baku",
+    "data/circuits/interlagos",
+    "data/circuits/monaco",
+    "data/circuits/monza",
+    "data/circuits/portimao",
+    "data/circuits/sepang",
+    "data/circuits/shanghai",
+    "data/circuits/silverstone",
+    "data/circuits/singapore",
+    "data/circuits/spa",
+    "data/circuits/zandvoort"
+  ],
+  "tyres": ["data/tyres/formula_a.json"],
+  "cars": ["data/cars/formula_a_mixed"]
+}

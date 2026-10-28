@@ -16,7 +16,7 @@ public sealed class StreetAndGradientTests
     [Fact]
     public void SingaporeIsNarrowAndHonestlyFlat()
     {
-        TrackData track = TrackFactory.SingaporeStyleTestTrack();
+        TrackData track = TestTracks.SingaporeStyleTestTrack();
         float narrowest = 999f, steepest = 0f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
         {
@@ -33,7 +33,7 @@ public sealed class StreetAndGradientTests
     [Fact]
     public void PortimaoTakesTheTrainingRangePastMonaco()
     {
-        TrackData track = TrackFactory.PortimaoStyleTestTrack();
+        TrackData track = TestTracks.PortimaoStyleTestTrack();
         float up = 0f, down = 0f, height = 0f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
         {

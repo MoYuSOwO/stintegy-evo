@@ -364,19 +364,16 @@ public sealed class SceneryPlan
     }
 
     /// <summary>
-    /// The circuit a plan file belongs to, as its full id
-    /// (<c>official:silverstone</c>). A circuit's own plan is
-    /// <c>&lt;namespace&gt;/circuits/&lt;name&gt;/scenery.json</c> and belongs to
-    /// its pack; a mod's is <c>scenery/&lt;namespace&gt;/&lt;name&gt;.json</c>
-    /// and is named for its circuit. A plan named with no namespace is for
-    /// the game's own circuit of that name.
+    /// The circuit a mod's plan file is for, as its full id
+    /// (<c>official:silverstone</c>): <c>scenery/&lt;namespace&gt;/&lt;name&gt;.json</c>
+    /// is named for its circuit, and a plan named with no namespace is for
+    /// the game's own circuit of that name. A circuit's own plan belongs to
+    /// the circuit it is in, which the registry says.
     /// </summary>
     public static string TrackOf(string planPath)
     {
         string[] parts = planPath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
         string file = parts.Length > 0 ? parts[^1] : planPath;
-        if (file == FileName && parts.Length >= 4 && parts[^3] == "circuits")
-            return $"{parts[^4]}:{parts[^2]}";
         int dot = file.LastIndexOf('.');
         string name = dot > 0 ? file[..dot] : file;
         return parts.Length >= 3 && parts[^3] == "scenery" ? $"{parts[^2]}:{name}" : $"official:{name}";

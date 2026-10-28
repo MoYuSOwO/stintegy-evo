@@ -1,4 +1,5 @@
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -255,7 +256,7 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new() { WidthMeters = 1.8f };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         float outsideLeftWallD = start.HalfWidth + start.LeftBufferWidth + 0.8f;
         CarState state = new CarState()
         {
@@ -265,11 +266,9 @@ public sealed class RaceSimulationTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "wall-test",
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig { Body = collision.Body }, WarmTires()),
             null,
-            state,
-            collision
+            state
         );
         RaceSimulation simulation = new(track);
 
@@ -291,7 +290,7 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         var limits = TrackBoundaryResolver.GetWallLimits(start);
         float centerD = limits.LeftWallD - collision.HalfLengthMeters * 0.5f;
         CarState state = new CarState()
@@ -317,7 +316,7 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         var limits = TrackBoundaryResolver.GetWallLimits(start);
         float centerD = limits.LeftWallD - collision.HalfLengthMeters - 0.4f;
         CarState state = new CarState()
@@ -328,11 +327,9 @@ public sealed class RaceSimulationTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "wall-sweep",
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig { Body = collision.Body }, WarmTires()),
             null,
-            state,
-            collision
+            state
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
@@ -350,7 +347,7 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         var limits = TrackBoundaryResolver.GetWallLimits(start);
         float centerD = limits.RightWallD + collision.HalfLengthMeters + 0.4f;
         CarState state = new CarState()
@@ -361,11 +358,9 @@ public sealed class RaceSimulationTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "right-wall-sweep",
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig { Body = collision.Body }, WarmTires()),
             null,
-            state,
-            collision
+            state
         );
         RaceSimulation simulation = new(track);
         simulation.AddCar(car);
@@ -383,9 +378,9 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
-        RaceCar a = CreateRaceCar("a", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision);
-        RaceCar b = CreateRaceCar("b", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision);
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
+        RaceCar a = CreateRaceCar("a", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision.Body);
+        RaceCar b = CreateRaceCar("b", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision.Body);
         b.State.Position += new Vector2(MathF.Cos(start.Heading), MathF.Sin(start.Heading)) * 2f;
         RaceSimulation simulation = new(track);
         simulation.AddCar(a);
@@ -405,12 +400,7 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new()
-        {
-            LengthMeters = 4.8f,
-            WidthMeters = 1.8f,
-            SolverIterations = 6
-        };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         Vector2 forward = start.Tangent;
         RaceCar first = CreateRaceCar(
             "pileup-first",
@@ -418,7 +408,7 @@ public sealed class RaceSimulationTests
             start,
             speed: 0f,
             new FixedDriver(default),
-            collision
+            collision.Body
         );
         RaceCar second = CreateRaceCar(
             "pileup-second",
@@ -426,7 +416,7 @@ public sealed class RaceSimulationTests
             start,
             speed: 0f,
             new FixedDriver(default),
-            collision
+            collision.Body
         );
         RaceCar third = CreateRaceCar(
             "pileup-third",
@@ -434,7 +424,7 @@ public sealed class RaceSimulationTests
             start,
             speed: 0f,
             new FixedDriver(default),
-            collision
+            collision.Body
         );
         second.State.Position += forward * 2f;
         third.State.Position += forward * 4f;
@@ -464,10 +454,10 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(12f);
-        CarCollisionConfig collision = new() { LengthMeters = 4.8f, WidthMeters = 1.8f };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         Vector2 forward = new(MathF.Cos(start.Heading), MathF.Sin(start.Heading));
-        RaceCar rear = CreateRaceCar("rear", track, start, speed: 30f, new FixedDriver(new DriverInput(0f, 0f)), collision);
-        RaceCar front = CreateRaceCar("front", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision);
+        RaceCar rear = CreateRaceCar("rear", track, start, speed: 30f, new FixedDriver(new DriverInput(0f, 0f)), collision.Body);
+        RaceCar front = CreateRaceCar("front", track, start, speed: 0f, new FixedDriver(new DriverInput(0f, 0f)), collision.Body);
         front.State.Position += forward * 4f;
         RaceSimulation simulation = new(track);
         simulation.AddCar(rear);
@@ -485,18 +475,14 @@ public sealed class RaceSimulationTests
     {
         TrackData track = BuildTrack();
         TrackSample start = track.Sample(20f);
-        CarCollisionConfig collision = new()
-        {
-            LengthMeters = 4.8f,
-            WidthMeters = 1.8f
-        };
+        CarCollisionConfig collision = new(TestBody(4.8f, 1.8f));
         RaceCar first = CreateRaceCar(
             "first-allocation-probe",
             track,
             start,
             speed: 15f,
             new FixedDriver(default),
-            collision
+            collision.Body
         );
         RaceCar second = CreateRaceCar(
             "second-allocation-probe",
@@ -504,7 +490,7 @@ public sealed class RaceSimulationTests
             start,
             speed: 15f,
             new FixedDriver(default),
-            collision
+            collision.Body
         );
         second.State.Position += start.Tangent * 3f;
 
@@ -623,23 +609,25 @@ public sealed class RaceSimulationTests
         TrackSample start,
         float speed,
         IDriverController driver,
-        CarCollisionConfig? collision = null
+        CarBody? body = null
     )
     {
         return new RaceCar(
             id,
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(body is null ? new CarConfig() : new CarConfig { Body = body }, WarmTires()),
             new Driver(new DriverProfile(id, new DriverAbilities()), driver),
             new CarState
             {
                 Position = start.Center,
                 Heading = start.Heading,
                 Speed = speed
-            }.WithEnergy(PowertrainState.Filled(0.8f)),
-            collision
+            }.WithEnergy(PowertrainState.Filled(0.8f))
         );
     }
+
+    /// <summary>The shipped chassis's body at another size: a test's car declares it.</summary>
+    private static CarBody TestBody(float length, float width) =>
+        new CarConfig().Body with { LengthMeters = length, WidthMeters = width };
 
     private static (float Tow, float DirtyAir) MeasureWake(
         float centerSeparationMeters,
@@ -671,8 +659,8 @@ public sealed class RaceSimulationTests
         simulation.Step(1f / 120f);
 
         return (
-            follower.State.AirVelocityDeficit,
-            follower.State.WakeDownforceLoss
+            follower.State.Chassis().AirVelocityDeficit,
+            follower.State.Chassis().WakeDownforceLoss
         );
     }
 

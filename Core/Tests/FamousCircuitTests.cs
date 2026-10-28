@@ -17,7 +17,7 @@ public sealed class FamousCircuitTests
     [Fact]
     public void BakuIsTheNarrowestRoadInTheSet()
     {
-        TrackData track = TrackFactory.BakuStyleTestTrack();
+        TrackData track = TestTracks.BakuStyleTestTrack();
         float narrowest = 999f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
             narrowest = MathF.Min(narrowest, track.Sample(s).Width);
@@ -30,7 +30,7 @@ public sealed class FamousCircuitTests
     [Fact]
     public void SpaClimbsPastTheTrainingRange()
     {
-        TrackData track = TrackFactory.SpaStyleTestTrack();
+        TrackData track = TestTracks.SpaStyleTestTrack();
         float steepest = 0f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
             steepest = MathF.Max(steepest, track.Sample(s + 0.5f).Grade);
@@ -45,10 +45,10 @@ public sealed class FamousCircuitTests
     {
         (string Name, Func<TrackData> Build)[] tracks =
         [
-            ("baku", TrackFactory.BakuStyleTestTrack),
-            ("spa", TrackFactory.SpaStyleTestTrack),
-            ("monza", TrackFactory.MonzaStyleTestTrack),
-            ("interlagos", TrackFactory.InterlagosStyleTestTrack),
+            ("baku", TestTracks.BakuStyleTestTrack),
+            ("spa", TestTracks.SpaStyleTestTrack),
+            ("monza", TestTracks.MonzaStyleTestTrack),
+            ("interlagos", TestTracks.InterlagosStyleTestTrack),
         ];
 
         foreach ((string name, Func<TrackData> build) in tracks)

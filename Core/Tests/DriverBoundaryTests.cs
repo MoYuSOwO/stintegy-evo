@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Reflection;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -133,13 +134,13 @@ public sealed class DriverBoundaryTests
         RaceCar follower = Car("follower", 50f, controller);
         RaceCar leader = Car("leader", 65f);
         follower.State.Speed = leader.State.Speed = 20f;
-        follower.State.AirVelocityDeficit = 0.123f;
+        follower.State.Chassis().AirVelocityDeficit = 0.123f;
         RaceSimulation race = new(Road.Value);
         race.AddCar(follower);
         race.AddCar(leader);
         RaceFrameSnapshot frame = race.CaptureFrame();
         Assert.True(frame[0].AirVelocityDeficit > 0f);
-        Assert.Equal(0.123f, follower.State.AirVelocityDeficit);
+        Assert.Equal(0.123f, follower.State.Chassis().AirVelocityDeficit);
         Assert.Empty(controller.Frames);
         Assert.Equal(0f, race.RaceTimeSeconds);
         Assert.Equal(default, follower.LastInput);
@@ -164,7 +165,7 @@ public sealed class DriverBoundaryTests
         race.AddCar(external);
         race.Step(1f / 120f);
         Assert.Equal(new DriverInput(0f, 3f), external.LastInput);
-        Assert.Equal(original, external.State.Telemetry.Strategy);
+        Assert.Equal(original, external.State.Chassis().Telemetry.Strategy);
         race.Step(1f / 120f);
         Assert.Equal(new DriverInput(0f, 11f), external.LastInput);
     }
@@ -236,17 +237,17 @@ public sealed class DriverBoundaryTests
     }
 
     [Fact]
-    public void SnapshotIncludesTheAccumulatedSideslipState()
+    public void SnapshotCarriesTheBodysMotionAsTheCarTellsIt()
     {
         RaceCar car = Car("sliding", 50f);
         RaceSimulation race = new(Road.Value);
         race.AddCar(car);
-        car.State.SideslipHoldSeconds = 0.12f;
+        car.State.Chassis().SteerAngleRadians = 0.12f;
         var first = race.CaptureFrame();
-        car.State.SideslipHoldSeconds = 0.24f;
+        car.State.Chassis().SteerAngleRadians = 0.24f;
         var second = race.CaptureFrame();
-        Assert.Equal(0.12f, first[0].SideslipHoldSeconds);
-        Assert.Equal(0.24f, second[0].SideslipHoldSeconds);
+        Assert.Equal(0.12f, first[0].Motion!.Value.WheelAngleRadians);
+        Assert.Equal(0.24f, second[0].Motion!.Value.WheelAngleRadians);
     }
 
     [Theory]
@@ -264,9 +265,9 @@ public sealed class DriverBoundaryTests
         RaceSimulation race = new(Road.Value);
         race.AddCar(follower);
         race.AddCar(bad);
-        follower.State.AirVelocityDeficit = 0.123f;
-        follower.State.DownforceVelocityDeficit = 0.234f;
-        follower.State.WakeDownforceLoss = 0.345f;
+        follower.State.Chassis().AirVelocityDeficit = 0.123f;
+        follower.State.Chassis().DownforceVelocityDeficit = 0.234f;
+        follower.State.Chassis().WakeDownforceLoss = 0.345f;
         follower.ExternalInput = new(0, 3);
         // Exercise provisional wall correction as well as the new wake values.
         TrackSample at = Road.Value.Sample(50);
@@ -277,9 +278,9 @@ public sealed class DriverBoundaryTests
         Assert.ThrowsAny<Exception>(() => race.Step(1f / 60f));
         Assert.Equal(0f, race.RaceTimeSeconds);
         Assert.Equal(original, follower.State.Position);
-        Assert.Equal(0.123f, follower.State.AirVelocityDeficit);
-        Assert.Equal(0.234f, follower.State.DownforceVelocityDeficit);
-        Assert.Equal(0.345f, follower.State.WakeDownforceLoss);
+        Assert.Equal(0.123f, follower.State.Chassis().AirVelocityDeficit);
+        Assert.Equal(0.234f, follower.State.Chassis().DownforceVelocityDeficit);
+        Assert.Equal(0.345f, follower.State.Chassis().WakeDownforceLoss);
         Assert.Equal(default, follower.LastInput);
         Assert.Equal(0.05f, follower.BoundaryContactSeconds);
         Assert.True(follower.HitCarThisStep);
@@ -289,7 +290,7 @@ public sealed class DriverBoundaryTests
     {
         TrackSample at = Road.Value.Sample(s);
         Driver? driver = controller is null ? null : new Driver(new DriverProfile(id, new(), 42), controller);
-        return new RaceCar(id, new(), new(), driver,
+        return new RaceCar(id, new SingleTrackCar(new CarConfig(), new TireConfig()), driver,
             new CarState { Position = at.Center, Heading = at.Heading });
     }
 

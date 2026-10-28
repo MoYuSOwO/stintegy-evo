@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "formula_a_mixed",
+  "name": "Formula A (mixed)",
+  "version": 2,
+  "chassis": "official:single_track",
+  "tyres": ["official:formula_a"]
+}

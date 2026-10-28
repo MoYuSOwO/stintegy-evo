@@ -1,3 +1,4 @@
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -27,7 +28,7 @@ public sealed class CircuitSurfaceTests
     [Fact]
     public void SlipperyAsphaltCostsTheRoadAndTheKerbButNotTheGrass()
     {
-        TrackSample sample = TrackFactory.SimpleTestTrack().Sample(120f);
+        TrackSample sample = TestTracks.SimpleTestTrack().Sample(120f);
         float half = sample.HalfWidth;
         float grass = half + SurfaceGrip.KerbWidthMeters + SurfaceGrip.TransitionMeters + 1f;
 
@@ -60,7 +61,7 @@ public sealed class CircuitSurfaceTests
 
     private static float WheelGripOn(float asphalt)
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         track.AsphaltGrip = asphalt;
         TrackSample sample = track.Sample(0f);
         RaceCar car = TestControlFixtures.ExternalCar("on-road", new CarState
@@ -85,7 +86,7 @@ public sealed class CircuitSurfaceTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         state.Chassis().FrontLeft.SurfaceTempC = state.Chassis().FrontRight.SurfaceTempC = 90f;
         state.Chassis().RearLeft.SurfaceTempC = state.Chassis().RearRight.SurfaceTempC = 90f;
-        var input = new CarPhysicsStepInput(new DriverInput(0.01f, 0f), CarStrategy.Default, AirTempC: 25f)
+        var input = new CarStepInput(new DriverInput(0.01f, 0f), CarStrategy.Default, AirTempC: 25f)
         {
             SurfaceAbrasion = abrasion
         };

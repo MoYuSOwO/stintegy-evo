@@ -19,7 +19,7 @@ public sealed class BankedSweeperTests
     [Fact]
     public void TheFastCornersLeanAndTheHairpinsDoNot()
     {
-        TrackData track = TrackFactory.BankedSweeperTestTrack();
+        TrackData track = TestTracks.BankedSweeperTestTrack();
         float tightBank = 0f, fastBank = 0f;
         int fastBanked = 0;
         for (int s = 0; s < (int)track.LengthMeters; s++)
@@ -51,8 +51,8 @@ public sealed class BankedSweeperTests
     [Fact]
     public void TheFlatVariantSharesTheLayoutAndOnlyTheLayout()
     {
-        TrackData banked = TrackFactory.BankedSweeperTestTrack();
-        TrackData flat = TrackFactory.FlatSweeperTestTrack();
+        TrackData banked = TestTracks.BankedSweeperTestTrack();
+        TrackData flat = TestTracks.FlatSweeperTestTrack();
         // Same geometry to the metre, or the pair no longer differs in
         // exactly one variable and the comparison it exists for is dead.
         Assert.Equal(banked.LengthMeters, flat.LengthMeters, 1);
@@ -73,7 +73,7 @@ public sealed class BankedSweeperTests
     [Fact]
     public void TheBankingWindsOnRatherThanArriving()
     {
-        TrackData track = TrackFactory.BankedSweeperTestTrack();
+        TrackData track = TestTracks.BankedSweeperTestTrack();
         float worst = 0f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
         {
@@ -92,7 +92,7 @@ public sealed class BankedSweeperTests
     [Fact]
     public void TheClosedCircuitReturnsToItsStartingHeight()
     {
-        TrackData track = TrackFactory.BankedSweeperTestTrack();
+        TrackData track = TestTracks.BankedSweeperTestTrack();
         float height = 0f;
         for (int s = 0; s < (int)track.LengthMeters; s++)
             height += track.Sample(s + 0.5f).Grade;

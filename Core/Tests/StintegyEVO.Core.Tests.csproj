@@ -21,11 +21,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Throwaway mods' code: their own projects. -->
+    <Compile Remove="ModFixtures/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Core.csproj" />
-    <!-- Built so the tests can load the game's own car the way the game does,
-         from its folder under data/; never referenced. -->
-    <ProjectReference Include="../../Cars/official/formula_a_mixed/formula_a_mixed.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
+    <!-- Built so the registry tests can pack them into throwaway mods; never referenced. -->
+    <ProjectReference Include="ModFixtures/alpha/alpha.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="ModFixtures/beta/beta.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <!-- The game's own mod: its chassis for the tests that need a car on
+         the road, and built into mods/official/ so the tests load the game's
+         own car and circuits the way the game does. Its physics is tested
+         in its own tests. -->
+    <ProjectReference Include="../../mods/official/official.csproj" />
     <Compile Include="../../GodotApp/LowPoly/PresentationTiming.cs" Link="Presentation/PresentationTiming.cs" />
     <Compile Include="../../GodotApp/LowPoly/LapTimer.cs" Link="Presentation/LapTimer.cs" />
     <Compile Include="../../GodotApp/LowPoly/TrackSurfaceGeometry.cs" Link="Presentation/TrackSurfaceGeometry.cs" />

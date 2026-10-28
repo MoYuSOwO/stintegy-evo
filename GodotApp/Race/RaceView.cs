@@ -9,6 +9,7 @@ using StintegyEVO.GodotApp.Debug;
 using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.Track;
 using StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using GVector2 = Godot.Vector2;
@@ -25,7 +26,7 @@ public partial class RaceView : Node2D
 {
     /// <summary>
     /// Which car fills the grid when nobody has composed a race, by its
-    /// pack's id (<see cref="CarLibrary"/>). The default is the game's own.
+    /// id (<see cref="ModRegistry.Cars"/>). The default is the game's own.
     /// </summary>
     public string CarId { get; set; } = "official:formula_a_mixed";
 
@@ -82,11 +83,10 @@ public partial class RaceView : Node2D
     )
     {
         RaceCar car = GetCar(carIndex);
-        car.ExternalInput = new DriverInput(
-            steerAngleRadians,
-            desiredAccel,
-            frontBrakeBiasOffset
-        );
+        car.ExternalInput = new DriverInput(steerAngleRadians, desiredAccel)
+        {
+            Axles = new AxleBias(frontBrakeBiasOffset, 0f)
+        };
     }
 
     public override void _Ready()
@@ -103,8 +103,7 @@ public partial class RaceView : Node2D
         }
         else
         {
-            GodotCircuits.Use();
-            track = TrackFactory.SilverstoneStyleTestTrack();
+            track = GodotMods.Registry.Circuits.Get("official:silverstone").Track;
             _simulation = new RaceSimulation(
                 track,
                 new RaceEnvironment { AirTempC = 25f, TrackTempC = 35f }
@@ -226,7 +225,7 @@ public partial class RaceView : Node2D
             TrackSample sample = track.Sample(start.S);
             RaceCar car = new(
                 $"display-{gridPosition:D2}",
-                GodotCars.Load(CarId).Car,
+                GodotMods.Registry.Cars.Get(CarId).Car,
                 state: new CarState
                 {
                     Position = sample.Center,
@@ -302,7 +301,8 @@ public partial class RaceView : Node2D
         }
 
         CarState state = _playerCar.State;
-        CarTelemetry telemetry = state.Telemetry;
+        DriverInput input = _playerCar.LastInput;
+        CarMotion motion = (_playerCar.Car as ICarMotion)?.Motion(state) ?? default;
         ICarTires? tyres = _playerCar.Car as ICarTires;
         TireReading Read(WheelId wheel) => tyres?.Tire(state, wheel) ?? default;
         TireReading fl = Read(WheelId.FrontLeft), fr = Read(WheelId.FrontRight);
@@ -313,11 +313,11 @@ public partial class RaceView : Node2D
         _telemetryLabel.Text =
             $"{_playerCar.Id}  {ControllerStatus(_playerCar)}  |  {state.Speed * 3.6f:0} km/h  |  Lap {_playerCar.Progress.Lap + 1}  Race {_simulation.RaceTimeSeconds:0.0}s  Cars {_simulation.Cars.Count}  Region {_playerCar.Progress.Region}  View {(_followSelectedCar ? "FOLLOW" : "MAP")}\n" +
             $"{StoresReadout()}  |  {ModesReadout()}  |  Air/Track {_simulation.Environment.AirTempC:0}/{_simulation.Environment.TrackTempC:0} C  |  Q/E {TireLadder.Usage.Label.ToLowerInvariant()}  A/D {(_playerCar.Car.Ladders.Count > 0 ? _playerCar.Car.Ladders[0].Label.ToLowerInvariant() : "-")}\n" +
-            $"Input steer/accel {telemetry.Input.SteerAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  {telemetry.Input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
-            $"Over-limit {telemetry.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
+            $"Input steer/accel {input.SteerAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  {input.DesiredAccel:+0.00;-0.00;0.00} m/s²  |  Axle F/R {frontTemp:0.0}/{rearTemp:0.0} C\n" +
+            $"Over-limit {motion.OverLimit:0.00}  |  {ChannelsReadout(_playerCar)}\n" +
             $"Wheel surf/core/wear  FL {WheelStatus(fl)}  |  FR {WheelStatus(fr)}\n" +
             $"                         RL {WheelStatus(rl)}  |  RR {WheelStatus(rr)}\n" +
-            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00}/{telemetry.ReferenceYawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
+            $"Slip {state.SideslipAngleRadians * 180f / MathF.PI:+0.0;-0.0;0.0} deg  |  Yaw {state.YawRateRadiansPerSecond:+0.00;-0.00;0.00} rad/s";
     }
 
     private float[] _channelReadings = [];

@@ -45,4 +45,13 @@ public readonly record struct DriverContext(
     public RaceCarSnapshot Car => Frame[CarSnapshotIndex];
     public RaceEnvironmentSnapshot Environment => Frame.Environment;
     public float RaceTimeSeconds => Frame.RaceTimeSeconds;
+
+    /// <summary>
+    /// The game's randomness for this driver and this decision
+    /// (<see cref="RandomSource"/>): the same on the same seed, apart from the
+    /// car's and every other driver's. A driver that wants a chance -- a
+    /// slip of the hand, a late brake -- takes it from here, never from
+    /// <see cref="System.Random"/> or the clock.
+    /// </summary>
+    public RandomSource Random { get; init; }
 }

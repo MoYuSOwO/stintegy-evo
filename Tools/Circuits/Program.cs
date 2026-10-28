@@ -1,9 +1,8 @@
 using System.Numerics;
 using StintegyEVO.Circuits;
-using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Track;
 
-// Writes data/official/circuits/<id>/ for every circuit the project ships: circuit.json and
+// Writes mods/official/data/circuits/<id>/ for every circuit the game ships: circuit.json and
 // track.csv, the road finished and one row a metre. Everything that turns
 // source data into a road (smoothing, scaling to the published length,
 // centring, run-off, height and banking) happens here and nowhere else.
@@ -15,7 +14,7 @@ using StintegyEVO.Core.Track;
 string repo = FindRepository();
 Sources.Folder = Path.Combine(repo, "Tools", "Circuits", "Sources");
 string command = args.Length > 0 ? args[0] : "export";
-string outRoot = args.Length > 1 && command != "fetch-elevation" ? args[1] : Path.Combine(repo, DataFolders.DataFolder, ResourceId.Official, CircuitLibrary.CircuitsFolder);
+string outRoot = args.Length > 1 && command != "fetch-elevation" ? args[1] : Path.Combine(repo, "mods", "official", "data", "circuits");
 
 switch (command)
 {
@@ -278,8 +277,6 @@ static class CircuitSpecs
     private static CircuitSource FromBacinger(string file, string notes) =>
         new() { Centreline = $"{Bacinger} ({file})", License = "MIT", LicenseFile = "LICENSE.bacinger-MIT", Notes = notes };
 
-    private static CircuitSource Project(string notes) =>
-        new() { Centreline = "Built from straights and arcs by Tools/Circuits", License = "Project content, see CONTENT_LICENSE.md", Notes = notes };
 
     public static readonly CircuitSpec[] All =
     [
@@ -306,17 +303,5 @@ static class CircuitSpecs
                 " (SRTM reads the tower blocks along it; the published figure is 5 m, which the authored profile keeps.)"), BacingerLicense),
         new("portimao", "Autodromo Internacional do Algarve", Layouts.PortimaoStyleTestTrack,
             FromBacinger("pt-2008", "Projected, 14-18 m wide from OpenStreetMap (ODbL), scaled to 4,653 m. " + Authored), BacingerLicense),
-        new("simple", "Simple test layout", () => Layouts.SimpleTestTrack(),
-            Project("Hairpin, esses, a 30 m climb and two banked corners, turning right.")),
-        new("simple_left", "Simple test layout, mirrored", () => Layouts.SimpleTestTrack(isLeft: true),
-            Project("The simple layout turning left.")),
-        new("banked_speedway", "Banked short track", Layouts.BankedSpeedwayTestTrack,
-            Project("Ninety-metre turns banked from about 18 degrees at the apron to 31 at the wall.")),
-        new("banked_sweeper", "Banked sweeper", Layouts.BankedSweeperTestTrack,
-            Project("Corners from 60 to 400 m radius, banked up to 18 degrees with the radius.")),
-        new("flat_sweeper", "Flat sweeper", Layouts.FlatSweeperTestTrack,
-            Project("The banked sweeper's layout with only drainage crossfall.")),
-        new("daytona", "Superspeedway (Daytona-style)", Layouts.DaytonaStyleTestTrack,
-            Project("Two 1,050 m straights and two 305 m turns, 31 degrees in the turns and 3 on the straights.")),
     ];
 }

@@ -19,8 +19,6 @@ public readonly record struct RaceCarSnapshot(
     float SideslipAngleRadians,
     float YawRateRadiansPerSecond,
     float SpeedMetersPerSecond,
-    float LongitudinalAccelMetersPerSecondSquared,
-    float LateralAccelMetersPerSecondSquared,
     float TrackS,
     float TrackD,
     float TotalDistanceMeters,
@@ -34,11 +32,15 @@ public readonly record struct RaceCarSnapshot(
 {
     public DriverProfile? DriverProfile { get; init; }
     public CarStrategy Strategy { get; init; }
-    public float SteerAngleRadians { get; init; }
-    public float SideslipHoldSeconds { get; init; }
-    public bool Spinning { get; init; }
-    public float SpinSeconds { get; init; }
-    public int SpinEvents { get; init; }
+
+    /// <summary>
+    /// What the body is doing beyond its motion -- its wheels' angle, what
+    /// the seat feels, a spin -- as the car tells it; none on a car without
+    /// <see cref="ICarMotion"/>.
+    /// </summary>
+    public CarMotion? Motion { get; init; }
+
+    /// <summary>The air the car sits in, worked out by the world from where every car is (<see cref="CarAir"/>).</summary>
     public float AirVelocityDeficit { get; init; }
     public float DownforceVelocityDeficit { get; init; }
     public float WakeDownforceLoss { get; init; }
@@ -55,7 +57,7 @@ public readonly record struct RaceCarSnapshot(
     /// <summary>The car's buttons as they stand (<see cref="ICarButtons"/>), in its order; empty on a car with none.</summary>
     public ImmutableArray<CarButtonReading> Buttons { get; init; }
 
-    /// <summary>How much of each axle's grip the car is using; none on a car that does not say (<see cref="ICarGripFeel"/>).</summary>
+    /// <summary>How much of each axle's grip the car is using; none on a car without two axles (<see cref="ICarAxles"/>).</summary>
     public GripUse? GripUse { get; init; }
 
     /// <summary>The car's stores (<see cref="ICarStores"/>); empty on a car with none.</summary>
@@ -72,7 +74,6 @@ public readonly record struct RaceCarSnapshot(
     /// (<see cref="ICarEnvelope"/>).
     /// </summary>
     public SteeringEstimate Steering { get; init; }
-    public CarTelemetry Telemetry { get; init; }
     public float BoundaryContactSeconds { get; init; }
     public bool HitCar { get; init; }
     public float RaceDistanceMeters { get; init; }
@@ -101,7 +102,7 @@ public readonly record struct RaceCarSnapshot(
         if (model is ICarStores stores)
         {
             PowertrainState left = stores.Stores(state);
-            IReadOnlyList<PowertrainResourceInfo> declared = stores.Powertrain.Resources;
+            IReadOnlyList<PowertrainResourceInfo> declared = stores.Resources;
             var builder = ImmutableArray.CreateBuilder<PowertrainResourceSnapshot>(declared.Count);
             for (int i = 0; i < declared.Count && i < PowertrainState.Capacity; i++)
             {
@@ -131,8 +132,6 @@ public readonly record struct RaceCarSnapshot(
             state.SideslipAngleRadians,
             state.YawRateRadiansPerSecond,
             state.Speed,
-            state.FilteredLongitudinalAccel,
-            state.FilteredLateralAccel,
             pose.S,
             pose.D,
             car.Progress.TotalDistance,
@@ -146,22 +145,14 @@ public readonly record struct RaceCarSnapshot(
         {
             DriverProfile = car.Driver?.Profile,
             Strategy = car.Strategy,
-            SteerAngleRadians = state.SteerAngleRadians,
-            SideslipHoldSeconds = state.SideslipHoldSeconds,
-            Spinning = state.Spinning,
-            SpinSeconds = state.SpinSeconds,
-            SpinEvents = state.SpinEvents,
-            AirVelocityDeficit = state.AirVelocityDeficit,
-            DownforceVelocityDeficit = state.DownforceVelocityDeficit,
-            WakeDownforceLoss = state.WakeDownforceLoss,
+            Motion = (model as ICarMotion)?.Motion(state),
             Tires = tires,
             TireCompound = (model as ICarTires)?.Compound(state),
             Buttons = buttons,
-            GripUse = (model as ICarGripFeel)?.GripUse(state),
+            GripUse = (model as ICarAxles)?.GripUse(state),
             Resources = resources,
             Capabilities = envelope?.Capabilities(state, car.Strategy) ?? default,
             Steering = envelope?.EstimateSteering(state, RaceSimulation.RoadAttitudeAt(pose.Sample, pose.D)) ?? default,
-            Telemetry = state.Telemetry,
             BoundaryContactSeconds = car.BoundaryContactSeconds,
             HitCar = car.HitCarThisStep,
             RaceDistanceMeters = car.Progress.RaceDistanceMeters,
