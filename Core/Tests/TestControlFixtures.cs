@@ -1,4 +1,5 @@
 using System;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -22,8 +23,7 @@ internal static class TestControlFixtures
     {
         RaceCar car = new(
             id,
-            config ?? new CarConfig(),
-            tires ?? WarmTires(),
+            new SingleTrackCar(config ?? new CarConfig(), tires ?? WarmTires()),
             state: state,
             collision: collision
         );
@@ -49,8 +49,7 @@ internal static class TestControlFixtures
         CarCollisionConfig? collision = null
     ) => new(
         id,
-        config ?? new CarConfig(),
-        tires ?? WarmTires(),
+        new SingleTrackCar(config ?? new CarConfig(), tires ?? WarmTires()),
         new Driver(new DriverProfile(id, new(), 42), new CurvatureDriver(command)),
         state,
         collision: collision

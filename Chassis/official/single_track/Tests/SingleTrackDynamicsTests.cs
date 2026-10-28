@@ -1,4 +1,5 @@
 using System;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Util;
 using StintegyEVO.Core.Track;
@@ -6,7 +7,7 @@ using System.Numerics;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 /// <summary>
 /// The three manoeuvres a chassis is judged on, and the envelope it has to
@@ -718,6 +719,6 @@ public sealed class SingleTrackDynamicsTests
     {
     }, 90f, 90f);
 
-    private static CarPhysicsStepInput PhysicsInput(DriverInput input) =>
+    private static CarStepInput PhysicsInput(DriverInput input) =>
         new(input, CarStrategy.Default, TestAirTempC, TestTrackTempC);
 }

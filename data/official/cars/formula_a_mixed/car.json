@@ -4,5 +4,6 @@
   "name": "Formula A (mixed)",
   "version": 1,
   "assembly": "official.formula_a_mixed.dll",
+  "chassis": "official:single_track",
   "tyres": ["official:formula_a"]
 }

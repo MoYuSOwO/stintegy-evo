@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;

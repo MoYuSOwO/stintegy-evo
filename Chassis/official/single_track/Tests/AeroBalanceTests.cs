@@ -1,7 +1,8 @@
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 /// <summary>
 /// The aero is trimmed by its own number, not by where the weight sits: a
@@ -19,7 +20,7 @@ public sealed class AeroBalanceTests
             var state = new CarState { Speed = speed }.WithEnergy(PowertrainState.Filled(0.8f));
             state.InstallFreshTires(new TireConfig());
             CarPhysics.Step(state, car, new TireConfig(),
-                new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 25f, 35f), 1f / 60f);
+                new CarStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 25f, 35f), 1f / 60f);
             float front = state.Chassis().FrontLeft.LoadN + state.Chassis().FrontRight.LoadN;
             return front / (front + state.Chassis().RearLeft.LoadN + state.Chassis().RearRight.LoadN);
         }

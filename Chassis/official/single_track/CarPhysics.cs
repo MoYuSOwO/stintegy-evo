@@ -1,18 +1,12 @@
 using System;
 using System.Numerics;
+using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Util;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 public static class CarPhysics
 {
-    /// <summary>
-    /// The physics' own version, raised whenever a change to it changes how
-    /// a car drives. Everything learned on any car was learned on a
-    /// revision, and is stale on another (<see cref="LoadedCar.Fingerprint"/>).
-    /// </summary>
-    public const int Revision = 1;
-
     private const float Gravity = 9.80665f;
     private const float Epsilon = 1e-5f;
     /// <summary>
@@ -313,14 +307,14 @@ public static class CarPhysics
             assumedLongitudinalAcceleration, frontBrakeBiasOffset);
 
     /// <summary>The game's own tyre, built to <paramref name="tires"/>, all round.</summary>
-    public static void Step(CarState state, CarConfig config, TireConfig tires, CarPhysicsStepInput input, float dt) =>
+    public static void Step(CarState state, CarConfig config, TireConfig tires, CarStepInput input, float dt) =>
         Step(state, config, TireSet.Of(tires), input, dt);
 
     public static void Step(
         CarState state,
         CarConfig config,
         TireSet tires,
-        CarPhysicsStepInput input,
+        CarStepInput input,
         float dt
     )
     {
@@ -863,7 +857,7 @@ public static class CarPhysics
         CarState state,
         CarConfig config,
         TireSet tires,
-        CarPhysicsStepInput input,
+        CarStepInput input,
         float dt
     )
     {

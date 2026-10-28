@@ -1,11 +1,12 @@
 using System;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 public sealed class WakeAndActiveAeroTests
 {

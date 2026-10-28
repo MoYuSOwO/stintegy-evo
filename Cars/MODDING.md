@@ -29,6 +29,7 @@ letters, digits and underscores, and they are the folder names:
   "name": "My Car",
   "version": 1,
   "assembly": "someone.my_car.dll",
+  "chassis": "official:single_track",
   "model": "car.glb",
   "tyres": ["official:formula_a"]
 }
@@ -38,13 +39,16 @@ letters, digits and underscores, and they are the folder names:
 change how the car drives: what a driver learned on the car was learned on a
 version, and is out of date on another (building the same pack again changes
 nothing). `definition` names the class to build when the assembly holds more
-than one. `tyres` is what the car runs (see
+than one. `chassis` is the chassis pack the car is built on (see
+[The chassis](#the-chassis)), loaded before the car; a car with physics of
+its own names none. `tyres` is what the car runs (see
 [Tyres](#tyres)); a car that names none does not load.
 
 ## The code
 
-Reference `StintegyEVO.Core` and nothing else — not Godot: a car is
-physics, and the game draws it. Implement `ICarDefinition`:
+Reference `StintegyEVO.Core` and the chassis you build on, and nothing
+else — not Godot: a car is physics, and the game draws it. Implement
+`ICarDefinition`:
 
 ```csharp
 public sealed class MyCar : ICarDefinition
@@ -56,12 +60,12 @@ public sealed class MyCar : ICarDefinition
 
 What you get to work with is the game's own:
 
-- `SingleTrackCar` — the chassis every car in the game runs on. Give it a
-  `CarConfig` and its compounds, or derive from it and override what your
-  car does differently; every member is virtual.
 - `IAero` (`StandardAero`), `IPowertrain` (`RangeExtenderPowertrain`,
-  `ElectricPowertrain`).
-- Or implement `ICar` yourself, from nothing. Its estimates —
+  `ElectricPowertrain`), from Core.
+- A chassis pack: the game's own, `official:single_track` (below), or
+  anyone's.
+- Or implement `ICar` yourself, from nothing: a car with physics nobody
+  else uses keeps them in its own pack and names no chassis. Its estimates —
   `EstimatePerformanceLimits`, `EstimateCorneringLimit` — are what the
   drivers plan every corner and every braking point with: if they are not
   what the car really does, the car still runs, and is driven badly.
@@ -90,6 +94,38 @@ car it was learned on. Ship those folders and the drivers know your car.
 
 Copy `Cars/official/formula_a_mixed/formula_a_mixed.csproj` for the build
 settings: Core is referenced but not copied, because the game supplies it.
+
+## The chassis
+
+A chassis is physics a car is built on, shared by every car that names
+it: a folder with a `chassis.json` and the assembly cars build against.
+It is code and no car; what it offers is what its assembly makes public.
+
+```
+data/official/chassis/single_track/
+  chassis.json
+  official.single_track.dll
+```
+
+```json
+{
+  "format": 1,
+  "id": "single_track",
+  "name": "Single-track chassis",
+  "version": 1,
+  "assembly": "official.single_track.dll"
+}
+```
+
+`version` is the chassis's to raise whenever a change to it changes how a
+car on it drives, which marks what was learned on every car on it as
+stale. The game's own is `SingleTrackCar` (namespace
+`Official.SingleTrack`, source in `Chassis/official/single_track/`): a
+single-track model with load transfer, slip-angle tyres, a combined-grip
+limiter and whatever powertrain is fitted. Give it a `CarConfig` and its
+compounds, or derive from it and override what your car does
+differently; every member is virtual. Reference its project the way
+`formula_a_mixed.csproj` does, not copied: its pack ships it.
 
 ## Tyres
 
@@ -181,6 +217,7 @@ That is true of every game's code mods. Install packs from people you
 trust.
 
 Anything learned on a car — a driver's lines — is learned on that code and
-those tyres. A car's fingerprint is a hash of its assembly and the tyre
-packs it runs, so rebuilding it, or changing its tyres, marks what was
-learned on the old one as stale.
+those tyres. A car's fingerprint is a hash of its version, its chassis's
+version, what it says of itself and the tyre packs it runs, so raising
+either version, or changing its tyres, marks what was learned on the old
+one as stale.

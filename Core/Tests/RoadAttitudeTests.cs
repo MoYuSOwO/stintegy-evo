@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Core.Util;
@@ -571,7 +572,7 @@ public sealed class RoadAttitudeTests
             Heading = 0f,
             Speed = 50f
         }.WithEnergy(PowertrainState.Filled(0.8f));
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             new DriverInput(0f, 0f),
             CarStrategy.Default,
             AirTempC: 25f

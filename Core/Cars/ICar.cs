@@ -33,7 +33,7 @@ public interface ICar
     float TotalMassKg(CarState state);
 
     /// <summary>One step of the car being driven: the command in, the motion and whatever else the car keeps out.</summary>
-    void Step(CarState state, CarPhysicsStepInput input, float dt);
+    void Step(CarState state, CarStepInput input, float dt);
 
     /// <summary>Everything the car wants on the strategist's screen, written into <paramref name="dashboard"/>.</summary>
     void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy);

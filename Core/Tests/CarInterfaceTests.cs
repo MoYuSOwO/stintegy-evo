@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -160,7 +161,7 @@ public sealed class CarInterfaceTests
         {
             var state = new CarState { Speed = 5f }.WithEnergy(PowertrainState.Filled(0.9f));
             model.As<ICarTires>().InstallFreshTires(state);
-            var input = new CarPhysicsStepInput(new DriverInput(0f, 12f), CarStrategy.Default, 25f, 35f);
+            var input = new CarStepInput(new DriverInput(0f, 12f), CarStrategy.Default, 25f, 35f);
             for (int i = 0; i < 60; i++)
                 model.Step(state, input, 1f / 60f);
             return state.Speed;
@@ -176,7 +177,7 @@ public sealed class CarInterfaceTests
     /// <summary>Holds a launch to three metres a second squared below twenty metres a second.</summary>
     private sealed class LaunchControlledCar() : SingleTrackCar(new CarConfig(), new TireConfig())
     {
-        public override void Step(CarState state, CarPhysicsStepInput input, float dt)
+        public override void Step(CarState state, CarStepInput input, float dt)
         {
             if (state.Speed < 20f && input.DriverInput.DesiredAccel > 3f)
                 input = input with { DriverInput = input.DriverInput with { DesiredAccel = 3f } };
@@ -220,7 +221,7 @@ public sealed class CarInterfaceTests
         public IReadOnlyList<ModeLadder> Ladders => [];
         public float TotalMassKg(CarState state) => 800f;
 
-        public void Step(CarState state, CarPhysicsStepInput input, float dt) =>
+        public void Step(CarState state, CarStepInput input, float dt) =>
             state.Position += new Vector2(MathF.Cos(state.Heading), MathF.Sin(state.Heading)) * state.Speed * dt;
 
         public void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy) => dashboard.SetMass(800f);
@@ -268,7 +269,7 @@ public sealed class CarInterfaceTests
 
         public float TotalMassKg(CarState state) => 800f;
 
-        public void Step(CarState state, CarPhysicsStepInput input, float dt)
+        public void Step(CarState state, CarStepInput input, float dt)
         {
             Steps++;
             state.Position += new Vector2(MathF.Cos(state.Heading), MathF.Sin(state.Heading)) * state.Speed * dt;

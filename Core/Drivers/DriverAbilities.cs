@@ -12,7 +12,7 @@ namespace StintegyEVO.Core.Drivers;
 /// anything else is rejected. A rating's meaning belongs to the driver, never to
 /// the car: mapping it onto behaviour happens in a controller, upstream of
 /// <see cref="StintegyEVO.Core.Cars.DriverInput"/>, and must not come back into
-/// <see cref="StintegyEVO.Core.Cars.CarPhysics"/> as a second driver model.
+/// the car's physics as a second driver model.
 /// </remarks>
 public sealed record DriverAbilities
 {

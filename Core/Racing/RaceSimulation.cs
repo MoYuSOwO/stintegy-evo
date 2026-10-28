@@ -354,7 +354,7 @@ public sealed class RaceSimulation
         for (int i = 0; i < carCount; i++)
         {
             RaceCar car = _cars[i];
-            CarPhysicsStepInput physicsInput = new(
+            CarStepInput physicsInput = new(
                 _stepInputs[i],
                 _stepStrategies[i],
                 _stepEnvironment.AirTempC,

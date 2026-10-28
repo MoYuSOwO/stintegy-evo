@@ -1,12 +1,13 @@
 using System;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 /// <summary>
 /// Leaving the road costs grip, per wheel, continuously.
@@ -218,7 +219,7 @@ public sealed class SurfaceGripTests
                     probe,
                     car,
                     tires,
-                    new CarPhysicsStepInput(
+                    new CarStepInput(
                         new Ask(curvature, 1.5f).For(probe, car, tires),
                         CarStrategy.Default,
                         25f,

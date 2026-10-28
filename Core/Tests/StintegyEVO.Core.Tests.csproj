@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Core.csproj" />
+    <!-- The game's own chassis, for the tests that need a car on the road.
+         Its own physics is tested in its pack. -->
+    <ProjectReference Include="../../Chassis/official/single_track/single_track.csproj" />
     <!-- Built so the tests can load the game's own car the way the game does,
          from its folder under data/; never referenced. -->
     <ProjectReference Include="../../Cars/official/formula_a_mixed/formula_a_mixed.csproj"

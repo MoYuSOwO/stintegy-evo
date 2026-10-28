@@ -26,8 +26,7 @@ public sealed class ReadmeExampleTests
         TrackSample start = track.Sample(track.StartingLineS);
         var car = new RaceCar(
             "car-1",
-            new CarConfig(),
-            new TireConfig(),
+            CarLibrary.Load("official:formula_a_mixed").Car,
             new Driver(profile, new CentrelineFollower()),
             new CarState { Position = start.Center, Heading = start.Heading }
         );

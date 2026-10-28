@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Reflection;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -289,7 +290,7 @@ public sealed class DriverBoundaryTests
     {
         TrackSample at = Road.Value.Sample(s);
         Driver? driver = controller is null ? null : new Driver(new DriverProfile(id, new(), 42), controller);
-        return new RaceCar(id, new(), new(), driver,
+        return new RaceCar(id, new SingleTrackCar(new CarConfig(), new TireConfig()), driver,
             new CarState { Position = at.Center, Heading = at.Heading });
     }
 

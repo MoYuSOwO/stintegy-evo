@@ -1,4 +1,6 @@
-namespace StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Cars;
+
+namespace Official.SingleTrack;
 
 /// <summary>
 /// The numerical edges of the single-track lateral model, and what happens

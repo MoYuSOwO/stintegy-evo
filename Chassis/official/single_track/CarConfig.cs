@@ -1,6 +1,7 @@
 using System;
+using StintegyEVO.Core.Cars;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 /// <summary>
 /// Everything that makes one car physically different from another.

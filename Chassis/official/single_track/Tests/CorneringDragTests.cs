@@ -1,8 +1,9 @@
 using System;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 /// <summary>
 /// What a corner costs in speed, and that the bill is written once.
@@ -41,7 +42,7 @@ public sealed class CorneringDragTests
             state,
             car,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new Ask(curvature, 0f).For(state, car, tires),
                 CarStrategy.Default,
                 AirTempC: 25f,
@@ -214,7 +215,7 @@ public sealed class CorneringDragTests
                 state,
                 car,
                 tires,
-                new CarPhysicsStepInput(
+                new CarStepInput(
                     new Ask(car.MaxCurvatureRequest, 3f).For(state, car, tires),
                     CarStrategy.Default,
                     AirTempC: 25f,

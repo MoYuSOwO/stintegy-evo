@@ -1,4 +1,5 @@
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -265,8 +266,7 @@ public sealed class RaceSimulationTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "wall-test",
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig(), WarmTires()),
             null,
             state,
             collision
@@ -328,8 +328,7 @@ public sealed class RaceSimulationTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "wall-sweep",
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig(), WarmTires()),
             null,
             state,
             collision
@@ -361,8 +360,7 @@ public sealed class RaceSimulationTests
         }.WithEnergy(PowertrainState.Filled(0.8f));
         RaceCar car = new(
             "right-wall-sweep",
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig(), WarmTires()),
             null,
             state,
             collision
@@ -628,8 +626,7 @@ public sealed class RaceSimulationTests
     {
         return new RaceCar(
             id,
-            new CarConfig(),
-            WarmTires(),
+            new SingleTrackCar(new CarConfig(), WarmTires()),
             new Driver(new DriverProfile(id, new DriverAbilities()), driver),
             new CarState
             {

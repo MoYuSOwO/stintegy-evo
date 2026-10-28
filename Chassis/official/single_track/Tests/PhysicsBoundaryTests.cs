@@ -1,9 +1,10 @@
 using System;
 using System.Linq;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 /// <summary>
 /// Regression tests for the boundary between a controller's command and the
@@ -162,7 +163,7 @@ public sealed class PhysicsBoundaryTests
         Assert.Equal(before.Chassis().Energy.Primary, state.Chassis().Energy.Primary);
     }
 
-    private static CarPhysicsStepInput StepInput(
+    private static CarStepInput StepInput(
         DriverInput input,
         CarStrategy strategy
     ) => new(input, strategy, 25f, 35f);

@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 public sealed class CarPhysicsTests
 {
@@ -48,10 +49,10 @@ public sealed class CarPhysicsTests
         float curvature = CurvatureForGripShare(corner, car, tires, 0.6f);
         SetSteadyCorner(corner, car, tires, curvature);
         CarPhysics.Step(straight, car, tires,
-            new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default,
+            new CarStepInput(new DriverInput(0f, 0f), CarStrategy.Default,
                 AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
         CarPhysics.Step(corner, car, tires,
-            new CarPhysicsStepInput(new Ask(curvature, 0f).For(corner, car, tires), CarStrategy.Default,
+            new CarStepInput(new Ask(curvature, 0f).For(corner, car, tires), CarStrategy.Default,
                 AirTempC: 90f, TrackTempC: 90f), 1f / 120f);
 
         Assert.True(corner.Axles().RearLateralUse > 0.1f);
@@ -307,7 +308,7 @@ public sealed class CarPhysicsTests
         }, 90f, 90f);
         CarState noEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
         CarState defaultEfficiencyLossState = CreateState(speed: 32f, batterySoc: 0.5f, tires);
-        CarPhysicsStepInput input = PhysicsInput(new DriverInput(0f, -12f));
+        CarStepInput input = PhysicsInput(new DriverInput(0f, -12f));
 
         CarPhysics.Step(noEfficiencyLossState, noEfficiencyLoss, tires, input, 1f / 60f);
         CarPhysics.Step(defaultEfficiencyLossState, defaultEfficiencyLoss, tires, input, 1f / 60f);
@@ -718,7 +719,7 @@ public sealed class CarPhysicsTests
         SetSteadyCorner(uncontrolled, uncontrolledCar, tires, curvature);
         float drive = controlledCar.MaxDriveAcceleration;
         Ask asked = new(curvature, drive);
-        CarPhysicsStepInput input = PhysicsInput(asked.For(controlled, controlledCar, tires), attack);
+        CarStepInput input = PhysicsInput(asked.For(controlled, controlledCar, tires), attack);
         SetSteadyCorner(controlled, controlledCar, tires, curvature);
         SetSteadyCorner(uncontrolled, uncontrolledCar, tires, curvature);
 
@@ -755,7 +756,7 @@ public sealed class CarPhysicsTests
         CarStrategy attack = new(TireUsageMode.Normal, PowerOutputMode.Attack);
         float curvature = CurvatureForGripShare(aligned, car, tires, attack, 0.9f);
         float drive = DriveForShare(aligned, car, tires, attack, curvature, 1.5f);
-        CarPhysicsStepInput input =
+        CarStepInput input =
             PhysicsInput(new Ask(curvature, drive).For(aligned, car, tires), attack);
 
         CarPhysics.Step(aligned, car, tires, input, 1f / 60f);
@@ -1214,7 +1215,7 @@ public sealed class CarPhysicsTests
             slow,
             car,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new Ask(slowCurvature, 0f).For(slow, car, tires),
                 CarStrategy.Default,
                 AirTempC: 90f,
@@ -1226,7 +1227,7 @@ public sealed class CarPhysicsTests
             fast,
             car,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new Ask(fastCurvature, 0f).For(fast, car, tires),
                 CarStrategy.Default,
                 AirTempC: 90f,
@@ -1482,7 +1483,7 @@ public sealed class CarPhysicsTests
         );
         SetSteadyCorner(equal, equalCompliance, tires, curvature);
         SetSteadyCorner(frontWorkingHarder, softerFront, tires, curvature);
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             new Ask(curvature, 0f).For(equal, equalCompliance, tires),
             CarStrategy.Default,
             AirTempC: 100f,
@@ -1563,7 +1564,7 @@ public sealed class CarPhysicsTests
         );
         SetSteadyCorner(ordinary, ordinaryCompliance, tires, curvature);
         SetSteadyCorner(extreme, extremeCompliance, tires, curvature);
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             new Ask(curvature, 0f).For(ordinary, ordinaryCompliance, tires),
             CarStrategy.Default,
             AirTempC: 100f,
@@ -1603,7 +1604,7 @@ public sealed class CarPhysicsTests
         {
         }, 25f, 25f);
         CarState state = CreateState(speed: 40f, batterySoc: 0.8f, tires);
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             new DriverInput(0f, 0f),
             CarStrategy.Default,
             AirTempC: 25f,
@@ -1638,7 +1639,7 @@ public sealed class CarPhysicsTests
             frontBiased,
             car,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new DriverInput(0f, -5f, FrontBrakeBiasOffset: 0.20f),
                 CarStrategy.Default,
                 AirTempC: 90f,
@@ -1650,7 +1651,7 @@ public sealed class CarPhysicsTests
             rearBiased,
             car,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new DriverInput(0f, -5f, FrontBrakeBiasOffset: -0.20f),
                 CarStrategy.Default,
                 AirTempC: 90f,
@@ -1770,7 +1771,7 @@ public sealed class CarPhysicsTests
         // when an unrelated rear heat term was removed, without the order
         // of the two layers changing at all. Holding the surroundings level
         // leaves only the heat going in.
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             default,
             CarStrategy.Default,
             AirTempC: 70f,
@@ -1858,7 +1859,7 @@ public sealed class CarPhysicsTests
         );
         SetSteadyCorner(state, car, tires, curvature);
 
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             default,
             CarStrategy.Default,
             AirTempC: 35f,
@@ -2000,7 +2001,7 @@ public sealed class CarPhysicsTests
                 state,
                 car,
                 tires,
-                new CarPhysicsStepInput(
+                new CarStepInput(
                     new Ask(curvature, accel).For(state, car, tires),
                     strategy,
                     AirTempC: 25f,
@@ -2101,7 +2102,7 @@ public sealed class CarPhysicsTests
         wake.AirVelocityDeficit = 0.08f;
         SetTireTemps(cleanAir, surfaceTempC: 112f, coreTempC: 104f);
         SetTireTemps(wake, surfaceTempC: 112f, coreTempC: 104f);
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             new DriverInput(0f, 0f),
             CarStrategy.Default,
             AirTempC: 25f,
@@ -2152,13 +2153,13 @@ public sealed class CarPhysicsTests
         CarState cleanStraight = CreateState(speed: 55f, batterySoc: 0.8f, tires);
         CarState dirtyStraight = cleanStraight.Clone();
         dirtyStraight.WakeDownforceLoss = 0.08f;
-        CarPhysicsStepInput cleanCornerInput = PhysicsInput(
+        CarStepInput cleanCornerInput = PhysicsInput(
             new DriverInput(0f, 0f)
         );
-        CarPhysicsStepInput dirtyCornerInput = PhysicsInput(
+        CarStepInput dirtyCornerInput = PhysicsInput(
             new DriverInput(0f, 0f)
         );
-        CarPhysicsStepInput straightInput = PhysicsInput(
+        CarStepInput straightInput = PhysicsInput(
             new DriverInput(0f, 0f)
         );
 
@@ -2513,7 +2514,7 @@ public sealed class CarPhysicsTests
             state,
             car,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new Ask(curvature, 0f).For(state, car, tires),
                 CarStrategy.Default,
                 AirTempC: temperature,
@@ -2623,7 +2624,7 @@ public sealed class CarPhysicsTests
                 state,
                 car,
                 tires,
-                new CarPhysicsStepInput(
+                new CarStepInput(
                     new Ask(curvature, acceleration).For(state, car, tires),
                     strategy,
                     AirTempC: TestAirTempC,
@@ -2665,10 +2666,10 @@ public sealed class CarPhysicsTests
             CarPhysics.Step(state, car, tires, PhysicsInput(input, strategy), dt);
     }
 
-    private static CarPhysicsStepInput PhysicsInput(CarState state, CarConfig car, TireConfig tires, Ask ask) =>
+    private static CarStepInput PhysicsInput(CarState state, CarConfig car, TireConfig tires, Ask ask) =>
         PhysicsInput(ask.For(state, car, tires), CarStrategy.Default);
 
-    private static CarPhysicsStepInput PhysicsInput(CarState state, CarConfig car, TireConfig tires, Ask ask, CarStrategy strategy) =>
+    private static CarStepInput PhysicsInput(CarState state, CarConfig car, TireConfig tires, Ask ask, CarStrategy strategy) =>
         PhysicsInput(ask.For(state, car, tires), strategy);
 
     private static void StepMany(CarState state, CarConfig car, TireConfig tires, Ask ask, CarStrategy strategy, int steps)
@@ -2678,14 +2679,14 @@ public sealed class CarPhysicsTests
             CarPhysics.Step(state, car, tires, PhysicsInput(state, car, tires, ask, strategy), dt);
     }
 
-    private static CarPhysicsStepInput PhysicsInput(DriverInput input)
+    private static CarStepInput PhysicsInput(DriverInput input)
     {
         return PhysicsInput(input, CarStrategy.Default);
     }
 
-    private static CarPhysicsStepInput PhysicsInput(DriverInput input, CarStrategy strategy)
+    private static CarStepInput PhysicsInput(DriverInput input, CarStrategy strategy)
     {
-        return new CarPhysicsStepInput(
+        return new CarStepInput(
             input,
             strategy,
             TestAirTempC,

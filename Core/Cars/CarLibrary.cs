@@ -64,6 +64,13 @@ public sealed record CarManifest
     /// </summary>
     public IReadOnlyList<string> Tyres { get; init; } = [];
 
+    /// <summary>
+    /// The chassis pack the car is built on (<c>official:single_track</c>),
+    /// loaded before the car so its assembly finds it; none for a car with
+    /// physics of its own.
+    /// </summary>
+    public string? Chassis { get; init; }
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -78,11 +85,11 @@ public sealed record CarManifest
 
 /// <summary>A car pack, loaded: what it is, where it came from, and the car.</summary>
 /// <param name="Fingerprint">
-/// A short hash of what the car is: its version, the physics it runs on
-/// (<see cref="CarPhysics.Revision"/>), what it says of itself and the tyres
-/// it runs. Anything learned on this car -- a driver's notes -- is learned
-/// on these, and is stale when any of them changes; building the same pack
-/// again does not change it.
+/// A short hash of what the car is: its version, the version of the chassis
+/// it is built on (<see cref="ChassisManifest.Version"/>), what it says of
+/// itself and the tyres it runs. Anything learned on this car -- a driver's
+/// notes -- is learned on these, and is stale when any of them changes;
+/// building the same pack again does not change it.
 /// </param>
 public sealed record LoadedCar(ResourceId Id, CarManifest Manifest, string Folder, ICar Car, string Fingerprint);
 
@@ -159,6 +166,9 @@ public static class CarLibrary
         if (string.IsNullOrWhiteSpace(manifest.Assembly))
             throw new InvalidDataException($"Car '{id}' names no assembly.");
         IReadOnlyList<TireCompound> compounds = TiresFor(manifest, id);
+        // Before the car, so its assembly finds the chassis it was built on.
+        if (manifest.Chassis is { } chassis)
+            ChassisLibrary.Load(chassis);
 
         string path = Path.GetFullPath(Path.Combine(folder, manifest.Assembly));
         if (!File.Exists(path))
@@ -199,7 +209,7 @@ public static class CarLibrary
         // built again against a new game is the same car.
         var hashed = new StringBuilder()
             .Append(id).Append(':').Append(manifest.Version)
-            .Append(':').Append(CarPhysics.Revision)
+            .Append(':').Append(manifest.Chassis is { } chassis ? ChassisLibrary.Load(chassis).Manifest.Version : 0)
             .Append(':').Append(JsonSerializer.Serialize(car.Spec));
         foreach (ModeLadder ladder in car.Ladders)
             hashed.Append(':').Append(ladder.Id).Append('=').Append(string.Join(',', ladder.Rungs));

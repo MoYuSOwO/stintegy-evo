@@ -106,7 +106,7 @@ public sealed class CarState
     /// </summary>
     public float DownforceVelocityDeficit { get; set; }
 
-    public CarTelemetry Telemetry { get; internal set; }
+    public CarTelemetry Telemetry { get; set; }
 
     public Vector2 Forward => new(MathF.Cos(Heading), MathF.Sin(Heading));
     public Vector2 Left => new(-MathF.Sin(Heading), MathF.Cos(Heading));

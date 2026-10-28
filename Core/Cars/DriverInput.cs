@@ -176,7 +176,7 @@ public readonly record struct CarStrategy
     }
 }
 
-public readonly record struct CarPhysicsStepInput(
+public readonly record struct CarStepInput(
     DriverInput DriverInput,
     CarStrategy Strategy,
     float AirTempC,

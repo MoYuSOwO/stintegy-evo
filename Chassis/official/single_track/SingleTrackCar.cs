@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using StintegyEVO.Core.Cars;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 /// <summary>
 /// The chassis the game offers every car: a single-track model with load
@@ -70,7 +71,7 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
 
     public virtual float TotalMassKg(CarState state) => CarPhysics.TotalMassKg(Config, state.Chassis().Energy);
 
-    public virtual void Step(CarState state, CarPhysicsStepInput input, float dt) =>
+    public virtual void Step(CarState state, CarStepInput input, float dt) =>
         CarPhysics.Step(state, Config, TiresOn(state), input, dt);
 
     public virtual CarPerformanceLimits EstimatePerformanceLimits(

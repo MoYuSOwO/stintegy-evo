@@ -14,6 +14,8 @@
     <!-- The game's own car is a pack the game loads from data/ like anyone's:
          built with the game, never referenced by it. -->
     <ProjectReference Include="Cars/official/formula_a_mixed/formula_a_mixed.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" ReferenceOutputAssembly="false" Private="false" />
+    <!-- So is the chassis it is built on, a pack of its own. -->
+    <ProjectReference Include="Chassis/official/single_track/single_track.csproj" AdditionalProperties="Configuration=$(SimulationConfiguration)" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +24,7 @@
     <Compile Remove="Training/**/*.cs" />
     <!-- Car packs are their own assemblies. -->
     <Compile Remove="Cars/**/*.cs" />
+    <Compile Remove="Chassis/**/*.cs" />
     <!-- The circuit tool writes data/official/circuits/ offline; it is not part of the game. -->
     <Compile Remove="Tools/Circuits/**/*.cs" />
     <!-- Test controllers/fixtures never ship in an ordinary game build. -->

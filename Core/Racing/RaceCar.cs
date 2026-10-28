@@ -39,19 +39,6 @@ public sealed class RaceCar
             throw new CarUnfitForDriverException(driver.Profile.Id, car, missing);
     }
 
-    /// <summary>A car on the game's own chassis, made of these numbers.</summary>
-    public RaceCar(
-        string id,
-        CarConfig carConfig,
-        TireConfig tireConfig,
-        Driver? driver = null,
-        CarState? state = null,
-        CarCollisionConfig? collision = null,
-        bool installFreshTires = true
-    ) : this(id, new SingleTrackCar(carConfig, tireConfig), driver, state, collision, installFreshTires)
-    {
-    }
-
     public string Id { get; }
     public CarState State { get; }
 

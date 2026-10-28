@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Content;
 using Xunit;
@@ -154,7 +155,7 @@ public sealed class TireLibraryTests
             car.InstallFreshTires(state);
             state.Chassis().WarmTires(95f, 95f);
             for (int i = 0; i < 600; i++)
-                car.Step(state, new CarPhysicsStepInput(new DriverInput(car.EstimateSteering(state, RoadAttitude.Flat).AngleFor(0.012f), 0.5f), CarStrategy.Default, 25f), 1f / 60f);
+                car.Step(state, new CarStepInput(new DriverInput(car.EstimateSteering(state, RoadAttitude.Flat).AngleFor(0.012f), 0.5f), CarStrategy.Default, 25f), 1f / 60f);
             return (state.Chassis().FrontLeft.SurfaceTempC + state.Chassis().RearRight.SurfaceTempC, state.Chassis().FrontLeft.Wear + state.Chassis().RearRight.Wear);
         }
         var plain = Corner(new TireConfig());
@@ -187,7 +188,7 @@ public sealed class TireLibraryTests
             for (int i = 0; i < 60 * 600; i++)
             {
                 state.Speed = 45f;
-                car.Step(state, new CarPhysicsStepInput(new DriverInput(0.016f, 0.5f), CarStrategy.Default, 25f), 1f / 60f);
+                car.Step(state, new CarStepInput(new DriverInput(0.016f, 0.5f), CarStrategy.Default, 25f), 1f / 60f);
             }
             return car.As<ICarEnvelope>().EstimateCorneringLimit(state, CarStrategy.Default, 45f) / before;
         }

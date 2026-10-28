@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using Xunit;
 
-namespace StintegyEVO.Core.Tests;
+namespace Official.SingleTrack.Tests;
 
 /// <summary>
 /// An interface with one implementation is not an interface, it is a class
@@ -74,7 +75,7 @@ public sealed class PowertrainInterfaceTests
                 state,
                 config,
                 tires,
-                new CarPhysicsStepInput(
+                new CarStepInput(
                     new DriverInput(0f, 8f),
                     CarStrategy.Default,
                     28f
@@ -336,7 +337,7 @@ public sealed class PowertrainInterfaceTests
                 state,
                 config,
                 tires,
-                new CarPhysicsStepInput(
+                new CarStepInput(
                     new DriverInput(0f, 12f),
                     strategy,
                     28f
@@ -362,7 +363,7 @@ public sealed class PowertrainInterfaceTests
             TestTires tires = WarmTires();
             CarState state = new CarState() { Speed = 70f }.WithEnergy(new PowertrainState(tankFraction, 1f));
             state.InstallFreshTires(tires);
-            CarPhysics.Step(state, config, tires, new CarPhysicsStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 28f), Dt);
+            CarPhysics.Step(state, config, tires, new CarStepInput(new DriverInput(0f, 0f), CarStrategy.Default, 28f), Dt);
             float mass = config.MassKg + FullTankMassKg * tankFraction;
             return (-state.Telemetry.ActualLongitudinalAccel - config.RollingDragAccel) * mass;
         }
@@ -383,7 +384,7 @@ public sealed class PowertrainInterfaceTests
             state,
             config,
             tires,
-            new CarPhysicsStepInput(
+            new CarStepInput(
                 new DriverInput(0f, 0f),
                 CarStrategy.Default,
                 28f

@@ -69,8 +69,7 @@ var profile = new DriverProfile("example", new DriverAbilities());
 TrackSample start = track.Sample(track.StartingLineS);
 var car = new RaceCar(
     "car-1",
-    new CarConfig(),
-    new TireConfig(),
+    CarLibrary.Load("official:formula_a_mixed").Car,
     new Driver(profile, new CentrelineFollower()),
     new CarState { Position = start.Center, Heading = start.Heading }
 );
@@ -87,7 +86,7 @@ To watch it, open the project in Godot. The main scene, `Levels/lowpoly.tscn`, i
 
 - **World and physics:** vehicle state, slip-angle tyres, powertrain resources, heat and wear, grip, road attitude and banking, collisions, wakes, track limits and walls, deterministic stepping.
 - **Domain contracts:** stable identities, driver profiles with 0..100 ratings, car capabilities, typed resource slots, track geometry, immutable frame snapshots, and the controller interface.
-- **Content as data:** cars are namespaced packs (`data/<namespace>/cars/<name>/`: a `car.json` and an assembly built on the game's own chassis, see [`Cars/MODDING.md`](Cars/MODDING.md)); compounds come in tyre packs (`data/<namespace>/tyres/<name>/tyres.json`) that a car declares, on one tyre model shared by every car; circuits are namespaced packs too (`data/<namespace>/circuits/<name>/`: `circuit.json`, a `track.csv` with one row a metre, scenery), written by the offline tool `Tools/Circuits` from the surveyed sources, see [`Circuits/README.md`](Circuits/README.md).
+- **Content as data:** cars are namespaced packs (`data/<namespace>/cars/<name>/`: a `car.json` and an assembly, usually built on a chassis pack, see [`Cars/MODDING.md`](Cars/MODDING.md)); the game's own chassis is a pack too (`data/official/chassis/single_track/`, source in `Chassis/official/single_track/`), which a car names in its `car.json`; compounds come in tyre packs (`data/<namespace>/tyres/<name>/tyres.json`) that a car declares, on one tyre model shared by every car; circuits are namespaced packs too (`data/<namespace>/circuits/<name>/`: `circuit.json`, a `track.csv` with one row a metre, scenery), written by the offline tool `Tools/Circuits` from the surveyed sources, see [`Circuits/README.md`](Circuits/README.md).
 - **Presentation:** Godot 3D views, cameras, HUD and CSV recording of physical state. The old 2D `RaceView` / `Levels/root.tscn` is retained for compatibility only.
 
 What is **not** here: rule-based or learned drivers, racing-line solvers, observation vectors, neural networks, training programs and model files. The world does not prefer a line, and it does not hide a driver model in its physics.
@@ -98,7 +97,7 @@ What is **not** here: rule-based or learned drivers, racing-line solvers, observ
 - **What a car has.** Every car is a body on the road (`ICar`: its motion, its size, its screen). Anything more it declares by implementing a feature: changeable tyres (`ICarTires`), stores it spends (`ICarStores`), buttons a driver holds (`ICarButtons`), an envelope to plan against (`ICarEnvelope`), the feel of its grip (`ICarGripFeel`). The frame carries a feature's readings only for a car that has it. A controller says what it needs (`IDriverController.Needs`); a driver is not put in a car without a required feature, and uses an optional one only where it is there.
 - **Drivers are packs.** A driver pack (`data/<namespace>/drivers/<name>/`: a `driver.json` and an assembly with one `IDriverDefinition`) is loaded by `DriverLibrary` the way a car is. Before a race `DriverLibrary.Check` refuses a car without what the driver needs, and tells the pit wall when the driver has no notes for that car at that circuit, or notes learned on another version of it. What a driver learns about a car is kept in the car's pack, `drivers/<driver namespace>/<driver name>/<circuit namespace>/<circuit name>/`; a person's own experience is kept where the save says (`IDriverProgressStore`). Every id is split into folders, so no colon reaches a path.
 - **Freeze, collect, advance.** In every substep all controllers read the same frozen frame, every command is collected and validated, and only then does physics advance. No controller sees a world another controller has already changed.
-- **Devices on the car.** Everything between a command and the tyres is a published device with its parameters on `CarConfig`. A car without a device has that device's parameters at zero; the interface does not change.
+- **Devices on the car.** Everything between a command and the tyres is a published device; on the game's own chassis its parameters are on `CarConfig`. A car without a device has that device's parameters at zero; the interface does not change.
   - The **combined-grip limiter** is the electronic stability device this class of racing permits. It trims each axle's drive and braking so that the tyre's combined use stays inside a fixed share of the friction circle, the same at every tyre rung, and above 10 m/s it cuts drive on an axle that is past its peak slip angle. It never steers. `CombinedGripLimiterStrength = 0` means the device is not fitted.
   - **Push-to-pass**, the chassis's one button, adds power while it is held, within the series' allowance (`PushToPassRules`: seconds for the race, a cap on one push, a wait after each), which Core enforces; when to press it is the host's or the driver's. **Active aero** restores part of the downforce lost in a leading car's wake.
 - **Tracks are geometry.** A track provides a centreline, widths, run-off, curvature, elevation and banking, surfaces and a starting grid. It does not provide a racing line.
