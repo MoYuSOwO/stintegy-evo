@@ -76,6 +76,31 @@ public sealed record LaneDriverGains
     public bool OwnLock { get; init; }
 
     /// <summary>
+    /// The lock the car's estimate gives, put right for a car being turned
+    /// in rather than one already round: the front given the extra it
+    /// takes to start the car rotating as fast as the line ahead winds on,
+    /// the rear relieved of it. For probes.
+    /// </summary>
+    public bool LockForRotation { get; init; }
+
+    /// <summary>
+    /// The slip angles read where the car is cornering now, not where it is
+    /// asked to be: asked for more than it has yet, near the rear's limit
+    /// the steady answer reads a slide the car is not in and takes lock off.
+    /// For probes.
+    /// </summary>
+    public bool LockWhereTheCarIs { get; init; }
+
+    /// <summary>
+    /// The slip angles' part of the lock faded in by how much of the corner
+    /// asked for the car is already cornering, not by how much of all its
+    /// grip: read against all of it, a gentle bend taken fast on a car
+    /// pressed down by its wings never counted as loaded, and half the
+    /// lock it wanted was left off.
+    /// </summary>
+    public bool FadeByAsk { get; init; } = true;
+
+    /// <summary>
     /// The line's heading turned smoothly from one station to the next, as
     /// the line itself does, rather than held along each two-metre chord
     /// and snapped round at the next station. Off, round a bend the heading
@@ -666,6 +691,9 @@ public sealed class LaneDriver : IDriverController
         float feedforward = BlendedCurvature(previewStation) + BlendedSteer(previewStation) + moveCurvature;
         float here = BlendedCurvature(station);
         LastHereCurvature = here;
+        // How fast the line ahead asks the car to wind on its rotation.
+        _yawAccelAsk = speed * speed * (BlendedCurvature(previewStation + 1f) - BlendedCurvature(previewStation - 1f)) / (2f * _lanes.Spacing) +
+                       feedforward * car.Telemetry.ActualLongitudinalAccel;
 
         float pursuit = MathF.Max(Gains.MinimumPursuitMeters, MathF.Max(speed, 0f) * Gains.PursuitSeconds);
         // What the axles will hold at the braking being done right now.
@@ -948,7 +976,9 @@ public sealed class LaneDriver : IDriverController
         // The lock for that curvature as a driver who knew the car exactly
         // would put on (SteeringEstimate), misjudged by this driver's hands;
         // the line takes up what is left.
-        float steer = (Gains.OwnLock ? LockFor(car.Steering, curvature) : car.Steering.AngleFor(curvature)) *
+        float steer = (Gains.OwnLock ? LockFor(car.Steering, curvature)
+                       : Gains.LockForRotation || Gains.LockWhereTheCarIs || Gains.FadeByAsk ? TurnInLock(car, curvature)
+                       : car.Steering.AngleFor(curvature)) *
                       (1f + (_performance?.SteeringRead ?? 0f));
         if (Gains.LockIntegralSeconds is { } hold && hold > 0f)
         {
@@ -993,6 +1023,50 @@ public sealed class LaneDriver : IDriverController
         float slip = estimate.FrontPeakSlipAngleRatio * _feel.SlipAngleAtShare(rearArm / wheelBase * corner / frontCapacity) -
                      _feel.SlipAngleAtShare(frontArm / wheelBase * corner / rearCapacity);
         float loaded = SteeringEstimate.FullSlipCompensationShare * MathF.Max(estimate.FrontGripAccel + estimate.RearGripAccel, epsilon);
+        float load = Math.Clamp(MathF.Abs(estimate.ActualLateralAccel) / loaded, 0f, 1f);
+        float angle = MathF.Atan(wheelBase * curvature) + slip * load +
+                      estimate.CurvatureFeedbackGain * wheelBase * (curvature - estimate.ActualCurvature);
+        float maximum = MathF.Max(estimate.MaxSteerAngleRadians, 0f);
+        return Math.Clamp(angle, -maximum, maximum);
+    }
+
+    // The yaw acceleration the line ahead asks for this step, rad/s^2 (LockForRotation).
+    private float _yawAccelAsk;
+
+    /// <summary>
+    /// The estimate's lock (SteeringEstimate.AngleFor), the slip-angle part
+    /// read for a car turning in (LockForRotation, LockWhereTheCarIs).
+    /// Under the brakes the rear works near its limit, where the car turns
+    /// a great deal for a little lock and a few hundredths of the rear's
+    /// share read as a slip angle several milliradians off.
+    /// </summary>
+    private float TurnInLock(RaceCarSnapshot car, float curvature)
+    {
+        const float epsilon = 1e-4f;
+        SteeringEstimate estimate = car.Steering;
+        float wheelBase = MathF.Max(estimate.WheelBaseMeters, epsilon);
+        float frontArm = MathF.Max(estimate.FrontArmMeters, epsilon);
+        float rearArm = MathF.Max(estimate.RearArmMeters, epsilon);
+        float frontCapacity = MathF.Max(estimate.FrontGripAccel, epsilon);
+        float rearCapacity = MathF.Max(estimate.RearGripAccel, epsilon);
+        float holdable = SteeringEstimate.InversionShare * MathF.Min(frontCapacity * wheelBase / rearArm, rearCapacity * wheelBase / frontArm);
+        float asked = estimate.LateralDemand(curvature);
+        float corner = Gains.LockWhereTheCarIs && MathF.Abs(estimate.ActualLateralAccel) < MathF.Abs(asked)
+            ? MathF.CopySign(MathF.Abs(estimate.ActualLateralAccel), asked)
+            : asked;
+        corner = Math.Clamp(corner, -holdable, holdable);
+        // Rotating the car faster takes a moment about its centre: the front
+        // pushes that much harder and the rear that much less.
+        float turning = Gains.LockForRotation
+            ? _model.Spec.YawInertiaKgM2 * _yawAccelAsk / (MathF.Max(_model.TotalMassKg(_plan), 1f) * wheelBase)
+            : 0f;
+        float front = Math.Clamp(rearArm / wheelBase * corner + turning, -holdable, holdable);
+        float rear = Math.Clamp(frontArm / wheelBase * corner - turning, -holdable, holdable);
+        float slip = estimate.FrontPeakSlipAngleRatio * _feel.SlipAngleAtShare(front / frontCapacity) -
+                     _feel.SlipAngleAtShare(rear / rearCapacity);
+        float loaded = Gains.FadeByAsk
+            ? MathF.Max(MathF.Abs(asked), epsilon)
+            : SteeringEstimate.FullSlipCompensationShare * MathF.Max(estimate.FrontGripAccel + estimate.RearGripAccel, epsilon);
         float load = Math.Clamp(MathF.Abs(estimate.ActualLateralAccel) / loaded, 0f, 1f);
         float angle = MathF.Atan(wheelBase * curvature) + slip * load +
                       estimate.CurvatureFeedbackGain * wheelBase * (curvature - estimate.ActualCurvature);

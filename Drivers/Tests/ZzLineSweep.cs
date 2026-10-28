@@ -659,13 +659,13 @@ public sealed class ZzLineSweep
             Condition learned = setup.Conditions[0];
             int a = (int)MathF.Ceiling(setup.Lanes.StationOf(stretch.FromS)), b = (int)MathF.Floor(setup.Lanes.StationOf(stretch.ToS));
             int n = setup.Lanes.Count;
-            foreach ((string name, float? lead, bool grip, bool turnIn) in new[] { ("old hands", (float?)null, false, false), ("as they are", null, false, true) })
+            foreach ((string name, float? lead, bool grip, bool turnIn) in new[] { ("old hands", (float?)null, false, false), ("as they are", null, true, true) })
             {
                 var runs = new Run[lines.Length];
                 Parallel.For(0, lines.Length, i =>
                 {
                     _steerLead = lead;
-                    _gripLead = grip;
+                    _gripLead = false;
                     _oldHands = !turnIn;
                     LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
                     LaneTrackFile file = setup.Shipped.WithLanes(drawn);
@@ -1782,6 +1782,7 @@ public sealed class ZzLineSweep
             LeadFromGrip = _gripLead,
             LeadFromTurnIn = !_oldHands,
             SmoothHeading = !_oldHands,
+            FadeByAsk = !_oldHands,
             BrakeOnlyOverPlan = Environment.GetEnvironmentVariable("STINTEGY_BRAKE_ZERO") != "0"
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),

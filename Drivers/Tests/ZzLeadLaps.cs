@@ -133,7 +133,7 @@ public sealed class ZzLeadLaps
             WithoutSteerNotes(file, track);
             var mine = new List<string>();
             int lap0 = -1;
-            LaneLapRunner.Run(track, file, new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", SmoothHeading = Environment.GetEnvironmentVariable("STINTEGY_SMOOTH_HEADING") == "1" }, onStep: (car, d, t) =>
+            LaneLapRunner.Run(track, file, new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", LockForRotation = Environment.GetEnvironmentVariable("STINTEGY_LOCK_ROTATION") == "1", LockWhereTheCarIs = Environment.GetEnvironmentVariable("STINTEGY_LOCK_WHERE") == "1", FadeByAsk = Environment.GetEnvironmentVariable("STINTEGY_FADE_ASK") != "0" }, onStep: (car, d, t) =>
             {
                 if (side != 0f)
                 {
@@ -181,7 +181,7 @@ public sealed class ZzLeadLaps
         if (!LaneProbes.Enabled) return;
         string[] only = Environment.GetEnvironmentVariable("STINTEGY_LEAD_CIRCUITS")?.Split(',') ?? Circuits;
         string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "lead-laps.csv");
-        var old = new LaneDriverGains { LeadFromTurnIn = false, SmoothHeading = false, UseSteerNotes = true };
+        var old = new LaneDriverGains { LeadFromTurnIn = false, SmoothHeading = false, UseSteerNotes = true, FadeByAsk = false };
         var ways = new (string Name, LaneDriverGains Gains)[]
         {
             ("old hands", old),
@@ -189,6 +189,10 @@ public sealed class ZzLeadLaps
             ("as they are", new LaneDriverGains()),
             ("as they are but small-step lag", new LaneDriverGains { LeadFromTurnIn = false }),
             ("as they are but chord heading", new LaneDriverGains { SmoothHeading = false }),
+            ("lock for rotation", new LaneDriverGains { LockForRotation = true }),
+            ("lock where the car is", new LaneDriverGains { LockWhereTheCarIs = true }),
+            ("lock for both", new LaneDriverGains { LockForRotation = true, LockWhereTheCarIs = true }),
+            ("as they are but faded by all the grip", new LaneDriverGains { FadeByAsk = false }),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
