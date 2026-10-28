@@ -144,7 +144,12 @@ public sealed class ZzLeadLaps
                 if (car.Progress.Lap <= lap0) return;
                 LaneDriverTelemetry tel = d.LastTelemetry;
                 var state = car.State;
-                var est = ((StintegyEVO.Core.Cars.ICarEnvelope)car.Car).EstimateSteering(state, StintegyEVO.Core.Cars.RoadAttitude.Flat);
+                TrackSample under = track.Sample(car.Progress.CurrentS);
+                // The road as the race reads it under the car (RaceSimulation.RoadAttitudeAt), so the estimate is the one the driver was handed.
+                var road = under.Grade == 0f && under.BankSlope == 0f && under.BankCurvature == 0f && under.VerticalRate == 0f
+                    ? StintegyEVO.Core.Cars.RoadAttitude.Flat
+                    : new StintegyEVO.Core.Cars.RoadAttitude(under.Grade, under.BankSlopeAt(car.Progress.CurrentD), under.VerticalRate);
+                var est = ((StintegyEVO.Core.Cars.ICarEnvelope)car.Car).EstimateSteering(state, road);
                 var grip = ((StintegyEVO.Core.Cars.ICarGripFeel)car.Car).GripUse(state);
                 float k = tel.CommandCurvature;
                 float wb = est.WheelBaseMeters, a = est.FrontArmMeters, b = est.RearArmMeters;
@@ -160,12 +165,12 @@ public sealed class ZzLeadLaps
                         t, car.Progress.CurrentS, state.Speed, tel.CommandAccel, d.LastHereCurvature, k, state.Telemetry.ActualCurvature, tel.LateralErrorMeters,
                         state.SteerAngleRadians, MathF.Atan(wb * k), slip, load, est.CurvatureFeedbackGain * wb * (k - est.ActualCurvature), est.AngleFor(k),
                         af, ar, grip.FrontLongitudinal, grip.RearLongitudinal, grip.FrontLateral, grip.RearLateral,
-                        state.Telemetry.ActualLateralAccel, est.FrontGripAccel, est.RearGripAccel, grip.FrontGripAccel, grip.RearGripAccel, state.Telemetry.ActualLongitudinalAccel
+                        state.Telemetry.ActualLateralAccel, est.FrontGripAccel, est.RearGripAccel, grip.FrontGripAccel, grip.RearGripAccel, state.Telemetry.ActualLongitudinalAccel, est.LateralDemand(k)
                     }.Select(x => x.ToString("F6", CultureInfo.InvariantCulture)))));
             });
             rows[j] = mine;
         });
-        File.WriteAllLines(output, new[] { "circuit,lane,t,s,speed,command_accel,line_k,cmd_k,actual_k,error,steer,kin,slip_full,load,fb,est_angle,af,ar,front_long,rear_long,front_lat,rear_lat,lat,front_grip,rear_grip,car_front_grip,car_rear_grip,long" }
+        File.WriteAllLines(output, new[] { "circuit,lane,t,s,speed,command_accel,line_k,cmd_k,actual_k,error,steer,kin,slip_full,load,fb,est_angle,af,ar,front_long,rear_long,front_lat,rear_lat,lat,front_grip,rear_grip,car_front_grip,car_rear_grip,long,demand" }
             .Concat(rows.SelectMany(r => r)));
         _output.WriteLine($"{rows.Sum(r => r.Count)} steps to {output}");
     }
