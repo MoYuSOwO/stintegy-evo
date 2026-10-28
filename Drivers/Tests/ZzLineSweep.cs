@@ -524,6 +524,95 @@ public sealed class ZzLineSweep
             _output.WriteLine($"{g.Key,-22} {g.Count()}");
     }
 
+    /// <summary>
+    /// The hands' lead learned by trial over the stretch, 40 m
+    /// (STINTEGY_LEAD_SECTOR) at a time, on a batch of random lines at one
+    /// flat factor: each sector tries a few extra leads and keeps the one
+    /// with the fewest lines in trouble, then the smallest mean error. Then an
+    /// exam on fresh lines beside no extra lead and a flat 0.10 s.
+    /// </summary>
+    [Fact]
+    public void LearnLead()
+    {
+        if (!LaneProbes.Enabled) return;
+        int train = (int)Env("STINTEGY_LEAD_TRAIN", 200), examCount = (int)Env("STINTEGY_LEAD_EXAM", 300);
+        float sectorMeters = Env("STINTEGY_LEAD_SECTOR", 40f);
+        int passes = (int)Env("STINTEGY_LEAD_PASSES", 2);
+        float factor = Env("STINTEGY_CLASSIFY_FACTOR", 1f);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "lead.csv");
+        Setup setup = Build(1);
+        Condition learned = setup.Conditions[0];
+        float[] flat = Enumerable.Repeat(factor, 3 * ProfileKnots).ToArray();
+        float[] tries = [-0.02f, 0f, 0.02f, 0.04f, 0.06f, 0.08f];
+        int n = setup.Lanes.Count;
+        float[][] Lines(int count, int seed)
+        {
+            var random = new Random(seed);
+            return Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
+        }
+        (int Trouble, float Error, float Seconds) Score(float[][] lines, float[]? extra, float? steerLead)
+        {
+            var runs = new Run[lines.Length];
+            Parallel.For(0, lines.Length, i =>
+            {
+                _leadExtra = extra;
+                _steerLead = steerLead;
+                LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, lines[i]));
+                LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                SetProfile(file, setup.Lanes, setup.Stretch, flat);
+                runs[i] = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds);
+                _leadExtra = null;
+                _steerLead = null;
+            });
+            int a = (int)MathF.Ceiling(setup.Lanes.StationOf(setup.Stretch.FromS)), b = (int)MathF.Floor(setup.Lanes.StationOf(setup.Stretch.ToS));
+            float error = runs.Average(r => Enumerable.Range(a, b - a + 1).Average(i => r.StationError.Length == n ? r.StationError[setup.Lanes.Wrap(i)] : 0f));
+            return (runs.Count(r => !r.Clean), error, runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.NaN).Average());
+        }
+        static bool Better((int Trouble, float Error, float Seconds) x, (int Trouble, float Error, float Seconds) y) =>
+            x.Trouble < y.Trouble || (x.Trouble == y.Trouble && x.Error < y.Error);
+
+        float[][] lines = Lines(train, 777);
+        var extra = new float[n];
+        var log = new List<string> { "pass,sector_from_s,lead,trouble,mean_error_m,seconds" };
+        var current = Score(lines, extra, null);
+        log.Add($"0,,0,{current.Trouble},{F(current.Error)},{F(current.Seconds)}");
+        _output.WriteLine(log[^1]);
+        for (int pass = 1; pass <= passes; pass++)
+            for (float from = setup.Stretch.FromS - 150f; from < setup.Stretch.ToS; from += sectorMeters)
+            {
+                int a = (int)MathF.Ceiling(setup.Lanes.StationOf(from)), b = (int)MathF.Floor(setup.Lanes.StationOf(from + sectorMeters)) - 1;
+                float kept = extra[setup.Lanes.Wrap(a)];
+                var bestScore = current;
+                float best = kept;
+                foreach (float t in tries)
+                {
+                    if (t == kept) continue;
+                    var trial = (float[])extra.Clone();
+                    for (int i = a; i <= b; i++) trial[setup.Lanes.Wrap(i)] = t;
+                    var score = Score(lines, trial, null);
+                    if (Better(score, bestScore))
+                    {
+                        bestScore = score;
+                        best = t;
+                    }
+                }
+                for (int i = a; i <= b; i++) extra[setup.Lanes.Wrap(i)] = best;
+                current = bestScore;
+                log.Add($"{pass},{F(from)},{F(best)},{current.Trouble},{F(current.Error)},{F(current.Seconds)}");
+                _output.WriteLine(log[^1]);
+            }
+
+        float[][] exam = Lines(examCount, 999);
+        var rows = new List<string> { "hands,trouble,mean_error_m,seconds" };
+        foreach ((string name, float[]? e, float? lead) in new[] { ("as they are", (float[]?)null, (float?)null), ("flat 0.10 s", null, 0.10f), ("learned", extra, null) })
+        {
+            var score = Score(exam, e, lead);
+            rows.Add($"{name},{score.Trouble},{F(score.Error)},{F(score.Seconds)}");
+            _output.WriteLine(rows[^1]);
+        }
+        File.WriteAllLines(output, log.Concat(new[] { "" }).Concat(rows));
+    }
+
     /// <summary>A whole lap on a side lane, as LaneDriverTests drives it, with every moment off the road and the felt lag then.</summary>
     [Fact]
     public void SideLaneOff()
@@ -1193,6 +1282,10 @@ public sealed class ZzLineSweep
             steer[lanes.Wrap(i)] = 0f;
     }
 
+    // The hands' lead for the drives on this thread, over what the environment says: for experiments that try several.
+    [ThreadStatic] private static float[]? _leadExtra;
+    [ThreadStatic] private static float? _steerLead;
+
     private static RaceCar Place(string id, LaneTrackFile file, DriverAbilities abilities, Condition c, string compound, float s, float offset, float heading, float speed, LaneSet lanes)
     {
         int station = (int)MathF.Round(lanes.StationOf(s));
@@ -1206,7 +1299,8 @@ public sealed class ZzLineSweep
             CurvaturePreviewSeconds = Environment.GetEnvironmentVariable("STINTEGY_PREVIEW") is { } preview ? float.Parse(preview, CultureInfo.InvariantCulture) : null,
             PursuitSeconds = Env("STINTEGY_PURSUIT", new LaneDriverGains().PursuitSeconds),
             PlanLeadSeconds = Environment.GetEnvironmentVariable("STINTEGY_PLAN_LEAD") is { } planLead ? float.Parse(planLead, CultureInfo.InvariantCulture) : null,
-            SteerLeadSeconds = Environment.GetEnvironmentVariable("STINTEGY_STEER_LEAD") is { } steerLead ? float.Parse(steerLead, CultureInfo.InvariantCulture) : null
+            SteerLeadSeconds = _steerLead ?? (Environment.GetEnvironmentVariable("STINTEGY_STEER_LEAD") is { } steerLead ? float.Parse(steerLead, CultureInfo.InvariantCulture) : null),
+            SteerLeadExtra = _leadExtra
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })

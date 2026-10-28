@@ -37,6 +37,9 @@ public sealed record LaneDriverGains
     /// <summary>How far ahead the hands read the corner, apart from the plan. Only for probes.</summary>
     public float? SteerLeadSeconds { get; init; }
 
+    /// <summary>Seconds more the hands read ahead with the car at each station, on top of the rest. Only for probes.</summary>
+    public float[]? SteerLeadExtra { get; init; }
+
     /// <summary>
     /// Feedback is pure pursuit in the path's frame: aim at a point this many
     /// seconds of travel ahead, so the correction's lateral acceleration does
@@ -595,8 +598,9 @@ public sealed class LaneDriver : IDriverController
         // be crawling or facing across it, and the way it moves says little.
         float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
         UpdateRejoin(context, car, leftError, facing);
-        float turnIn = Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ??
-                       _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f);
+        float turnIn = (Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ??
+                        _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f)) +
+                       (Gains.SteerLeadExtra is { } extra && extra.Length == _lanes.Count ? extra[_lanes.Wrap((int)MathF.Round(station))] : 0f);
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
