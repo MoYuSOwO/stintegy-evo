@@ -24,6 +24,13 @@ public sealed record LaneDriverGains
     /// </summary>
     public float? CurvaturePreviewSeconds { get; init; }
 
+    /// <summary>
+    /// The hands read the corner ahead by the car's turn lag plus however
+    /// much later than that they have felt the car answer, braking about as
+    /// hard as now (LaneDriver.FeelTurnLag). Off, by the turn lag alone.
+    /// </summary>
+    public bool FeelTurnLag { get; init; } = true;
+
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
 
@@ -588,7 +595,8 @@ public sealed class LaneDriver : IDriverController
         // be crawling or facing across it, and the way it moves says little.
         float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
         UpdateRejoin(context, car, leftError, facing);
-        float turnIn = Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(speed);
+        float turnIn = Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ??
+                       _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f);
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
@@ -866,6 +874,8 @@ public sealed class LaneDriver : IDriverController
                 accel = MathF.Min(accel, MathF.Max(_lastAccel, 0f) + FootThrottleRate * MathF.Max(dt, 0f));
         }
         _lastAccel = accel;
+        if (Gains.FeelTurnLag)
+            FeelTurn(curvature, car.Telemetry.ActualCurvature, speed, accel, dt);
 
         LastTelemetry = new LaneDriverTelemetry(
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
@@ -880,6 +890,102 @@ public sealed class LaneDriver : IDriverController
 
     // What the driver feels of the two axles this step.
     private GripUse _axles;
+
+    // How late the car answers the wheel, felt. The turn lag (TurnLag) is
+    // measured once, on a car already in a corner asked for a little more:
+    // turned into Maggotts' right-hander under the brakes the car took 0.07
+    // to 0.10 s to make the path the hands asked for, against the 0.03 to
+    // 0.05 the hands read ahead by, and fell behind the line by more than a
+    // metre on 130 of 300 random lines. Read 0.10 s ahead there, none did;
+    // read that far ahead everywhere, the plan slowed every corner and
+    // corners taken off the brakes wanted less. So the hands feel it, as a
+    // driver feels a car that is slow to turn in: what they asked for over
+    // the last moments against the path the car made, the delay that best
+    // lines one up behind the other, kept for how hard the car was braking.
+    private const int FeelWindow = 36;
+    private const int FeelMaxShift = 18;
+    private const int FeelEvery = 6;
+    private const float FeelMinimumTurn = 5f;
+    private const float FeelRate = 0.3f;
+    private const float FeelMaxExtraSeconds = 0.15f;
+    private static readonly float[] FeelBrakings = [0f, 10f, 20f, 30f];
+    private readonly float[] _asked = new float[FeelWindow + FeelMaxShift];
+    private readonly float[] _made = new float[FeelWindow + FeelMaxShift];
+    private readonly float[] _feltBraking = new float[FeelWindow + FeelMaxShift];
+    private readonly float[] _extraLag = new float[4];
+    private int _feelSamples;
+
+    /// <summary>How much later than its turn lag the car has been felt to answer, braking this hard.</summary>
+    private float FeltExtraLag(float braking)
+    {
+        if (braking <= FeelBrakings[0])
+            return _extraLag[0];
+        for (int i = 1; i < FeelBrakings.Length; i++)
+            if (braking <= FeelBrakings[i])
+            {
+                float t = (braking - FeelBrakings[i - 1]) / (FeelBrakings[i] - FeelBrakings[i - 1]);
+                return _extraLag[i - 1] + (_extraLag[i] - _extraLag[i - 1]) * t;
+            }
+        return _extraLag[^1];
+    }
+
+    private void FeelTurn(float askedCurvature, float madeCurvature, float speed, float accel, float dt)
+    {
+        int n = _asked.Length;
+        Array.Copy(_asked, 1, _asked, 0, n - 1);
+        Array.Copy(_made, 1, _made, 0, n - 1);
+        Array.Copy(_feltBraking, 1, _feltBraking, 0, n - 1);
+        float v2 = speed * speed;
+        _asked[n - 1] = askedCurvature * v2;
+        _made[n - 1] = madeCurvature * v2;
+        _feltBraking[n - 1] = MathF.Max(0f, -accel);
+        _feelSamples++;
+        if (_feelSamples < n || _feelSamples % FeelEvery != 0 || speed < 15f)
+            return;
+        // Only a real turn of the wheel says how late the car answers it.
+        float low = float.PositiveInfinity, high = float.NegativeInfinity;
+        for (int k = n - FeelWindow - FeelMaxShift; k < n; k++)
+        {
+            low = MathF.Min(low, _asked[k]);
+            high = MathF.Max(high, _asked[k]);
+        }
+        if (high - low < FeelMinimumTurn)
+            return;
+        int best = 0;
+        float bestError = float.PositiveInfinity;
+        for (int shift = 0; shift <= FeelMaxShift; shift++)
+        {
+            float sxy = 0f, sxx = 0f, syy = 0f;
+            for (int k = n - FeelWindow; k < n; k++)
+            {
+                float x = _asked[k - shift], y = _made[k];
+                sxy += x * y;
+                sxx += x * x;
+                syy += y * y;
+            }
+            if (sxx <= 1e-3f)
+                continue;
+            float error = syy - sxy * sxy / sxx;
+            if (error < bestError)
+            {
+                bestError = error;
+                best = shift;
+            }
+        }
+        float braking = 0f;
+        for (int k = n - FeelWindow; k < n; k++)
+            braking += _feltBraking[k];
+        braking /= FeelWindow;
+        float extra = Math.Clamp(best * dt - _turnLag.Seconds(speed), 0f, FeelMaxExtraSeconds);
+        for (int i = 0; i < FeelBrakings.Length; i++)
+        {
+            float width = FeelBrakings[1] - FeelBrakings[0];
+            float weight = Math.Clamp(1f - MathF.Abs(braking - FeelBrakings[i]) / width, 0f, 1f);
+            if (i == FeelBrakings.Length - 1 && braking > FeelBrakings[i])
+                weight = 1f;
+            _extraLag[i] += FeelRate * weight * (extra - _extraLag[i]);
+        }
+    }
 
     /// <summary>
     /// The axles as the driver feels them (<see cref="ICarGripFeel"/>). A car
