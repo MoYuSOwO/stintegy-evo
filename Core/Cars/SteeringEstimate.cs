@@ -28,9 +28,7 @@ public readonly record struct SteeringEstimate(
     float ActualLateralAccel,
     float ActualCurvature,
     float CurvatureDemandScale,
-    float RoadLateralDemand,
-    float FrontLongitudinalUse = 0f,
-    float RearLongitudinalUse = 0f)
+    float RoadLateralDemand)
 {
     private const float Epsilon = 1e-4f;
 
@@ -58,24 +56,14 @@ public readonly record struct SteeringEstimate(
     public float LateralDemand(float curvature) =>
         CurvatureDemandScale * SpeedMetersPerSecond * SpeedMetersPerSecond * curvature + RoadLateralDemand;
 
-    private static float Circle(float longitudinalUse)
-    {
-        float use = Math.Clamp(longitudinalUse, 0f, 0.99f);
-        return MathF.Sqrt(1f - use * use);
-    }
-
     /// <summary>The angle to turn the road wheels to for <paramref name="curvature"/>, within full lock.</summary>
     public float AngleFor(float curvature)
     {
         float wheelBase = MathF.Max(WheelBaseMeters, Epsilon);
         float frontArm = MathF.Max(FrontArmMeters, Epsilon);
         float rearArm = MathF.Max(RearArmMeters, Epsilon);
-        // What the brakes or the drive leave each axle to corner with, as the
-        // physics leaves it (CarPhysics.ResolveAxleSlip): the slip angle works
-        // with the rest of the circle, so under the brakes a corner wants more
-        // of it than the whole axle would.
-        float frontCapacity = MathF.Max(FrontGripAccel * Circle(FrontLongitudinalUse), Epsilon);
-        float rearCapacity = MathF.Max(RearGripAccel * Circle(RearLongitudinalUse), Epsilon);
+        float frontCapacity = MathF.Max(FrontGripAccel, Epsilon);
+        float rearCapacity = MathF.Max(RearGripAccel, Epsilon);
         float holdable = InversionShare * MathF.Min(
             frontCapacity * wheelBase / rearArm,
             rearCapacity * wheelBase / frontArm);
