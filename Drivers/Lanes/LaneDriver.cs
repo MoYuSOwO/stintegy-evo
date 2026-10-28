@@ -582,8 +582,7 @@ public sealed class LaneDriver : IDriverController
         // be crawling or facing across it, and the way it moves says little.
         float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
         UpdateRejoin(context, car, leftError, facing);
-        float turnIn = Gains.CurvaturePreviewSeconds ??
-                       TurnIn(speed, station, s => SpeedAt(s), s => BlendedCurvature(s), _lanes.Spacing);
+        float turnIn = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(speed);
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
@@ -1842,9 +1841,7 @@ public sealed class LaneDriver : IDriverController
         for (int k = 0; k < n; k++)
         {
             float v = speedGuess[k];
-            int at = k;
-            float seconds = Gains.CurvaturePreviewSeconds ??
-                            TurnIn(v, 0f, s => speedGuess[Math.Clamp(at + (int)s, 0, n - 1)], s => _leadBuffer[Math.Clamp(at + (int)s, 0, n - 1)], _lanes.Spacing);
+            float seconds = Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(v);
             int lead = (int)MathF.Ceiling(MathF.Max(0f, v) * seconds / _lanes.Spacing);
             float sharpest = _leadBuffer[k];
             for (int j = 1; j <= lead && k + j < n; j++)
@@ -1852,31 +1849,6 @@ public sealed class LaneDriver : IDriverController
                     sharpest = _leadBuffer[k + j];
             curvature[k] = sharpest;
         }
-    }
-
-    /// <summary>
-    /// The car's turn-in delay for what the plan has it doing next: the
-    /// braking the plan does over the next ask of the wheel, and how much
-    /// more sideways pull than now the road asks within it (TurnLag). Read
-    /// from a plan and a road indexed by station from <paramref name="from"/>.
-    /// </summary>
-    private float TurnIn(float speed, float from, Func<float, float> plannedSpeed, Func<float, float> curvature, float spacing)
-    {
-        float v = MathF.Max(speed, 1f);
-        int stations = Math.Max(1, (int)MathF.Ceiling(v * TurnLag.AskSeconds / spacing));
-        float pullHere = v * v * curvature(from);
-        float vEnd = plannedSpeed(from + stations);
-        float distance = stations * spacing;
-        float braking = MathF.Max(0f, (v * v - vEnd * vEnd) / (2f * distance));
-        float turn = 0f;
-        for (int j = 1; j <= stations; j++)
-        {
-            float vj = plannedSpeed(from + j);
-            float change = vj * vj * curvature(from + j) - pullHere;
-            if (MathF.Abs(change) > MathF.Abs(turn))
-                turn = change;
-        }
-        return _turnLag.Seconds(speed, braking, turn);
     }
 
     /// <summary>The window's speed at its start with the blend held where it stands.</summary>

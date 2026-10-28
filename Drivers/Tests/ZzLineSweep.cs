@@ -524,15 +524,61 @@ public sealed class ZzLineSweep
             _output.WriteLine($"{g.Key,-22} {g.Count()}");
     }
 
-    /// <summary>What TurnLag measured on the stock car, read across braking and turn.</summary>
+    /// <summary>
+    /// Worked out from the tyre's own rule, not driven: in a steady corner
+    /// under the brakes, the angle the steering estimate asks for against the
+    /// angle the tyres need once braking has taken its share of each axle's
+    /// grip, and how much of the corner the estimate's angle gets the car.
+    /// </summary>
     [Fact]
-    public void TurnLagTable()
+    public void SteerShortfall()
     {
         if (!LaneProbes.Enabled) return;
-        TurnLag lag = TurnLag.Measure(new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds));
-        foreach (float speed in new[] { 15f, 25f, 40f, 60f, 85f })
-            foreach (float braking in new[] { 0f, 7.5f, 15f, 22.5f, 30f })
-                _output.WriteLine($"v {speed,3:F0} braking {braking,4:F1}: turn 2 {lag.Seconds(speed, braking, 2f):F3}  turn 10 {lag.Seconds(speed, braking, 10f):F3}  turn 20 {lag.Seconds(speed, braking, 20f):F3}");
+        CarConfig config = StockCar.Config;
+        var car = new SingleTrackCar(config, ((ICarTires)StockCar.Model).Compounds);
+        float frontBrake = config.FixedFrontBrakeShare ?? 0.5f;
+        // The tyre's own curve, internal to Core: reached the long way round, for a probe.
+        var inverse = typeof(SteeringEstimate).Assembly.GetType("StintegyEVO.Core.Cars.TireSlipCurve")!
+            .GetMethod("InverseEvaluate", new[] { typeof(float), typeof(float) })!;
+        float Inverse(float share, float peak = 1f) => (float)inverse.Invoke(null, new object[] { share, peak })!;
+        _output.WriteLine("speed braking asked | front long use, rear long use | wheel asked deg, wheel needed deg | corner got share (steady) | at turn-in from straight");
+        foreach (float speed in new[] { 40f, 60f, 85f })
+            foreach (float braking in new[] { 0f, 10f, 20f, 30f })
+                foreach (float asked in new[] { 15f, 25f, 32f })
+                {
+                    var state = new CarState { Speed = speed };
+                    ((ICarStores)car).Fill(state, PowertrainState.Filled(0.8f));
+                    ((ICarTires)car).InstallFreshTires(state);
+                    ((ICarTires)car).WarmTires(state, 90f, 90f);
+                    state.FilteredLongitudinalAccel = -braking;
+                    state.FilteredLateralAccel = asked;
+                    SteeringEstimate est = ((ICarEnvelope)car).EstimateSteering(state, RoadAttitude.Flat);
+                    float l = est.WheelBaseMeters, front = est.RearArmMeters / l, rear = est.FrontArmMeters / l;
+                    float uf = Math.Clamp(frontBrake * braking / est.FrontGripAccel, 0f, 0.99f);
+                    float ur = Math.Clamp((1f - frontBrake) * braking / est.RearGripAccel, 0f, 0.99f);
+                    float cf = MathF.Sqrt(1f - uf * uf), cr = MathF.Sqrt(1f - ur * ur);
+                    // The slip angles the tyres need for a pull, with braking's share taken out, as the physics has it.
+                    float Needed(float pull) =>
+                        Inverse(Math.Min(front * pull / (est.FrontGripAccel * cf), 0.999f), est.FrontPeakSlipAngleRatio) -
+                        Inverse(Math.Min(rear * pull / (est.RearGripAccel * cr), 0.999f));
+                    float Got(float wheel)
+                    {
+                        float lo = 0f, hi = asked * 1.5f;
+                        for (int i = 0; i < 40; i++)
+                        {
+                            float mid = 0.5f * (lo + hi);
+                            if (MathF.Atan(l * mid / (speed * speed)) + Needed(mid) < wheel) lo = mid; else hi = mid;
+                        }
+                        return 0.5f * (lo + hi);
+                    }
+                    float curvature = asked / (speed * speed);
+                    float kinematic = MathF.Atan(l * curvature);
+                    float estimated = Inverse(front * asked / est.FrontGripAccel, est.FrontPeakSlipAngleRatio) -
+                                      Inverse(rear * asked / est.RearGripAccel);
+                    float wheelAsked = kinematic + estimated;
+                    float wheelNeeded = kinematic + Needed(asked);
+                    _output.WriteLine($"{speed,3:F0} {braking,4:F0} {asked,4:F0} | {uf:F2} {ur:F2} | {wheelAsked * 57.2958f:F2} {wheelNeeded * 57.2958f:F2} | {Got(wheelAsked) / asked:F2} | {Got(kinematic) / asked:F2}");
+                }
     }
 
     /// <summary>
