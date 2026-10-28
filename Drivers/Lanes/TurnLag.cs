@@ -28,16 +28,52 @@ public sealed class TurnLag
     private const float WindowSeconds = 1f;
 
     private readonly float[] _lag;
+    private readonly float[,] _braked;
 
-    private TurnLag(float[] lag) => _lag = lag;
+    private TurnLag(float[] lag, float[,] braked)
+    {
+        _lag = lag;
+        _braked = braked;
+    }
+
+    // Shares of all the braking the car has at the speed.
+    private static readonly float[] BrakeShares = [0f, 0.3f, 0.6f];
 
     /// <summary>Measured on the driver's own copy of the car, which must have tyres and an envelope.</summary>
     public static TurnLag Measure(ICar car)
     {
         var lag = new float[Speeds.Length];
+        var braked = new float[Speeds.Length, BrakeShares.Length];
         for (int i = 0; i < Speeds.Length; i++)
+        {
             lag[i] = At(car, Speeds[i]);
-        return new TurnLag(lag);
+            for (int j = 0; j < BrakeShares.Length; j++)
+                braked[i, j] = TurningIn(car, Speeds[i], BrakeShares[j]);
+        }
+        return new TurnLag(lag, braked);
+    }
+
+    /// <summary>
+    /// The delay of a turn-in the size corners are turned into, the rack's
+    /// travel in it, at <paramref name="speed"/> with this share of all the
+    /// braking the car has on: between where it was measured.
+    /// </summary>
+    public float Seconds(float speed, float brakeShare)
+    {
+        float i = Position(Speeds, speed), j = Position(BrakeShares, Math.Clamp(brakeShare, 0f, 1f));
+        int i0 = (int)i, j0 = (int)j, i1 = Math.Min(i0 + 1, Speeds.Length - 1), j1 = Math.Min(j0 + 1, BrakeShares.Length - 1);
+        float u = i - i0, w = j - j0;
+        return (_braked[i0, j0] * (1f - w) + _braked[i0, j1] * w) * (1f - u) + (_braked[i1, j0] * (1f - w) + _braked[i1, j1] * w) * u;
+    }
+
+    private static float Position(float[] at, float x)
+    {
+        if (x <= at[0])
+            return 0f;
+        for (int i = 1; i < at.Length; i++)
+            if (x <= at[i])
+                return i - 1 + (x - at[i - 1]) / (at[i] - at[i - 1]);
+        return at.Length - 1;
     }
 
     /// <summary>The delay at <paramref name="speed"/>, between the speeds it was measured at.</summary>
@@ -54,6 +90,68 @@ public sealed class TurnLag
             }
         }
         return _lag[^1];
+    }
+
+    // A turn-in the size corners are turned into, from a corner the other
+    // way, as out of one bend into the next: the wheel has its whole travel
+    // to make at the rack's speed, and the path its slip to build the other
+    // way. Under the brakes from a moment before, at a share of all the
+    // braking the car has: the rear lightened and the tyres partly spent
+    // lengthways, the car takes longer. Read by the same area as the small
+    // step, against where the path gets to in the window rather than the ask.
+    private const float TurnInFromLateralAccel = -8f;
+    private const float TurnInToLateralAccel = 16f;
+    private const float BrakeLeadSeconds = 0.15f;
+    private const float TurnInWindowSeconds = 0.6f;
+
+    private static float TurningIn(ICar car, float speed, float brakeShare)
+    {
+        var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = speed };
+        (car as ICarStores)?.Fill(state, PowertrainState.Filled(0.8f));
+        var tyres = (ICarTires)car;
+        var envelope = (ICarEnvelope)car;
+        tyres.InstallFreshTires(state);
+        tyres.WarmTires(state, 90f, 90f);
+        float from = TurnInFromLateralAccel / (speed * speed), to = TurnInToLateralAccel / (speed * speed);
+        float braking = brakeShare * envelope.EstimatePerformanceLimits(state, CarStrategy.Default, speed, from).MaximumBrakeDeceleration;
+        int settle = (int)(SettleSeconds / Dt), lead = (int)(BrakeLeadSeconds / Dt), window = (int)(TurnInWindowSeconds / Dt);
+        var path = new float[window];
+        float heading = 0f, start = 0f;
+        for (int i = 0; i < settle + lead + window; i++)
+        {
+            bool stepped = i >= settle + lead;
+            float wanted = stepped ? to : from;
+            var input = new CarPhysicsStepInput(
+                new DriverInput(envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(wanted), i >= settle ? -braking : 0f),
+                CarStrategy.Default, 25f);
+            Vector2 was = state.Position;
+            car.Step(state, input, Dt);
+            // The settle is for the corner, not the drag.
+            if (i < settle)
+                state.Speed = speed;
+            Vector2 move = state.Position - was;
+            float length = move.Length();
+            if (length < 1e-4f)
+                return 0f;
+            float now = MathF.Atan2(move.Y, move.X);
+            float curvature = MathHelper.NormalizeAngle(now - heading) / length;
+            heading = now;
+            if (stepped)
+                path[i - settle - lead] = curvature;
+            else
+                start = curvature;
+        }
+        float end = 0f;
+        for (int k = window * 2 / 3; k < window; k++)
+            end += path[k];
+        end /= window - window * 2 / 3;
+        float taken = end - start;
+        if (MathF.Abs(taken) < 0.1f * MathF.Abs(to - from))
+            return 0f;
+        float behind = 0f;
+        for (int k = 0; k < window * 2 / 3; k++)
+            behind += (1f - Math.Clamp((path[k] - start) / taken, 0f, 1f)) * Dt;
+        return behind;
     }
 
     // Already in a corner, the car asked for a little more of it: the path's

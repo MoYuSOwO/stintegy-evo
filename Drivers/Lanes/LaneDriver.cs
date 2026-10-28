@@ -38,6 +38,13 @@ public sealed record LaneDriverGains
     /// </summary>
     public bool LeadFromGrip { get; init; } = false;
 
+    /// <summary>
+    /// The hands read the corner ahead by how long the car takes to turn in
+    /// at this speed under the braking it has on (TurnLag, a turn-in the
+    /// size corners are turned into), in place of the small-step turn lag.
+    /// </summary>
+    public bool LeadFromTurnIn { get; init; } = false;
+
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
 
@@ -608,6 +615,8 @@ public sealed class LaneDriver : IDriverController
         float turnIn = (Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ??
                         _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f)) +
                        (Gains.SteerLeadExtra is { } extra && extra.Length == _lanes.Count ? extra[_lanes.Wrap((int)MathF.Round(station))] : 0f);
+        if (Gains.LeadFromTurnIn && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null && WindsOn(station, speed))
+            turnIn = _turnLag.Seconds(speed, MathF.Max(0f, -_lastAccel) / MathF.Max(_envelope.Brake(speed), 1f));
         if (Gains.LeadFromGrip && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null)
             turnIn = MathF.Max(turnIn, GripLead(station, speed, turnIn));
         LastLeadSeconds = turnIn;
@@ -924,6 +933,27 @@ public sealed class LaneDriver : IDriverController
     /// Unwinding, a longer lead lets the wheel off before the corner opens
     /// and the car runs wide out of it.
     /// </summary>
+    /// <summary>
+    /// Whether the wheel is being wound on towards the corner ahead, within
+    /// the longest turn-in the car has: from the straight, from less of it,
+    /// or from the other way. Unwinding, the tyres come off their peak onto
+    /// the steep part of their curve and the car answers as quickly as the
+    /// small step has it; read as far ahead as a turn-in, the wheel came off
+    /// before the corner opened and the car ran wide onto the wall out of it.
+    /// </summary>
+    private bool WindsOn(float station, float speed)
+    {
+        float here = BlendedCurvature(station);
+        float reach = MathF.Max(0f, speed) * _turnLag.Seconds(speed, 1f) / _lanes.Spacing;
+        for (float d = 0.5f; d <= reach + 1e-3f; d += 0.5f)
+        {
+            float k = BlendedCurvature(station + d);
+            if (k * (k - here) > 0f)
+                return true;
+        }
+        return false;
+    }
+
     private float GripLead(float station, float speed, float turnIn)
     {
         // The corner being wound into, over as far ahead as the longest lead:

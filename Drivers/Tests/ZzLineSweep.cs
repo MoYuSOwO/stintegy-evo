@@ -658,19 +658,21 @@ public sealed class ZzLineSweep
             Condition learned = setup.Conditions[0];
             int a = (int)MathF.Ceiling(setup.Lanes.StationOf(stretch.FromS)), b = (int)MathF.Floor(setup.Lanes.StationOf(stretch.ToS));
             int n = setup.Lanes.Count;
-            foreach ((string name, float? lead, bool grip) in new[] { ("as they are", (float?)null, false), ("flat 0.10 s", 0.10f, false), ("from the rear's grip", null, true) })
+            foreach ((string name, float? lead, bool grip, bool turnIn) in new[] { ("as they are", (float?)null, false, false), ("flat 0.10 s", 0.10f, false, false), ("from the rear's grip", null, true, false), ("by the turn-in", null, false, true) })
             {
                 var runs = new Run[lines.Length];
                 Parallel.For(0, lines.Length, i =>
                 {
                     _steerLead = lead;
                     _gripLead = grip;
+                    _turnInLead = turnIn;
                     LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
                     LaneTrackFile file = setup.Shipped.WithLanes(drawn);
                     SetProfile(file, setup.Lanes, stretch, flat);
                     runs[i] = Drive(setup.Track, setup.Shipped, file, drawn, stretch, learned, setup.Compounds);
                     _steerLead = null;
                     _gripLead = false;
+                    _turnInLead = false;
                 });
                 float Mean(Run r) => Enumerable.Range(a, b - a + 1).Average(i => r.StationError.Length == n ? r.StationError[setup.Lanes.Wrap(i)] : 0f);
                 int trouble = runs.Count(r => !r.Clean);
@@ -1696,6 +1698,7 @@ public sealed class ZzLineSweep
     [ThreadStatic] private static float[]? _leadExtra;
     [ThreadStatic] private static float? _steerLead;
     [ThreadStatic] private static bool _gripLead;
+    [ThreadStatic] private static bool _turnInLead;
     // The wheels' top speed for the drives on this thread, as a multiple of the car's: a diagnosis, not a change to the car.
     [ThreadStatic] private static float _rateScale;
 
@@ -1724,7 +1727,8 @@ public sealed class ZzLineSweep
             PlanLeadSeconds = Environment.GetEnvironmentVariable("STINTEGY_PLAN_LEAD") is { } planLead ? float.Parse(planLead, CultureInfo.InvariantCulture) : null,
             SteerLeadSeconds = _steerLead ?? (Environment.GetEnvironmentVariable("STINTEGY_STEER_LEAD") is { } steerLead ? float.Parse(steerLead, CultureInfo.InvariantCulture) : null),
             SteerLeadExtra = _leadExtra,
-            LeadFromGrip = _gripLead
+            LeadFromGrip = _gripLead,
+            LeadFromTurnIn = _turnInLead
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })

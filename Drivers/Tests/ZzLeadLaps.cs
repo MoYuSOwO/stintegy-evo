@@ -25,6 +25,17 @@ public sealed class ZzLeadLaps
     private static readonly string[] Circuits =
         ["silverstone", "monaco", "spa", "monza", "zandvoort", "baku", "interlagos", "singapore", "portimao", "shanghai", "sepang"];
 
+    /// <summary>The turn-in delay the hands read ahead by under LeadFromTurnIn, beside the small-step turn lag.</summary>
+    [Fact]
+    public void TurnInTable()
+    {
+        if (!LaneProbes.Enabled) return;
+        var lag = TurnLag.Measure(new StintegyEVO.Core.Cars.SingleTrackCar(StintegyEVO.Drivers.StockCar.Config,
+            ((StintegyEVO.Core.Cars.ICarTires)StintegyEVO.Drivers.StockCar.Model).Compounds));
+        foreach (float v in new[] { 15f, 25f, 40f, 55f, 70f, 85f })
+            _output.WriteLine($"{v,3:F0} m/s: small step {lag.Seconds(v):F3} s; turn-in, braking 0 / 30% / 60% of all: {lag.Seconds(v, 0f):F3} / {lag.Seconds(v, 0.3f):F3} / {lag.Seconds(v, 0.6f):F3} s");
+    }
+
     [Fact]
     public void Laps()
     {
@@ -36,6 +47,7 @@ public sealed class ZzLeadLaps
             ("as they are", new LaneDriverGains()),
             ("flat 0.10 s", new LaneDriverGains { SteerLeadSeconds = 0.10f }),
             ("from the rear's grip", new LaneDriverGains { LeadFromGrip = true }),
+            ("by the turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
