@@ -616,7 +616,7 @@ public sealed class LaneDriver : IDriverController
                         _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f)) +
                        (Gains.SteerLeadExtra is { } extra && extra.Length == _lanes.Count ? extra[_lanes.Wrap((int)MathF.Round(station))] : 0f);
         if (Gains.LeadFromTurnIn && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null && WindsOn(station, speed))
-            turnIn = _turnLag.Seconds(speed, MathF.Max(0f, -_lastAccel) / MathF.Max(_envelope.Brake(speed), 1f));
+            turnIn = MathF.Max(turnIn, _turnLag.Seconds(speed, MathF.Max(0f, -_lastAccel) / MathF.Max(_envelope.Brake(speed), 1f)));
         if (Gains.LeadFromGrip && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null)
             turnIn = MathF.Max(turnIn, GripLead(station, speed, turnIn));
         LastLeadSeconds = turnIn;

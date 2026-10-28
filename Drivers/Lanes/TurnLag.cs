@@ -98,7 +98,12 @@ public sealed class TurnLag
     // way. Under the brakes from a moment before, at a share of all the
     // braking the car has: the rear lightened and the tyres partly spent
     // lengthways, the car takes longer. Read by the same area as the small
-    // step, against where the path gets to in the window rather than the ask.
+    // step, against where the path gets to in the window rather than the ask,
+    // and less the wheel's own: the same turn-in at every speed is a far
+    // bigger turn of the wheel slow than fast, a third of a radian at 15 m/s,
+    // which the rack takes a third of a second over. Counted in, the hands
+    // read a hairpin a car's length early, turned in too soon and ran out
+    // onto the wall past the apex; a real corner winds on as the wheel can.
     private const float TurnInFromLateralAccel = -8f;
     private const float TurnInToLateralAccel = 16f;
     private const float BrakeLeadSeconds = 0.15f;
@@ -116,7 +121,8 @@ public sealed class TurnLag
         float braking = brakeShare * envelope.EstimatePerformanceLimits(state, CarStrategy.Default, speed, from).MaximumBrakeDeceleration;
         int settle = (int)(SettleSeconds / Dt), lead = (int)(BrakeLeadSeconds / Dt), window = (int)(TurnInWindowSeconds / Dt);
         var path = new float[window];
-        float heading = 0f, start = 0f;
+        var wheel = new float[window];
+        float heading = 0f, start = 0f, wheelStart = 0f;
         for (int i = 0; i < settle + lead + window; i++)
         {
             bool stepped = i >= settle + lead;
@@ -137,21 +143,34 @@ public sealed class TurnLag
             float curvature = MathHelper.NormalizeAngle(now - heading) / length;
             heading = now;
             if (stepped)
+            {
                 path[i - settle - lead] = curvature;
+                wheel[i - settle - lead] = state.SteerAngleRadians;
+            }
             else
+            {
                 start = curvature;
+                wheelStart = state.SteerAngleRadians;
+            }
         }
-        float end = 0f;
-        for (int k = window * 2 / 3; k < window; k++)
-            end += path[k];
-        end /= window - window * 2 / 3;
-        float taken = end - start;
-        if (MathF.Abs(taken) < 0.1f * MathF.Abs(to - from))
+        float Behind(float[] series, float from0)
+        {
+            float end = 0f;
+            for (int k = window * 2 / 3; k < window; k++)
+                end += series[k];
+            end /= window - window * 2 / 3;
+            float taken = end - from0;
+            if (MathF.Abs(taken) < 1e-6f)
+                return float.NaN;
+            float behind = 0f;
+            for (int k = 0; k < window * 2 / 3; k++)
+                behind += (1f - Math.Clamp((series[k] - from0) / taken, 0f, 1f)) * Dt;
+            return behind;
+        }
+        float path0 = Behind(path, start), wheel0 = Behind(wheel, wheelStart);
+        if (float.IsNaN(path0) || float.IsNaN(wheel0))
             return 0f;
-        float behind = 0f;
-        for (int k = 0; k < window * 2 / 3; k++)
-            behind += (1f - Math.Clamp((path[k] - start) / taken, 0f, 1f)) * Dt;
-        return behind;
+        return MathF.Max(0f, path0 - wheel0);
     }
 
     // Already in a corner, the car asked for a little more of it: the path's
