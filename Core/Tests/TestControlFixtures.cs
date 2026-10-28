@@ -67,7 +67,10 @@ internal static class TestSteering
 
     /// <summary>For a car in a simulation, on a level road.</summary>
     public static DriverInput For(RaceCar car, Ask ask) =>
-        new(car.Car.As<ICarEnvelope>().EstimateSteering(car.State, RoadAttitude.Flat).AngleFor(ask.Curvature), ask.Accel, ask.FrontBrakeBiasOffset);
+        new(car.Car.As<ICarEnvelope>().EstimateSteering(car.State, RoadAttitude.Flat).AngleFor(ask.Curvature), ask.Accel)
+        {
+            Axles = new AxleBias(ask.FrontBrakeBiasOffset, 0f)
+        };
 
     /// <summary>The pedals as given, the wheels turned for <paramref name="curvature"/>.</summary>
     public static DriverInput Holding(CarState state, CarConfig car, TireConfig tires, float curvature, float accel, RoadAttitude? road = null) =>
@@ -82,7 +85,7 @@ internal static class TestSteering
 internal readonly record struct Ask(float Curvature, float Accel, float FrontBrakeBiasOffset = 0f)
 {
     public DriverInput For(CarState state, CarConfig car, TireConfig tires, RoadAttitude? road = null) =>
-        new(TestSteering.For(state, car, tires, Curvature, road), Accel, FrontBrakeBiasOffset);
+        new(TestSteering.For(state, car, tires, Curvature, road), Accel) { Axles = new AxleBias(FrontBrakeBiasOffset, 0f) };
 }
 
 /// <summary>Holds what <paramref name="command"/> says each step, steering for its curvature.</summary>

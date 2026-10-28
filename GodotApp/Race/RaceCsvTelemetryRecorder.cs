@@ -102,7 +102,7 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             state.Speed,
             input.SteerAngleRadians,
             input.DesiredAccel,
-            input.FrontBrakeBiasOffset,
+            input.Axles.FrontBrake,
             state.SideslipAngleRadians,
             state.YawRateRadiansPerSecond,
             primary,

@@ -115,7 +115,7 @@ public partial class RaceView3D : Node3D
             throw new ArgumentOutOfRangeException(nameof(carIndex));
         if (!float.IsFinite(steerAngleRadians) || !float.IsFinite(desiredAccel) || !float.IsFinite(frontBrakeBiasOffset))
             throw new ArgumentOutOfRangeException(nameof(desiredAccel), "Control commands must be finite.");
-        _externalInputs.Enqueue((carIndex, new DriverInput(steerAngleRadians, desiredAccel, frontBrakeBiasOffset)));
+        _externalInputs.Enqueue((carIndex, new DriverInput(steerAngleRadians, desiredAccel) { Axles = new AxleBias(frontBrakeBiasOffset, 0f) }));
         _simulationStarted = true;
         _hudDirty = true;
     }

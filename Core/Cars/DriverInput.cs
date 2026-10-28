@@ -12,20 +12,26 @@ namespace StintegyEVO.Core.Cars;
 /// exactly would choose).</param>
 public readonly record struct DriverInput(
     float SteerAngleRadians,
-    float DesiredAccel,
-    // Signed fraction of total braking demand. Positive values move braking
-    // toward the front axle; zero retains the dynamically optimal split.
-    float FrontBrakeBiasOffset = 0f,
-    // Signed fraction of total drive moved toward the front axle, off the
-    // split the car makes by grip; zero keeps that split.
-    float FrontDriveBiasOffset = 0f,
-    // How hard this driver's hands are on the tyres beyond what the single
-    // track resolves (the small slides and corrections, the kerbs, the
-    // wheelspin it averages away), as a share more wear than the driver the
-    // tyre was calibrated with: -0.1 wears a tenth less. Zero is that
-    // driver, so an input nobody filled in wears as it always did.
-    float TyreWearExcess = 0f
-);
+    float DesiredAccel
+)
+{
+    /// <summary>
+    /// How hard this driver's hands are on the tyres beyond what the car's
+    /// model resolves (the small slides and corrections, the kerbs, the
+    /// wheelspin it averages away), as a share more wear than the driver the
+    /// tyre was calibrated with: -0.1 wears a tenth less. Zero is that
+    /// driver, so an input nobody filled in wears as it always did.
+    /// </summary>
+    public float TyreWearExcess { get; init; }
+
+    /// <summary>
+    /// How the driver moves the brakes and the drive between the axles, off
+    /// the car's own split: a command for a car with two axles
+    /// (<see cref="ICarAxles"/>) and for no other. None leaves the car's split
+    /// as it is; the race refuses one sent to a car without axles.
+    /// </summary>
+    public AxleBias Axles { get; init; }
+}
 
 /// <summary>
 /// Everything the strategist sets, as opposed to everything the driver does.

@@ -57,7 +57,7 @@ public readonly record struct RaceCarSnapshot(
     /// <summary>The car's buttons as they stand (<see cref="ICarButtons"/>), in its order; empty on a car with none.</summary>
     public ImmutableArray<CarButtonReading> Buttons { get; init; }
 
-    /// <summary>How much of each axle's grip the car is using; none on a car that does not say (<see cref="ICarGripFeel"/>).</summary>
+    /// <summary>How much of each axle's grip the car is using; none on a car without two axles (<see cref="ICarAxles"/>).</summary>
     public GripUse? GripUse { get; init; }
 
     /// <summary>The car's stores (<see cref="ICarStores"/>); empty on a car with none.</summary>
@@ -149,7 +149,7 @@ public readonly record struct RaceCarSnapshot(
             Tires = tires,
             TireCompound = (model as ICarTires)?.Compound(state),
             Buttons = buttons,
-            GripUse = (model as ICarGripFeel)?.GripUse(state),
+            GripUse = (model as ICarAxles)?.GripUse(state),
             Resources = resources,
             Capabilities = envelope?.Capabilities(state, car.Strategy) ?? default,
             Steering = envelope?.EstimateSteering(state, RaceSimulation.RoadAttitudeAt(pose.Sample, pose.D)) ?? default,

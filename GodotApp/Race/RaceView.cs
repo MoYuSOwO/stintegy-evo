@@ -82,11 +82,10 @@ public partial class RaceView : Node2D
     )
     {
         RaceCar car = GetCar(carIndex);
-        car.ExternalInput = new DriverInput(
-            steerAngleRadians,
-            desiredAccel,
-            frontBrakeBiasOffset
-        );
+        car.ExternalInput = new DriverInput(steerAngleRadians, desiredAccel)
+        {
+            Axles = new AxleBias(frontBrakeBiasOffset, 0f)
+        };
     }
 
     public override void _Ready()

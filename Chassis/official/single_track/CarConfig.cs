@@ -216,7 +216,7 @@ public sealed class CarConfig
 
     /// <summary>
     /// The brake balance as a fixed share of the braking at the front, as a
-    /// real car's is: set by the driver's dial (DriverInput.FrontBrakeBiasOffset
+    /// real car's is: set by the driver's dial (DriverInput.Axles
     /// moves it), not by the car. Where it does not match the grip each axle
     /// has, one of them locks first: the front and the car runs on, the rear
     /// and it steps out. Null is the old car, whose brakes shared themselves

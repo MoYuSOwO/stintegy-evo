@@ -185,8 +185,11 @@ public sealed class RaceSimulation
                 }
                 DriverInput input = _stepInputs[i];
                 if (!float.IsFinite(input.SteerAngleRadians) || !float.IsFinite(input.DesiredAccel) ||
-                    !float.IsFinite(input.FrontBrakeBiasOffset))
+                    !input.Axles.IsFinite)
                     throw new InvalidOperationException($"Non-finite control for car '{car.Id}'.");
+                if (input.Axles != AxleBias.None && car.Car is not ICarAxles)
+                    throw new InvalidOperationException(
+                        $"Car '{car.Id}' has no axles to move the brakes or drive between; its driver asked it to.");
             }
         }
         catch

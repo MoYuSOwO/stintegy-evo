@@ -466,7 +466,7 @@ public static class CarPhysics
                     frontGrip,
                     rearGrip,
                     config.FrontDriveShare,
-                    input.DriverInput.FrontDriveBiasOffset,
+                    input.DriverInput.Axles.FrontDrive,
                     out frontLongRequest,
                     out rearLongRequest
                 );
@@ -487,7 +487,7 @@ public static class CarPhysics
                 rearLatRequest,
                 frontGrip,
                 rearGrip,
-                input.DriverInput.FrontBrakeBiasOffset,
+                input.DriverInput.Axles.FrontBrake,
                 config.FixedFrontBrakeShare,
                 out float frontBrake,
                 out float rearBrake

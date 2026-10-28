@@ -1640,7 +1640,7 @@ public sealed class CarPhysicsTests
             car,
             tires,
             new CarStepInput(
-                new DriverInput(0f, -5f, FrontBrakeBiasOffset: 0.20f),
+                new DriverInput(0f, -5f) { Axles = new AxleBias(0.20f, 0f) },
                 CarStrategy.Default,
                 AirTempC: 90f,
                 TrackTempC: 90f
@@ -1652,7 +1652,7 @@ public sealed class CarPhysicsTests
             car,
             tires,
             new CarStepInput(
-                new DriverInput(0f, -5f, FrontBrakeBiasOffset: -0.20f),
+                new DriverInput(0f, -5f) { Axles = new AxleBias(-0.20f, 0f) },
                 CarStrategy.Default,
                 AirTempC: 90f,
                 TrackTempC: 90f
@@ -1683,7 +1683,7 @@ public sealed class CarPhysicsTests
         float SpeedLost(CarConfig car, float dial)
         {
             CarState state = CreateState(speed: 50f, batterySoc: 0.8f, tires);
-            StepMany(state, car, tires, new DriverInput(0f, -60f, FrontBrakeBiasOffset: dial), CarStrategy.Default, steps: 30);
+            StepMany(state, car, tires, new DriverInput(0f, -60f) { Axles = new AxleBias(dial, 0f) }, CarStrategy.Default, steps: 30);
             return 50f - state.Speed;
         }
 
@@ -1732,7 +1732,7 @@ public sealed class CarPhysicsTests
         float WearWith(float excess)
         {
             CarState state = CreateState(speed: 37f, batterySoc: 0.8f, tires);
-            StepMany(state, car, tires, new DriverInput(0.02f, 0f, TyreWearExcess: excess), CarStrategy.Default, steps: 240);
+            StepMany(state, car, tires, new DriverInput(0.02f, 0f) { TyreWearExcess = excess }, CarStrategy.Default, steps: 240);
             return AverageWear(state);
         }
 

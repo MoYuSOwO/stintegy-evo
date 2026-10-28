@@ -131,8 +131,7 @@ public interface ICarEnvelope
         float speed,
         float curvature,
         float gripUsage = 1f,
-        float assumedLongitudinalAcceleration = 0f,
-        float frontBrakeBiasOffset = 0f
+        float assumedLongitudinalAcceleration = 0f
     );
 
     /// <summary>The steady corner the car can hold at this speed, read with that corner's own load on the outside wheels.</summary>
@@ -150,9 +149,53 @@ public interface ICarEnvelope
 
     /// <summary>The limits a controller is told about, as they stand.</summary>
     CarCapabilities Capabilities(CarState state, CarStrategy strategy);
+}
 
+/// <summary>
+/// A car with two axles, a front and a rear, between which it shares its
+/// weight, its drive and its brakes: what a driver needs who works the
+/// balance between them -- moves the brakes forward, feels the rear go.
+/// A driver that does says so (<see cref="CarNeeds"/>); a car without two
+/// axles is driven without it, or not at all.
+/// </summary>
+public interface ICarAxles
+{
     /// <summary>How the car carries its weight and shares its drive and its brakes between the axles.</summary>
     AxleLayout Layout { get; }
+
+    /// <summary>How much of each axle's grip was used in the last step.</summary>
+    GripUse GripUse(CarState state);
+
+    /// <summary>
+    /// What the car can do at a speed and round a curvature with its brakes
+    /// and drive moved by <paramref name="bias"/>, as the driver would move
+    /// them (<see cref="DriverInput.Axles"/>): the envelope
+    /// (<see cref="ICarEnvelope.EstimatePerformanceLimits"/>) with the axles
+    /// split as asked.
+    /// </summary>
+    CarPerformanceLimits EstimatePerformanceLimits(
+        CarState state,
+        CarStrategy strategy,
+        float speed,
+        float curvature,
+        AxleBias bias,
+        float gripUsage = 1f,
+        float assumedLongitudinalAcceleration = 0f
+    );
+}
+
+/// <summary>
+/// How a driver moves a two-axle car's brakes and drive off the car's own
+/// split, each as a signed share of the total moved to the front. Zero is
+/// the car's split as it is.
+/// </summary>
+/// <param name="FrontBrake">Of the braking: positive moves it forward. A car holds this to ±0.25.</param>
+/// <param name="FrontDrive">Of the drive: positive moves it forward.</param>
+public readonly record struct AxleBias(float FrontBrake, float FrontDrive)
+{
+    public static readonly AxleBias None = default;
+
+    public bool IsFinite => float.IsFinite(FrontBrake) && float.IsFinite(FrontDrive);
 }
 
 /// <summary>
@@ -168,7 +211,7 @@ public interface ICarEnvelope
 /// </param>
 /// <param name="FixedFrontBrakeShare">
 /// The share of the braking at the front, where the brakes are fixed to a
-/// balance the driver dials (<see cref="DriverInput.FrontBrakeBiasOffset"/>
+/// balance the driver dials (<see cref="AxleBias.FrontBrake"/>
 /// moves it); none where the car shares its brakes by grip itself.
 /// </param>
 public readonly record struct AxleLayout(
@@ -211,9 +254,6 @@ public readonly record struct CarMotion(
 /// </summary>
 public interface ICarGripFeel
 {
-    /// <summary>How much of each axle's grip was used in the last step.</summary>
-    GripUse GripUse(CarState state);
-
     /// <summary>
     /// The share of its peak grip a tyre holds in a steady corner: what a
     /// driver can lean on without the tyre letting go.

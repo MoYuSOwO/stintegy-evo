@@ -21,6 +21,30 @@ namespace StintegyEVO.Core.Tests;
 /// </summary>
 public sealed class CarInterfaceTests
 {
+    /// <summary>
+    /// Moving the brakes between the axles is a command for a car with two
+    /// axles: sent to one without, the race says so rather than dropping it.
+    /// </summary>
+    [Fact]
+    public void AnAxleBiasIsACommandOnlyForACarWithAxles()
+    {
+        TrackData track = new TrackBuilder(Vector2.Zero, 14f)
+            .AddStraight(400f).AddTurn(180f, 50f).AddStraight(400f).AddTurn(180f, 50f)
+            .CloseLoop().Build(new TrackGridConfig());
+        TrackSample start = track.Sample(10f);
+        var box = new RaceCar("box", new RollingBox(), state: new CarState { Position = start.Center, Heading = start.Heading });
+        var simulation = new RaceSimulation(track);
+        simulation.AddCar(box);
+
+        box.ExternalInput = new DriverInput(0f, 0f) { Axles = new AxleBias(0.1f, 0f) };
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => simulation.Step(1f / 60f));
+        Assert.Contains("box", refused.Message);
+
+        box.ExternalInput = new DriverInput(0f, 0f);
+        simulation.Step(1f / 60f);
+        Assert.Null(simulation.CaptureFrame()[0].GripUse);
+    }
+
     [Fact]
     public void ACarOfItsOwnRacesThroughTheInterfaceAlone()
     {
@@ -278,7 +302,7 @@ public sealed class CarInterfaceTests
 
         public CarPerformanceLimits EstimatePerformanceLimits(
             CarState state, CarStrategy strategy, float speed, float curvature, float gripUsage = 1f,
-            float assumedLongitudinalAcceleration = 0f, float frontBrakeBiasOffset = 0f) =>
+            float assumedLongitudinalAcceleration = 0f) =>
             new(10f, 5f, Brake, 0f);
 
         public float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) => 10f;
@@ -297,8 +321,6 @@ public sealed class CarInterfaceTests
 
         public CarCapabilities Capabilities(CarState state, CarStrategy strategy) =>
             new(800f, 0.2f, SteerLock, 1f, 5f, 5f, 1f);
-
-        public AxleLayout Layout { get; } = new(0.5f, 0f, false, null);
 
         public void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
         {

@@ -16,7 +16,7 @@ namespace Official.SingleTrack;
 /// <see cref="ICar"/> itself. The tyres are the game's either way
 /// (<see cref="Tire"/>).
 /// </summary>
-public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnvelope, ICarGripFeel, ICarMotion
+public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnvelope, ICarGripFeel, ICarMotion, ICarAxles
 {
     /// <summary>One compound in no pack, built to <paramref name="tires"/>: for tests and probes.</summary>
     public SingleTrackCar(CarConfig config, TireConfig tires)
@@ -83,11 +83,20 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         float speed,
         float curvature,
         float gripUsage = 1f,
-        float assumedLongitudinalAcceleration = 0f,
-        float frontBrakeBiasOffset = 0f
+        float assumedLongitudinalAcceleration = 0f
+    ) => EstimatePerformanceLimits(state, strategy, speed, curvature, AxleBias.None, gripUsage, assumedLongitudinalAcceleration);
+
+    public virtual CarPerformanceLimits EstimatePerformanceLimits(
+        CarState state,
+        CarStrategy strategy,
+        float speed,
+        float curvature,
+        AxleBias bias,
+        float gripUsage = 1f,
+        float assumedLongitudinalAcceleration = 0f
     ) => CarPhysics.EstimatePerformanceLimits(
         state, Config, TiresOn(state), strategy, speed, curvature, gripUsage,
-        assumedLongitudinalAcceleration, frontBrakeBiasOffset);
+        assumedLongitudinalAcceleration, bias.FrontBrake);
 
     public virtual float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) =>
         CarPhysics.EstimateCorneringLimit(state, Config, TiresOn(state), strategy, speed, gripUsage);
