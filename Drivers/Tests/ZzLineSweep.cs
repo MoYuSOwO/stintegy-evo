@@ -441,6 +441,67 @@ public sealed class ZzLineSweep
     }
 
     /// <summary>
+    /// Why lines go wrong: STINTEGY_SWEEP_LINES random lines on one flat
+    /// profile (every factor STINTEGY_CLASSIFY_FACTOR), the car as a
+    /// learning lap has it. For each that goes wrong, the half second before
+    /// the car first strays 0.6 m off its line: was it over the planned
+    /// speed, was the wheel wanted past what the axles give, was it braking.
+    /// </summary>
+    [Fact]
+    public void Classify()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_SWEEP_LINES", 300);
+        float factor = Env("STINTEGY_CLASSIFY_FACTOR", 1f);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "classify.csv");
+        Setup setup = Build(count);
+        Condition learned = setup.Conditions[0];
+        float[] flat = Enumerable.Repeat(factor, 3 * ProfileKnots).ToArray();
+        var rows = new string[count];
+        var traces = new System.Collections.Concurrent.ConcurrentDictionary<int, List<string>>();
+        Parallel.For(1, count, n =>
+        {
+            LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, setup.Stretch, setup.Knots[n]));
+            LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+            SetProfile(file, setup.Lanes, setup.Stretch, flat);
+            var trace = new List<(float S, float Err, float Over, bool Bound, float Accel, float Speed, float Plan, float Slip, float Lat)>();
+            float startS = setup.Stretch.StartS;
+            Run r = Drive(setup.Track, setup.Shipped, file, drawn, setup.Stretch, learned, setup.Compounds, (car, d, travelled) =>
+            {
+                LaneDriverTelemetry t = d.LastTelemetry;
+                float s = startS + travelled;
+                float plan = d.PlannedSpeedAt(car.Progress.CurrentS);
+                bool bound = t.CurvatureCap != 0f && MathF.Sign(t.WantedCurvature) == MathF.Sign(t.CurvatureCap) &&
+                             MathF.Abs(t.WantedCurvature) > MathF.Abs(t.CurvatureCap) * LaneLapRunner.CapOverreach;
+                trace.Add((s, t.LateralErrorMeters, car.State.Speed - plan, bound, t.CommandAccel, car.State.Speed, plan,
+                    car.State.SideslipAngleRadians, car.State.Telemetry.ActualLateralAccel));
+            });
+            string cls = "clean";
+            float at = -1f, over = 0f, boundShare = 0f, accel = 0f;
+            if (!r.Clean)
+            {
+                int k = trace.FindIndex(x => x.S >= setup.Stretch.FromS && MathF.Abs(x.Err) > 0.6f);
+                if (k < 0) k = trace.Count - 1;
+                var window = trace.Skip(Math.Max(0, k - 30)).Take(Math.Min(30, k) + 1).ToList();
+                at = trace[k].S;
+                over = window.Max(x => x.Over);
+                boundShare = window.Count(x => x.Bound) / (float)window.Count;
+                accel = window.Average(x => x.Accel);
+                cls = over > 1.0f ? "over speed" : boundShare > 0.3f ? "wheel past the axles" : "neither";
+                if (traces.Count < 12)
+                    traces[n] = trace.Select(x => string.Join(",", new[] { n, x.S, x.Err, x.Over, x.Bound ? 1 : 0, x.Accel, x.Speed, x.Plan, x.Slip, x.Lat }
+                        .Select(v => Convert.ToSingle(v).ToString("F3", CultureInfo.InvariantCulture)))).ToList();
+            }
+            rows[n] = $"{n},{(r.Spun ? "spun" : r.Clean ? "clean" : "trouble")},{cls},{F(at)},{F(over)},{F(boundShare)},{F(accel)},{F(r.WorstError)},{F(r.Seconds)}";
+        });
+        File.WriteAllLines(output, new[] { "line,outcome,class,first_stray_s,over_plan_mps,wheel_bound_share,mean_accel,worst_error_m,seconds" }.Concat(rows.Skip(1)));
+        File.WriteAllLines(Path.ChangeExtension(output, ".traces.csv"),
+            new[] { "line,s_m,error_m,over_plan_mps,wheel_bound,command_accel,speed,plan,sideslip,lat_accel" }.Concat(traces.Values.SelectMany(t => t)));
+        foreach (var g in rows.Skip(1).Select(r => r.Split(',')[2]).GroupBy(x => x))
+            _output.WriteLine($"{g.Key,-22} {g.Count()}");
+    }
+
+    /// <summary>
     /// The free line, moved across the road by a Catmull-Rom curve through
     /// evenly spaced knots, nothing at either end of the stretch. A knot of
     /// +1 puts the line at the left margin there, -1 at the right one.
@@ -501,7 +562,7 @@ public sealed class ZzLineSweep
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station) + offset);
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1) + offset);
         ICar model = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
-        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false };
+        var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, Gains = new LaneDriverGains { BrakeYieldsToWheel = Environment.GetEnvironmentVariable("STINTEGY_BRAKE_YIELDS") == "1" } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), driver),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })
         {
@@ -523,7 +584,8 @@ public sealed class ZzLineSweep
         return car;
     }
 
-    private static Run Drive(TrackData track, LaneTrackFile shipped, LaneTrackFile file, LaneSet lanes, Stretch stretch, Condition c, string[] compounds)
+    private static Run Drive(TrackData track, LaneTrackFile shipped, LaneTrackFile file, LaneSet lanes, Stretch stretch, Condition c, string[] compounds,
+        Action<RaceCar, LaneDriver, float>? onStep = null)
     {
         var abilities = new DriverAbilities
         {
@@ -585,6 +647,7 @@ public sealed class ZzLineSweep
                 wake += car.State.WakeDownforceLoss;
                 wakeSamples++;
             }
+            onStep?.Invoke(car, lanesDriver, travelled);
             previous = travelled;
             if (travelled >= tail)
                 break;
