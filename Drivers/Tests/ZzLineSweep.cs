@@ -734,6 +734,214 @@ public sealed class ZzLineSweep
         _output.WriteLine($"in trouble: {buckets.Count(b => b.Count > 0 && !b[0].Clean)} of {count}");
     }
 
+    private static readonly (float From, float To)[] Reversals =
+        [(3595f, 3645f), (3675f, 3787f), (3821f, 3937f), (3957f, 4129f), (4161f, 4283f)];
+
+    /// <summary>
+    /// Through the corners where random lines go wrong (Maggotts to Chapel,
+    /// Stowe, Vale), every step: the wheel the hands asked for against the
+    /// wheel the rack had got to, how long the rack was at its top speed, and
+    /// in the half second before a line first strayed. Then the same lines
+    /// with the rack two and four times as quick, the hands as they are: if
+    /// the strays go, the rack's speed is what they come from.
+    /// </summary>
+    [Fact]
+    public void RackChain()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_LEAD_LINES", 100);
+        float[] flat = Enumerable.Repeat(1f, 3 * ProfileKnots).ToArray();
+        var random = new Random(4242);
+        float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
+        float rate = StockCar.Config.SteerRateLimitRadiansPerSecond;
+        foreach (float scale in new[] { 1f, 2f, 4f })
+        {
+            int trouble = 0, total = 0;
+            foreach ((float from, float to) in Reversals)
+            {
+                var stretch = new Stretch(StartS: from - 450f, FromS: from - 250f, ToS: to + 100f, EndS: to + 250f);
+                Setup setup = Build(1, stretch);
+                var stats = new (bool Clean, float LimitedShare, float WorstGap, float LimitedBeforeStray, float GapBeforeStray, float TravelBeforeStray)[count];
+                Parallel.For(0, count, i =>
+                {
+                    _rateScale = scale;
+                    var steps = new List<(float S, bool Limited, float Gap, float Actual)>();
+                    float last = float.NaN;
+                    LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
+                    LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                    SetProfile(file, setup.Lanes, stretch, flat);
+                    Run r = Drive(setup.Track, setup.Shipped, file, drawn, stretch, setup.Conditions[0], setup.Compounds, (car, d, travelled) =>
+                    {
+                        float actual = car.State.SteerAngleRadians;
+                        float asked = car.LastInput.SteerAngleRadians;
+                        float s = car.Progress.CurrentS;
+                        // At its top speed: moved as far as the rack allows this step and still short of the ask.
+                        bool limited = !float.IsNaN(last) && MathF.Abs(actual - last) > 0.98f * rate * scale / 60f && MathF.Abs(asked - actual) > 1e-3f;
+                        last = actual;
+                        if (s >= from - 100f && s <= to + 50f)
+                            steps.Add((s, limited, MathF.Abs(asked - actual), actual));
+                    });
+                    _rateScale = 1f;
+                    var before = float.IsNaN(r.StrayS) ? new List<(float S, bool Limited, float Gap, float Actual)>()
+                        : steps.Where(x => x.S <= r.StrayS && x.S >= r.StrayS - 0.5f * 50f).ToList();
+                    stats[i] = (r.Clean,
+                        steps.Count == 0 ? 0f : steps.Count(x => x.Limited) / (float)steps.Count,
+                        steps.Count == 0 ? 0f : steps.Max(x => x.Gap),
+                        before.Count == 0 ? float.NaN : before.Count(x => x.Limited) / (float)before.Count,
+                        before.Count == 0 ? float.NaN : before.Max(x => x.Gap),
+                        before.Count == 0 ? float.NaN : before.Max(x => x.Actual) - before.Min(x => x.Actual));
+                });
+                int bad = stats.Count(x => !x.Clean);
+                trouble += bad;
+                total += count;
+                float Avg(IEnumerable<float> v) => v.Where(x => !float.IsNaN(x)).DefaultIfEmpty(float.NaN).Average();
+                _output.WriteLine($"rack x{scale} {from,5:F0}-{to,5:F0}: trouble {bad,3}/{count}; rack at top speed {Avg(stats.Where(x => x.Clean).Select(x => x.LimitedShare)):P0} of the corner on clean lines, {Avg(stats.Where(x => !x.Clean).Select(x => x.LimitedShare)):P0} on the rest; worst wheel gap {Avg(stats.Where(x => x.Clean).Select(x => x.WorstGap)):F3} / {Avg(stats.Where(x => !x.Clean).Select(x => x.WorstGap)):F3} rad; before a stray: at top speed {Avg(stats.Select(x => x.LimitedBeforeStray)):P0}, gap {Avg(stats.Select(x => x.GapBeforeStray)):F3} rad, wheel travel {Avg(stats.Select(x => x.TravelBeforeStray)):F3} rad");
+            }
+            _output.WriteLine($"rack x{scale}: trouble {trouble} of {total}");
+        }
+    }
+
+    /// <summary>
+    /// The whole chain from the line to the path, every step through the
+    /// corners where random lines go wrong, to a CSV: the line's curvature
+    /// under the car, what the hands read ahead, what they wanted after the
+    /// feedback, the axles' cap, what they asked for, the path the car made,
+    /// the speed against the plan's, and what each axle was using.
+    /// </summary>
+    [Fact]
+    public void ChainTrace()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_LEAD_LINES", 100);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "chain.csv");
+        float[] flat = Enumerable.Repeat(Env("STINTEGY_CLASSIFY_FACTOR", 1f), 3 * ProfileKnots).ToArray();
+        var random = new Random(4242);
+        float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
+        var all = new List<string> { "corner,line,clean,stray_s,t,s,error,line_k,ff_k,wanted_k,cap_k,cmd_k,actual_k,speed,plan_speed,lat,long,front_lat,rear_lat,front_long,rear_long,rear_slide,sideslip,steer,steer_ask" };
+        foreach ((float from, float to) in Reversals)
+        {
+            var stretch = new Stretch(StartS: from - 450f, FromS: from - 250f, ToS: to + 100f, EndS: to + 250f);
+            Setup setup = Build(1, stretch);
+            var rows = new List<string>[count];
+            Parallel.For(0, count, i =>
+            {
+                var mine = new List<(float T, string Row)>();
+                int step = 0;
+                LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
+                LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                SetProfile(file, setup.Lanes, stretch, flat);
+                Run r = Drive(setup.Track, setup.Shipped, file, drawn, stretch, setup.Conditions[0], setup.Compounds, (car, d, travelled) =>
+                {
+                    step++;
+                    float s = car.Progress.CurrentS;
+                    if (s < from - 150f || s > to + 50f) return;
+                    LaneDriverTelemetry t = d.LastTelemetry;
+                    GripUse g = ((ICarGripFeel)car.Car).GripUse(car.State);
+                    mine.Add((step / 60f, string.Join(",", new float[]
+                    {
+                        step / 60f, s, t.LateralErrorMeters, LineCurvature(drawn, s), t.FeedforwardCurvature, t.WantedCurvature, t.CurvatureCap,
+                        t.CommandCurvature, car.State.Telemetry.ActualCurvature, car.State.Speed, d.PlannedSpeedAt(s),
+                        car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
+                        g.FrontLateral, g.RearLateral, g.FrontLongitudinal, g.RearLongitudinal, g.RearSlideSeverity,
+                        car.State.SideslipAngleRadians, car.State.SteerAngleRadians, car.LastInput.SteerAngleRadians
+                    }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture)))));
+                });
+                string head = $"{from:F0},{i},{(r.Clean ? 1 : 0)},{(float.IsNaN(r.StrayS) ? "" : r.StrayS.ToString("F1", CultureInfo.InvariantCulture))},";
+                rows[i] = mine.Select(x => head + x.Row).ToList();
+            });
+            all.AddRange(rows.SelectMany(x => x));
+            _output.WriteLine($"{from:F0}-{to:F0}: {rows.Length} lines traced");
+        }
+        File.WriteAllLines(output, all);
+    }
+
+    /// <summary>
+    /// The car alone, no driver: settled in a corner of a0 (negative is the
+    /// other way, a reversal), braking B from a moment before, the wheel put
+    /// at once to the angle that settles a corner of a1, and the path timed
+    /// coming round to it. How long the car itself takes, by the state it is
+    /// in, against the 0.03 to 0.07 s the hands read ahead by.
+    /// </summary>
+    [Fact]
+    public void CarAnswer()
+    {
+        if (!LaneProbes.Enabled) return;
+        var car = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
+        var envelope = (ICarEnvelope)car;
+        const float dt = 1f / 60f;
+        CarState Fresh(float v)
+        {
+            var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = v };
+            ((ICarStores)car).Fill(state, PowertrainState.Filled(0.8f));
+            ((ICarTires)car).InstallFreshTires(state);
+            ((ICarTires)car).WarmTires(state, 90f, 90f);
+            return state;
+        }
+        float Curvature(CarState state, ref float heading, Vector2 from)
+        {
+            Vector2 move = state.Position - from;
+            float now = MathF.Atan2(move.Y, move.X);
+            float k = MathHelper.NormalizeAngle(now - heading) / MathF.Max(move.Length(), 1e-4f);
+            heading = now;
+            return k;
+        }
+        // Settle a corner of a at v, the driver's own steering for it; back the state and the wheel's angle.
+        (CarState State, float Heading) Settle(float v, float a, float seconds)
+        {
+            CarState state = Fresh(v);
+            float heading = 0f;
+            for (int i = 0; i < (int)(seconds / dt); i++)
+            {
+                float angle = envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(a / (v * v));
+                Vector2 from = state.Position;
+                // Hold the speed: the settle is for the corner, not for the drag.
+                car.Step(state, new CarPhysicsStepInput(new DriverInput(angle, 0f), CarStrategy.Default, 25f), dt);
+                state.Speed = v;
+                Curvature(state, ref heading, from);
+            }
+            return (state, heading);
+        }
+        float rate = StockCar.Config.SteerRateLimitRadiansPerSecond;
+        _output.WriteLine("v m/s, from a0, to a1, braking | wheel from -> to (rad), rack travel s | path: 63% at s, 90% at s, never past share");
+        foreach (float v in new[] { 55f, 70f })
+            foreach (float a1 in new[] { 15f, 22f })
+                foreach (float a0 in new[] { -12f, 0f, 8f })
+                    foreach (float braking in new[] { 0f, 20f, 40f })
+                    {
+                        float target = Settle(v, a1, 2.5f).State.SteerAngleRadians;
+                        (CarState state, float heading) = Settle(v, a0, 2.5f);
+                        float start = state.SteerAngleRadians;
+                        float k0 = a0 / (v * v), k1 = a1 / (v * v);
+                        // Braking from a moment before, as into Maggotts.
+                        for (int i = 0; i < 9 && braking > 0f; i++)
+                        {
+                            Vector2 from = state.Position;
+                            car.Step(state, new CarPhysicsStepInput(new DriverInput(start, -braking), CarStrategy.Default, 25f), dt);
+                            Curvature(state, ref heading, from);
+                        }
+                        float t63 = float.NaN, t90 = float.NaN, best = 0f;
+                        for (int i = 0; i < 60; i++)
+                        {
+                            Vector2 from = state.Position;
+                            car.Step(state, new CarPhysicsStepInput(new DriverInput(target, -braking), CarStrategy.Default, 25f), dt);
+                            // The path's curvature at this speed for the same corner: braking, the speed falls and the same angle bends tighter.
+                            float k = Curvature(state, ref heading, from);
+                            float share = (k * v * v / (state.Speed * state.Speed) - k0) / (k1 - k0);
+                            share = (k * state.Speed * state.Speed / (v * v) - k0) / (k1 - k0);
+                            best = MathF.Max(best, share);
+                            float t = (i + 1) * dt;
+                            if (float.IsNaN(t63) && share >= 0.63f) t63 = t;
+                            if (float.IsNaN(t90) && share >= 0.9f) t90 = t;
+                            if (i == 20 && v == 55f && a1 == 22f)
+                            {
+                                GripUse g = ((ICarGripFeel)car).GripUse(state);
+                                _output.WriteLine($"    at 0.33 s: braking made {state.Telemetry.ActualLongitudinalAccel:F1}, corner {state.Telemetry.ActualLateralAccel:F1}; front grip {g.FrontGripAccel:F1} used {g.FrontLateral:F2} sideways {g.FrontLongitudinal:F2} lengthways (circle {MathF.Sqrt(g.FrontLateral * g.FrontLateral + g.FrontLongitudinal * g.FrontLongitudinal):F2}); rear grip {g.RearGripAccel:F1} used {g.RearLateral:F2} / {g.RearLongitudinal:F2} (circle {MathF.Sqrt(g.RearLateral * g.RearLateral + g.RearLongitudinal * g.RearLongitudinal):F2})");
+                            }
+                        }
+                        _output.WriteLine($"{v,4:F0} {a0,5:F0} {a1,5:F0} {braking,5:F0} | {start,6:F3} -> {target,6:F3}, {MathF.Abs(target - start) / rate:F3} | {t63,6:F3} {t90,6:F3} {best:F2}");
+                    }
+    }
+
     /// <summary>A whole lap on a side lane, as LaneDriverTests drives it, with every moment off the road and the felt lag then.</summary>
     [Fact]
     public void SideLaneOff()
@@ -1488,13 +1696,25 @@ public sealed class ZzLineSweep
     [ThreadStatic] private static float[]? _leadExtra;
     [ThreadStatic] private static float? _steerLead;
     [ThreadStatic] private static bool _gripLead;
+    // The wheels' top speed for the drives on this thread, as a multiple of the car's: a diagnosis, not a change to the car.
+    [ThreadStatic] private static float _rateScale;
+
+    private static CarConfig QuickerRack(float scale)
+    {
+        var copy = (CarConfig)typeof(object).GetMethod("MemberwiseClone", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .Invoke(StockCar.Config, null)!;
+        typeof(CarConfig).GetProperty(nameof(CarConfig.SteerRateLimitRadiansPerSecond))!
+            .SetValue(copy, StockCar.Config.SteerRateLimitRadiansPerSecond * scale);
+        return copy;
+    }
 
     private static RaceCar Place(string id, LaneTrackFile file, DriverAbilities abilities, Condition c, string compound, float s, float offset, float heading, float speed, LaneSet lanes)
     {
         int station = (int)MathF.Round(lanes.StationOf(s));
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station) + offset);
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1) + offset);
-        ICar model = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
+        CarConfig config = _rateScale is 0f or 1f ? StockCar.Config : QuickerRack(_rateScale);
+        ICar model = new SingleTrackCar(config, ((ICarTires)StockCar.Model).Compounds);
         var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, PlanIntervalSeconds = Env("STINTEGY_PLAN_INTERVAL", 0.1f), Gains = new LaneDriverGains
         {
             CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0",
