@@ -307,7 +307,7 @@ or the clock.
 | `ICarTires.FitTires`, `WarmTires` | when the host changes or warms its tyres (a pit stop, a grid on blankets) |
 | `ICarStores.Fill` | when the host fills its stores |
 | `ICarButtons.HoldUntilLine`, `CrossedLine` | when race control holds its buttons, and when it crosses the line |
-| `ICarTires.Assume`, `ICarButtons.Assume` | on a copy, when a driver plans ahead |
+| `ICarTires.Assume`, `ICarButtons.Assume`, `ICarMotion.Assume` | on a copy, when a driver plans ahead |
 
 Everything else is read: what each feature says of the car
 (`ICarTires.Tire`, `ICarStores.Stores`, `ICarEnvelope`, `ICarMotion`,
@@ -320,7 +320,9 @@ Every car is a body on the road (`ICar`). Anything more it declares by
 implementing a feature: changeable tyres (`ICarTires`), stores it spends
 (`ICarStores`), buttons a driver holds (`ICarButtons`), an envelope to plan
 against (`ICarEnvelope`), its motion for the screen and the feel of the
-car (`ICarMotion`), two axles to move brakes and drive between
+car (`ICarMotion`: where the wheels point, what the seat feels, the path
+it is on and the acceleration it had, and a copy started from those for a
+driver that plans by driving its own), two axles to move brakes and drive between
 (`ICarAxles`), and the feel of its grip (`ICarGripFeel`). The frame carries
 a feature's readings only for a car that has it.
 

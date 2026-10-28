@@ -231,12 +231,22 @@ public readonly record struct GripUse(
 
 /// <summary>
 /// What a car's body is doing beyond where it is and how it moves: what a
-/// camera, a dashboard or a driver's seat feels. Read only; the world never
-/// sets any of it.
+/// camera, a dashboard or a driver's seat feels. The world never sets any of
+/// it; a driver may, on a planning copy of its own.
 /// </summary>
 public interface ICarMotion
 {
     CarMotion Motion(CarState state);
+
+    /// <summary>
+    /// A planning copy of the car doing what <paramref name="motion"/> says:
+    /// for a driver that starts its own copy where the car it drives was
+    /// read (<see cref="StintegyEVO.Core.Racing.RaceCarSnapshot"/>), and sits it in the air the car
+    /// was in. Only what was read is copied; the spins and how far past its
+    /// grip the car was are the car's own history and stay as they are.
+    /// </summary>
+    /// <param name="air">The air to sit the copy in; none leaves it the air it had.</param>
+    void Assume(CarState plan, CarMotion motion, CarAir? air = null);
 }
 
 /// <param name="WheelAngleRadians">Where the steered wheels actually point, relative to the body: not the driver's request, which they take time to reach.</param>
@@ -245,8 +255,11 @@ public interface ICarMotion
 /// <param name="Spinning">Whether the car is spinning: the driver's hands are off it until it hands back.</param>
 /// <param name="Spins">How many times it has spun.</param>
 /// <param name="OverLimit">How far past its grip it is being asked to go, zero within it.</param>
+/// <param name="Curvature">The curvature of the path the body was on over the last step, 1/m, positive to the left.</param>
+/// <param name="StepLongitudinalAccel">Acceleration along the body over the last step, as it was, before the seat smooths it, m/s².</param>
 public readonly record struct CarMotion(
-    float WheelAngleRadians, float LongitudinalAccel, float LateralAccel, bool Spinning, int Spins, float OverLimit);
+    float WheelAngleRadians, float LongitudinalAccel, float LateralAccel, bool Spinning, int Spins, float OverLimit,
+    float Curvature, float StepLongitudinalAccel);
 
 /// <summary>
 /// A car whose grip a driver can feel being used, and whose tyres say where
