@@ -45,6 +45,13 @@ public sealed record LaneDriverGains
     /// </summary>
     public bool LeadFromTurnIn { get; init; } = false;
 
+    /// <summary>
+    /// Brakes only over the plan, Simplix's way: a car a little under the
+    /// plan's speed in a braking zone has the brakes let off at once. For
+    /// probes, off: the speed tracked as everywhere else.
+    /// </summary>
+    public bool BrakeOnlyOverPlan { get; init; } = true;
+
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
 
@@ -617,7 +624,7 @@ public sealed class LaneDriver : IDriverController
                         _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f)) +
                        (Gains.SteerLeadExtra is { } extra && extra.Length == _lanes.Count ? extra[_lanes.Wrap((int)MathF.Round(station))] : 0f);
         if (Gains.LeadFromTurnIn && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null && WindsOn(station, speed))
-            turnIn = MathF.Max(turnIn, _turnLag.Seconds(speed, MathF.Max(0f, -_lastAccel) / MathF.Max(_envelope.Brake(speed), 1f)));
+            turnIn = MathF.Max(turnIn, _turnLag.Seconds(speed, PlannedBraking(station, speed) / MathF.Max(_envelope.Brake(speed), 1f)));
         if (Gains.LeadFromGrip && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null)
             turnIn = MathF.Max(turnIn, GripLead(station, speed, turnIn));
         LastLeadSeconds = turnIn;
@@ -767,7 +774,7 @@ public sealed class LaneDriver : IDriverController
                       _envelope.Loss(speed);
         // And brakes only over it, as Simplix does: under the plan the car
         // has the braking curve still to reach.
-        if (accel < 0f && speed < target)
+        if (accel < 0f && speed < target && Gains.BrakeOnlyOverPlan)
             accel = 0f;
         // Flat out where the plan is. Where the speed wanted a moment ahead
         // is no less than full drive would bring, the plan is the motor's
@@ -941,6 +948,20 @@ public sealed class LaneDriver : IDriverController
     /// Unwinding, a longer lead lets the wheel off before the corner opens
     /// and the car runs wide out of it.
     /// </summary>
+    /// <summary>
+    /// The braking the plan has over the turn-in to come, m/s², not the foot's
+    /// now: into a slow corner the brakes come off half their pressure in a
+    /// tenth of a second as the wheel goes on, and read off the pedal at the
+    /// turn-in the hands took the car for one still braking hard, read the
+    /// corner too early and ran wide out of it.
+    /// </summary>
+    private float PlannedBraking(float station, float speed)
+    {
+        float reach = MathF.Max(1f, MathF.Max(0f, speed) * _turnLag.Seconds(speed, 1f));
+        float ahead = SpeedAt(station + reach / _lanes.Spacing);
+        return MathF.Max(0f, (speed * speed - ahead * ahead) / (2f * reach));
+    }
+
     /// <summary>
     /// Whether the wheel is being wound on towards the corner ahead, within
     /// the longest turn-in the car has: from the straight, from less of it,

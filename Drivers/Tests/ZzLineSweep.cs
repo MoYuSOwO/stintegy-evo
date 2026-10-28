@@ -651,6 +651,7 @@ public sealed class ZzLineSweep
         float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
         var rows = new List<string> { "corner_from_s,corner_to_s,hands,trouble,mean_error_m,worst_error_m,seconds" };
         var totals = new Dictionary<string, (int Trouble, float Error, float Seconds, int Corners)>();
+        var perLine = new System.Collections.Concurrent.ConcurrentBag<string>();
         foreach ((float from, float to) in corners)
         {
             var stretch = new Stretch(StartS: from - 450f, FromS: from - 250f, ToS: to + 100f, EndS: to + 250f);
@@ -675,6 +676,8 @@ public sealed class ZzLineSweep
                     _turnInLead = false;
                 });
                 float Mean(Run r) => Enumerable.Range(a, b - a + 1).Average(i => r.StationError.Length == n ? r.StationError[setup.Lanes.Wrap(i)] : 0f);
+                for (int i = 0; i < runs.Length; i++)
+                    perLine.Add($"{F(from)},{name},{i},{(runs[i].Clean ? 1 : 0)},{F(runs[i].WorstError)},{F(Mean(runs[i]))},{F(runs[i].StrayS)}");
                 int trouble = runs.Count(r => !r.Clean);
                 float error = runs.Average(Mean);
                 float worst = runs.Max(r => r.WorstError);
@@ -689,6 +692,7 @@ public sealed class ZzLineSweep
         foreach (var (name, t) in totals)
             _output.WriteLine($"all {t.Corners} corners, {name}: trouble {t.Trouble} of {t.Corners * count}, mean error {t.Error / t.Corners:F3} m");
         File.WriteAllLines(output, rows);
+        File.WriteAllLines(Path.ChangeExtension(output, ".lines.csv"), new[] { "corner_from_s,hands,line,clean,worst_error_m,mean_error_m,stray_s" }.Concat(perLine));
     }
 
     /// <summary>
@@ -942,6 +946,53 @@ public sealed class ZzLineSweep
                         }
                         _output.WriteLine($"{v,4:F0} {a0,5:F0} {a1,5:F0} {braking,5:F0} | {start,6:F3} -> {target,6:F3}, {MathF.Abs(target - start) / rate:F3} | {t63,6:F3} {t90,6:F3} {best:F2}");
                     }
+    }
+
+    /// <summary>
+    /// Chosen random lines of LeadCorners (STINTEGY_TRACE_CORNER from:to,
+    /// STINTEGY_TRACE_LINES i,j,...), with the hands as they are and with the
+    /// turn-in lead, step by step: the line, the lead, the feedback's parts,
+    /// the command and the path, the error.
+    /// </summary>
+    [Fact]
+    public void LineTrace()
+    {
+        if (!LaneProbes.Enabled) return;
+        string[] corner = (Environment.GetEnvironmentVariable("STINTEGY_TRACE_CORNER") ?? "823.86:965.84").Split(':');
+        float from = float.Parse(corner[0], CultureInfo.InvariantCulture), to = float.Parse(corner[1], CultureInfo.InvariantCulture);
+        int[] picks = (Environment.GetEnvironmentVariable("STINTEGY_TRACE_LINES") ?? "76").Split(',').Select(int.Parse).ToArray();
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "line-trace.csv");
+        int count = 100;
+        var random = new Random(4242);
+        float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
+        float[] flat = Enumerable.Repeat(1f, 3 * ProfileKnots).ToArray();
+        var stretch = new Stretch(StartS: from - 450f, FromS: from - 250f, ToS: to + 100f, EndS: to + 250f);
+        Setup setup = Build(1, stretch);
+        var rows = new List<string> { "line,hands,t,s,speed,accel,lead,line_k,ff_k,cmd_k,actual_k,error,heading_err,wanted_k,cap_k,sideslip" };
+        foreach (int i in picks)
+            foreach ((string name, bool turnIn) in new[] { ("as they are", false), ("by the turn-in", true) })
+            {
+                _turnInLead = turnIn;
+                LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
+                LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                SetProfile(file, setup.Lanes, stretch, flat);
+                int step = 0;
+                Drive(setup.Track, setup.Shipped, file, drawn, stretch, setup.Conditions[0], setup.Compounds, (car, d, travelled) =>
+                {
+                    step++;
+                    float s = car.Progress.CurrentS;
+                    if (s < from - 200f || s > to + 100f) return;
+                    LaneDriverTelemetry t = d.LastTelemetry;
+                    rows.Add($"{i},{name}," + string.Join(",", new float[]
+                    {
+                        step / 60f, s, car.State.Speed, t.CommandAccel, d.LastLeadSeconds, d.LastHereCurvature, t.FeedforwardCurvature,
+                        t.CommandCurvature, car.State.Telemetry.ActualCurvature, t.LateralErrorMeters, t.HeadingErrorRadians,
+                        t.WantedCurvature, t.CurvatureCap, car.State.SideslipAngleRadians
+                    }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture))));
+                });
+                _turnInLead = false;
+            }
+        File.WriteAllLines(output, rows);
     }
 
     /// <summary>A whole lap on a side lane, as LaneDriverTests drives it, with every moment off the road and the felt lag then.</summary>
@@ -1728,7 +1779,8 @@ public sealed class ZzLineSweep
             SteerLeadSeconds = _steerLead ?? (Environment.GetEnvironmentVariable("STINTEGY_STEER_LEAD") is { } steerLead ? float.Parse(steerLead, CultureInfo.InvariantCulture) : null),
             SteerLeadExtra = _leadExtra,
             LeadFromGrip = _gripLead,
-            LeadFromTurnIn = _turnInLead
+            LeadFromTurnIn = _turnInLead,
+            BrakeOnlyOverPlan = Environment.GetEnvironmentVariable("STINTEGY_BRAKE_ZERO") != "0"
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })
