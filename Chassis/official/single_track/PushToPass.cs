@@ -1,6 +1,7 @@
 using System;
+using StintegyEVO.Core.Cars;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 /// <summary>
 /// The push-to-pass allowance, as the series writes it: a budget of seconds

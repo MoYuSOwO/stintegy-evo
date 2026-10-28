@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using StintegyEVO.Core.Cars;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 /// <summary>
 /// A battery and a motor: one store that does not weigh anything as it

@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using StintegyEVO.Core.Cars;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 /// <summary>
 /// Electric drive with an engine that only makes electricity.

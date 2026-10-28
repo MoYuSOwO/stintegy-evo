@@ -1,6 +1,7 @@
 using System;
+using StintegyEVO.Core.Cars;
 
-namespace StintegyEVO.Core.Cars;
+namespace Official.SingleTrack;
 
 /// <summary>
 /// The car against the air. The chassis asks it how hard the air presses

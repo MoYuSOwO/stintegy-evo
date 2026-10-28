@@ -43,14 +43,6 @@ public sealed record TireSet(Tire Front, Tire Rear)
 
     /// <summary>One compound all round, by a name nobody chose: for tests and probes.</summary>
     public static TireSet Of(TireConfig config) => TireCompound.Of(config).Set;
-
-    public void Install(CarState state)
-    {
-        Front.Reset(state.Chassis().FrontLeft);
-        Front.Reset(state.Chassis().FrontRight);
-        Rear.Reset(state.Chassis().RearLeft);
-        Rear.Reset(state.Chassis().RearRight);
-    }
 }
 
 /// <summary>

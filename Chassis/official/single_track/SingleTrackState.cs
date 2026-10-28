@@ -1,5 +1,7 @@
 using System;
-namespace StintegyEVO.Core.Cars;
+using StintegyEVO.Core.Cars;
+
+namespace Official.SingleTrack;
 
 /// <summary>
 /// What the single-track chassis reads off its two axles each step: how

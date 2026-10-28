@@ -66,6 +66,9 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
     public CarSpec Spec { get; }
     public IPowertrain Powertrain => Config.Powertrain;
 
+    /// <summary>Its powertrain's stores.</summary>
+    public IReadOnlyList<PowertrainResourceInfo> Resources => Config.Powertrain.Resources;
+
     /// <summary>The powertrain's output ladder, and nothing else.</summary>
     public virtual IReadOnlyList<ModeLadder> Ladders => [Config.Powertrain.OutputLadder];
 
@@ -141,8 +144,13 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
             throw new ArgumentException(
                 $"This car does not run '{compound}'; it runs {string.Join(", ", Compounds.Select(c => c.Id))}.",
                 nameof(compound));
-        state.Chassis().Compound = compound;
-        set.Install(state);
+        SingleTrackState own = state.Chassis();
+        own.Compound = compound;
+        // Its four tyres: two on each axle.
+        set.Front.Reset(own.FrontLeft);
+        set.Front.Reset(own.FrontRight);
+        set.Rear.Reset(own.RearLeft);
+        set.Rear.Reset(own.RearRight);
     }
 
     public virtual void InstallFreshTires(CarState state) =>

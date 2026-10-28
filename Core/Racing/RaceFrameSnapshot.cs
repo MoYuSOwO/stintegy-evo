@@ -101,7 +101,7 @@ public readonly record struct RaceCarSnapshot(
         if (model is ICarStores stores)
         {
             PowertrainState left = stores.Stores(state);
-            IReadOnlyList<PowertrainResourceInfo> declared = stores.Powertrain.Resources;
+            IReadOnlyList<PowertrainResourceInfo> declared = stores.Resources;
             var builder = ImmutableArray.CreateBuilder<PowertrainResourceSnapshot>(declared.Count);
             for (int i = 0; i < declared.Count && i < PowertrainState.Capacity; i++)
             {

@@ -61,10 +61,10 @@ public readonly record struct TireReading(float SurfaceTempC, float CoreTempC, f
 /// <summary>A car that carries stores it spends as it goes: charge, fuel.</summary>
 public interface ICarStores
 {
-    /// <summary>What it runs on and what the strategist spends: the stores, the output ladder and what can be delivered.</summary>
-    IPowertrain Powertrain { get; }
+    /// <summary>What it spends, in the order its stores are kept: what each is called, what it is and what it weighs full.</summary>
+    IReadOnlyList<PowertrainResourceInfo> Resources { get; }
 
-    /// <summary>How much of each store is left, in the order <see cref="IPowertrain.Resources"/> declares them.</summary>
+    /// <summary>How much of each store is left, in the order <see cref="Resources"/> declares them.</summary>
     PowertrainState Stores(CarState state);
 
     /// <summary>Every store set to these shares of full: for a host filling the car before it goes out.</summary>
