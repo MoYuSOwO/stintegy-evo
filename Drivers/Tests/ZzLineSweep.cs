@@ -560,13 +560,14 @@ public sealed class ZzLineSweep
                 {
                     n, step / 60f, s, t.LateralErrorMeters, car.State.Speed, t.CommandAccel, LineCurvature(drawn, s), t.FeedforwardCurvature,
                     t.WantedCurvature, t.CommandCurvature, t.CurvatureCap, car.State.SteerAngleRadians, car.State.Telemetry.ActualCurvature,
-                    car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel
+                    car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
+                    d.FeltExtraLags[0], d.FeltExtraLags[1], d.FeltExtraLags[2], d.FeltExtraLags[3]
                 }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture))));
             });
             rows.Insert(0, $"#{n},{(r.Clean ? 1 : 0)}");
             lines[n] = rows;
         });
-        File.WriteAllLines(output, new[] { "line,t,s,error,speed,command_accel,line_k,feedforward_k,wanted_k,command_k,cap_k,steer,actual_k,lat,long" }
+        File.WriteAllLines(output, new[] { "line,t,s,error,speed,command_accel,line_k,feedforward_k,wanted_k,command_k,cap_k,steer,actual_k,lat,long,felt0,felt10,felt20,felt30" }
             .Concat(lines.Skip(1).SelectMany(l => l)));
     }
 
@@ -1173,6 +1174,7 @@ public sealed class ZzLineSweep
         var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, PlanIntervalSeconds = Env("STINTEGY_PLAN_INTERVAL", 0.1f), Gains = new LaneDriverGains
         {
             CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0",
+            FeelTurnLag = Environment.GetEnvironmentVariable("STINTEGY_FEEL") != "0",
             CurvaturePreviewSeconds = Environment.GetEnvironmentVariable("STINTEGY_PREVIEW") is { } preview ? float.Parse(preview, CultureInfo.InvariantCulture) : null,
             PursuitSeconds = Env("STINTEGY_PURSUIT", new LaneDriverGains().PursuitSeconds),
             PlanLeadSeconds = Environment.GetEnvironmentVariable("STINTEGY_PLAN_LEAD") is { } planLead ? float.Parse(planLead, CultureInfo.InvariantCulture) : null,
@@ -1271,9 +1273,12 @@ public sealed class ZzLineSweep
         var stationThrottle = new bool[lanes.Count];
         var stationSeconds = new float[lanes.Count];
         var lanesDriver = (LaneDriver)((Timed)car.Driver!.Controller).Inner;
-        float lead0 = stretch.FromS - stretch.StartS, through = stretch.ToS - stretch.StartS, tail = stretch.EndS - stretch.StartS;
+        // With STINTEGY_WARM_LAP=1 the stretch is judged on the car's second
+        // time through it, a whole lap on: a driver in a race has been round.
+        float warm = Environment.GetEnvironmentVariable("STINTEGY_WARM_LAP") == "1" ? track.LengthMeters : 0f;
+        float lead0 = stretch.FromS - stretch.StartS + warm, through = stretch.ToS - stretch.StartS + warm, tail = stretch.EndS - stretch.StartS + warm;
         float previous = 0f;
-        for (int i = 0; i < 60 * 60; i++)
+        for (int i = 0; i < 60 * 240; i++)
         {
             long stepBegan = System.Diagnostics.Stopwatch.GetTimestamp();
             simulation.Step(dt);
@@ -1282,7 +1287,7 @@ public sealed class ZzLineSweep
             if (car.State.SpinEvents > 0)
                 return new Run(float.NaN, true, off, wall, worstError, worstSlip, touched, wakeSamples > 0 ? wake / wakeSamples : 0f)
                 {
-                    StrayS = float.IsNaN(strayS) ? stretch.StartS + car.Progress.TotalDistance - startDistance : strayS,
+                    StrayS = float.IsNaN(strayS) ? stretch.StartS + car.Progress.TotalDistance - startDistance - warm : strayS,
                     StrayBraking = float.IsNaN(strayS) ? lanesDriver.LastTelemetry.CommandAccel < -3f : strayBraking,
                     StationError = stationError, StationSlip = stationSlip, StationOff = stationOff,
                     StationBraking = stationBraking, StationThrottle = stationThrottle, StationSeconds = stationSeconds, SpinS = car.Progress.CurrentS
@@ -1317,7 +1322,7 @@ public sealed class ZzLineSweep
                 worstError = MathF.Max(worstError, MathF.Abs(lanesDriver.LastTelemetry.LateralErrorMeters));
                 if (float.IsNaN(strayS) && (MathF.Abs(lanesDriver.LastTelemetry.LateralErrorMeters) > 0.6f || car.Progress.Region != TrackRegion.RacingSurface))
                 {
-                    strayS = stretch.StartS + travelled;
+                    strayS = stretch.StartS + travelled - warm;
                     strayBraking = lanesDriver.LastTelemetry.CommandAccel < -3f;
                 }
                 float geometric = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Telemetry.ActualCurvature);

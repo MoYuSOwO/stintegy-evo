@@ -915,6 +915,9 @@ public sealed class LaneDriver : IDriverController
     private readonly float[] _extraLag = new float[4];
     private int _feelSamples;
 
+    /// <summary>How much later than its turn lag the car has been felt to answer, coasting to braking hard. For probes.</summary>
+    public IReadOnlyList<float> FeltExtraLags => _extraLag;
+
     /// <summary>How much later than its turn lag the car has been felt to answer, braking this hard.</summary>
     private float FeltExtraLag(float braking)
     {
