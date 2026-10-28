@@ -48,16 +48,20 @@ public sealed class ZzLeadLaps
     {
         if (!LaneProbes.Enabled) return;
         string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "walls.csv");
-        var laps = new (string Circuit, float Side)[]
-        {
-            ("monaco", 0f), ("monaco", 1f), ("monaco", -1f), ("monza", 0f), ("baku", 0f), ("baku", 1f), ("singapore", -1f)
-        };
+        var laps = Environment.GetEnvironmentVariable("STINTEGY_WALL_ALL") == "1"
+            ? (from c in Circuits from side in new[] { 0f, 1f, -1f } select (Circuit: c, Side: side)).ToArray()
+            : new (string Circuit, float Side)[]
+            {
+                ("monaco", 0f), ("monaco", 1f), ("monaco", -1f), ("monza", 0f), ("baku", 0f), ("baku", 1f), ("singapore", -1f)
+            };
         var ways = new (string Name, LaneDriverGains Gains)[]
         {
             ("as they are", new LaneDriverGains()),
             ("by the turn-in", new LaneDriverGains { LeadFromTurnIn = true }),
             ("no steer notes", new LaneDriverGains()),
         };
+        if (Environment.GetEnvironmentVariable("STINTEGY_WALL_ALL") == "1")
+            ways = ways.Where(w => w.Name == "as they are").ToArray();
         var jobs = (from l in laps from w in ways select (l.Circuit, l.Side, w.Name, w.Gains)).ToArray();
         var rows = new List<string>[jobs.Length];
         Parallel.For(0, jobs.Length, j =>
