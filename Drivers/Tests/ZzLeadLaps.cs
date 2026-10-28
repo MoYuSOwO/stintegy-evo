@@ -194,11 +194,12 @@ public sealed class ZzLeadLaps
         if (!LaneProbes.Enabled) return;
         string[] only = Environment.GetEnvironmentVariable("STINTEGY_LEAD_CIRCUITS")?.Split(',') ?? Circuits;
         string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "lead-laps.csv");
-        var old = new LaneDriverGains { LeadFromTurnIn = false, SmoothHeading = false, UseSteerNotes = true, FadeByAsk = false };
+        var old = new LaneDriverGains { LeadFromTurnIn = false, SmoothHeading = false, UseNotes = true, FadeByAsk = false };
         var ways = new (string Name, LaneDriverGains Gains)[]
         {
             ("old hands", old),
-            ("old hands without steer notes", old with { UseSteerNotes = false }),
+            ("old hands without notes", old with { UseNotes = false }),
+            ("as they are with notes", new LaneDriverGains { UseNotes = true }),
             ("as they are", new LaneDriverGains()),
             ("as they are but small-step lag", new LaneDriverGains { LeadFromTurnIn = false }),
             ("as they are but chord heading", new LaneDriverGains { SmoothHeading = false }),

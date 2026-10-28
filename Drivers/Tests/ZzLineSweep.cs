@@ -1783,6 +1783,7 @@ public sealed class ZzLineSweep
             LeadFromTurnIn = !_oldHands,
             SmoothHeading = !_oldHands,
             FadeByAsk = !_oldHands,
+            UseNotes = _oldHands,
             BrakeOnlyOverPlan = Environment.GetEnvironmentVariable("STINTEGY_BRAKE_ZERO") != "0"
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),

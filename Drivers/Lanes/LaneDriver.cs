@@ -46,11 +46,15 @@ public sealed record LaneDriverGains
     public bool LeadFromTurnIn { get; init; } = true;
 
     /// <summary>
-    /// The steering learned into the notes, station by station, added to
-    /// the hands' feedforward. Off: those notes were learned on another
-    /// car and other hands, and drove the car into the inside walls.
+    /// What the notes learned of the circuit beforehand: the steering added
+    /// station by station, the corner, braking and traction factors on the
+    /// envelope, and the circuit's own tyre and energy rungs. Off, the plan
+    /// is the envelope's alone and the hands the line's: the notes were
+    /// learned on another car and other hands, the steering drove it into
+    /// the inside walls and the corner factors asked for more than the
+    /// tyres had. What a driver learns as it drives is apart from these.
     /// </summary>
-    public bool UseSteerNotes { get; init; }
+    public bool UseNotes { get; init; }
 
     /// <summary>
     /// Brakes only over the plan, Simplix's way: a car a little under the
@@ -312,7 +316,7 @@ public sealed class LaneDriver : IDriverController
     private TyreStyle[]? _tyreStyles;
 
     /// <summary>The tyre rungs' styles: this circuit's where it has them, the general table where not.</summary>
-    private TyreStyle[] TyreStyles => _tyreStyles ??= _file.Tyres?.Table() ?? Gains.TyreStyleTable;
+    private TyreStyle[] TyreStyles => _tyreStyles ??= (Gains.UseNotes ? _file.Tyres?.Table() : null) ?? Gains.TyreStyleTable;
     // The car, known only by what it says it has: an envelope to plan
     // against, tyres, the feel of its grip, and stores and buttons where it
     // has them (Needs).
@@ -446,7 +450,7 @@ public sealed class LaneDriver : IDriverController
 
     private void ManageEnergy(RaceCarSnapshot car)
     {
-        float[] table = _energyTable ??= _file.Energy?.LiftSeconds() ?? Gains.EnergyRungLiftSeconds;
+        float[] table = _energyTable ??= (Gains.UseNotes ? _file.Energy?.LiftSeconds() : null) ?? Gains.EnergyRungLiftSeconds;
         float asked = (_model.Ladders.Count > 0 ? _model.Ladders[0].RungsUp(car.Strategy.Setting(0, _model.Ladders[0])) : 0f) + (_performance?.EnergyRungDrift ?? 0f);
         float lift = CoastOverride ?? (table.Length == 0 ? 0f : Rung(table, asked));
         CoastSeconds = Math.Clamp(lift, 0f, MaximumCoastSeconds);
@@ -1573,6 +1577,23 @@ public sealed class LaneDriver : IDriverController
     private bool _brakedSinceThrottle;
     private float _sinceThrottle = float.PositiveInfinity;
 
+    /// <summary>The corner and braking factors the notes give this stretch at the grip believed in; one, the envelope alone, without them.</summary>
+    private void NotedFactors(LaneId lane, int start, int count, Span<float> corner, Span<float> brake)
+    {
+        if (Gains.UseNotes)
+        {
+            _file.FactorsAtGrip(lane, Grip, start, count, corner, brake);
+            return;
+        }
+        // Station by station from start, round the lap, as the notes are read.
+        int n = corner.Length;
+        for (int k = 0, i = ((start % n) + n) % n; k < Math.Min(count, n); k++, i = i + 1 == n ? 0 : i + 1)
+        {
+            corner[i] = 1f;
+            brake[i] = 1f;
+        }
+    }
+
     /// <summary>
     /// What the notes say of this corner's exit, at the grip the driver
     /// believes in: the share of the general traction to take here, blended
@@ -1580,7 +1601,7 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     private float TractionHere(int station)
     {
-        float At(LaneId lane) => _file.TractionAt(lane, Grip, station);
+        float At(LaneId lane) => Gains.UseNotes ? _file.TractionAt(lane, Grip, station) : 1f;
         float noted = LaneSet.Blend(At(LaneId.Free), At(LaneId.Left), At(LaneId.Right), At(LaneId.Middle), Range, Side);
         return _familiar is { } familiar ? noted * familiar.Traction[familiar.SegmentOf(station * _lanes.Spacing)] : noted;
     }
@@ -1792,7 +1813,7 @@ public sealed class LaneDriver : IDriverController
         var corner = new float[count];
         var brake = new float[count];
         var speed = new float[count];
-        _file.FactorsAtGrip(lane, Grip, corner, brake);
+        NotedFactors(lane, 0, count, corner, brake);
         int l = (int)lane;
         LaneSpeedPlanner.PlanClosed(_envelope, _curvature[l], _stepLength[l], corner, brake, _road[l], _planShares, speed);
         float seconds = 0f;
@@ -2036,7 +2057,7 @@ public sealed class LaneDriver : IDriverController
         _envelope = belief == 1f ? truth : LaneEnvelope.From(_plan, _carEnvelope, _feel, car.Strategy, Gains.TurnAwareEnvelope).WithRoadGrip(road * belief);
         for (int lane = 0; lane < (sides ? LaneSet.LaneCount : 1); lane++)
         {
-            _file.FactorsAtGrip((LaneId)lane, Grip, start, count, _corner[lane], _brake[lane]);
+            NotedFactors((LaneId)lane, start, count, _corner[lane], _brake[lane]);
             // The car's notes, as much of them as this driver takes here.
             if (_familiar is { } familiar)
             {
@@ -2314,7 +2335,7 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The learned steering correction under the blend in force.</summary>
     private float BlendedSteer(float station)
     {
-        if (!Gains.UseSteerNotes)
+        if (!Gains.UseNotes)
             return 0f;
         int i0 = (int)MathF.Floor(station);
         float u = station - i0;
