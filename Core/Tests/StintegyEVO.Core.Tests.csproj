@@ -21,7 +21,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Throwaway mods' code: their own projects. -->
+    <Compile Remove="ModFixtures/**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Core.csproj" />
+    <!-- Built so the registry tests can pack them into throwaway mods; never referenced. -->
+    <ProjectReference Include="ModFixtures/alpha/alpha.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="ModFixtures/beta/beta.csproj" ReferenceOutputAssembly="false" Private="false" />
     <!-- The game's own chassis, for the tests that need a car on the road.
          Its own physics is tested in its pack. -->
     <ProjectReference Include="../../Chassis/official/single_track/single_track.csproj" />
