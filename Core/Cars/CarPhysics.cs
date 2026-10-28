@@ -1280,7 +1280,9 @@ public static class CarPhysics
             state.Telemetry.ActualLateralAccel,
             state.Telemetry.ActualCurvature,
             road.CurvatureDemandScale,
-            road.LateralGravityDemand(Gravity, state.Speed));
+            road.LateralGravityDemand(Gravity, state.Speed),
+            state.Axles().FrontLongitudinalUse,
+            state.Axles().RearLongitudinalUse);
     }
 
     /// <summary>
