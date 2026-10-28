@@ -85,7 +85,12 @@ public readonly record struct SteeringEstimate(
         float loadedShare = FullSlipCompensationShare * MathF.Max(FrontGripAccel + RearGripAccel, Epsilon);
         float lateralLoad = Math.Clamp(MathF.Abs(ActualLateralAccel) / loadedShare, 0f, 1f);
         float kinematic = MathF.Atan(wheelBase * curvature);
-        float feedforward = kinematic + slipCompensation * lateralLoad;
+        // Only the part that would steer against the corner waits for the
+        // load: more lock into a corner is what a turn-in needs from its first
+        // frame, and fading it in turned in with the geometry alone, a third
+        // short of the corner at speed until the tyres had loaded.
+        bool intoTheCorner = slipCompensation * curvature >= 0f;
+        float feedforward = kinematic + slipCompensation * (intoTheCorner ? 1f : lateralLoad);
         float feedback = CurvatureFeedbackGain * wheelBase * (curvature - ActualCurvature);
         float maximum = MathF.Max(MaxSteerAngleRadians, 0f);
         return Math.Clamp(feedforward + feedback, -maximum, maximum);
