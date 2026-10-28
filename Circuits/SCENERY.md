@@ -1,6 +1,7 @@
 # Scenery plans
 
 One file per circuit, in its folder: `silverstone/scenery.json` is Silverstone's.
+A mod may add a plan of its own to any circuit (see `Circuits/MODDING.md`).
 It says which props stand where, and it is meant to be read and edited by
 a person.
 
@@ -11,7 +12,7 @@ a person.
     { "prop": 2, "s": 120.0, "d": -46.0, "yaw": 3.142, "scale": 1.0 },
     { "prop": 1, "s": 300.0, "d": 68.0, "scale": 1.15,
       "repeat": { "count": 14, "step_s": 26.0, "step_d": 2.5 } },
-    { "prop": "res://mods/official/data/circuits/silverstone/props/marquee.tscn",
+    { "prop": "props/marquee.glb",
       "s": 210.0, "d": -38.0 }
   ]
 }
@@ -19,17 +20,20 @@ a person.
 
 ## Naming a prop
 
-Three ways, and a plan may use all three at once.
+Four ways, and a plan may use them all at once.
 
 | written | means |
 |---|---|
 | `"prop": 2` | the game's own prop number two, through `Assets/Scenery/catalogue.json` |
 | `"prop": "pine"` | `pine.tscn`, `pine.glb`, `pine.obj` … in `Assets/Scenery`, by name |
-| `"prop": "res://mods/official/data/circuits/silverstone/props/marquee.tscn"` | that file, wherever it is — a circuit bringing scenery of its own |
+| `"prop": "official:grandstand"` | the prop a mod registered under that id (its `mod.json`'s `"props"`), with the model it names |
+| `"prop": "props/marquee.glb"` | a model in the plan's own mod, beside the plan — a circuit bringing scenery of its own |
 
-Models in a format Godot has to import — glTF, Wavefront, COLLADA, FBX —
-work anywhere a name or a path does, but must be imported once first (see
-`Assets/Scenery/README.md`). Godot's own `.tscn` needs nothing.
+A model in a mod is glTF (`.glb`, or a `.gltf` with everything inside it),
+read from the mod's own files at runtime: there is no importer in a shipped
+game, so nothing else can be read from a mod. The game's own library in
+`Assets/Scenery` is imported by the editor and takes any format Godot
+imports (see `Assets/Scenery/README.md`).
 
 The numbers are the stable handle on the props that ship with the game:
 re-model the tree or rename its file, and every circuit that asked for a 1

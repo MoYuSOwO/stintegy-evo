@@ -49,6 +49,7 @@ def check_sources():
     files = [ROOT / p.decode() for p in listed.split(b'\0') if p]
     errors = []
     legacy = re.compile(r'\b(?:IRaceDriver|ReferenceLineDriver|DirectDriveRaceDriver|ITrafficMotionPlanSource|TrafficMotionPlan|RacingRoomCoordinator|VehicleSpeedPlanner|StanleyPathPredictor|DirectDriveObservation|MlpDrivingPolicy|DriverCatalog|ReflexGovernedLongitudinal|TractionControlStrength|AntiLockStrength)\b')
+    official = re.compile(r'\bOfficial\.(?:SingleTrack|FormulaAMixed|OfficialMod)\b|\busing Official\b')
     for path in files:
         if not path.is_file():
             continue
@@ -60,6 +61,14 @@ def check_sources():
         if path.suffix == '.cs' and rel.startswith(('Core/', 'GodotApp/')) and not rel.startswith('Core/Tests/'):
             if legacy.search(path.read_text()):
                 errors.append(rel + ': legacy implementation reference')
+            # The game knows the official mod only through the registry, as
+            # it knows anyone's: its code never names the mod's.
+            if official.search(path.read_text()):
+                errors.append(rel + ': names the official mod\'s code; take it from the registry')
+    project = (ROOT / 'StintegyEVO.csproj').read_text()
+    for reference in re.findall(r'<ProjectReference[^>]*mods/[^>]*>', project):
+        if 'ReferenceOutputAssembly="false"' not in reference:
+            errors.append('StintegyEVO.csproj: references a mod\'s assembly: ' + reference)
     if errors:
         raise RuntimeError('Boundary violations:\n' + '\n'.join(errors))
     (OUT / 'source-boundary.json').write_text(json.dumps({'passed': True, 'checked_files': len(files)}, indent=2))

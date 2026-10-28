@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using Godot;
+using StintegyEVO.Core.Content;
+using StintegyEVO.Core.Mods;
+using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.LowPoly;
 
 namespace StintegyEVO.GodotApp.Scenery;
@@ -8,7 +11,7 @@ namespace StintegyEVO.GodotApp.Scenery;
 /// <summary>
 /// Puts a plan's props on the ground.
 ///
-/// A plan names a prop in one of three ways, and the three are the point
+/// A plan names a prop in one of four ways, and the four are the point
 /// of this class:
 ///
 /// <list type="bullet">
@@ -20,10 +23,14 @@ namespace StintegyEVO.GodotApp.Scenery;
 /// <item><b>By name.</b> <c>"prop": "pine"</c> is <c>pine.glb</c> or
 /// <c>pine.tscn</c> in <see cref="LibraryPath"/>. Nothing registers it —
 /// a prop exists because its file does.</item>
-/// <item><b>By its own path.</b> <c>"prop": "res://Assets/MyTrack/oak.glb"</c>
-/// or a <c>user://</c> path is loaded as given, which is how a circuit
-/// brings scenery nobody else has. Nothing needs to be added to the
-/// library, and nothing needs a number.</item>
+/// <item><b>By a mod's id.</b> <c>"prop": "official:grandstand"</c> is the
+/// prop a mod registered under that id, drawn with the model it
+/// named: any mod may use any other's.</item>
+/// <item><b>By its own path.</b> <c>"prop": "props/oak.glb"</c> is a model
+/// in the mod the plan is in, beside the plan, which is how a circuit or a
+/// mod brings scenery nobody else has; a <c>res://</c> path is one of the
+/// game's own files. Nothing needs to be added to the library, and nothing
+/// needs a number.</item>
 /// </list>
 ///
 /// A prop the library does not have is reported once and skipped. A
@@ -39,6 +46,9 @@ namespace StintegyEVO.GodotApp.Scenery;
 /// circuit is built, the nodes hang off the presentation tree, and the
 /// walls remain the only boundary anything physical knows about.
 /// </summary>
+/// <summary>Where a plan's own files are: the mod that carries it, and the plan's folder in it.</summary>
+public sealed record SceneryFiles(IModResources Resources, string Folder);
+
 public sealed partial class SceneryLoader : Node3D
 {
     public const string LibraryPath = "res://Assets/Scenery";
@@ -69,11 +79,12 @@ public sealed partial class SceneryLoader : Node3D
         Build(plan, surface, null);
 
     /// <summary>
-    /// The same, for a plan that came from a mod folder: its prop paths
-    /// are relative to that folder, so the mod can be moved or renamed
-    /// without rewriting a line of it.
+    /// The same, for a plan a mod carries: its prop paths are relative to
+    /// the plan's folder in that mod, and read from the mod's own files,
+    /// packed or not, so the mod can be moved, renamed or zipped without
+    /// rewriting a line of it.
     /// </summary>
-    public void Build(SceneryPlan plan, TrackSurfaceGeometry surface, string? folder)
+    public void Build(SceneryPlan plan, TrackSurfaceGeometry surface, SceneryFiles? files)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(surface);
@@ -93,7 +104,7 @@ public sealed partial class SceneryLoader : Node3D
                 kept++;
                 continue;
             }
-            Prop? found = Resolve(prop.Prop, folder);
+            Prop? found = Resolve(prop.Prop, files);
             if (found is null)
             {
                 missing++;
@@ -109,7 +120,7 @@ public sealed partial class SceneryLoader : Node3D
             else
             {
                 Node3D node = found.Value.Scene!.Instantiate<Node3D>();
-                node.Transform = where;
+                node.Transform = where * found.Value.Local;
                 node.Name = $"{prop.Prop}_{placed}";
                 AddChild(node);
             }
@@ -118,7 +129,7 @@ public sealed partial class SceneryLoader : Node3D
 
         foreach ((string prop, List<Transform3D> group) in batched)
         {
-            Mesh mesh = Resolve(prop, folder)!.Value.Mesh!;
+            Mesh mesh = Resolve(prop, files)!.Value.Mesh!;
             if (group.Count < BatchFrom)
             {
                 for (int i = 0; i < group.Count; i++)
@@ -364,13 +375,13 @@ public sealed partial class SceneryLoader : Node3D
     /// path of its own. Looked up once and remembered, including the
     /// misses, so a plan with fifty of the same tree reads one file.
     /// </summary>
-    private Prop? Resolve(string prop, string? folder)
+    private Prop? Resolve(string prop, SceneryFiles? files)
     {
-        string key = folder is null ? prop : $"{folder}\u0000{prop}";
+        string key = files is null ? prop : $"{files.Resources.Location}\u0000{files.Folder}\u0000{prop}";
         if (_library.TryGetValue(key, out Prop? found))
             return found;
 
-        Prop? scene = Load(prop, folder);
+        Prop? scene = Load(prop, files);
         if (scene is null)
         {
             GD.PushWarning(
@@ -382,29 +393,28 @@ public sealed partial class SceneryLoader : Node3D
         return scene;
     }
 
-    private Prop? Load(string prop, string? folder)
+    private Prop? Load(string prop, SceneryFiles? files)
     {
-        // A mod's plan names files inside its own folder, and those files
-        // were never imported -- there is no editor in a shipped game --
-        // so they are read from disk by the runtime reader instead. A mod
-        // that asks for a catalogue number or a library name is asking for
-        // the game's own prop and falls through to it: a mod may put a
-        // tree where the circuit has none without shipping a tree.
-        if (folder is not null && (
+        // A prop a mod registered, by its id: its model is read from that
+        // mod's files, and drawn at the scale the mod gave it.
+        if (!prop.Contains("://", StringComparison.Ordinal) && prop.Contains(':', StringComparison.Ordinal))
+        {
+            if (!ResourceId.TryParse(prop, out ResourceId id) || !GodotMods.Registry.Props.TryGet(id, out ModProp registered))
+                return null;
+            return FromModel(RuntimeModels.Load(registered.Resources, registered.Model, "scenery"), registered.Scale);
+        }
+        // A plan a mod carries names files beside it in the mod, and those
+        // files were never imported -- there is no editor in a shipped
+        // game -- so they are read from the mod's bytes by the runtime
+        // reader instead. A plan that asks for a catalogue number or a
+        // library name is asking for the game's own prop and falls through
+        // to it: a mod may put a tree where the circuit has none without
+        // shipping a tree.
+        if (files is not null && !prop.Contains("://", StringComparison.Ordinal) && (
                 prop.Contains('/', StringComparison.Ordinal) ||
                 prop.Contains('.', StringComparison.Ordinal)))
         {
-            string path = prop.Contains("://", StringComparison.Ordinal)
-                ? prop
-                : $"{folder}/{prop}";
-            PackedScene? model = SceneryMods.LoadModel(path);
-            if (model is null)
-                return null;
-            return SingleMesh(model) is (Mesh only, Transform3D local)
-                ? Prop.Batched(only, local)
-                : MergedMesh(model) is Mesh merged
-                    ? Prop.Batched(merged)
-                    : new Prop(model, null);
+            return FromModel(RuntimeModels.Load(files.Resources, ModResources.Join(files.Folder, prop), "scenery"), 1f);
         }
 
         // A number is the game's own prop, through the catalogue, so that
@@ -433,6 +443,18 @@ public sealed partial class SceneryLoader : Node3D
     /// </summary>
     private static readonly string[] Extensions =
         [".tscn", ".scn", ".glb", ".gltf", ".obj", ".dae", ".fbx", ".blend", ".res"];
+
+    private static Prop? FromModel(PackedScene? model, float scale)
+    {
+        if (model is null)
+            return null;
+        Prop prop = SingleMesh(model) is (Mesh only, Transform3D local)
+            ? Prop.Batched(only, local)
+            : MergedMesh(model) is Mesh merged
+                ? Prop.Batched(merged)
+                : new Prop(model, null);
+        return scale == 1f ? prop : prop with { Local = new Transform3D(Basis.FromScale(Vector3.One * scale), Vector3.Zero) * prop.Local };
+    }
 
     private static Prop? ByName(string name)
     {
