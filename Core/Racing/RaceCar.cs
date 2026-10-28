@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 
@@ -85,6 +86,34 @@ public sealed class RaceCar
     public float BoundaryContactSeconds { get; internal set; }
 
     internal bool TouchedBoundaryThisSubstep { get; set; }
+
+    // What hit the car since its last step, and what it was handed at its
+    // last step: two lists that trade places, so a race allocates nothing
+    // for them once they have grown.
+    private List<CarImpact> _felt = [];
+    private List<CarImpact> _delivered = [];
+
+    /// <summary>A push the world gave the car, at <paramref name="point"/>, both in world coordinates.</summary>
+    internal void Felt(ImpactWith with, Vector2 point, Vector2 impulse)
+    {
+        if (CarImpact.Felt(with, State.Position, State.Heading, point, impulse) is { } impact)
+            _felt.Add(impact);
+    }
+
+    /// <summary>A wall contact's push, if it pushed at all.</summary>
+    internal void Felt(TrackBoundaryContact? contact)
+    {
+        if (contact is { } wall)
+            Felt(ImpactWith.Wall, wall.Point, wall.Impulse);
+    }
+
+    /// <summary>Everything that hit the car since its last step, handed over for this one.</summary>
+    internal IReadOnlyList<CarImpact> TakeImpacts()
+    {
+        (_felt, _delivered) = (_delivered, _felt);
+        _felt.Clear();
+        return _delivered;
+    }
     public bool HitCarThisStep { get; internal set; }
 
     /// <summary>A new set of what is on, on a car with changeable tyres; nothing on one without.</summary>

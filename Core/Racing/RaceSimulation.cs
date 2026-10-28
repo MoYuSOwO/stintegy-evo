@@ -27,10 +27,16 @@ public sealed class RaceSimulation
     private CarState[] _startStates = [];
     private CarState[] _predictedStates = [];
 
-    public RaceSimulation(TrackData track, RaceEnvironment? environment = null)
+    /// <param name="seed">
+    /// The race's randomness (<see cref="Random"/>). The same seed, the same
+    /// entry and the same commands give the same race; a race that names no
+    /// seed draws as every other one that names none.
+    /// </param>
+    public RaceSimulation(TrackData track, RaceEnvironment? environment = null, ulong seed = 0)
     {
         Track = track ?? throw new ArgumentNullException(nameof(track));
         Environment = environment ?? new RaceEnvironment();
+        Random = new RandomSource(seed);
         _driverTrack = new DriverTrackView(Track);
         _carsView = _cars.AsReadOnly();
     }
@@ -39,6 +45,21 @@ public sealed class RaceSimulation
     public RaceEnvironment Environment { get; }
     public IReadOnlyList<RaceCar> Cars => _carsView;
     public float RaceTimeSeconds { get; private set; }
+
+    /// <summary>
+    /// The race's randomness, split for each car by its id, for the car
+    /// (<see cref="CarStepInput.Random"/>) and its driver
+    /// (<see cref="DriverContext.Random"/>) apart, and for each of their steps.
+    /// </summary>
+    public RandomSource Random { get; }
+
+    // How many times the drivers have been asked and the cars stepped: the
+    // step a random source is split for.
+    private long _driverSteps;
+    private long _physicsSteps;
+
+    private RandomSource CarRandom(RaceCar car) => Random.For(car.Id).For("car").For(_physicsSteps);
+    private RandomSource DriverRandom(RaceCar car) => Random.For(car.Id).For("driver").For(_driverSteps);
 
     public void AddCar(RaceCar car)
     {
@@ -145,7 +166,7 @@ public sealed class RaceSimulation
             throw new ArgumentException("That car is not in this race.", nameof(car));
         if (car.Driver is null)
             throw new InvalidOperationException("This entry has no driver. Use CaptureFrame for externally controlled entries.");
-        return new DriverContext(car.Driver.Profile, _driverTrack, CaptureFrame(), index);
+        return new DriverContext(car.Driver.Profile, _driverTrack, CaptureFrame(), index) { Random = DriverRandom(car) };
     }
 
     private void EvaluateDrivers(float dt, bool resetContacts)
@@ -180,7 +201,7 @@ public sealed class RaceSimulation
                 RaceCar car = _cars[i];
                 if (car.Driver is not null)
                 {
-                    DriverContext context = new(car.Driver.Profile, _driverTrack, frame, i);
+                    DriverContext context = new(car.Driver.Profile, _driverTrack, frame, i) { Random = DriverRandom(car) };
                     _stepInputs[i] = car.Driver.Controller.GetControl(in context, dt);
                 }
                 DriverInput input = _stepInputs[i];
@@ -212,7 +233,9 @@ public sealed class RaceSimulation
             _cars[i].LastInput = _stepInputs[i];
             if (_preStepContacts[i].HasValue)
                 _cars[i].LastBoundaryContact = _preStepContacts[i];
+            car.Felt(_preStepContacts[i]);
         }
+        _driverSteps++;
     }
 
     /// <summary>
@@ -366,7 +389,9 @@ public sealed class RaceSimulation
                 RoadAttitude = SampleRoadAttitude(car),
                 SurfaceGrip = SampleWheelSurfaceGrip(car),
                 SurfaceAbrasion = Track.AsphaltAbrasion,
-                Air = _stepAir[i]
+                Air = _stepAir[i],
+                Random = CarRandom(car),
+                Impacts = car.TakeImpacts()
             };
 
             CarState startState = _startStates[i];
@@ -394,7 +419,9 @@ public sealed class RaceSimulation
                 car.LastBoundaryContact = _sweepContacts[i];
                 car.TouchedBoundaryThisSubstep = true;
             }
+            car.Felt(_sweepContacts[i]);
         }
+        _physicsSteps++;
 
         ResolveContactsAndWalls();
 
@@ -540,6 +567,7 @@ public sealed class RaceSimulation
             {
                 car.LastBoundaryContact = contact;
                 car.TouchedBoundaryThisSubstep = true;
+                car.Felt(contact);
                 resolvedAny = true;
             }
         }

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
 namespace StintegyEVO.Core.Cars;
 
 /// <summary>
@@ -215,6 +218,63 @@ public readonly record struct CarStepInput(
     /// air it last had: a bench test or a predictor that sets it itself.
     /// </summary>
     public CarAir? Air { get; init; }
+
+    /// <summary>
+    /// The game's randomness for this car and this step
+    /// (<see cref="RandomSource"/>): the same on the same seed, different
+    /// from every other car's and every other step's. Whatever in the car
+    /// wants a chance takes it from here, never from <see cref="System.Random"/>
+    /// or the clock. The default source for a caller with no race: a bench
+    /// test, a predictor.
+    /// </summary>
+    public RandomSource Random { get; init; }
+
+    /// <summary>
+    /// What hit the car since its last step: every push the walls and other
+    /// cars gave it to keep it out of them, how hard, where on the body and
+    /// against what. The world has already moved the car for them; this is
+    /// for a car that wants to know, to break a wing or bend a link. None
+    /// for a car that hit nothing. Read it during the step: the race reuses
+    /// the list for the next one.
+    /// </summary>
+    public IReadOnlyList<CarImpact> Impacts { get; init; } = [];
+}
+
+/// <summary>What a car met in an impact.</summary>
+public enum ImpactWith
+{
+    Car,
+    Wall
+}
+
+/// <summary>
+/// One push the world gave a car to keep it out of a wall or another car.
+/// </summary>
+/// <param name="With">A car or a wall.</param>
+/// <param name="ImpulseNewtonSeconds">How hard: the impulse the car took, N·s. Divided by the car's mass it is the speed the blow changed.</param>
+/// <param name="Where">Where on the body, m from the centre of mass: X forward, Y to the left.</param>
+/// <param name="Direction">Which way the blow pushed the car, in the same frame, one long.</param>
+public readonly record struct CarImpact(ImpactWith With, float ImpulseNewtonSeconds, Vector2 Where, Vector2 Direction)
+{
+    /// <summary>
+    /// The blow <paramref name="impulse"/> at <paramref name="point"/>, both
+    /// in world coordinates, as the car facing <paramref name="heading"/>
+    /// from <paramref name="position"/> feels it; none for no push at all.
+    /// </summary>
+    public static CarImpact? Felt(ImpactWith with, Vector2 position, float heading, Vector2 point, Vector2 impulse)
+    {
+        float magnitude = impulse.Length();
+        if (!(magnitude > 0f))
+            return null;
+        Vector2 forward = new(MathF.Cos(heading), MathF.Sin(heading));
+        Vector2 left = new(-forward.Y, forward.X);
+        Vector2 arm = point - position;
+        return new CarImpact(
+            with,
+            magnitude,
+            new Vector2(Vector2.Dot(arm, forward), Vector2.Dot(arm, left)),
+            new Vector2(Vector2.Dot(impulse, forward), Vector2.Dot(impulse, left)) / magnitude);
+    }
 }
 
 /// <summary>
