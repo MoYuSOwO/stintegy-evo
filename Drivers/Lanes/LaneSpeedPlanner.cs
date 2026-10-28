@@ -312,21 +312,20 @@ internal sealed record AxleGrips(float[] Speeds, float[] Front, float[] Rear, fl
         var frontBraking = new float[n];
         var rearBraking = new float[n];
         CarState copy = plan.Clone();
+        var motion = (ICarMotion)car;
         for (int i = 0; i < n; i++)
         {
             copy.Speed = speeds[i];
-            copy.FilteredLongitudinalAccel = 0f;
-            copy.FilteredLateralAccel = sign * lateral[i];
+            motion.Assume(copy, motion.Motion(copy) with { LongitudinalAccel = 0f, LateralAccel = sign * lateral[i] });
             SteeringEstimate coast = car.EstimateSteering(copy, RoadAttitude.Flat);
-            copy.FilteredLongitudinalAccel = -brake[i];
-            copy.FilteredLateralAccel = sign * lateralBraking[i];
+            motion.Assume(copy, motion.Motion(copy) with { LongitudinalAccel = -brake[i], LateralAccel = sign * lateralBraking[i] });
             SteeringEstimate braking = car.EstimateSteering(copy, RoadAttitude.Flat);
             front[i] = coast.FrontGripAccel;
             rear[i] = coast.RearGripAccel;
             frontBraking[i] = braking.FrontGripAccel;
             rearBraking[i] = braking.RearGripAccel;
         }
-        return new AxleGrips(speeds, front, rear, frontBraking, rearBraking, Math.Clamp(car.Layout.FrontWeightShare, 0.05f, 0.95f));
+        return new AxleGrips(speeds, front, rear, frontBraking, rearBraking, Math.Clamp((car as ICarAxles)?.Layout.FrontWeightShare ?? 0.5f, 0.05f, 0.95f));
     }
 
     /// <summary>Front and rear at <paramref name="v"/>, braking <paramref name="share"/> of the hardest.</summary>

@@ -19,20 +19,20 @@ public sealed class RungSweepProbe
     public void FiveTyreRungsOnTheShippedFile()
     {
         if (!LaneProbes.Enabled) return;
-        Sweep("shipped", new LaneDriverGains(), DevelopmentTyres.Super);
+        Sweep("shipped", new LaneDriverGains(), DevelopmentTyres.SuperId);
     }
 
-    private void Sweep(string label, LaneDriverGains gains, TireConfig tyresConfig)
+    private void Sweep(string label, LaneDriverGains gains, string compound)
     {
         _output.WriteLine(label);
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
         foreach (TireUsageMode mode in Enum.GetValues<TireUsageMode>())
         {
             var crossings = new List<(float T, float Wear)>();
             int lastLap = int.MinValue;
             double surf = 0, n = 0;
-            var r = LaneLapRunner.Run(track, file, gains, flyingLaps: 4, tireConfig: tyresConfig, strategy: new CarStrategy(mode, PowerOutputMode.Normal), onStep: (car, d, t) =>
+            var r = LaneLapRunner.Run(track, file, gains, flyingLaps: 4, compound: compound, strategy: new CarStrategy(mode, PowerOutputMode.Normal), onStep: (car, d, t) =>
             {
                 var s = car.State;
                 var tyres = new[] { s.Chassis().FrontLeft, s.Chassis().FrontRight, s.Chassis().RearLeft, s.Chassis().RearRight };
@@ -54,7 +54,7 @@ public sealed class LiftSweepProbe
     public void BatteryAndTimeByLift()
     {
         if (!LaneProbes.Enabled) return;
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
         foreach (float coast in new[] { 0f, 0.35f, 0.47f, 0.7f, 1.0f, 1.25f, 1.5f })
         {
@@ -81,7 +81,7 @@ public sealed class EnergyRungProbe
     public void FiveEnergyRungs()
     {
         if (!LaneProbes.Enabled) return;
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
         foreach (PowerOutputMode rung in Enum.GetValues<PowerOutputMode>())
         {

@@ -11,11 +11,10 @@
   <ItemGroup>
     <ProjectReference Include="../StintegyEVO.Drivers.csproj" />
     <ProjectReference Include="../../Core/StintegyEVO.Core.csproj" />
-    <!-- Built so the driver is learned and tested on the game's own car,
-         loaded from its folder under data/ the way the game does; never referenced. -->
-    <ProjectReference Include="../../Cars/official/formula_a_mixed/formula_a_mixed.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
-    <None Include="../Cars/**/*.csv;../Cars/**/*.json" CopyToOutputDirectory="PreserveNewest" Link="Cars/%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- The game's own mod, for the probes that build variants of its car; the
+         driver itself knows the car only by its features. -->
+    <ProjectReference Include="../../mods/official/official.csproj" />
+    <Compile Include="../../Core/Tests/TestTracks.cs" Link="Shared/TestTracks.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

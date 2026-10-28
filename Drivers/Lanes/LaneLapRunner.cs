@@ -78,12 +78,9 @@ public static class LaneLapRunner
         DriverAbilities? abilities = null,
         Action<RaceCar, LaneDriver, float>? onStep = null,
         int flyingLaps = 1,
-        TireConfig? tireConfig = null,
         CarStrategy? strategy = null,
         float roadGrip = 1f,
-        float startingWear = 0f,
         float startingCharge = 0.8f,
-        CarConfig? carConfig = null,
         float tireTempC = 90f,
         ICar? model = null,
         string? compound = null
@@ -97,13 +94,13 @@ public static class LaneLapRunner
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
         float heading = MathF.Atan2(next.Y - here.Y, next.X - here.X);
 
-        carConfig ??= StockCar.Config;
         // The development compound unless a run asks for another: a lap that
         // goes wrong should have gone wrong in the driving.
-        var tires = tireConfig ?? DevelopmentTyres.Super;
-        // One kind of car, raced and planned with: the driver keeps its own
-        // copy of what it is, and knows it only by its features.
-        model ??= new SingleTrackCar(carConfig, tires);
+        compound ??= DevelopmentTyres.SuperId;
+        // One kind of car, raced and planned with: the stock car on that
+        // compound alone unless a run brings its own. The driver keeps its
+        // own copy of what it is, and knows it only by its features.
+        model ??= StockCar.Build(compound);
         var driver = new LaneDriver(file, model)
         {
             Gains = gains ?? new LaneDriverGains(),
@@ -126,15 +123,9 @@ public static class LaneLapRunner
         {
             Strategy = strategy ?? CarStrategy.Default
         };
-        if (compound is not null)
-            ((ICarTires)model).FitTires(car.State, compound);
-        car.State.Chassis().Energy = PowertrainState.Filled(startingCharge);
-        car.State.Chassis().WarmTires(tireTempC, tireTempC);
-        if (startingWear > 0f)
-        {
-            foreach (TireState tyre in new[] { car.State.Chassis().FrontLeft, car.State.Chassis().FrontRight, car.State.Chassis().RearLeft, car.State.Chassis().RearRight })
-                tyre.Wear = startingWear;
-        }
+        ((ICarTires)model).FitTires(car.State, compound);
+        ((ICarStores)model).Fill(car.State, PowertrainState.Filled(startingCharge));
+        ((ICarTires)model).WarmTires(car.State, tireTempC, tireTempC);
         var simulation = new RaceSimulation(track, new RaceEnvironment { SurfaceGripScalar = roadGrip });
         simulation.AddCar(car);
 
@@ -166,7 +157,7 @@ public static class LaneLapRunner
             simulation.Step(dt);
             float t = (i + 1) * dt;
             onStep?.Invoke(car, driver, t);
-            if (car.State.SpinEvents > 0)
+            if (((ICarMotion)model).Motion(car.State).Spins > 0)
             {
                 spinS = car.Progress.CurrentS;
                 break;
@@ -217,7 +208,7 @@ public static class LaneLapRunner
                 // car's centre already moves at an angle to where it points,
                 // the rear axle's offset over the radius, and at Monaco's
                 // hairpin that alone is past what a slide is counted from.
-                float geometric = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Telemetry.ActualCurvature);
+                float geometric = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * ((ICarMotion)model).Motion(car.State).Curvature);
                 stationSlip[k] = MathF.Max(stationSlip[k], MathF.Abs(car.State.SideslipAngleRadians - geometric));
                 float plan = driver.PlannedSpeedAt(car.Progress.CurrentS);
                 stationShortfall[k] = MathF.Max(stationShortfall[k], plan - car.State.Speed);
@@ -249,7 +240,7 @@ public static class LaneLapRunner
             OutLapSeconds = firstCrossing ?? -1f,
             FlyingLapSeconds = flying,
             PlannedLapSeconds = planned,
-            Spins = car.State.SpinEvents,
+            Spins = ((ICarMotion)model).Motion(car.State).Spins,
             SpinS = spinS,
             MeanAbsErrorMeters = samples > 0 ? (float)(errorSum / samples) : 0f,
             WorstErrorMeters = worst,

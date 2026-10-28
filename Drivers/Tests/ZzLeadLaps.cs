@@ -31,8 +31,7 @@ public sealed class ZzLeadLaps
     public void TurnInTable()
     {
         if (!LaneProbes.Enabled) return;
-        var lag = TurnLag.Measure(new StintegyEVO.Core.Cars.SingleTrackCar(StintegyEVO.Drivers.StockCar.Config,
-            ((StintegyEVO.Core.Cars.ICarTires)StintegyEVO.Drivers.StockCar.Model).Compounds));
+        var lag = TurnLag.Measure(StockCar.Build());
         foreach (float v in new[] { 15f, 25f, 40f, 55f, 70f, 85f })
             _output.WriteLine($"{v,3:F0} m/s: small step {lag.Seconds(v):F3} s; turn-in, braking 0 / 30% / 60% of all: {lag.Seconds(v, 0f):F3} / {lag.Seconds(v, 0.3f):F3} / {lag.Seconds(v, 0.6f):F3} s");
     }
@@ -69,7 +68,7 @@ public sealed class ZzLeadLaps
         Parallel.For(0, jobs.Length, j =>
         {
             (string circuit, float side, string name, LaneDriverGains gains) = jobs[j];
-            TrackData track = CircuitLibrary.Load(circuit);
+            TrackData track = GameMods.Registry.Circuits.Get(circuit).Track;
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
             LaneSet lanes = file.LanesFor(track);
             if (name.StartsWith("no steer notes"))
@@ -95,7 +94,7 @@ public sealed class ZzLeadLaps
                     {
                         t, car.Progress.CurrentS, dd, at.HalfWidth, wallLeft, wallRight, car.State.Speed, tel.CommandAccel,
                         d.LastLeadSeconds, tel.LateralErrorMeters, tel.FeedforwardCurvature, tel.WantedCurvature, tel.CurvatureCap,
-                        tel.CommandCurvature, car.State.Telemetry.ActualCurvature, at.Curvature,
+                        tel.CommandCurvature, car.State.Chassis().Telemetry.ActualCurvature, at.Curvature,
                         tel.HeadingErrorRadians, d.LastHereCurvature, lanes.Offset(laneId, lanes.Wrap((int)MathF.Round(lanes.StationOf(car.Progress.CurrentS)))), car.State.SideslipAngleRadians, d.LastMoveSpeed, d.Range,
                         car.BoundaryContactSeconds > 0f || car.Progress.HitWallThisFrame ? 1f : 0f,
                         car.Progress.Region != TrackRegion.RacingSurface ? 1f : 0f
@@ -130,16 +129,16 @@ public sealed class ZzLeadLaps
         string[] circuits = Environment.GetEnvironmentVariable("STINTEGY_LEAD_CIRCUITS")?.Split(',') ?? Circuits;
         var jobs = (from c in circuits from side in new[] { 0f, 1f, -1f } select (c, side)).ToArray();
         var rows = new List<string>[jobs.Length];
-        StintegyEVO.Core.Cars.CarConfig config = StockCar.Config;
+        CarConfig config = TestCar.Config;
         Parallel.For(0, jobs.Length, j =>
         {
             (string circuit, float side) = jobs[j];
-            TrackData track = CircuitLibrary.Load(circuit);
+            TrackData track = GameMods.Registry.Circuits.Get(circuit).Track;
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
             WithoutSteerNotes(file, track);
             var mine = new List<string>();
             int lap0 = -1;
-            LaneLapRunner.Run(track, file, carConfig: Environment.GetEnvironmentVariable("STINTEGY_CAR") is { } carSpec ? CarWith(carSpec) : null, shares: Environment.GetEnvironmentVariable("STINTEGY_REAR_TURN_IN") is { } rearTurnIn ? new LaneShares { RearTurnIn = float.Parse(rearTurnIn, CultureInfo.InvariantCulture) }
+            LaneLapRunner.Run(track, file, model: Environment.GetEnvironmentVariable("STINTEGY_CAR") is { } carSpec ? TestCar.With(CarWith(carSpec)) : null, shares: Environment.GetEnvironmentVariable("STINTEGY_REAR_TURN_IN") is { } rearTurnIn ? new LaneShares { RearTurnIn = float.Parse(rearTurnIn, CultureInfo.InvariantCulture) }
                 : Environment.GetEnvironmentVariable("STINTEGY_BRAKES_ADD") is { } brakesAdd ? new LaneShares { RearBrakeAdds = float.Parse(brakesAdd, CultureInfo.InvariantCulture) } : null, gains: new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", LockForRotation = Environment.GetEnvironmentVariable("STINTEGY_LOCK_ROTATION") == "1", LockWhereTheCarIs = Environment.GetEnvironmentVariable("STINTEGY_LOCK_WHERE") == "1", FadeByAsk = Environment.GetEnvironmentVariable("STINTEGY_FADE_ASK") != "0" }, onStep: (car, d, t) =>
             {
                 if (side != 0f)
@@ -157,22 +156,22 @@ public sealed class ZzLeadLaps
                     ? StintegyEVO.Core.Cars.RoadAttitude.Flat
                     : new StintegyEVO.Core.Cars.RoadAttitude(under.Grade, under.BankSlopeAt(car.Progress.CurrentD), under.VerticalRate);
                 var est = ((StintegyEVO.Core.Cars.ICarEnvelope)car.Car).EstimateSteering(state, road);
-                var grip = ((StintegyEVO.Core.Cars.ICarGripFeel)car.Car).GripUse(state);
+                var grip = ((StintegyEVO.Core.Cars.ICarAxles)car.Car).GripUse(state);
                 float k = tel.CommandCurvature;
                 float wb = est.WheelBaseMeters, a = est.FrontArmMeters, b = est.RearArmMeters;
                 // The full slip-angle part alone: the estimate as if fully loaded and already on the curve.
                 float slip = (est with { ActualLateralAccel = 1e6f, ActualCurvature = k }).AngleFor(k) - MathF.Atan(wb * k);
                 float load = Math.Clamp(MathF.Abs(est.ActualLateralAccel) / (StintegyEVO.Core.Cars.SteeringEstimate.FullSlipCompensationShare * (est.FrontGripAccel + est.RearGripAccel)), 0f, 1f);
                 float v = MathF.Max(state.Speed, 1f);
-                float af = state.SteerAngleRadians - state.SideslipAngleRadians - a * state.YawRateRadiansPerSecond / v;
+                float af = state.Chassis().SteerAngleRadians - state.SideslipAngleRadians - a * state.YawRateRadiansPerSecond / v;
                 float ar = -state.SideslipAngleRadians + b * state.YawRateRadiansPerSecond / v;
                 mine.Add(string.Join(",", circuit, side == 0f ? "free" : side > 0f ? "left" : "right",
                     string.Join(",", new float[]
                     {
-                        t, car.Progress.CurrentS, state.Speed, tel.CommandAccel, d.LastHereCurvature, k, state.Telemetry.ActualCurvature, tel.LateralErrorMeters,
-                        state.SteerAngleRadians, MathF.Atan(wb * k), slip, load, est.CurvatureFeedbackGain * wb * (k - est.ActualCurvature), est.AngleFor(k),
+                        t, car.Progress.CurrentS, state.Speed, tel.CommandAccel, d.LastHereCurvature, k, state.Chassis().Telemetry.ActualCurvature, tel.LateralErrorMeters,
+                        state.Chassis().SteerAngleRadians, MathF.Atan(wb * k), slip, load, est.CurvatureFeedbackGain * wb * (k - est.ActualCurvature), est.AngleFor(k),
                         af, ar, grip.FrontLongitudinal, grip.RearLongitudinal, grip.FrontLateral, grip.RearLateral,
-                        state.Telemetry.ActualLateralAccel, est.FrontGripAccel, est.RearGripAccel, grip.FrontGripAccel, grip.RearGripAccel, state.Telemetry.ActualLongitudinalAccel, est.LateralDemand(k)
+                        state.Chassis().Telemetry.ActualLateralAccel, est.FrontGripAccel, est.RearGripAccel, grip.FrontGripAccel, grip.RearGripAccel, state.Chassis().Telemetry.ActualLongitudinalAccel, est.LateralDemand(k)
                     }.Select(x => x.ToString("F6", CultureInfo.InvariantCulture)))));
             });
             rows[j] = mine;
@@ -200,11 +199,11 @@ public sealed class ZzLeadLaps
     /// CarConfig property, or the aero's FrontDownforceShare. A copy for a
     /// probe; the car itself is not changed.
     /// </summary>
-    internal static StintegyEVO.Core.Cars.CarConfig CarWith(string spec)
+    internal static CarConfig CarWith(string spec)
     {
         const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
         object Copy(object o) => typeof(object).GetMethod("MemberwiseClone", flags)!.Invoke(o, null)!;
-        var config = (StintegyEVO.Core.Cars.CarConfig)Copy(StockCar.Config);
+        var config = (CarConfig)Copy(TestCar.Config);
         foreach (string part in spec.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             string[] kv = part.Split('=');
@@ -213,11 +212,11 @@ public sealed class ZzLeadLaps
             {
                 object aero = Copy(config.Aero);
                 aero.GetType().GetProperty("FrontDownforceShare")!.SetValue(aero, (float?)value);
-                typeof(StintegyEVO.Core.Cars.CarConfig).GetProperty("Aero")!.SetValue(config, aero);
+                typeof(CarConfig).GetProperty("Aero")!.SetValue(config, aero);
             }
             else
             {
-                System.Reflection.PropertyInfo property = typeof(StintegyEVO.Core.Cars.CarConfig).GetProperty(kv[0])!;
+                System.Reflection.PropertyInfo property = typeof(CarConfig).GetProperty(kv[0])!;
                 property.SetValue(config, property.PropertyType == typeof(float?) ? (float?)value : value);
             }
         }
@@ -260,7 +259,7 @@ public sealed class ZzLeadLaps
         Parallel.For(0, jobs.Length, j =>
         {
             (string circuit, float side, var way) = jobs[j];
-            TrackData track = CircuitLibrary.Load(circuit);
+            TrackData track = GameMods.Registry.Circuits.Get(circuit).Track;
             LaneTrackFile file = LaneTrackFile.ForCircuit(circuit, track);
             if (way.Name.StartsWith("flat"))
                 FlatFactors(file, track, brakes: way.Name == "flat factors");
@@ -269,8 +268,8 @@ public sealed class ZzLeadLaps
                 : way.Name.StartsWith("brakes add ")
                 ? new LaneShares { RearBrakeAdds = float.Parse(way.Name["brakes add ".Length..], CultureInfo.InvariantCulture) }
                 : null;
-            StintegyEVO.Core.Cars.CarConfig? config = way.Name.StartsWith("car ") ? CarWith(way.Name["car ".Length..]) : null;
-            LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, shares, carConfig: config, onStep: side == 0f ? null : (car, d, t) =>
+            CarConfig? config = way.Name.StartsWith("car ") ? CarWith(way.Name["car ".Length..]) : null;
+            LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, shares, model: config is null ? null : TestCar.With(config), onStep: side == 0f ? null : (car, d, t) =>
             {
                 d.TargetRange = 1f;
                 d.TargetSide = side;

@@ -38,7 +38,7 @@ public sealed class ZzLineSweep
     public void Corners()
     {
         if (!LaneProbes.Enabled) return;
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
         LaneSet lanes = file.LanesFor(track);
         bool inside = false;
@@ -147,7 +147,7 @@ public sealed class ZzLineSweep
         const int Knots = 5;
         bool full = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_FULL") == "1";
 
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile shipped = LaneTrackFile.ForCircuit("silverstone", track);
         LaneSet lanes = shipped.LanesFor(track);
         string[] compounds = ((ICarTires)StockCar.Model).Compounds.Select(c => c.Id).ToArray();
@@ -493,9 +493,9 @@ public sealed class ZzLineSweep
                 bool bound = t.CurvatureCap != 0f && MathF.Sign(t.WantedCurvature) == MathF.Sign(t.CurvatureCap) &&
                              MathF.Abs(t.WantedCurvature) > MathF.Abs(t.CurvatureCap) * LaneLapRunner.CapOverreach;
                 trace.Add((s, t.LateralErrorMeters, car.State.Speed - plan, bound, t.CommandAccel, car.State.Speed, plan,
-                    car.State.SideslipAngleRadians, car.State.Telemetry.ActualLateralAccel, ((ICarGripFeel)car.Car).GripUse(car.State),
-                    t.WantedCurvature, t.CurvatureCap, car.State.YawRateRadiansPerSecond, car.State.Telemetry.ReferenceYawRateRadiansPerSecond,
-                    car.State.Telemetry.ActualLongitudinalAccel, LineCurvature(drawn, car.Progress.CurrentS), t.FeedforwardCurvature));
+                    car.State.SideslipAngleRadians, car.State.Chassis().Telemetry.ActualLateralAccel, ((ICarAxles)car.Car).GripUse(car.State),
+                    t.WantedCurvature, t.CurvatureCap, car.State.YawRateRadiansPerSecond, car.State.Chassis().Telemetry.ReferenceYawRateRadiansPerSecond,
+                    car.State.Chassis().Telemetry.ActualLongitudinalAccel, LineCurvature(drawn, car.Progress.CurrentS), t.FeedforwardCurvature));
             });
             string cls = "clean";
             float at = -1f, over = 0f, boundShare = 0f, accel = 0f;
@@ -626,7 +626,7 @@ public sealed class ZzLineSweep
         int count = (int)Env("STINTEGY_LEAD_LINES", 100);
         float factor = Env("STINTEGY_CLASSIFY_FACTOR", 1f);
         string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "lead-corners.csv");
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneSet free = LaneTrackFile.ForCircuit("silverstone", track).LanesFor(track);
         var corners = new List<(float From, float To)>();
         bool inside = false;
@@ -723,7 +723,7 @@ public sealed class ZzLineSweep
             {
                 float s = car.Progress.CurrentS;
                 if (s < from || s > to) return;
-                GripUse g = ((ICarGripFeel)car.Car).GripUse(car.State);
+                GripUse g = ((ICarAxles)car.Car).GripUse(car.State);
                 rows.Add((s, g.RearLateral, d.LastLeadSeconds));
             });
             _gripLead = false;
@@ -759,7 +759,7 @@ public sealed class ZzLineSweep
         float[] flat = Enumerable.Repeat(1f, 3 * ProfileKnots).ToArray();
         var random = new Random(4242);
         float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
-        float rate = StockCar.Config.SteerRateLimitRadiansPerSecond;
+        float rate = TestCar.Config.SteerRateLimitRadiansPerSecond;
         foreach (float scale in new[] { 1f, 2f, 4f })
         {
             int trouble = 0, total = 0;
@@ -778,7 +778,7 @@ public sealed class ZzLineSweep
                     SetProfile(file, setup.Lanes, stretch, flat);
                     Run r = Drive(setup.Track, setup.Shipped, file, drawn, stretch, setup.Conditions[0], setup.Compounds, (car, d, travelled) =>
                     {
-                        float actual = car.State.SteerAngleRadians;
+                        float actual = car.State.Chassis().SteerAngleRadians;
                         float asked = car.LastInput.SteerAngleRadians;
                         float s = car.Progress.CurrentS;
                         // At its top speed: moved as far as the rack allows this step and still short of the ask.
@@ -842,14 +842,14 @@ public sealed class ZzLineSweep
                     float s = car.Progress.CurrentS;
                     if (s < from - 150f || s > to + 50f) return;
                     LaneDriverTelemetry t = d.LastTelemetry;
-                    GripUse g = ((ICarGripFeel)car.Car).GripUse(car.State);
+                    GripUse g = ((ICarAxles)car.Car).GripUse(car.State);
                     mine.Add((step / 60f, string.Join(",", new float[]
                     {
                         step / 60f, s, t.LateralErrorMeters, LineCurvature(drawn, s), t.FeedforwardCurvature, t.WantedCurvature, t.CurvatureCap,
-                        t.CommandCurvature, car.State.Telemetry.ActualCurvature, car.State.Speed, d.PlannedSpeedAt(s),
-                        car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
+                        t.CommandCurvature, car.State.Chassis().Telemetry.ActualCurvature, car.State.Speed, d.PlannedSpeedAt(s),
+                        car.State.Chassis().Telemetry.ActualLateralAccel, car.State.Chassis().Telemetry.ActualLongitudinalAccel,
                         g.FrontLateral, g.RearLateral, g.FrontLongitudinal, g.RearLongitudinal, g.RearSlideSeverity,
-                        car.State.SideslipAngleRadians, car.State.SteerAngleRadians, car.LastInput.SteerAngleRadians
+                        car.State.SideslipAngleRadians, car.State.Chassis().SteerAngleRadians, car.LastInput.SteerAngleRadians
                     }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture)))));
                 });
                 string head = $"{from:F0},{i},{(r.Clean ? 1 : 0)},{(float.IsNaN(r.StrayS) ? "" : r.StrayS.ToString("F1", CultureInfo.InvariantCulture))},";
@@ -872,7 +872,7 @@ public sealed class ZzLineSweep
     public void CarAnswer()
     {
         if (!LaneProbes.Enabled) return;
-        var car = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
+        var car = TestCar.OnEveryCompound(TestCar.Config);
         var envelope = (ICarEnvelope)car;
         const float dt = 1f / 60f;
         CarState Fresh(float v)
@@ -901,35 +901,35 @@ public sealed class ZzLineSweep
                 float angle = envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(a / (v * v));
                 Vector2 from = state.Position;
                 // Hold the speed: the settle is for the corner, not for the drag.
-                car.Step(state, new CarPhysicsStepInput(new DriverInput(angle, 0f), CarStrategy.Default, 25f), dt);
+                car.Step(state, new CarStepInput(new DriverInput(angle, 0f), CarStrategy.Default, 25f), dt);
                 state.Speed = v;
                 Curvature(state, ref heading, from);
             }
             return (state, heading);
         }
-        float rate = StockCar.Config.SteerRateLimitRadiansPerSecond;
+        float rate = TestCar.Config.SteerRateLimitRadiansPerSecond;
         _output.WriteLine("v m/s, from a0, to a1, braking | wheel from -> to (rad), rack travel s | path: 63% at s, 90% at s, never past share");
         foreach (float v in new[] { 55f, 70f })
             foreach (float a1 in new[] { 15f, 22f })
                 foreach (float a0 in new[] { -12f, 0f, 8f })
                     foreach (float braking in new[] { 0f, 20f, 40f })
                     {
-                        float target = Settle(v, a1, 2.5f).State.SteerAngleRadians;
+                        float target = Settle(v, a1, 2.5f).State.Chassis().SteerAngleRadians;
                         (CarState state, float heading) = Settle(v, a0, 2.5f);
-                        float start = state.SteerAngleRadians;
+                        float start = state.Chassis().SteerAngleRadians;
                         float k0 = a0 / (v * v), k1 = a1 / (v * v);
                         // Braking from a moment before, as into Maggotts.
                         for (int i = 0; i < 9 && braking > 0f; i++)
                         {
                             Vector2 from = state.Position;
-                            car.Step(state, new CarPhysicsStepInput(new DriverInput(start, -braking), CarStrategy.Default, 25f), dt);
+                            car.Step(state, new CarStepInput(new DriverInput(start, -braking), CarStrategy.Default, 25f), dt);
                             Curvature(state, ref heading, from);
                         }
                         float t63 = float.NaN, t90 = float.NaN, best = 0f;
                         for (int i = 0; i < 60; i++)
                         {
                             Vector2 from = state.Position;
-                            car.Step(state, new CarPhysicsStepInput(new DriverInput(target, -braking), CarStrategy.Default, 25f), dt);
+                            car.Step(state, new CarStepInput(new DriverInput(target, -braking), CarStrategy.Default, 25f), dt);
                             // The path's curvature at this speed for the same corner: braking, the speed falls and the same angle bends tighter.
                             float k = Curvature(state, ref heading, from);
                             float share = (k * v * v / (state.Speed * state.Speed) - k0) / (k1 - k0);
@@ -940,8 +940,8 @@ public sealed class ZzLineSweep
                             if (float.IsNaN(t90) && share >= 0.9f) t90 = t;
                             if (i == 20 && v == 55f && a1 == 22f)
                             {
-                                GripUse g = ((ICarGripFeel)car).GripUse(state);
-                                _output.WriteLine($"    at 0.33 s: braking made {state.Telemetry.ActualLongitudinalAccel:F1}, corner {state.Telemetry.ActualLateralAccel:F1}; front grip {g.FrontGripAccel:F1} used {g.FrontLateral:F2} sideways {g.FrontLongitudinal:F2} lengthways (circle {MathF.Sqrt(g.FrontLateral * g.FrontLateral + g.FrontLongitudinal * g.FrontLongitudinal):F2}); rear grip {g.RearGripAccel:F1} used {g.RearLateral:F2} / {g.RearLongitudinal:F2} (circle {MathF.Sqrt(g.RearLateral * g.RearLateral + g.RearLongitudinal * g.RearLongitudinal):F2})");
+                                GripUse g = ((ICarAxles)car).GripUse(state);
+                                _output.WriteLine($"    at 0.33 s: braking made {state.Chassis().Telemetry.ActualLongitudinalAccel:F1}, corner {state.Chassis().Telemetry.ActualLateralAccel:F1}; front grip {g.FrontGripAccel:F1} used {g.FrontLateral:F2} sideways {g.FrontLongitudinal:F2} lengthways (circle {MathF.Sqrt(g.FrontLateral * g.FrontLateral + g.FrontLongitudinal * g.FrontLongitudinal):F2}); rear grip {g.RearGripAccel:F1} used {g.RearLateral:F2} / {g.RearLongitudinal:F2} (circle {MathF.Sqrt(g.RearLateral * g.RearLateral + g.RearLongitudinal * g.RearLongitudinal):F2})");
                             }
                         }
                         _output.WriteLine($"{v,4:F0} {a0,5:F0} {a1,5:F0} {braking,5:F0} | {start,6:F3} -> {target,6:F3}, {MathF.Abs(target - start) / rate:F3} | {t63,6:F3} {t90,6:F3} {best:F2}");
@@ -986,7 +986,7 @@ public sealed class ZzLineSweep
                     rows.Add($"{i},{name}," + string.Join(",", new float[]
                     {
                         step / 60f, s, car.State.Speed, t.CommandAccel, d.LastLeadSeconds, d.LastHereCurvature, t.FeedforwardCurvature,
-                        t.CommandCurvature, car.State.Telemetry.ActualCurvature, t.LateralErrorMeters, t.HeadingErrorRadians,
+                        t.CommandCurvature, car.State.Chassis().Telemetry.ActualCurvature, t.LateralErrorMeters, t.HeadingErrorRadians,
                         t.WantedCurvature, t.CurvatureCap, car.State.SideslipAngleRadians
                     }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture))));
                 });
@@ -1001,7 +1001,7 @@ public sealed class ZzLineSweep
     {
         if (!LaneProbes.Enabled) return;
         float side = Env("STINTEGY_SIDE", -1f);
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
         foreach (bool feel in new[] { false, true })
         {
@@ -1058,8 +1058,8 @@ public sealed class ZzLineSweep
                 rows.Add(string.Join(",", new float[]
                 {
                     n, step / 60f, s, t.LateralErrorMeters, car.State.Speed, t.CommandAccel, LineCurvature(drawn, s), t.FeedforwardCurvature,
-                    t.WantedCurvature, t.CommandCurvature, t.CurvatureCap, car.State.SteerAngleRadians, car.State.Telemetry.ActualCurvature,
-                    car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
+                    t.WantedCurvature, t.CommandCurvature, t.CurvatureCap, car.State.Chassis().SteerAngleRadians, car.State.Chassis().Telemetry.ActualCurvature,
+                    car.State.Chassis().Telemetry.ActualLateralAccel, car.State.Chassis().Telemetry.ActualLongitudinalAccel,
                     d.FeltExtraLags[0], d.FeltExtraLags[1], d.FeltExtraLags[2], d.FeltExtraLags[3]
                 }.Select(v => v.ToString("F5", CultureInfo.InvariantCulture))));
             });
@@ -1082,8 +1082,8 @@ public sealed class ZzLineSweep
     public void TransientLag()
     {
         if (!LaneProbes.Enabled) return;
-        CarConfig config = StockCar.Config;
-        var car = new SingleTrackCar(config, ((ICarTires)StockCar.Model).Compounds);
+        CarConfig config = TestCar.Config;
+        var car = TestCar.OnEveryCompound(config);
         float m = config.MassKg, iz = config.YawInertiaKgM2, a = config.FrontAxleOffsetMeters, b = config.RearAxleOffsetMeters, l = a + b;
         float peak = config.FrontPeakSlipAngleRatio;
         // The tyre's curve (TireSlipCurve), its shape and its slope.
@@ -1133,7 +1133,7 @@ public sealed class ZzLineSweep
             ((ICarStores)car).Fill(state, PowertrainState.Filled(0.8f));
             ((ICarTires)car).InstallFreshTires(state);
             ((ICarTires)car).WarmTires(state, 90f, 90f);
-            state.FilteredLateralAccel = 12f;
+            state.Chassis().FilteredLateralAccel = 12f;
             SteeringEstimate est = ((ICarEnvelope)car).EstimateSteering(state, RoadAttitude.Flat);
             float cf = Cornering(est.FrontGripAccel, b / l * 12f / est.FrontGripAccel, 0f, peak);
             float cr = Cornering(est.RearGripAccel, a / l * 12f / est.RearGripAccel, 0f, 1f);
@@ -1161,8 +1161,8 @@ public sealed class ZzLineSweep
     public void SteerShortfall()
     {
         if (!LaneProbes.Enabled) return;
-        CarConfig config = StockCar.Config;
-        var car = new SingleTrackCar(config, ((ICarTires)StockCar.Model).Compounds);
+        CarConfig config = TestCar.Config;
+        var car = TestCar.OnEveryCompound(config);
         float frontBrake = config.FixedFrontBrakeShare ?? 0.5f;
         // The tyre's own curve, internal to Core: reached the long way round, for a probe.
         var inverse = typeof(SteeringEstimate).Assembly.GetType("StintegyEVO.Core.Cars.TireSlipCurve")!
@@ -1177,8 +1177,8 @@ public sealed class ZzLineSweep
                     ((ICarStores)car).Fill(state, PowertrainState.Filled(0.8f));
                     ((ICarTires)car).InstallFreshTires(state);
                     ((ICarTires)car).WarmTires(state, 90f, 90f);
-                    state.FilteredLongitudinalAccel = -braking;
-                    state.FilteredLateralAccel = asked;
+                    state.Chassis().FilteredLongitudinalAccel = -braking;
+                    state.Chassis().FilteredLateralAccel = asked;
                     SteeringEstimate est = ((ICarEnvelope)car).EstimateSteering(state, RoadAttitude.Flat);
                     float l = est.WheelBaseMeters, front = est.RearArmMeters / l, rear = est.FrontArmMeters / l;
                     float uf = Math.Clamp(frontBrake * braking / est.FrontGripAccel, 0f, 0.99f);
@@ -1222,7 +1222,7 @@ public sealed class ZzLineSweep
         const float dt = 1f / 60f;
         float At(float speed, float settledAccel, float stepAccel, float braking)
         {
-            ICar car = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
+            ICar car = TestCar.OnEveryCompound(TestCar.Config);
             var state = new CarState { Position = Vector2.Zero, Heading = 0f, Speed = speed };
             (car as ICarStores)?.Fill(state, PowertrainState.Filled(0.8f));
             var tyres = (ICarTires)car;
@@ -1237,7 +1237,7 @@ public sealed class ZzLineSweep
                 bool stepped = i >= settle;
                 float v = MathF.Max(state.Speed, 5f);
                 float wanted = (settledAccel + (stepped ? stepAccel : 0f)) / (v * v);
-                var input = new CarPhysicsStepInput(
+                var input = new CarStepInput(
                     new DriverInput(envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(wanted), i >= settle - 18 ? braking : 0f),
                     CarStrategy.Default, 25f);
                 Vector2 from = state.Position;
@@ -1376,13 +1376,13 @@ public sealed class ZzLineSweep
                     if (s < setup.Stretch.FromS - 100f || s > setup.Stretch.ToS) return;
                     LaneDriverTelemetry tm = d.LastTelemetry;
                     int k = Math.Clamp((int)MathF.Round(s / spacing) - first, 0, count - 1);
-                    GripUse g = ((ICarGripFeel)car.Car).GripUse(car.State);
+                    GripUse g = ((ICarAxles)car.Car).GripUse(car.State);
                     float grip = d.Grip;
                     trace.Add(string.Join(",", new float[]
                     {
                         i, s, tm.LateralErrorMeters, car.State.Speed, d.PlannedSpeedAt(car.Progress.CurrentS), tm.CommandAccel,
                         tm.WantedCurvature, tm.CurvatureCap, tm.FeedforwardCurvature, LineCurvature(drawn, car.Progress.CurrentS),
-                        car.State.SideslipAngleRadians, car.State.Telemetry.ActualLateralAccel, car.State.Telemetry.ActualLongitudinalAccel,
+                        car.State.SideslipAngleRadians, car.State.Chassis().Telemetry.ActualLateralAccel, car.State.Chassis().Telemetry.ActualLongitudinalAccel,
                         g.FrontGripAccel, g.RearGripAccel, g.FrontLateral, g.RearLateral, grip
                     }.Select(v => v.ToString("F4", CultureInfo.InvariantCulture))));
                 });
@@ -1757,9 +1757,9 @@ public sealed class ZzLineSweep
     private static CarConfig QuickerRack(float scale)
     {
         var copy = (CarConfig)typeof(object).GetMethod("MemberwiseClone", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .Invoke(StockCar.Config, null)!;
+            .Invoke(TestCar.Config, null)!;
         typeof(CarConfig).GetProperty(nameof(CarConfig.SteerRateLimitRadiansPerSecond))!
-            .SetValue(copy, StockCar.Config.SteerRateLimitRadiansPerSecond * scale);
+            .SetValue(copy, TestCar.Config.SteerRateLimitRadiansPerSecond * scale);
         return copy;
     }
 
@@ -1768,8 +1768,8 @@ public sealed class ZzLineSweep
         int station = (int)MathF.Round(lanes.StationOf(s));
         Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station) + offset);
         Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1) + offset);
-        CarConfig config = _rateScale is 0f or 1f ? StockCar.Config : QuickerRack(_rateScale);
-        ICar model = new SingleTrackCar(config, ((ICarTires)StockCar.Model).Compounds);
+        CarConfig config = _rateScale is 0f or 1f ? TestCar.Config : QuickerRack(_rateScale);
+        ICar model = TestCar.OnEveryCompound(config);
         var driver = new LaneDriver(file, model) { LearnsAsItDrives = false, PlanIntervalSeconds = Env("STINTEGY_PLAN_INTERVAL", 0.1f), Gains = new LaneDriverGains
         {
             CapFromAxles = Environment.GetEnvironmentVariable("STINTEGY_CAP_FROM_AXLES") != "0",
@@ -1890,7 +1890,7 @@ public sealed class ZzLineSweep
             simulation.Step(dt);
             Interlocked.Add(ref _stepTicks, System.Diagnostics.Stopwatch.GetTimestamp() - stepBegan);
             Interlocked.Increment(ref _steps);
-            if (car.State.SpinEvents > 0)
+            if (car.State.Chassis().SpinEvents > 0)
                 return new Run(float.NaN, true, off, wall, worstError, worstSlip, touched, wakeSamples > 0 ? wake / wakeSamples : 0f)
                 {
                     StrayS = float.IsNaN(strayS) ? stretch.StartS + car.Progress.TotalDistance - startDistance - warm : strayS,
@@ -1904,7 +1904,7 @@ public sealed class ZzLineSweep
                 LaneDriverTelemetry tel = lanesDriver.LastTelemetry;
                 int k = lanes.Wrap((int)MathF.Round(lanes.StationOf(car.Progress.CurrentS)));
                 stationError[k] = MathF.Max(stationError[k], MathF.Abs(tel.LateralErrorMeters));
-                float sideways = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Telemetry.ActualCurvature);
+                float sideways = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Chassis().Telemetry.ActualCurvature);
                 stationSlip[k] = MathF.Max(stationSlip[k], MathF.Abs(car.State.SideslipAngleRadians - sideways));
                 stationOff[k] |= car.Progress.Region != TrackRegion.RacingSurface;
                 stationBraking[k] |= tel.CommandAccel < -3f;
@@ -1931,12 +1931,12 @@ public sealed class ZzLineSweep
                     strayS = stretch.StartS + travelled - warm;
                     strayBraking = lanesDriver.LastTelemetry.CommandAccel < -3f;
                 }
-                float geometric = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Telemetry.ActualCurvature);
+                float geometric = MathF.Atan(car.Car.Spec.RearAxleOffsetMeters * car.State.Chassis().Telemetry.ActualCurvature);
                 worstSlip = MathF.Max(worstSlip, MathF.Abs(car.State.SideslipAngleRadians - geometric));
                 if (car.Progress.Region != TrackRegion.RacingSurface)
                     off += dt;
                 wall += car.BoundaryContactSeconds;
-                wake += car.State.WakeDownforceLoss;
+                wake += car.State.Chassis().WakeDownforceLoss;
                 wakeSamples++;
             }
             onStep?.Invoke(car, lanesDriver, travelled);

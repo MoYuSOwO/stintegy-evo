@@ -47,7 +47,7 @@ public sealed class ZzEnvelope
 
     private static Point Ramp(float speed, float demand)
     {
-        var model = new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds);
+        var model = TestCar.OnEveryCompound(TestCar.Config);
         var state = new CarState { Speed = speed };
         model.FitTires(state, DevelopmentTyres.SuperId);
         state.Chassis().Energy = PowertrainState.Filled(0.8f);
@@ -56,7 +56,7 @@ public sealed class ZzEnvelope
         CarState start = state.Clone();
 
         const float dt = 1f / 60f;
-        float wheelBase = StockCar.Config.WheelBaseMeters;
+        float wheelBase = TestCar.Config.WheelBaseMeters;
         // Far enough to be past any limit: three times the angle a 6 g corner would want.
         float steerMax = 3f * wheelBase * 60f / (speed * speed) + 0.03f;
         float rampSeconds = 8f;
@@ -68,14 +68,14 @@ public sealed class ZzEnvelope
         for (int i = 0; i < steps; i++)
         {
             float steer = steerMax * (i + 1) / steps;
-            model.Step(state, new CarPhysicsStepInput(new DriverInput(steer, -demand), strategy, 25f), dt);
-            if (state.Spinning || state.SpinEvents > 0)
+            model.Step(state, new CarStepInput(new DriverInput(steer, -demand), strategy, 25f), dt);
+            if (state.Chassis().Spinning || state.Chassis().SpinEvents > 0)
                 break;
-            float geometric = MathF.Atan(StockCar.Config.RearAxleOffsetMeters * state.Telemetry.ActualCurvature);
+            float geometric = MathF.Atan(TestCar.Config.RearAxleOffsetMeters * state.Chassis().Telemetry.ActualCurvature);
             if (MathF.Abs(state.SideslipAngleRadians - geometric) > 0.15f)
                 break;
-            lat.Enqueue(MathF.Abs(state.Telemetry.ActualLateralAccel));
-            lon.Enqueue(-state.Telemetry.ActualLongitudinalAccel);
+            lat.Enqueue(MathF.Abs(state.Chassis().Telemetry.ActualLateralAccel));
+            lon.Enqueue(-state.Chassis().Telemetry.ActualLongitudinalAccel);
             if (lat.Count > Window) { lat.Dequeue(); lon.Dequeue(); }
             if (lat.Count == Window && lat.Average() > best)
             {

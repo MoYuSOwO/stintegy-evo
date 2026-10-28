@@ -127,7 +127,7 @@ public sealed class TurnLag
         {
             bool stepped = i >= settle + lead;
             float wanted = stepped ? to : from;
-            var input = new CarPhysicsStepInput(
+            var input = new CarStepInput(
                 new DriverInput(envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(wanted), i >= settle ? -braking : 0f),
                 CarStrategy.Default, 25f);
             Vector2 was = state.Position;
@@ -145,12 +145,12 @@ public sealed class TurnLag
             if (stepped)
             {
                 path[i - settle - lead] = curvature;
-                wheel[i - settle - lead] = state.SteerAngleRadians;
+                wheel[i - settle - lead] = ((ICarMotion)car).Motion(state).WheelAngleRadians;
             }
             else
             {
                 start = curvature;
-                wheelStart = state.SteerAngleRadians;
+                wheelStart = ((ICarMotion)car).Motion(state).WheelAngleRadians;
             }
         }
         float Behind(float[] series, float from0)
@@ -201,7 +201,7 @@ public sealed class TurnLag
         {
             bool stepped = i >= settle;
             float wanted = settled + (stepped ? ask : 0f);
-            var input = new CarPhysicsStepInput(
+            var input = new CarStepInput(
                 new DriverInput(envelope.EstimateSteering(state, RoadAttitude.Flat).AngleFor(wanted), 0f),
                 CarStrategy.Default, 25f);
             Vector2 from = state.Position;

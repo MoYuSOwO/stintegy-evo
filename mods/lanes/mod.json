@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "id": "lanes",
+  "name": "Lanes",
+  "version": "1.0.0",
+  "assembly": "lanes.dll",
+  "entrypoint": "StintegyEVO.Drivers.LanesMod"
+}

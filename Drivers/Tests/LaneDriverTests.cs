@@ -54,7 +54,7 @@ public sealed class LaneDriverTests
     [Fact]
     public void BakesThreeLanesInsideTheRoad()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneSet lanes = LaneSet.Bake(track);
         float minRoom = float.PositiveInfinity;
         float leftOverRight = 0f;
@@ -76,7 +76,7 @@ public sealed class LaneDriverTests
         // A bake that took the other side of the road for left put the left
         // lane on the right the whole lap, and every move to make room went
         // into the car it was making room for.
-        TrackData track = CircuitLibrary.Load("silverstone");
+        TrackData track = GameMods.Registry.Circuits.Get("silverstone").Track;
         LaneSet lanes = Silverstone(track).LanesFor(track);
         int wrong = 0;
         for (int i = 0; i < lanes.Count; i++)
@@ -91,32 +91,32 @@ public sealed class LaneDriverTests
     [Fact]
     public void TheShippedSilverstoneFolderWasLearnedOnTodaysCar()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = Silverstone(track);
         Assert.True(file.IsCurrent,
             $"learned on {file.Stamp?.CarFingerprint ?? "an unstamped car"} ({file.Stamp?.Learned}), the car is now {StockCar.Loaded.Fingerprint}: relearn it");
     }
 
     /// <summary>
-    /// The lane driver is a pack like anyone's: found by its id, checked
-    /// against the game's car, which it has notes for at Silverstone, and
-    /// seated in it.
+    /// The lane driver is a mod like anyone's: found in the registry by its
+    /// id, checked against the game's car, which it has notes for at
+    /// Silverstone, and seated in it.
     /// </summary>
     [Fact]
-    public void TheLanesPackIsSeatedInTheGamesCarLikeAnyPack()
+    public void TheLanesModIsSeatedInTheGamesCarLikeAnyMod()
     {
-        LoadedDriver lanes = DriverLibrary.Load("official:lanes");
-        DriverEntryCheck check = DriverLibrary.Check(lanes, StockCar.Loaded, ResourceId.Parse("silverstone"));
+        DriverEntryCheck check = GameMods.Registry.Check(LanesPack.Id, StockCar.Loaded, ResourceId.Parse("silverstone"));
         Assert.True(check.CanRace, string.Join(" ", check.Refusals));
         Assert.Empty(check.Notices);
-        Driver seated = DriverLibrary.Seat(lanes, new DriverProfile("ana", new DriverAbilities()), StockCar.Loaded, "silverstone");
+        Driver seated = GameMods.Registry.Seat(LanesPack.Id, new DriverProfile("ana", new DriverAbilities()), StockCar.Loaded,
+            ResourceId.Parse("silverstone"), new StintegyEVO.Core.Saves.ThrowawaySave());
         Assert.Equal(nameof(LaneDriver), seated.Controller.GetType().Name);
     }
 
     [Fact]
     public void ACircuitFolderReadsBackAsWritten()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = Silverstone(track);
         file.MarkLearnedNow();
         file.Energy = LaneEnergyRungs.From([1f, 0.6f, 0.4f, 0.3f, 0f], raceLaps: 52);
@@ -132,7 +132,7 @@ public sealed class LaneDriverTests
     [Fact]
     public void TheShippedSilverstoneFolderLapsCleanly()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         Assert.NotNull(DriverNotes.For(LanesPack.Id, StockCar.Loaded, ResourceId.Parse("silverstone")).Stamp);
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track));
         _output.WriteLine(r.ToString());
@@ -144,7 +144,7 @@ public sealed class LaneDriverTests
     [Fact]
     public void ThreeFlyingLapsWithoutASpinAsTheTyresWear()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track), flyingLaps: 3);
         _output.WriteLine(string.Join(' ', r.LapTimes.Select(t => t.ToString("F2"))));
         Assert.Equal(0, r.Spins);
@@ -158,7 +158,7 @@ public sealed class LaneDriverTests
     [InlineData(1f, 0f)]
     public void AWholeLapOnASideLaneOrBetweenThem(float range, float side)
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track), onStep: (car, d, t) =>
         {
             d.TargetRange = range;
@@ -172,7 +172,7 @@ public sealed class LaneDriverTests
     [Fact]
     public void SwitchingLanesEveryEightSecondsStaysClean()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneLapResult r = LaneLapRunner.Run(track, Silverstone(track), onStep: (car, d, t) =>
         {
             int phase = (int)(t / 8f) % 4;
@@ -191,7 +191,7 @@ public sealed class LaneDriverTests
         if (!LaneProbes.Enabled) return;
         string folder = Environment.GetEnvironmentVariable("STINTEGY_CIRCUIT_FOLDER") ?? "";
         if (folder.Length == 0) return;
-        TrackData track = CircuitLibrary.Load("baku");
+        TrackData track = GameMods.Registry.Circuits.Get("baku").Track;
         LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.LoadCircuit(folder, track), onStep: (car, d, t) =>
         {
             int phase = (int)(t / 8f) % 4;
@@ -213,7 +213,7 @@ public sealed class LaneDriverTests
     [Fact]
     public void FullGripIsTheCircuitAtItsBest()
     {
-        TrackData track = CircuitLibrary.Load("monaco");
+        TrackData track = GameMods.Registry.Circuits.Get("monaco").Track;
         track.AsphaltGrip = 0.9f;
         var read = new List<float>();
         LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.ForCircuit("monaco", track), onStep: (car, d, t) =>
@@ -238,8 +238,8 @@ public sealed class LaneDriverTests
     [Fact]
     public void FullGripIsTheCompoundOnTheCarAtItsBest()
     {
-        TrackData track = CircuitLibrary.Load("silverstone");
-        TireConfig medium = TireLibrary.Resolve("official:formula_a/medium")[0].Front;
+        TrackData track = GameMods.Registry.Circuits.Get("silverstone").Track;
+        TireConfig medium = StockCar.Loaded.Compounds.Single(c => c.Id == "official:formula_a/medium").Front;
         // The medium with a tenth less grip: a copy through its own numbers.
         var numbers = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(medium))!;
         numbers[nameof(TireConfig.BaseMu)] = medium.BaseMu * 0.9f;
@@ -247,7 +247,7 @@ public sealed class LaneDriverTests
         Assert.Equal(medium.BaseMu * 0.9f, harder.BaseMu);
         var hard = new TireCompound("hard", "Hard", harder, harder);
         var soft = new TireCompound("medium", "Medium", medium, medium);
-        var car = new SingleTrackCar(StockCar.Config, [soft, hard]);
+        var car = new SingleTrackCar(TestCar.Config, [soft, hard]);
         var read = new List<float>();
         LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.ForCircuit("silverstone", track), model: car, compound: "hard",
             onStep: (_, d, t) =>
@@ -265,7 +265,7 @@ public sealed class LaneDriverTests
     [Fact]
     public void AnUnlearnedCircuitStillGetsRound()
     {
-        TrackData track = TrackFactory.MonzaStyleTestTrack();
+        TrackData track = TestTracks.MonzaStyleTestTrack();
         LaneLapResult r = LaneLapRunner.Run(track, LaneTrackFile.Fresh(), startSpeed: 30f);
         _output.WriteLine(r.ToString());
         Assert.True(r.Finished, r.ToString());

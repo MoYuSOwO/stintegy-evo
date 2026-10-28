@@ -102,7 +102,7 @@ public sealed record LaneCalibration
 {
     public string Date { get; init; } = "";
 
-    /// <summary>The car calibrated on (<see cref="LoadedCar.Fingerprint"/>).</summary>
+    /// <summary>The car calibrated on (<see cref="StintegyEVO.Core.Mods.ModCar.Fingerprint"/>).</summary>
     public string Physics { get; init; } = "";
     public string Energy { get; init; } = "";
     public string Tyres { get; init; } = "";

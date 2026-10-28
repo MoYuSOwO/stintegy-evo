@@ -154,7 +154,27 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
     {
         SingleTrackState own = state.Chassis();
         return new CarMotion(own.SteerAngleRadians, own.FilteredLongitudinalAccel, own.FilteredLateralAccel,
-            own.Spinning, own.SpinEvents, own.Telemetry.OverLimit);
+            own.Spinning, own.SpinEvents, own.Telemetry.OverLimit,
+            own.Telemetry.ActualCurvature, own.Telemetry.ActualLongitudinalAccel);
+    }
+
+    public virtual void Assume(CarState plan, CarMotion motion, CarAir? air = null)
+    {
+        SingleTrackState own = plan.Chassis();
+        own.SteerAngleRadians = motion.WheelAngleRadians;
+        own.FilteredLongitudinalAccel = motion.LongitudinalAccel;
+        own.FilteredLateralAccel = motion.LateralAccel;
+        own.Telemetry = own.Telemetry with
+        {
+            ActualCurvature = motion.Curvature,
+            ActualLongitudinalAccel = motion.StepLongitudinalAccel
+        };
+        if (air is { } it)
+        {
+            own.AirVelocityDeficit = it.VelocityDeficit;
+            own.DownforceVelocityDeficit = it.DownforceVelocityDeficit;
+            own.WakeDownforceLoss = it.DownforceLoss;
+        }
     }
 
     public virtual void Fill(CarState state, PowertrainState stores)

@@ -2,6 +2,7 @@ using System.Globalization;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Content;
 using StintegyEVO.Core.Drivers;
+using StintegyEVO.Core.Mods;
 using StintegyEVO.Core.Track;
 
 namespace StintegyEVO.Drivers.Lanes;
@@ -332,7 +333,7 @@ public sealed class LaneTrackFile
     /// unless said) at the circuit, from the car's pack, or a fresh file
     /// baked on first use where it has none.
     /// </summary>
-    public static LaneTrackFile ForCircuit(string id, TrackData track, LoadedCar? car = null) =>
+    public static LaneTrackFile ForCircuit(string id, TrackData track, ModCar? car = null) =>
         FromNotes(DriverNotes.For(LanesPack.Id, car ?? StockCar.Loaded, ResourceId.Parse(id)), track);
 
     /// <summary>The driver's notes as a lane file, or a fresh one where there are none.</summary>

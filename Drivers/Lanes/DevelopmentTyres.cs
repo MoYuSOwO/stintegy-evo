@@ -1,6 +1,3 @@
-using System;
-using StintegyEVO.Core.Cars;
-
 namespace StintegyEVO.Drivers.Lanes;
 
 /// <summary>
@@ -11,8 +8,4 @@ namespace StintegyEVO.Drivers.Lanes;
 public static class DevelopmentTyres
 {
     public const string SuperId = "official:formula_a/super";
-
-    private static readonly Lazy<TireConfig> SuperConfig = new(() => TireLibrary.Resolve(SuperId)[0].Front);
-
-    public static TireConfig Super => SuperConfig.Value;
 }

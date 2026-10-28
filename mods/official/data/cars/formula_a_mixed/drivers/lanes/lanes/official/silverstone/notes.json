@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "driver": "official:lanes",
+  "driver": "lanes:lanes",
   "car": "official:formula_a_mixed",
-  "carFingerprint": "2c6f4f1042e4",
+  "carFingerprint": "bb8a5a2ded5a",
   "learned": "2026-10-26"
 }

@@ -2,6 +2,7 @@ using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
+using StintegyEVO.Core.Saves;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Core.Util;
 
@@ -327,6 +328,7 @@ public sealed class LaneDriver : IDriverController
     private readonly ICarStores? _stores;
     private readonly ICarButtons? _buttons;
     private readonly AxleLayout _layout;
+    private readonly ICarMotion _motion;
     private readonly float _maxDrive;
     private readonly float _maxBrake;
     private readonly TurnLag _turnLag;
@@ -373,20 +375,19 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>What the driver cannot drive a car without, and what it uses when the car has it.</summary>
     public static readonly CarNeeds CarNeeds = new(
-        [typeof(ICarEnvelope), typeof(ICarTires), typeof(ICarGripFeel)],
-        [typeof(ICarStores), typeof(ICarButtons)]);
+        [typeof(ICarEnvelope), typeof(ICarTires), typeof(ICarGripFeel), typeof(ICarMotion)],
+        [typeof(ICarStores), typeof(ICarButtons), typeof(ICarAxles)]);
 
     public CarNeeds Needs => CarNeeds;
 
     /// <param name="car">
-    /// The kind of car it drives, the driver's own copy to plan with: the
-    /// stock car's unless said. It must have what <see cref="CarNeeds"/>
-    /// requires.
+    /// The kind of car it drives, the driver's own copy to plan with. It
+    /// must have what <see cref="CarNeeds"/> requires.
     /// </param>
-    public LaneDriver(LaneTrackFile file, ICar? car = null)
+    public LaneDriver(LaneTrackFile file, ICar car)
     {
         _file = file ?? throw new ArgumentNullException(nameof(file));
-        _model = car ?? StockCar.Model;
+        _model = car ?? throw new ArgumentNullException(nameof(car));
         IReadOnlyList<Type> missing = CarNeeds.MissingFrom(_model);
         if (missing.Count > 0)
             throw new ArgumentException(
@@ -397,7 +398,10 @@ public sealed class LaneDriver : IDriverController
         _feel = (ICarGripFeel)_model;
         _stores = _model as ICarStores;
         _buttons = _model as ICarButtons;
-        _layout = _carEnvelope.Layout;
+        _motion = (ICarMotion)_model;
+        // Without two axles to share them between, the brakes and the drive
+        // are taken as split evenly, and the driver never moves them.
+        _layout = (_model as ICarAxles)?.Layout ?? new AxleLayout(0.5f, 0.5f, false, null);
         _maxDrive = _carEnvelope.Capabilities(new CarState(), CarStrategy.Default).MaxDriveAcceleration;
         _maxBrake = _model.Spec.MaximumBrakeDeceleration;
         _turnLag = TurnLag.Measure(_model);
@@ -412,7 +416,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// What this driver has learned of this circuit in this car, on top of
-    /// the car's notes. Read from <see cref="Progress"/> when the session
+    /// the car's notes. Read from <see cref="Save"/> when the session
     /// starts, where the game keeps it; left unset, or learned on another
     /// layout, the driver starts as on a circuit never driven. Only a driver
     /// with ratings learns as it drives, and only when LearnsAsItDrives.
@@ -424,7 +428,10 @@ public sealed class LaneDriver : IDriverController
     /// session starts, written at the end of every lap. None, and what is
     /// learned lasts the session.
     /// </summary>
-    public DriverProgress? Progress { get; init; }
+    public ISaveSlot? Save { get; init; }
+
+    // What the driver keeps in its save slot.
+    private const string FamiliarityFile = "familiarity.json";
 
     /// <summary>Off for the offline learner: the car's notes are learned on the car, not a driver's nerves.</summary>
     public bool LearnsAsItDrives { get; init; } = true;
@@ -596,7 +603,7 @@ public sealed class LaneDriver : IDriverController
         _familiar = null;
         if (_performance is not null && LearnsAsItDrives)
         {
-            if (Familiarity is null && Progress?.Read() is { } kept)
+            if (Familiarity is null && Save?.Read(FamiliarityFile) is { } kept)
                 Familiarity = LaneFamiliarity.FromJson(kept);
             if (Familiarity is null || !Familiarity.Fits(context.Track.LengthMeters))
                 Familiarity = LaneFamiliarity.NewCircuit(context.Track.LengthMeters, _adaptability);
@@ -697,11 +704,11 @@ public sealed class LaneDriver : IDriverController
         LastHereCurvature = here;
         // How fast the line ahead asks the car to wind on its rotation.
         _yawAccelAsk = speed * speed * (BlendedCurvature(previewStation + 1f) - BlendedCurvature(previewStation - 1f)) / (2f * _lanes.Spacing) +
-                       feedforward * car.Telemetry.ActualLongitudinalAccel;
+                       feedforward * MotionOf(car).StepLongitudinalAccel;
 
         float pursuit = MathF.Max(Gains.MinimumPursuitMeters, MathF.Max(speed, 0f) * Gains.PursuitSeconds);
         // What the axles will hold at the braking being done right now.
-        float braking = Math.Clamp(-car.Telemetry.ActualLongitudinalAccel / MathF.Max(_envelope.Brake(speed), 1f), 0f, 1f);
+        float braking = Math.Clamp(-MotionOf(car).StepLongitudinalAccel / MathF.Max(_envelope.Brake(speed), 1f), 0f, 1f);
         LaneEnvelope turn = _envelope.ForTurn(here);
         float lateralLimit = turn.Lateral(speed) +
                              (turn.LateralBraking(speed) - turn.Lateral(speed)) * braking;
@@ -971,7 +978,7 @@ public sealed class LaneDriver : IDriverController
         }
         _lastAccel = accel;
         if (Gains.FeelTurnLag)
-            FeelTurn(curvature, car.Telemetry.ActualCurvature, speed, accel, dt);
+            FeelTurn(curvature, MotionOf(car).Curvature, speed, accel, dt);
 
         LastTelemetry = new LaneDriverTelemetry(
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
@@ -986,11 +993,15 @@ public sealed class LaneDriver : IDriverController
                       (1f + (_performance?.SteeringRead ?? 0f));
         if (Gains.LockIntegralSeconds is { } hold && hold > 0f)
         {
-            _lock = Math.Clamp(_lock + car.Steering.WheelBaseMeters * (curvature - car.Telemetry.ActualCurvature) * dt / hold, -0.03f, 0.03f);
+            _lock = Math.Clamp(_lock + car.Steering.WheelBaseMeters * (curvature - MotionOf(car).Curvature) * dt / hold, -0.03f, 0.03f);
             steer += _lock;
         }
         LastLock = _lock;
-        return new DriverInput(steer, accel, FrontBrakeBiasOffset: BrakeBias(tyres, accel), TyreWearExcess: _performance?.TyreWearExcess ?? 0f);
+        return new DriverInput(steer, accel)
+        {
+            Axles = new AxleBias(BrakeBias(tyres, accel), 0f),
+            TyreWearExcess = _performance?.TyreWearExcess ?? 0f
+        };
     }
 
     // What the driver feels of the two axles this step.
@@ -1290,6 +1301,8 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     private static GripUse AxlesOf(RaceCarSnapshot car) => car.GripUse ?? default;
 
+    private static CarMotion MotionOf(RaceCarSnapshot car) => car.Motion ?? default;
+
     private enum SlidePhase { None, Catch, Spun, Rejoin }
 
     private SlidePhase _phase;
@@ -1322,7 +1335,7 @@ public sealed class LaneDriver : IDriverController
     private void UpdateRejoin(in DriverContext context, RaceCarSnapshot car, float leftError, float facing)
     {
         _outside = OutsideEdgeMeters(context, car);
-        if (car.Spinning)
+        if (MotionOf(car).Spinning)
         {
             if (_phase != SlidePhase.Spun)
                 Scared(car.TrackS, big: true);
@@ -1649,7 +1662,7 @@ public sealed class LaneDriver : IDriverController
             if (_familiarLap != int.MinValue)
             {
                 familiar.Laps++;
-                Progress?.Write(familiar.ToJson());
+                Save?.Write(FamiliarityFile, familiar.ToJson());
             }
             _familiarLap = lap;
         }
@@ -2028,7 +2041,7 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The live envelope and the learned factors at the grip the driver believes in.</summary>
     private void ReadGrip(RaceCarSnapshot car, float roadGrip, float sinceLastRead, int start, int count, bool sides)
     {
-        PlanState.Hydrate(_plan, car, _tyres, _stores, _buttons);
+        PlanState.Hydrate(_plan, car, _motion, _tyres, _stores, _buttons);
         _tyreAuthority = Gains.TyreRungAuthority
             ? _carEnvelope.GripUsage(car.Strategy) / MathF.Max(_carEnvelope.GripUsage(CarStrategy.Default), 0.5f)
             : 1f;
@@ -2396,17 +2409,17 @@ public readonly record struct TyreStyle(float Corner, float Brake, float Tractio
 
 internal static class PlanState
 {
-    public static void Hydrate(CarState plan, RaceCarSnapshot car, ICarTires tyres, ICarStores? stores, ICarButtons? buttons)
+    public static void Hydrate(CarState plan, RaceCarSnapshot car, ICarMotion motion, ICarTires tyres, ICarStores? stores, ICarButtons? buttons)
     {
         plan.Position = car.Position;
         plan.Heading = car.HeadingRadians;
         plan.SideslipAngleRadians = car.SideslipAngleRadians;
         plan.YawRateRadiansPerSecond = car.YawRateRadiansPerSecond;
         plan.Speed = car.SpeedMetersPerSecond;
-        plan.SteerAngleRadians = car.SteerAngleRadians;
-        plan.AirVelocityDeficit = car.AirVelocityDeficit;
-        plan.DownforceVelocityDeficit = car.DownforceVelocityDeficit;
-        plan.WakeDownforceLoss = car.WakeDownforceLoss;
+        // The wheels where the car's are, in the air it is in; what the seat
+        // feels is the plan's own, from its last look ahead.
+        motion.Assume(plan, motion.Motion(plan) with { WheelAngleRadians = (car.Motion ?? default).WheelAngleRadians },
+            new CarAir(car.AirVelocityDeficit, car.DownforceVelocityDeficit, car.WakeDownforceLoss));
         if (buttons is not null)
             for (int i = 0; i < buttons.Buttons.Count && i < car.Buttons.Length; i++)
                 buttons.Assume(plan, i, car.Buttons[i].Running);

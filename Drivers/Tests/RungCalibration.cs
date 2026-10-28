@@ -29,7 +29,7 @@ public sealed class RungCalibration(ITestOutputHelper output)
         var calibrator = new RungCalibrator();
         foreach (string id in list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            TrackData track = CircuitLibrary.Load(id);
+            TrackData track = GameMods.Registry.Circuits.Get(id).Track;
             LaneTrackFile shipped = LaneTrackFile.ForCircuit(id, track);
             RungCalibrator.Result result = calibrator.Calibrate(id, track, shipped, Log);
             LaneTrackFile calibrated = shipped.Clone();

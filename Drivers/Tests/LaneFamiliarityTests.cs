@@ -65,14 +65,14 @@ public sealed class LaneFamiliarityTests
         string root = Path.Combine(Path.GetTempPath(), "stintegy-progress-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var progress = new DriverProgress(new DriverProgressFolder(root),
-                new DriverProgressKey("driver_a", LanesPack.Id, ResourceId.Parse(StockCar.Id), ResourceId.Parse("silverstone")));
+            var progress = new StintegyEVO.Core.Saves.SaveFolder(root).Slot(
+                new StintegyEVO.Core.Saves.SaveKey(LanesPack.Id, "driver_a", ResourceId.Parse(StockCar.Id), ResourceId.Parse("silverstone")));
             LaneFamiliarity f = LaneFamiliarity.NewCircuit(5891f, adaptability: 0.4f);
             f.Scare(2000f, LaneFamiliarity.Pedal.Braking, big: true);
             f.Laps = 7;
-            progress.Write(f.ToJson());
+            progress.Write("familiarity.json", f.ToJson());
 
-            LaneFamiliarity? back = LaneFamiliarity.FromJson(progress.Read()!);
+            LaneFamiliarity? back = LaneFamiliarity.FromJson(progress.Read("familiarity.json")!);
             Assert.NotNull(back);
             Assert.True(back!.Fits(5891f));
             Assert.Equal(f.Laps, back.Laps);

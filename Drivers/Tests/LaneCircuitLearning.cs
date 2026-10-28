@@ -32,7 +32,7 @@ public sealed class LaneCircuitLearning(ITestOutputHelper output)
     public void LearnBakedCircuit()
     {
         if (!LaneProbes.Enabled || Environment.GetEnvironmentVariable("STINTEGY_LEARN_CIRCUIT") is not { Length: > 0 } id) return;
-        TrackData track = CircuitLibrary.Load(id);
+        TrackData track = GameMods.Registry.Circuits.Get(id).Track;
         string baked = LaneProbes.Baked(id);
         bool append = Environment.GetEnvironmentVariable("STINTEGY_LEARN_APPEND_LEVELS") == "1";
         LaneTrackFile file;
