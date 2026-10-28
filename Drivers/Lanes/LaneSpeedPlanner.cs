@@ -210,7 +210,23 @@ internal readonly struct LaneEnvelope
     /// that runs out: there the car turns a great deal for very little
     /// lock, and the hands cannot place it.
     /// </summary>
-    public float? BrakeHoldingRear(float v, float ay, float braking, float rearShare)
+    public float? BrakeHoldingRear(float v, float ay, float braking, float rearShare) =>
+        BrakeOnRear(v, ay, braking, _ => rearShare);
+
+    /// <summary>
+    /// The most the tyres may brake (as <see cref="BrakeHoldingRear"/>) with
+    /// the brakes adding no more than <paramref name="adds"/> to what the
+    /// corner alone asks of the rear, once the corner asks for more than
+    /// <paramref name="from"/> of it: below that the brakes are free, and
+    /// between nothing and there the limit closes in. The corner itself
+    /// may use the rear to the full; it is the brakes on top of it, while
+    /// the car is being turned in, that leave it nothing to spare.
+    /// </summary>
+    public float? BrakeAddingToRear(float v, float ay, float braking, float adds, float from) =>
+        BrakeOnRear(v, ay, braking, corner =>
+            MathF.Min(1f, corner + adds + (1f - adds) * MathF.Max(0f, 1f - corner / MathF.Max(from, 1e-3f))));
+
+    private float? BrakeOnRear(float v, float ay, float braking, Func<float, float> allowed)
     {
         if (_axles is not { } axles)
             return null;
@@ -219,6 +235,7 @@ internal readonly struct LaneEnvelope
         if (front <= 1f || rear <= 1f)
             return null;
         float rearCorner = (1f - axles.FrontCornerShare) * ay / rear;
+        float rearShare = allowed(rearCorner);
         if (rearCorner >= rearShare)
             return 0f;
         float frontCorner = Math.Min(axles.FrontCornerShare * ay / front, 1f);
@@ -359,6 +376,17 @@ public sealed record LaneShares
     /// corner share the whole car's ellipse however the rear fares.
     /// </summary>
     public float? RearTurnIn { get; init; }
+
+    /// <summary>
+    /// The most the brakes may add to the share of the rear's grip the
+    /// corner alone asks of it, braking into a corner, once that share is
+    /// past <see cref="RearBrakeFrom"/>. None, the brakes add what the
+    /// whole car's ellipse allows.
+    /// </summary>
+    public float? RearBrakeAdds { get; init; }
+
+    /// <summary>Where the rear's corner share starts to hold the brakes back (<see cref="RearBrakeAdds"/>).</summary>
+    public float RearBrakeFrom { get; init; } = 0.5f;
 }
 
 /// <summary>
@@ -562,6 +590,9 @@ internal static class LaneSpeedPlanner
             if (shares.RearTurnIn is { } rearShare && ay > 1f &&
                 e.BrakeHoldingRear(v, ay, ax, rearShare) is { } holding)
                 ax = MathF.Min(ax, holding);
+            if (shares.RearBrakeAdds is { } adds && ay > 1f &&
+                e.BrakeAddingToRear(v, ay, ax, adds, shares.RearBrakeFrom) is { } adding)
+                ax = MathF.Min(ax, adding);
 
             // What the road does to the car along it, the physics' way round:
             // the axles are scaled onto the slope, gravity is added on top.

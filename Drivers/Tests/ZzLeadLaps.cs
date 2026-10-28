@@ -133,7 +133,8 @@ public sealed class ZzLeadLaps
             WithoutSteerNotes(file, track);
             var mine = new List<string>();
             int lap0 = -1;
-            LaneLapRunner.Run(track, file, shares: Environment.GetEnvironmentVariable("STINTEGY_REAR_TURN_IN") is { } rearTurnIn ? new LaneShares { RearTurnIn = float.Parse(rearTurnIn, CultureInfo.InvariantCulture) } : null, gains: new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", LockForRotation = Environment.GetEnvironmentVariable("STINTEGY_LOCK_ROTATION") == "1", LockWhereTheCarIs = Environment.GetEnvironmentVariable("STINTEGY_LOCK_WHERE") == "1", FadeByAsk = Environment.GetEnvironmentVariable("STINTEGY_FADE_ASK") != "0" }, onStep: (car, d, t) =>
+            LaneLapRunner.Run(track, file, shares: Environment.GetEnvironmentVariable("STINTEGY_REAR_TURN_IN") is { } rearTurnIn ? new LaneShares { RearTurnIn = float.Parse(rearTurnIn, CultureInfo.InvariantCulture) }
+                : Environment.GetEnvironmentVariable("STINTEGY_BRAKES_ADD") is { } brakesAdd ? new LaneShares { RearBrakeAdds = float.Parse(brakesAdd, CultureInfo.InvariantCulture) } : null, gains: new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", LockForRotation = Environment.GetEnvironmentVariable("STINTEGY_LOCK_ROTATION") == "1", LockWhereTheCarIs = Environment.GetEnvironmentVariable("STINTEGY_LOCK_WHERE") == "1", FadeByAsk = Environment.GetEnvironmentVariable("STINTEGY_FADE_ASK") != "0" }, onStep: (car, d, t) =>
             {
                 if (side != 0f)
                 {
@@ -208,8 +209,9 @@ public sealed class ZzLeadLaps
             ("lock for both", new LaneDriverGains { LockForRotation = true, LockWhereTheCarIs = true }),
             ("as they are but faded by all the grip", new LaneDriverGains { FadeByAsk = false }),
             ("rear turn-in 0.85", new LaneDriverGains()),
-            ("rear turn-in 0.80", new LaneDriverGains()),
-            ("rear turn-in 0.75", new LaneDriverGains()),
+            ("brakes add 0.10", new LaneDriverGains()),
+            ("brakes add 0.06", new LaneDriverGains()),
+            ("brakes add 0.03", new LaneDriverGains()),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
@@ -222,6 +224,8 @@ public sealed class ZzLeadLaps
                 FlatFactors(file, track, brakes: way.Name == "flat factors");
             LaneShares? shares = way.Name.StartsWith("rear turn-in ")
                 ? new LaneShares { RearTurnIn = float.Parse(way.Name["rear turn-in ".Length..], CultureInfo.InvariantCulture) }
+                : way.Name.StartsWith("brakes add ")
+                ? new LaneShares { RearBrakeAdds = float.Parse(way.Name["brakes add ".Length..], CultureInfo.InvariantCulture) }
                 : null;
             LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, shares, onStep: side == 0f ? null : (car, d, t) =>
             {
