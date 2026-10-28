@@ -607,13 +607,13 @@ public sealed class ZzLineSweep
         // the 20 m after to whatever the driver was doing there, braking to
         // braking, throttle to traction, the rest to corner; a station no line
         // was in trouble near and every line passed cleanly takes a little
-        // more. The lessons come from a fixed set of check lines and a fresh
-        // batch besides; the candidate is driven on the check lines and taken
-        // 200 m sector by sector the way the lap learner takes it.
+        // more. Each round's lessons come from a fresh batch of lines, and the
+        // candidate is driven on that same batch and taken 200 m sector by
+        // sector the way the lap learner takes it.
         int back = (int)MathF.Ceiling(learner.LookBackMeters / spacing), ahead = (int)MathF.Ceiling(learner.LookAheadMeters / spacing);
         int length = Math.Max(1, (int)MathF.Round(learner.SectorMeters / spacing));
         int sectors = (count + length - 1) / length;
-        float[][] check = Lines(batch);
+        float[][] check = Lines((int)Env("STINTEGY_ROBUST_CHECK", 1000));
         bool Trouble(Run r, int i) =>
             r.StationError[i] > learner.TroubleErrorMeters || r.StationSlip[i] > learner.TroubleSlipRadians || r.StationOff[i];
         // A spin counts as a whole sector in trouble where it happened.
@@ -646,15 +646,15 @@ public sealed class ZzLineSweep
             (runs.Count(r => !r.Clean), runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.PositiveInfinity).Average());
 
         var troubleLog = new List<string> { "grip,round,line,kind,s_m,worst_error_m,braking,throttle,corner,brake,traction" };
-        var log = new List<string> { "grip,round,batch_trouble,check_trouble,check_clean_mean_s,step,kept_sectors,corner_mean,brake_mean,traction_mean,corner_min,brake_min,traction_min" };
+        var log = new List<string> { "grip,round,trouble_before,trouble_after,clean_mean_s_before,step,kept_sectors,corner_mean,brake_mean,traction_mean,corner_min,brake_min,traction_min" };
         Table Learn(Condition cond, string tag)
         {
             var corner = Enumerable.Repeat(0.95f, count).ToArray();
             var brake = Enumerable.Repeat(0.95f, count).ToArray();
             var traction = Enumerable.Repeat(1f, count).ToArray();
-            Run[] current = DriveAll(check, Same(corner, brake, traction), _ => cond);
             float step = 1f;
             int stale = 0;
+            var snapshots = new List<(int Round, Table Table)> { (0, new Table((float[])corner.Clone(), (float[])brake.Clone(), (float[])traction.Clone())) };
             for (int round = 1; round <= rounds; round++)
             {
                 if (stale >= learner.Patience)
@@ -662,7 +662,12 @@ public sealed class ZzLineSweep
                     step *= learner.StepDecay;
                     stale = 0;
                 }
-                Run[] runs = DriveAll(Lines(batch), Same(corner, brake, traction), _ => cond).Concat(current).ToArray();
+                // The round's lines, new each round: the lessons are drawn from
+                // them, and the candidate is judged on them, as the lap learner
+                // learns from a lap and judges on the same lap.
+                float[][] lines = Lines(batch);
+                Run[] current = DriveAll(lines, Same(corner, brake, traction), _ => cond);
+                Run[] runs = current;
                 var cs = Enumerable.Repeat(1f, count).ToArray();
                 var bs = Enumerable.Repeat(1f, count).ToArray();
                 var ts = Enumerable.Repeat(1f, count).ToArray();
@@ -717,16 +722,16 @@ public sealed class ZzLineSweep
                 {
                     nc[k] = Math.Clamp(corner[k] * cs[k], learner.MinimumFactor, learner.MaximumFactor);
                     nb[k] = Math.Clamp(brake[k] * bs[k], learner.MinimumFactor, learner.MaximumBrakeFactor);
-                    nt[k] = Math.Clamp(traction[k] * ts[k], learner.MinimumFactor, learner.MaximumFactor);
+                    nt[k] = Math.Clamp(traction[k] * ts[k], learner.MinimumFactor, learner.MaximumTractionFactor);
                 }
-                nc = Smooth(nc, learner.SmoothStations / 2);
-                nb = Smooth(nb, learner.SmoothStations / 2);
-                nt = Smooth(nt, learner.SmoothStations / 2);
+                nc = Smooth(nc, learner.SmoothStations);
+                nb = Smooth(nb, learner.SmoothStations);
+                nt = Smooth(nt, learner.SmoothStations);
 
                 // Sector by sector, as the lap learner takes a candidate: a clean
                 // sector stays clean and gets quicker, one in trouble gets less of
                 // it, and neither hands the sector after more trouble than it had.
-                Run[] tried = DriveAll(check, Same(nc, nb, nt), _ => cond);
+                Run[] tried = DriveAll(lines, Same(nc, nb, nt), _ => cond);
                 int kept = 0;
                 for (int sector = 0; sector < sectors; sector++)
                 {
@@ -749,8 +754,8 @@ public sealed class ZzLineSweep
                     kept++;
                 }
                 stale = kept == 0 ? stale + 1 : 0;
-                if (kept > 0)
-                    current = kept == sectors ? tried : DriveAll(check, Same(corner, brake, traction), _ => cond);
+                if (round % 10 == 0 || round == rounds)
+                    snapshots.Add((round, new Table((float[])corner.Clone(), (float[])brake.Clone(), (float[])traction.Clone())));
 
                 (int Trouble, float Time) score = Score(current);
                 for (int n = 0; n < current.Length; n++)
@@ -763,12 +768,29 @@ public sealed class ZzLineSweep
                     int i = setup.Lanes.Wrap(first + at);
                     troubleLog.Add($"{tag},{round},{n},{(r.Spun ? "spun" : r.Off > 0f ? "off" : "error")},{F((first + at) * spacing)},{F(r.WorstError)},{(r.StationBraking[i] ? 1 : 0)},{(r.StationThrottle[i] ? 1 : 0)},{F(corner[at])},{F(brake[at])},{F(traction[at])}");
                 }
-                log.Add(tag + "," + string.Join(",", new[] { round, runs.Length - current.Length - runs.Take(runs.Length - current.Length).Count(r => r.Clean), score.Trouble }.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                log.Add(tag + "," + string.Join(",", new[] { round, score.Trouble, tried.Count(r => !r.Clean) }.Select(v => v.ToString(CultureInfo.InvariantCulture))
                     .Concat(new[] { score.Time, step }.Select(F)).Append(kept.ToString(CultureInfo.InvariantCulture))
                     .Concat(new[] { corner.Average(), brake.Average(), traction.Average(), corner.Min(), brake.Min(), traction.Min() }.Select(F))));
                 Console.WriteLine(log[^1]);
             }
-            return new Table(corner, brake, traction);
+            // The best of the tables it held along the way, on a fixed set of
+            // check lines: fewest stations in trouble, then the quickest.
+            Table bestTable = snapshots[^1].Table;
+            (int Stations, float Time) bestScore = (int.MaxValue, float.PositiveInfinity);
+            foreach ((int round, Table table) in snapshots)
+            {
+                Run[] onCheck = DriveAll(check, Same(table.Corner, table.Brake, table.Traction), _ => cond);
+                int stations = Enumerable.Range(0, sectors).Sum(sector => SectorTrouble(onCheck, sector).Stations);
+                float time = onCheck.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.PositiveInfinity).Average();
+                log.Add($"{tag},check after round {round},{stations} stations in trouble,{onCheck.Count(r => !r.Clean)} lines,{F(time)}");
+                Console.WriteLine(log[^1]);
+                if (stations < bestScore.Stations || (stations == bestScore.Stations && time < bestScore.Time))
+                {
+                    bestScore = (stations, time);
+                    bestTable = table;
+                }
+            }
+            return bestTable;
         }
 
         // One table learned as the lap learner learns it, or one per grip
