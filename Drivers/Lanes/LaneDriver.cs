@@ -604,6 +604,7 @@ public sealed class LaneDriver : IDriverController
         // across the lane's own heading, and bends by what its sideways
         // speed changes over the road the car covers.
         float moveSpeed = MoveAt((int)MathF.Round(station), 0f).Speed;
+        LastMoveSpeed = moveSpeed;
         float pathHeading = MathF.Atan2(tangent.Y, tangent.X) - MathF.Atan2(moveSpeed, MathF.Max(speed, 5f));
         Vector2 toCar = car.Position - refPosition;
         float leftError = tangent.X * toCar.Y - tangent.Y * toCar.X;
@@ -625,6 +626,7 @@ public sealed class LaneDriver : IDriverController
                               MathF.Max(speed * speed, 25f);
         float feedforward = BlendedCurvature(previewStation) + BlendedSteer(previewStation) + moveCurvature;
         float here = BlendedCurvature(station);
+        LastHereCurvature = here;
 
         float pursuit = MathF.Max(Gains.MinimumPursuitMeters, MathF.Max(speed, 0f) * Gains.PursuitSeconds);
         // What the axles will hold at the braking being done right now.
@@ -916,6 +918,12 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>How far ahead the hands read the corner this step, seconds. For probes.</summary>
     public float LastLeadSeconds { get; private set; }
+
+    /// <summary>How fast a lane move under way carries the line sideways, m/s, this step. For probes.</summary>
+    public float LastMoveSpeed { get; private set; }
+
+    /// <summary>The line's own curvature where the car is, this step. For probes.</summary>
+    public float LastHereCurvature { get; private set; }
 
     // How late the car answers the wheel against how much of the rear's grip
     // it is already spending sideways: the nearer the tyre is to its peak,

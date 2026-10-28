@@ -85,13 +85,14 @@ public sealed class ZzLeadLaps
                         t, car.Progress.CurrentS, dd, at.HalfWidth, wallLeft, wallRight, car.State.Speed, tel.CommandAccel,
                         d.LastLeadSeconds, tel.LateralErrorMeters, tel.FeedforwardCurvature, tel.WantedCurvature, tel.CurvatureCap,
                         tel.CommandCurvature, car.State.Telemetry.ActualCurvature, at.Curvature,
+                        tel.HeadingErrorRadians, d.LastHereCurvature, car.State.SideslipAngleRadians, d.LastMoveSpeed, d.Range,
                         car.BoundaryContactSeconds > 0f || car.Progress.HitWallThisFrame ? 1f : 0f,
                         car.Progress.Region != TrackRegion.RacingSurface ? 1f : 0f
                     }.Select(v => v.ToString("F5", System.Globalization.CultureInfo.InvariantCulture)))));
             });
             rows[j] = mine;
         });
-        File.WriteAllLines(output, new[] { "circuit,lane,hands,t,s,d,half_width,wall_left,wall_right,speed,command_accel,lead,error,ff_k,wanted_k,cap_k,cmd_k,actual_k,road_k,wall,off" }
+        File.WriteAllLines(output, new[] { "circuit,lane,hands,t,s,d,half_width,wall_left,wall_right,speed,command_accel,lead,error,ff_k,wanted_k,cap_k,cmd_k,actual_k,road_k,heading_err,line_k,sideslip,move_speed,range,wall,off" }
             .Concat(rows.SelectMany(r => r)));
         _output.WriteLine($"{rows.Sum(r => r.Count)} steps to {output}");
     }
