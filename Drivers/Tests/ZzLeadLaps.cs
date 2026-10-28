@@ -62,6 +62,8 @@ public sealed class ZzLeadLaps
         };
         if (Environment.GetEnvironmentVariable("STINTEGY_WALL_ALL") == "1")
             ways = ways.Where(w => w.Name == "as they are").ToArray();
+        if (Environment.GetEnvironmentVariable("STINTEGY_PURSUIT") is { } pursuit)
+            ways = ways.Select(w => (w.Name, w.Gains with { PursuitSeconds = float.Parse(pursuit, CultureInfo.InvariantCulture) })).ToArray();
         var jobs = (from l in laps from w in ways select (l.Circuit, l.Side, w.Name, w.Gains)).ToArray();
         var rows = new List<string>[jobs.Length];
         Parallel.For(0, jobs.Length, j =>
@@ -241,12 +243,18 @@ public sealed class ZzLeadLaps
             ("lock where the car is", new LaneDriverGains { LockWhereTheCarIs = true }),
             ("lock for both", new LaneDriverGains { LockForRotation = true, LockWhereTheCarIs = true }),
             ("as they are but faded by all the grip", new LaneDriverGains { FadeByAsk = false }),
+            ("look 0.5 s", new LaneDriverGains { PursuitSeconds = 0.5f }),
+            ("look 0.4 s", new LaneDriverGains { PursuitSeconds = 0.4f }),
+            ("look 0.3 s", new LaneDriverGains { PursuitSeconds = 0.3f }),
+            ("look 0.3 s from 6 m", new LaneDriverGains { PursuitSeconds = 0.3f, MinimumPursuitMeters = 6f }),
             ("car FrontLateralLoadTransferShare=0.60", new LaneDriverGains()),
             ("car FrontLateralLoadTransferShare=0.65", new LaneDriverGains()),
             ("car FrontLateralLoadTransferShare=0.70", new LaneDriverGains()),
             ("car FrontDownforceShare=0.44", new LaneDriverGains()),
             ("car FixedFrontBrakeShare=0.60", new LaneDriverGains()),
         };
+        if (Environment.GetEnvironmentVariable("STINTEGY_WAYS")?.Split('|') is { } picked)
+            ways = ways.Where(w => picked.Contains(w.Name)).ToArray();
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
         Parallel.For(0, jobs.Length, j =>
