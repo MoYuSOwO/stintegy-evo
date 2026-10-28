@@ -524,6 +524,17 @@ public sealed class ZzLineSweep
             _output.WriteLine($"{g.Key,-22} {g.Count()}");
     }
 
+    /// <summary>What TurnLag measured on the stock car, read across braking and turn.</summary>
+    [Fact]
+    public void TurnLagTable()
+    {
+        if (!LaneProbes.Enabled) return;
+        TurnLag lag = TurnLag.Measure(new SingleTrackCar(StockCar.Config, ((ICarTires)StockCar.Model).Compounds));
+        foreach (float speed in new[] { 15f, 25f, 40f, 60f, 85f })
+            foreach (float braking in new[] { 0f, 7.5f, 15f, 22.5f, 30f })
+                _output.WriteLine($"v {speed,3:F0} braking {braking,4:F1}: turn 2 {lag.Seconds(speed, braking, 2f):F3}  turn 10 {lag.Seconds(speed, braking, 10f):F3}  turn 20 {lag.Seconds(speed, braking, 20f):F3}");
+    }
+
     /// <summary>
     /// The car's turn-in delay measured the way TurnLag measures it (a car
     /// in a settled corner asked for a little more, the area between its
