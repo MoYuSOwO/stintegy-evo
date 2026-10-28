@@ -1697,6 +1697,32 @@ public sealed class CarPhysicsTests
         Assert.True(dialledBack > forward, $"dialled back lost {dialledBack:F2} m/s, left forward {forward:F2}");
     }
 
+    /// <summary>
+    /// The braking the car publishes is the braking its brakes give: a fixed
+    /// split far from the grip promises less than brakes that share
+    /// themselves by grip, as it stops less hard, and the driver's dial
+    /// moves the promise with the split.
+    /// </summary>
+    [Fact]
+    public void ThePublishedBrakingLimitSplitsTheBrakesAsTheCarDoes()
+    {
+        TestTires tires = WarmTires();
+        float Promised(CarConfig car, float dial)
+        {
+            CarState state = CreateState(speed: 50f, batterySoc: 0.8f, tires);
+            return CarPhysics.EstimatePerformanceLimits(
+                state, car, tires, CarStrategy.Default, speed: 50f, curvature: 0.004f,
+                frontBrakeBiasOffset: dial).MaximumBrakeDeceleration;
+        }
+
+        float sharing = Promised(new CarConfig(), 0f);
+        float forward = Promised(new CarConfig { FixedFrontBrakeShare = 0.9f }, 0f);
+        float dialledBack = Promised(new CarConfig { FixedFrontBrakeShare = 0.9f }, -0.25f);
+
+        Assert.True(forward < sharing, $"far forward promises {forward:F2} m/s2, sharing brakes {sharing:F2}");
+        Assert.True(dialledBack > forward, $"dialled back promises {dialledBack:F2} m/s2, left forward {forward:F2}");
+    }
+
     /// <summary>A driver whose hands are harder on the tyres wears them more on the same run, one kinder less.</summary>
     [Fact]
     public void TheDriversWearExcessWearsTheTyresMoreOrLess()

@@ -215,7 +215,10 @@ public static class CarPhysics
             config.MaxDriveAcceleration,
             Math.Min(gripDriveLimit, powertrainDriveLimit)
         );
-        float frontBrakeShare = BiasedFrontBrakeShare(
+        // The brakes split the way the car splits them, so the axle that
+        // runs out first sets the limit.
+        float frontBrakeShare = FrontBrakeShare(
+            config.FixedFrontBrakeShare,
             frontLongitudinal,
             rearLongitudinal,
             frontBrakeBiasOffset
@@ -1814,17 +1817,6 @@ public static class CarPhysics
         out float rearBrake
     )
     {
-        if (fixedFrontShare is { } fixedShare)
-        {
-            // A real car's brakes: the balance the dial is at, whatever each
-            // axle can take. Too much for one and it locks, and the axle
-            // resolution clips it and spends its lateral grip on the slide.
-            float offset = float.IsFinite(frontBrakeBiasOffset) ? Math.Clamp(frontBrakeBiasOffset, -0.25f, 0.25f) : 0f;
-            float share = Math.Clamp(fixedShare + offset, 0f, 1f);
-            frontBrake = brakeRequest * share;
-            rearBrake = brakeRequest - frontBrake;
-            return;
-        }
         float frontCapacity = RemainingLongitudinalGrip(
             frontGrip,
             frontLateralRequest
@@ -1833,12 +1825,13 @@ public static class CarPhysics
             rearGrip,
             rearLateralRequest
         );
-        float frontShare = BiasedFrontBrakeShare(
+        float frontShare = FrontBrakeShare(
+            fixedFrontShare,
             frontCapacity,
             rearCapacity,
             frontBrakeBiasOffset
         );
-        if (frontCapacity + rearCapacity <= Epsilon)
+        if (fixedFrontShare is null && frontCapacity + rearCapacity <= Epsilon)
         {
             float totalGrip = frontGrip + rearGrip;
             if (totalGrip <= Epsilon)
@@ -1862,6 +1855,29 @@ public static class CarPhysics
 
         frontBrake = brakeRequest * frontShare;
         rearBrake = brakeRequest - frontBrake;
+    }
+
+    /// <summary>
+    /// How the brakes split between the axles: the one rule both the step and
+    /// the published braking limit use, so the car says what it does.
+    ///
+    /// With a fixed balance, a real car's brakes: the balance the dial is at
+    /// plus the driver's offset, whatever each axle can take. Too much for
+    /// one and it locks, and the axle resolution clips it and spends its
+    /// lateral grip on the slide. Without one, the split that leaves both
+    /// axles the same share of what they have left, plus the offset.
+    /// </summary>
+    private static float FrontBrakeShare(
+        float? fixedFrontShare,
+        float frontCapacity,
+        float rearCapacity,
+        float frontBrakeBiasOffset
+    )
+    {
+        if (fixedFrontShare is not { } fixedShare)
+            return BiasedFrontBrakeShare(frontCapacity, rearCapacity, frontBrakeBiasOffset);
+        float offset = float.IsFinite(frontBrakeBiasOffset) ? Math.Clamp(frontBrakeBiasOffset, -0.25f, 0.25f) : 0f;
+        return Math.Clamp(fixedShare + offset, 0f, 1f);
     }
 
     private static float BiasedFrontBrakeShare(
