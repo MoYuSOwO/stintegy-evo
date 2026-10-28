@@ -15,20 +15,28 @@ internal readonly struct LaneEnvelope
 {
     private static readonly float[] Anchors = [15f, 40f, 70f, 90f];
 
+    /// <summary>The speeds the envelope is read at.</summary>
+    public static float[] AnchorSpeeds => Anchors;
+
     private readonly float[] _lateral;
     private readonly float[] _lateralBraking;
     private readonly float[] _brake;
     private readonly float[] _drive;
     private readonly float[] _loss;
 
+    // Each axle's grip, as an acceleration of the whole car, with the car
+    // cornering at its limit: coasting, and braking as hard as it can.
+    private readonly AxleGrips? _axles;
+
     // The same car in a left-hand and a right-hand corner: weight thrown onto
     // the outside tyres, so the corner is held by those two, at their
     // temperature and wear, not by an average of all four.
     private readonly LaneEnvelope[]? _turns;
 
-    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss, float loadExponent, LaneEnvelope[]? turns = null)
+    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss, float loadExponent, LaneEnvelope[]? turns = null, AxleGrips? axles = null)
     {
         _turns = turns;
+        _axles = axles;
         LoadExponent = loadExponent;
         _lateral = lateral;
         _lateralBraking = lateralBraking;
@@ -109,7 +117,7 @@ internal readonly struct LaneEnvelope
         if (!turnAware)
             return straight;
         var turns = new[] { From(plan, car, strategy, +1f, straight), From(plan, car, strategy, -1f, straight) };
-        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent, turns);
+        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent, turns, straight._axles);
     }
 
     /// <summary>
@@ -143,7 +151,8 @@ internal readonly struct LaneEnvelope
             lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
             lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
         }
-        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent);
+        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent,
+            axles: AxleGrips.Read(plan, car, sign, lateral, lateralBraking, straight._brake));
     }
 
     public static LaneEnvelope From(CarState plan, ICarEnvelope car, ICarGripFeel feel, CarStrategy strategy)
@@ -182,7 +191,41 @@ internal readonly struct LaneEnvelope
             loss[i] = MathF.Max(0f, coast.LossAcceleration);
         }
 
-        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss, 1f - Math.Clamp(feel.LoadSensitivity(plan), 0f, 1f));
+        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss, 1f - Math.Clamp(feel.LoadSensitivity(plan), 0f, 1f),
+            axles: AxleGrips.Read(plan, car, 1f, lateral, lateralBraking, brake));
+    }
+
+    /// <summary>
+    /// The most the tyres may brake, as an acceleration of the whole car,
+    /// at <paramref name="v"/> cornering at <paramref name="ay"/> with the
+    /// rear using no more than <paramref name="rearShare"/> of its grip, the
+    /// brakes split as the driver dials them: by what each axle's corner
+    /// leaves of it. None when nothing holds the axles' figures.
+    ///
+    /// Reckoned forward, from what each axle is asked for, not read back off
+    /// a slip curve: the corner split between the axles by where the weight
+    /// sits, as the car turns, and each axle's grip at the braking asked.
+    /// Braking moves the weight forward and the rear, carrying more than its
+    /// share of the corner on less than its share of the grip, is the end
+    /// that runs out: there the car turns a great deal for very little
+    /// lock, and the hands cannot place it.
+    /// </summary>
+    public float? BrakeHoldingRear(float v, float ay, float braking, float rearShare)
+    {
+        if (_axles is not { } axles)
+            return null;
+        float share = Math.Clamp(braking / MathF.Max(Brake(v), 1f), 0f, 1f);
+        (float front, float rear) = axles.At(v, share);
+        if (front <= 1f || rear <= 1f)
+            return null;
+        float rearCorner = (1f - axles.FrontCornerShare) * ay / rear;
+        if (rearCorner >= rearShare)
+            return 0f;
+        float frontCorner = Math.Min(axles.FrontCornerShare * ay / front, 1f);
+        float frontLeft = front * MathF.Sqrt(1f - frontCorner * frontCorner);
+        float rearLeft = rear * MathF.Sqrt(1f - rearCorner * rearCorner);
+        float rearBrake = rear * MathF.Sqrt(rearShare * rearShare - rearCorner * rearCorner);
+        return rearBrake * (frontLeft + rearLeft) / MathF.Max(rearLeft, 1e-3f);
     }
 
     /// <summary>
@@ -201,7 +244,8 @@ internal readonly struct LaneEnvelope
             _drive,
             _loss,
             LoadExponent,
-            _turns?.Select(e => e.WithRoadGrip(scale)).ToArray());
+            _turns?.Select(e => e.WithRoadGrip(scale)).ToArray(),
+            _axles?.Scaled(s));
     }
 
     public float Lateral(float v) => Interpolate(_lateral, v, extrapolate: true);
@@ -231,6 +275,74 @@ internal readonly struct LaneEnvelope
     }
 }
 
+/// <summary>
+/// Each axle's grip at the envelope's anchors, cornering at the limit, as an
+/// acceleration of the whole car: coasting, and under the hardest braking.
+/// </summary>
+internal sealed record AxleGrips(float[] Speeds, float[] Front, float[] Rear, float[] FrontBraking, float[] RearBraking, float FrontCornerShare)
+{
+    /// <summary>
+    /// Read off a copy of the plan's car, put at each anchor's speed,
+    /// cornering at its limit and braking or not, by the car's own estimate
+    /// of its axles (<see cref="ICarEnvelope.EstimateSteering"/>).
+    /// </summary>
+    public static AxleGrips Read(CarState plan, ICarEnvelope car, float sign, float[] lateral, float[] lateralBraking, float[] brake)
+    {
+        int n = lateral.Length;
+        float[] speeds = LaneEnvelope.AnchorSpeeds;
+        var front = new float[n];
+        var rear = new float[n];
+        var frontBraking = new float[n];
+        var rearBraking = new float[n];
+        CarState copy = plan.Clone();
+        for (int i = 0; i < n; i++)
+        {
+            copy.Speed = speeds[i];
+            copy.FilteredLongitudinalAccel = 0f;
+            copy.FilteredLateralAccel = sign * lateral[i];
+            SteeringEstimate coast = car.EstimateSteering(copy, RoadAttitude.Flat);
+            copy.FilteredLongitudinalAccel = -brake[i];
+            copy.FilteredLateralAccel = sign * lateralBraking[i];
+            SteeringEstimate braking = car.EstimateSteering(copy, RoadAttitude.Flat);
+            front[i] = coast.FrontGripAccel;
+            rear[i] = coast.RearGripAccel;
+            frontBraking[i] = braking.FrontGripAccel;
+            rearBraking[i] = braking.RearGripAccel;
+        }
+        return new AxleGrips(speeds, front, rear, frontBraking, rearBraking, Math.Clamp(car.Layout.FrontWeightShare, 0.05f, 0.95f));
+    }
+
+    /// <summary>Front and rear at <paramref name="v"/>, braking <paramref name="share"/> of the hardest.</summary>
+    public (float Front, float Rear) At(float v, float share)
+    {
+        float f = Interpolate(Front, v) + (Interpolate(FrontBraking, v) - Interpolate(Front, v)) * share;
+        float r = Interpolate(Rear, v) + (Interpolate(RearBraking, v) - Interpolate(Rear, v)) * share;
+        return (f, r);
+    }
+
+    public AxleGrips Scaled(float s) =>
+        this with { Front = Front.Select(x => x * s).ToArray(), Rear = Rear.Select(x => x * s).ToArray(),
+            FrontBraking = FrontBraking.Select(x => x * s).ToArray(), RearBraking = RearBraking.Select(x => x * s).ToArray() };
+
+    // In v², as the envelope is.
+    private float Interpolate(float[] values, float v)
+    {
+        float vv = v * v;
+        if (vv <= Speeds[0] * Speeds[0])
+            return values[0];
+        for (int i = 1; i < Speeds.Length; i++)
+        {
+            float hi = Speeds[i] * Speeds[i];
+            if (vv <= hi || i == Speeds.Length - 1)
+            {
+                float lo = Speeds[i - 1] * Speeds[i - 1];
+                return values[i - 1] + (values[i] - values[i - 1]) * (vv - lo) / (hi - lo);
+            }
+        }
+        return values[^1];
+    }
+}
+
 /// <summary>How much of the envelope the plan spends. The rest belongs to the tracker.</summary>
 public sealed record LaneShares
 {
@@ -240,6 +352,13 @@ public sealed record LaneShares
 
     /// <summary>Whether braking takes lateral grip from the rear. Off only for probes.</summary>
     public bool BrakingCoupling { get; init; } = true;
+
+    /// <summary>
+    /// The most of the rear's grip the plan brakes into a corner on: past
+    /// it, the braking is done before the turn instead. None, braking and
+    /// corner share the whole car's ellipse however the rear fares.
+    /// </summary>
+    public float? RearTurnIn { get; init; }
 }
 
 /// <summary>
@@ -440,6 +559,9 @@ internal static class LaneSpeedPlanner
                 float limit = coast + (full - coast) * (ax / MathF.Max(brake, 1e-3f));
                 ax = brake * Ellipse(ay, limit);
             }
+            if (shares.RearTurnIn is { } rearShare && ay > 1f &&
+                e.BrakeHoldingRear(v, ay, ax, rearShare) is { } holding)
+                ax = MathF.Min(ax, holding);
 
             // What the road does to the car along it, the physics' way round:
             // the axles are scaled onto the slope, gravity is added on top.
