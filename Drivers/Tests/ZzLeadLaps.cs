@@ -133,7 +133,7 @@ public sealed class ZzLeadLaps
             WithoutSteerNotes(file, track);
             var mine = new List<string>();
             int lap0 = -1;
-            LaneLapRunner.Run(track, file, shares: Environment.GetEnvironmentVariable("STINTEGY_REAR_TURN_IN") is { } rearTurnIn ? new LaneShares { RearTurnIn = float.Parse(rearTurnIn, CultureInfo.InvariantCulture) }
+            LaneLapRunner.Run(track, file, carConfig: Environment.GetEnvironmentVariable("STINTEGY_CAR") is { } carSpec ? CarWith(carSpec) : null, shares: Environment.GetEnvironmentVariable("STINTEGY_REAR_TURN_IN") is { } rearTurnIn ? new LaneShares { RearTurnIn = float.Parse(rearTurnIn, CultureInfo.InvariantCulture) }
                 : Environment.GetEnvironmentVariable("STINTEGY_BRAKES_ADD") is { } brakesAdd ? new LaneShares { RearBrakeAdds = float.Parse(brakesAdd, CultureInfo.InvariantCulture) } : null, gains: new LaneDriverGains { OwnLock = Environment.GetEnvironmentVariable("STINTEGY_OWN_LOCK") == "1", LockForRotation = Environment.GetEnvironmentVariable("STINTEGY_LOCK_ROTATION") == "1", LockWhereTheCarIs = Environment.GetEnvironmentVariable("STINTEGY_LOCK_WHERE") == "1", FadeByAsk = Environment.GetEnvironmentVariable("STINTEGY_FADE_ASK") != "0" }, onStep: (car, d, t) =>
             {
                 if (side != 0f)
@@ -189,6 +189,35 @@ public sealed class ZzLeadLaps
             }
     }
 
+    /// <summary>
+    /// The stock car with its setup changed, "Name=value;Name=value": a
+    /// CarConfig property, or the aero's FrontDownforceShare. A copy for a
+    /// probe; the car itself is not changed.
+    /// </summary>
+    internal static StintegyEVO.Core.Cars.CarConfig CarWith(string spec)
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        object Copy(object o) => typeof(object).GetMethod("MemberwiseClone", flags)!.Invoke(o, null)!;
+        var config = (StintegyEVO.Core.Cars.CarConfig)Copy(StockCar.Config);
+        foreach (string part in spec.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] kv = part.Split('=');
+            float value = float.Parse(kv[1], CultureInfo.InvariantCulture);
+            if (kv[0] == "FrontDownforceShare")
+            {
+                object aero = Copy(config.Aero);
+                aero.GetType().GetProperty("FrontDownforceShare")!.SetValue(aero, (float?)value);
+                typeof(StintegyEVO.Core.Cars.CarConfig).GetProperty("Aero")!.SetValue(config, aero);
+            }
+            else
+            {
+                System.Reflection.PropertyInfo property = typeof(StintegyEVO.Core.Cars.CarConfig).GetProperty(kv[0])!;
+                property.SetValue(config, property.PropertyType == typeof(float?) ? (float?)value : value);
+            }
+        }
+        return config;
+    }
+
     [Fact]
     public void Laps()
     {
@@ -208,10 +237,11 @@ public sealed class ZzLeadLaps
             ("lock where the car is", new LaneDriverGains { LockWhereTheCarIs = true }),
             ("lock for both", new LaneDriverGains { LockForRotation = true, LockWhereTheCarIs = true }),
             ("as they are but faded by all the grip", new LaneDriverGains { FadeByAsk = false }),
-            ("rear turn-in 0.85", new LaneDriverGains()),
-            ("brakes add 0.10", new LaneDriverGains()),
-            ("brakes add 0.06", new LaneDriverGains()),
-            ("brakes add 0.03", new LaneDriverGains()),
+            ("car FrontLateralLoadTransferShare=0.60", new LaneDriverGains()),
+            ("car FrontLateralLoadTransferShare=0.65", new LaneDriverGains()),
+            ("car FrontLateralLoadTransferShare=0.70", new LaneDriverGains()),
+            ("car FrontDownforceShare=0.44", new LaneDriverGains()),
+            ("car FixedFrontBrakeShare=0.60", new LaneDriverGains()),
         };
         var jobs = (from c in only from side in new[] { 0f, 1f, -1f } from w in ways select (c, side, w)).ToArray();
         var rows = new string[jobs.Length];
@@ -227,7 +257,8 @@ public sealed class ZzLeadLaps
                 : way.Name.StartsWith("brakes add ")
                 ? new LaneShares { RearBrakeAdds = float.Parse(way.Name["brakes add ".Length..], CultureInfo.InvariantCulture) }
                 : null;
-            LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, shares, onStep: side == 0f ? null : (car, d, t) =>
+            StintegyEVO.Core.Cars.CarConfig? config = way.Name.StartsWith("car ") ? CarWith(way.Name["car ".Length..]) : null;
+            LaneLapResult r = LaneLapRunner.Run(track, file, way.Gains, shares, carConfig: config, onStep: side == 0f ? null : (car, d, t) =>
             {
                 d.TargetRange = 1f;
                 d.TargetSide = side;
