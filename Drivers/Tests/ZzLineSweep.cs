@@ -617,6 +617,7 @@ public sealed class ZzLineSweep
         (int Trouble, float Time) bestScore = Score(DriveAll(check, corner, brake, traction));
         float step = 1f;
         int stale = 0;
+        var troubleLog = new List<string> { "round,line,kind,s_m,worst_error_m,braking,throttle,corner,brake,traction" };
         var log = new List<string> { "round,batch_trouble,check_trouble,check_clean_mean_s,step,kept,corner_mean,brake_mean,traction_mean,corner_min,brake_min,traction_min" };
         for (int round = 1; round <= rounds; round++)
         {
@@ -683,7 +684,18 @@ public sealed class ZzLineSweep
             brake = Smooth(brake, learner.SmoothStations / 2);
             traction = Smooth(traction, learner.SmoothStations / 2);
 
-            (int Trouble, float Time) score = Score(DriveAll(check, corner, brake, traction));
+            Run[] onCheck = DriveAll(check, corner, brake, traction);
+            (int Trouble, float Time) score = Score(onCheck);
+            for (int n = 0; n < onCheck.Length; n++)
+            {
+                Run r = onCheck[n];
+                if (r.Clean) continue;
+                int at = Enumerable.Range(0, count).FirstOrDefault(k => r.StationError[setup.Lanes.Wrap(first + k)] > learner.TroubleErrorMeters || r.StationOff[setup.Lanes.Wrap(first + k)], -1);
+                if (r.Spun) at = Math.Clamp((int)MathF.Round(setup.Lanes.StationOf(r.SpinS)) - first, 0, count - 1);
+                if (at < 0) continue;
+                int i = setup.Lanes.Wrap(first + at);
+                troubleLog.Add($"{round},{n},{(r.Spun ? "spun" : r.Off > 0f ? "off" : "error")},{F((first + at) * spacing)},{F(r.WorstError)},{(r.StationBraking[i] ? 1 : 0)},{(r.StationThrottle[i] ? 1 : 0)},{F(corner[at])},{F(brake[at])},{F(traction[at])}");
+            }
             bool kept = Better(score, bestScore);
             if (kept)
             {
@@ -720,6 +732,7 @@ public sealed class ZzLineSweep
         }
         File.WriteAllLines(output, log.Concat(new[] { "" }).Concat(rows));
         File.WriteAllLines(Path.ChangeExtension(output, ".exam.csv"), perLine);
+        File.WriteAllLines(Path.ChangeExtension(output, ".checktrouble.csv"), troubleLog);
         File.WriteAllLines(Path.ChangeExtension(output, ".traces.csv"),
             new[] { "line,s_m,error_m,speed,plan,command_accel,wanted_k,cap_k,feedforward_k,line_k,sideslip,lat_accel,long_accel,front_grip,rear_grip,front_lat,rear_lat,corner_factor,brake_factor,traction_factor" }
                 .Concat(examTraces.SelectMany(t => t)));
