@@ -106,6 +106,7 @@ public sealed class ZzLineSweep
         public bool[] StationOff { get; init; } = [];
         public bool[] StationBraking { get; init; } = [];
         public bool[] StationThrottle { get; init; } = [];
+        public float[] StationSeconds { get; init; } = [];
         public float SpinS { get; init; } = float.NaN;
 
         /// <summary>Kept on the road and on the line; touching the car ahead is counted apart.</summary>
@@ -606,19 +607,49 @@ public sealed class ZzLineSweep
         // the 20 m after to whatever the driver was doing there, braking to
         // braking, throttle to traction, the rest to corner; a station no line
         // was in trouble near and every line passed cleanly takes a little
-        // more. Steps shrink when the table stops getting better, and the best
-        // table on a fixed set of check lines is the one kept.
+        // more. The lessons come from a fixed set of check lines and a fresh
+        // batch besides; the candidate is driven on the check lines and taken
+        // 200 m sector by sector the way the lap learner takes it.
         int back = (int)MathF.Ceiling(learner.LookBackMeters / spacing), ahead = (int)MathF.Ceiling(learner.LookAheadMeters / spacing);
+        int length = Math.Max(1, (int)MathF.Round(learner.SectorMeters / spacing));
+        int sectors = (count + length - 1) / length;
         float[][] check = Lines(batch);
+        bool Trouble(Run r, int i) =>
+            r.StationError[i] > learner.TroubleErrorMeters || r.StationSlip[i] > learner.TroubleSlipRadians || r.StationOff[i];
+        // A spin counts as a whole sector in trouble where it happened.
+        (int Stations, float Worst) SectorTrouble(Run[] runs, int sector)
+        {
+            int stations = 0;
+            float worst = 0f;
+            foreach (Run r in runs)
+            {
+                for (int k = sector * length; k < Math.Min(count, (sector + 1) * length); k++)
+                {
+                    int i = setup.Lanes.Wrap(first + k);
+                    if (Trouble(r, i)) stations++;
+                    worst = MathF.Max(worst, r.StationError[i]);
+                }
+                if (r.Spun && (int)MathF.Round(setup.Lanes.StationOf(r.SpinS)) - first is int at && at >= sector * length && at < (sector + 1) * length)
+                    stations += length;
+            }
+            return (stations, worst);
+        }
+        float SectorSeconds(Run[] runs, int sector)
+        {
+            float seconds = 0f;
+            foreach (Run r in runs)
+                for (int k = sector * length; k < Math.Min(count, (sector + 1) * length); k++)
+                    seconds += r.StationSeconds[setup.Lanes.Wrap(first + k)];
+            return seconds;
+        }
         (int Trouble, float Time) Score(Run[] runs) =>
             (runs.Count(r => !r.Clean), runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.PositiveInfinity).Average());
-        static bool Better((int Trouble, float Time) a, (int Trouble, float Time) b) => a.Trouble < b.Trouble || (a.Trouble == b.Trouble && a.Time < b.Time);
-        (float[] C, float[] B, float[] T) best = ((float[])corner.Clone(), (float[])brake.Clone(), (float[])traction.Clone());
-        (int Trouble, float Time) bestScore = Score(DriveAll(check, corner, brake, traction));
+
+        Run[] current = DriveAll(check, corner, brake, traction);
         float step = 1f;
         int stale = 0;
         var troubleLog = new List<string> { "round,line,kind,s_m,worst_error_m,braking,throttle,corner,brake,traction" };
-        var log = new List<string> { "round,batch_trouble,check_trouble,check_clean_mean_s,step,kept,corner_mean,brake_mean,traction_mean,corner_min,brake_min,traction_min" };
+        var log = new List<string> { "round,batch_trouble,check_trouble,check_clean_mean_s,step,kept_sectors,corner_mean,brake_mean,traction_mean,corner_min,brake_min,traction_min" };
         for (int round = 1; round <= rounds; round++)
         {
             if (stale >= learner.Patience)
@@ -626,7 +657,7 @@ public sealed class ZzLineSweep
                 step *= learner.StepDecay;
                 stale = 0;
             }
-            Run[] runs = DriveAll(Lines(batch), corner, brake, traction);
+            Run[] runs = DriveAll(Lines(batch), corner, brake, traction).Concat(current).ToArray();
             var cs = Enumerable.Repeat(1f, count).ToArray();
             var bs = Enumerable.Repeat(1f, count).ToArray();
             var ts = Enumerable.Repeat(1f, count).ToArray();
@@ -657,7 +688,7 @@ public sealed class ZzLineSweep
                 for (int k = 0; k < count; k++)
                 {
                     int i = setup.Lanes.Wrap(first + k);
-                    if (r.StationError[i] > learner.TroubleErrorMeters || r.StationSlip[i] > learner.TroubleSlipRadians || r.StationOff[i])
+                    if (Trouble(r, i))
                     {
                         bool severe = r.StationError[i] > learner.SevereErrorMeters || r.StationOff[i];
                         Punish(first + k, (severe ? learner.SeverePenalty : learner.Penalty) * step, both: severe);
@@ -674,21 +705,52 @@ public sealed class ZzLineSweep
                 if (runs.Any(r => r.StationBraking[i])) bs[k] = 1f + learner.Reward * step;
                 if (runs.Any(r => r.StationThrottle[i])) ts[k] = 1f + learner.Reward * step;
             }
+            var nc = new float[count];
+            var nb = new float[count];
+            var nt = new float[count];
             for (int k = 0; k < count; k++)
             {
-                corner[k] = Math.Clamp(corner[k] * cs[k], learner.MinimumFactor, learner.MaximumFactor);
-                brake[k] = Math.Clamp(brake[k] * bs[k], learner.MinimumFactor, learner.MaximumBrakeFactor);
-                traction[k] = Math.Clamp(traction[k] * ts[k], learner.MinimumFactor, learner.MaximumFactor);
+                nc[k] = Math.Clamp(corner[k] * cs[k], learner.MinimumFactor, learner.MaximumFactor);
+                nb[k] = Math.Clamp(brake[k] * bs[k], learner.MinimumFactor, learner.MaximumBrakeFactor);
+                nt[k] = Math.Clamp(traction[k] * ts[k], learner.MinimumFactor, learner.MaximumFactor);
             }
-            corner = Smooth(corner, learner.SmoothStations / 2);
-            brake = Smooth(brake, learner.SmoothStations / 2);
-            traction = Smooth(traction, learner.SmoothStations / 2);
+            nc = Smooth(nc, learner.SmoothStations / 2);
+            nb = Smooth(nb, learner.SmoothStations / 2);
+            nt = Smooth(nt, learner.SmoothStations / 2);
 
-            Run[] onCheck = DriveAll(check, corner, brake, traction);
-            (int Trouble, float Time) score = Score(onCheck);
-            for (int n = 0; n < onCheck.Length; n++)
+            // Sector by sector, as the lap learner takes a candidate: a clean
+            // sector stays clean and gets quicker, one in trouble gets less of
+            // it, and neither hands the sector after more trouble than it had.
+            Run[] tried = DriveAll(check, nc, nb, nt);
+            int kept = 0;
+            for (int sector = 0; sector < sectors; sector++)
             {
-                Run r = onCheck[n];
+                var before = SectorTrouble(current, sector);
+                var after = SectorTrouble(tried, sector);
+                int nextBefore = sector + 1 < sectors ? SectorTrouble(current, sector + 1).Stations : 0;
+                int nextAfter = sector + 1 < sectors ? SectorTrouble(tried, sector + 1).Stations : 0;
+                if (before.Stations == 0 ? nextAfter > nextBefore : after.Stations + nextAfter > before.Stations + nextBefore)
+                    continue;
+                bool take = before.Stations == 0
+                    ? after.Stations == 0 && SectorSeconds(tried, sector) < SectorSeconds(current, sector)
+                    : after.Stations < before.Stations || (after.Stations == before.Stations && after.Worst < before.Worst - 0.05f);
+                if (!take) continue;
+                for (int k = sector * length; k < Math.Min(count, (sector + 1) * length); k++)
+                {
+                    corner[k] = nc[k];
+                    brake[k] = nb[k];
+                    traction[k] = nt[k];
+                }
+                kept++;
+            }
+            stale = kept == 0 ? stale + 1 : 0;
+            if (kept > 0)
+                current = kept == sectors ? tried : DriveAll(check, corner, brake, traction);
+
+            (int Trouble, float Time) score = Score(current);
+            for (int n = 0; n < current.Length; n++)
+            {
+                Run r = current[n];
                 if (r.Clean) continue;
                 int at = Enumerable.Range(0, count).FirstOrDefault(k => r.StationError[setup.Lanes.Wrap(first + k)] > learner.TroubleErrorMeters || r.StationOff[setup.Lanes.Wrap(first + k)], -1);
                 if (r.Spun) at = Math.Clamp((int)MathF.Round(setup.Lanes.StationOf(r.SpinS)) - first, 0, count - 1);
@@ -696,21 +758,11 @@ public sealed class ZzLineSweep
                 int i = setup.Lanes.Wrap(first + at);
                 troubleLog.Add($"{round},{n},{(r.Spun ? "spun" : r.Off > 0f ? "off" : "error")},{F((first + at) * spacing)},{F(r.WorstError)},{(r.StationBraking[i] ? 1 : 0)},{(r.StationThrottle[i] ? 1 : 0)},{F(corner[at])},{F(brake[at])},{F(traction[at])}");
             }
-            bool kept = Better(score, bestScore);
-            if (kept)
-            {
-                best = ((float[])corner.Clone(), (float[])brake.Clone(), (float[])traction.Clone());
-                bestScore = score;
-                stale = 0;
-            }
-            else
-                stale++;
-            log.Add(string.Join(",", new[] { round, runs.Count(r => !r.Clean), score.Trouble }.Select(v => v.ToString(CultureInfo.InvariantCulture))
-                .Concat(new[] { score.Time, step }.Select(F)).Append(kept ? "1" : "0")
+            log.Add(string.Join(",", new[] { round, runs.Length - current.Length - runs.Take(runs.Length - current.Length).Count(r => r.Clean), score.Trouble }.Select(v => v.ToString(CultureInfo.InvariantCulture))
+                .Concat(new[] { score.Time, step }.Select(F)).Append(kept.ToString(CultureInfo.InvariantCulture))
                 .Concat(new[] { corner.Average(), brake.Average(), traction.Average(), corner.Min(), brake.Min(), traction.Min() }.Select(F))));
             Console.WriteLine(log[^1]);
         }
-        (corner, brake, traction) = best;
 
         // The exam: fresh lines, the learned table beside one number for the stretch.
         float[][] exam = Lines(300);
@@ -868,6 +920,7 @@ public sealed class ZzLineSweep
         var stationOff = new bool[lanes.Count];
         var stationBraking = new bool[lanes.Count];
         var stationThrottle = new bool[lanes.Count];
+        var stationSeconds = new float[lanes.Count];
         var lanesDriver = (LaneDriver)car.Driver!.Controller;
         float lead0 = stretch.FromS - stretch.StartS, through = stretch.ToS - stretch.StartS, tail = stretch.EndS - stretch.StartS;
         float previous = 0f;
@@ -880,7 +933,7 @@ public sealed class ZzLineSweep
                     StrayS = float.IsNaN(strayS) ? stretch.StartS + car.Progress.TotalDistance - startDistance : strayS,
                     StrayBraking = float.IsNaN(strayS) ? lanesDriver.LastTelemetry.CommandAccel < -3f : strayBraking,
                     StationError = stationError, StationSlip = stationSlip, StationOff = stationOff,
-                    StationBraking = stationBraking, StationThrottle = stationThrottle, SpinS = car.Progress.CurrentS
+                    StationBraking = stationBraking, StationThrottle = stationThrottle, StationSeconds = stationSeconds, SpinS = car.Progress.CurrentS
                 };
             float travelled = car.Progress.TotalDistance - startDistance;
             float t = (i + 1) * dt;
@@ -893,6 +946,7 @@ public sealed class ZzLineSweep
                 stationOff[k] |= car.Progress.Region != TrackRegion.RacingSurface;
                 stationBraking[k] |= tel.CommandAccel < -3f;
                 stationThrottle[k] |= tel.CommandAccel > 1f;
+                stationSeconds[k] += dt;
             }
             if (fromAt < 0f && travelled >= lead0)
                 fromAt = t - (travelled - lead0) / MathF.Max(travelled - previous, 1e-3f) * dt;
@@ -932,7 +986,7 @@ public sealed class ZzLineSweep
             StrayS = strayS,
             StrayBraking = strayBraking,
             StationError = stationError, StationSlip = stationSlip, StationOff = stationOff,
-            StationBraking = stationBraking, StationThrottle = stationThrottle
+            StationBraking = stationBraking, StationThrottle = stationThrottle, StationSeconds = stationSeconds
         };
     }
 }
