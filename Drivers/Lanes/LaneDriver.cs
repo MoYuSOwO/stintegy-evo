@@ -31,6 +31,13 @@ public sealed record LaneDriverGains
     /// </summary>
     public bool FeelTurnLag { get; init; } = false;
 
+    /// <summary>
+    /// The hands read a tightening corner further ahead the more of the
+    /// rear's grip is already spent sideways (LaneDriver.GripLead). Off, by
+    /// the turn lag alone.
+    /// </summary>
+    public bool LeadFromGrip { get; init; } = false;
+
     /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
     public float? PlanLeadSeconds { get; init; }
 
@@ -601,6 +608,9 @@ public sealed class LaneDriver : IDriverController
         float turnIn = (Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ??
                         _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f)) +
                        (Gains.SteerLeadExtra is { } extra && extra.Length == _lanes.Count ? extra[_lanes.Wrap((int)MathF.Round(station))] : 0f);
+        if (Gains.LeadFromGrip && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null)
+            turnIn = MathF.Max(turnIn, GripLead(station, speed, turnIn));
+        LastLeadSeconds = turnIn;
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
@@ -894,6 +904,65 @@ public sealed class LaneDriver : IDriverController
 
     // What the driver feels of the two axles this step.
     private GripUse _axles;
+
+    /// <summary>How far ahead the hands read the corner this step, seconds. For probes.</summary>
+    public float LastLeadSeconds { get; private set; }
+
+    // How late the car answers the wheel against how much of the rear's grip
+    // it is already spending sideways: the nearer the tyre is to its peak,
+    // the flatter its curve, and the slower the same turn of the wheel builds
+    // the slip the corner needs. Driven at Maggotts' turn-in, the medians of
+    // 300 random lines: about 0.05 s at a third of the rear, 0.067 s on the
+    // lines that stayed on at two thirds, 0.10 s on those that ran wide at
+    // four fifths. Past that the same slope, to 0.12 s: read further ahead
+    // still, the car turned in early and ran onto the inside.
+    private static readonly (float Use, float Seconds)[] GripLeads = [(0.35f, 0.05f), (0.64f, 0.067f), (0.82f, 0.10f), (0.93f, 0.12f)];
+
+    /// <summary>
+    /// How far ahead the hands read the corner with the rear as used as it is
+    /// now: only while the corner ahead tightens, as the wheel is wound on.
+    /// Unwinding, a longer lead lets the wheel off before the corner opens
+    /// and the car runs wide out of it.
+    /// </summary>
+    private float GripLead(float station, float speed, float turnIn)
+    {
+        // The corner being wound into, over as far ahead as the longest lead:
+        // its most curved point and what the plan has the tyres doing there.
+        // One point read at that distance came and went with every ripple of
+        // a drawn line, and the lead with it; read only as far as the lead in
+        // force, the way out of Maggotts' left still looked like unwinding
+        // when the wheel was already due over to the right.
+        float here = BlendedCurvature(station);
+        float reach = MathF.Max(0f, speed) * GripLeads[^1].Seconds / _lanes.Spacing;
+        float use = 0f;
+        bool windsOn = false;
+        for (float d = 0.5f; d <= reach + 1e-3f; d += 0.5f)
+        {
+            float k = BlendedCurvature(station + d);
+            // Wound on towards it: from the straight, from less of it, or
+            // from the other way, as out of Maggotts' left into its right.
+            if (k * (k - here) <= 0f)
+                continue;
+            windsOn = true;
+            // What the plan has the tyres doing there, not what the rear
+            // feels now: into Maggotts' right the car is still crossing over
+            // from the left as the wheel has to go, the rear at a fifth of its
+            // grip, and read off it the lead came once the corner was on.
+            float v = SpeedAt(station + d);
+            use = MathF.Max(use, v * v * MathF.Abs(k) / MathF.Max(_envelope.ForTurn(k).Lateral(v), 1f));
+        }
+        if (!windsOn)
+            return turnIn;
+        if (use <= GripLeads[0].Use)
+            return GripLeads[0].Seconds;
+        for (int i = 1; i < GripLeads.Length; i++)
+            if (use <= GripLeads[i].Use)
+            {
+                float u = (use - GripLeads[i - 1].Use) / (GripLeads[i].Use - GripLeads[i - 1].Use);
+                return GripLeads[i - 1].Seconds + (GripLeads[i].Seconds - GripLeads[i - 1].Seconds) * u;
+            }
+        return GripLeads[^1].Seconds;
+    }
 
     // How late the car answers the wheel, felt. The turn lag (TurnLag) is
     // measured once, on a car already in a corner asked for a little more:

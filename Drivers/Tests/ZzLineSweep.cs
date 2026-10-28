@@ -139,10 +139,10 @@ public sealed class ZzLineSweep
     /// heat and wear front and rear, and the speed in, everything else as a
     /// learning lap has it.
     /// </summary>
-    private static Setup Build(int lines)
+    private static Setup Build(int lines, Stretch? at = null)
     {
         // Default: Brooklands and Luffield, Wellington's braking zone and both corners.
-        var stretch = new Stretch(StartS: Env("STINTEGY_SWEEP_START", 1350f), FromS: Env("STINTEGY_SWEEP_FROM", 1650f),
+        var stretch = at ?? new Stretch(StartS: Env("STINTEGY_SWEEP_START", 1350f), FromS: Env("STINTEGY_SWEEP_FROM", 1650f),
             ToS: Env("STINTEGY_SWEEP_TO", 2550f), EndS: Env("STINTEGY_SWEEP_END", 2700f));
         const int Knots = 5;
         bool full = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_FULL") == "1";
@@ -611,6 +611,127 @@ public sealed class ZzLineSweep
             _output.WriteLine(rows[^1]);
         }
         File.WriteAllLines(output, log.Concat(new[] { "" }).Concat(rows));
+    }
+
+    /// <summary>
+    /// Every corner of Silverstone, not one: random lines through each
+    /// (STINTEGY_LEAD_LINES of them, the same lines for every way of steering)
+    /// at one flat factor, with the hands as they are, a flat 0.10 s lead,
+    /// and the lead read off the rear's grip (LaneDriverGains.LeadFromGrip).
+    /// </summary>
+    [Fact]
+    public void LeadCorners()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_LEAD_LINES", 100);
+        float factor = Env("STINTEGY_CLASSIFY_FACTOR", 1f);
+        string output = Environment.GetEnvironmentVariable("STINTEGY_SWEEP_OUT") ?? Path.Combine(LaneProbes.Dir, "lead-corners.csv");
+        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        LaneSet free = LaneTrackFile.ForCircuit("silverstone", track).LanesFor(track);
+        var corners = new List<(float From, float To)>();
+        bool inside = false;
+        float start = 0f;
+        for (int i = 0; i < free.Count; i++)
+        {
+            float k = MathF.Abs(LaneSet.Curvature(
+                free.Position(i - 3, free.Offset(LaneId.Free, i - 3)),
+                free.Position(i, free.Offset(LaneId.Free, i)),
+                free.Position(i + 3, free.Offset(LaneId.Free, i + 3))));
+            if (k > 1f / 400f && !inside) { inside = true; start = i * free.Spacing; }
+            if (k < 1f / 600f && inside)
+            {
+                inside = false;
+                // Not round the start line, where a stretch would wrap.
+                if (start > 500f && i * free.Spacing < free.Count * free.Spacing - 300f)
+                    corners.Add((start, i * free.Spacing));
+            }
+        }
+        float[] flat = Enumerable.Repeat(factor, 3 * ProfileKnots).ToArray();
+        var random = new Random(4242);
+        float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
+        var rows = new List<string> { "corner_from_s,corner_to_s,hands,trouble,mean_error_m,worst_error_m,seconds" };
+        var totals = new Dictionary<string, (int Trouble, float Error, float Seconds, int Corners)>();
+        foreach ((float from, float to) in corners)
+        {
+            var stretch = new Stretch(StartS: from - 450f, FromS: from - 250f, ToS: to + 100f, EndS: to + 250f);
+            Setup setup = Build(1, stretch);
+            Condition learned = setup.Conditions[0];
+            int a = (int)MathF.Ceiling(setup.Lanes.StationOf(stretch.FromS)), b = (int)MathF.Floor(setup.Lanes.StationOf(stretch.ToS));
+            int n = setup.Lanes.Count;
+            foreach ((string name, float? lead, bool grip) in new[] { ("as they are", (float?)null, false), ("flat 0.10 s", 0.10f, false), ("from the rear's grip", null, true) })
+            {
+                var runs = new Run[lines.Length];
+                Parallel.For(0, lines.Length, i =>
+                {
+                    _steerLead = lead;
+                    _gripLead = grip;
+                    LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
+                    LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+                    SetProfile(file, setup.Lanes, stretch, flat);
+                    runs[i] = Drive(setup.Track, setup.Shipped, file, drawn, stretch, learned, setup.Compounds);
+                    _steerLead = null;
+                    _gripLead = false;
+                });
+                float Mean(Run r) => Enumerable.Range(a, b - a + 1).Average(i => r.StationError.Length == n ? r.StationError[setup.Lanes.Wrap(i)] : 0f);
+                int trouble = runs.Count(r => !r.Clean);
+                float error = runs.Average(Mean);
+                float worst = runs.Max(r => r.WorstError);
+                // Time over the lines every way of steering kept clean would be fairer; this is over each one's own clean lines.
+                float seconds = runs.Where(r => r.Clean).Select(r => r.Seconds).DefaultIfEmpty(float.NaN).Average();
+                rows.Add($"{F(from)},{F(to)},{name},{trouble},{F(error)},{F(worst)},{F(seconds)}");
+                _output.WriteLine(rows[^1]);
+                var t = totals.GetValueOrDefault(name);
+                totals[name] = (t.Trouble + trouble, t.Error + error, t.Seconds + (float.IsNaN(seconds) ? 0f : seconds), t.Corners + 1);
+            }
+        }
+        foreach (var (name, t) in totals)
+            _output.WriteLine($"all {t.Corners} corners, {name}: trouble {t.Trouble} of {t.Corners * count}, mean error {t.Error / t.Corners:F3} m");
+        File.WriteAllLines(output, rows);
+    }
+
+    /// <summary>
+    /// Through one stretch (STINTEGY_TIMELINE_FROM to _TO) with the lead read
+    /// off the rear's grip: what the rear was using and how far ahead the
+    /// hands read, step by step, on the lines that stayed on and those that did not.
+    /// </summary>
+    [Fact]
+    public void GripLeadTrace()
+    {
+        if (!LaneProbes.Enabled) return;
+        int count = (int)Env("STINTEGY_LEAD_LINES", 60);
+        float from = Env("STINTEGY_TIMELINE_FROM", 3650f), to = Env("STINTEGY_TIMELINE_TO", 3760f);
+        var stretch = new Stretch(StartS: 3675f - 450f, FromS: 3675f - 250f, ToS: 3787f + 100f, EndS: 3787f + 250f);
+        Setup setup = Build(1, stretch);
+        float[] flat = Enumerable.Repeat(1f, 3 * ProfileKnots).ToArray();
+        var random = new Random(4242);
+        float[][] lines = Enumerable.Range(0, count).Select(_ => Enumerable.Range(0, 5).Select(_ => (float)(random.NextDouble() * 2.0 - 1.0)).ToArray()).ToArray();
+        var buckets = new List<(float S, float Use, float Lead, bool Clean)>[count];
+        Parallel.For(0, count, i =>
+        {
+            _gripLead = true;
+            var rows = new List<(float, float, float)>();
+            LaneSet drawn = setup.Lanes.WithOffsets(LaneId.Free, Draw(setup.Lanes, stretch, lines[i]));
+            LaneTrackFile file = setup.Shipped.WithLanes(drawn);
+            SetProfile(file, setup.Lanes, stretch, flat);
+            Run r = Drive(setup.Track, setup.Shipped, file, drawn, stretch, setup.Conditions[0], setup.Compounds, (car, d, travelled) =>
+            {
+                float s = car.Progress.CurrentS;
+                if (s < from || s > to) return;
+                GripUse g = ((ICarGripFeel)car.Car).GripUse(car.State);
+                rows.Add((s, g.RearLateral, d.LastLeadSeconds));
+            });
+            _gripLead = false;
+            buckets[i] = rows.Select(x => (x.Item1, x.Item2, x.Item3, r.Clean)).ToList();
+        });
+        for (float s = from; s < to; s += 10f)
+            foreach (bool clean in new[] { true, false })
+            {
+                var here = buckets.SelectMany(b => b).Where(x => x.Clean == clean && x.S >= s && x.S < s + 10f).ToList();
+                if (here.Count == 0) continue;
+                float Median(IEnumerable<float> v) { var o = v.OrderBy(x => x).ToList(); return o[o.Count / 2]; }
+                _output.WriteLine($"{s,6:F0} m {(clean ? "stayed on" : "ran wide "),10}: rear lateral use {Median(here.Select(x => x.Use)):F2} (max {here.Max(x => x.Use):F2}), lead {Median(here.Select(x => x.Lead)):F3} s (max {here.Max(x => x.Lead):F3})");
+            }
+        _output.WriteLine($"in trouble: {buckets.Count(b => b.Count > 0 && !b[0].Clean)} of {count}");
     }
 
     /// <summary>A whole lap on a side lane, as LaneDriverTests drives it, with every moment off the road and the felt lag then.</summary>
@@ -1366,6 +1487,7 @@ public sealed class ZzLineSweep
     // The hands' lead for the drives on this thread, over what the environment says: for experiments that try several.
     [ThreadStatic] private static float[]? _leadExtra;
     [ThreadStatic] private static float? _steerLead;
+    [ThreadStatic] private static bool _gripLead;
 
     private static RaceCar Place(string id, LaneTrackFile file, DriverAbilities abilities, Condition c, string compound, float s, float offset, float heading, float speed, LaneSet lanes)
     {
@@ -1381,7 +1503,8 @@ public sealed class ZzLineSweep
             PursuitSeconds = Env("STINTEGY_PURSUIT", new LaneDriverGains().PursuitSeconds),
             PlanLeadSeconds = Environment.GetEnvironmentVariable("STINTEGY_PLAN_LEAD") is { } planLead ? float.Parse(planLead, CultureInfo.InvariantCulture) : null,
             SteerLeadSeconds = _steerLead ?? (Environment.GetEnvironmentVariable("STINTEGY_STEER_LEAD") is { } steerLead ? float.Parse(steerLead, CultureInfo.InvariantCulture) : null),
-            SteerLeadExtra = _leadExtra
+            SteerLeadExtra = _leadExtra,
+            LeadFromGrip = _gripLead
         } };
         var car = new RaceCar(id, model, new Driver(new DriverProfile(id, abilities), new Timed(driver)),
             new CarState { Position = here, Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X) + heading, Speed = speed })
