@@ -12,41 +12,6 @@ namespace StintegyEVO.Drivers.Lanes;
 public sealed record LaneDriverGains
 {
     /// <summary>
-    /// How far ahead the curvature feedforward is read, in seconds of travel,
-    /// in place of the car's own turn-in delay (<see cref="TurnLag"/>), which
-    /// is what it reads ahead by when this is unset. Only for probes.
-    ///
-    /// It used to be a fixed 0.15 s, swept on a car that took that long to
-    /// answer the wheel. The car since answers in 0.05 to 0.07 s, and read
-    /// 0.15 s ahead every exit was steered as if it had already opened up:
-    /// the car ran half a metre wide of the line out of every corner, by as
-    /// much as the feedback needed to pull the difference back, and onto
-    /// the barrier out of Portier, where the wall stands on the kerb.
-    /// </summary>
-    public float? CurvaturePreviewSeconds { get; init; }
-
-    /// <summary>
-    /// The hands read the corner ahead by the car's turn lag plus however
-    /// much later than that they have felt the car answer, braking about as
-    /// hard as now (LaneDriver.FeelTurnLag). Off, by the turn lag alone.
-    /// </summary>
-    public bool FeelTurnLag { get; init; } = false;
-
-    /// <summary>
-    /// The hands read a tightening corner further ahead the more of the
-    /// rear's grip is already spent sideways (LaneDriver.GripLead). Off, by
-    /// the turn lag alone.
-    /// </summary>
-    public bool LeadFromGrip { get; init; } = false;
-
-    /// <summary>
-    /// The hands read the corner ahead by how long the car takes to turn in
-    /// at this speed under the braking it has on (TurnLag, a turn-in the
-    /// size corners are turned into), in place of the small-step turn lag.
-    /// </summary>
-    public bool LeadFromTurnIn { get; init; } = true;
-
-    /// <summary>
     /// What the notes learned of the circuit beforehand: the steering added
     /// station by station, the corner, braking and traction factors on the
     /// envelope, and the circuit's own tyre and energy rungs. Off, the plan
@@ -56,72 +21,6 @@ public sealed record LaneDriverGains
     /// tyres had. What a driver learns as it drives is apart from these.
     /// </summary>
     public bool UseNotes { get; init; }
-
-    /// <summary>
-    /// Brakes only over the plan, Simplix's way: a car a little under the
-    /// plan's speed in a braking zone has the brakes let off at once. For
-    /// probes, off: the speed tracked as everywhere else.
-    /// </summary>
-    public bool BrakeOnlyOverPlan { get; init; } = true;
-
-    /// <summary>
-    /// The hands keep winding on lock while the car turns less than they
-    /// asked, and take it off while it turns more: what is left of the
-    /// curvature over this many seconds is added to the wheel. None, the
-    /// wheel is the estimate's alone. For probes.
-    /// </summary>
-    public float? LockIntegralSeconds { get; init; }
-
-    /// <summary>
-    /// The hands work out the lock themselves rather than take the car's
-    /// estimate: the same geometry and slip angles, but each axle cornering
-    /// on what the pedals leave of it and on the grip it is felt to have
-    /// now, not the whole circle read off last step's loads. Off by default.
-    /// </summary>
-    public bool OwnLock { get; init; }
-
-    /// <summary>
-    /// The lock the car's estimate gives, put right for a car being turned
-    /// in rather than one already round: the front given the extra it
-    /// takes to start the car rotating as fast as the line ahead winds on,
-    /// the rear relieved of it. For probes.
-    /// </summary>
-    public bool LockForRotation { get; init; }
-
-    /// <summary>
-    /// The slip angles read where the car is cornering now, not where it is
-    /// asked to be: asked for more than it has yet, near the rear's limit
-    /// the steady answer reads a slide the car is not in and takes lock off.
-    /// For probes.
-    /// </summary>
-    public bool LockWhereTheCarIs { get; init; }
-
-    /// <summary>
-    /// The slip angles' part of the lock faded in by how much of the corner
-    /// asked for the car is already cornering, not by how much of all its
-    /// grip: read against all of it, a gentle bend taken fast on a car
-    /// pressed down by its wings never counted as loaded, and half the
-    /// lock it wanted was left off.
-    /// </summary>
-    public bool FadeByAsk { get; init; } = true;
-
-    /// <summary>
-    /// The line's heading turned smoothly from one station to the next, as
-    /// the line itself does, rather than held along each two-metre chord
-    /// and snapped round at the next station. Off, round a bend the heading
-    /// error jumped by the bend's turn over a station every few frames and
-    /// the wheel chattered with it.
-    /// </summary>
-    public bool SmoothHeading { get; init; } = true;
-
-    /// <summary>How far ahead the plan reads the corner it brakes for (LeadCurvatures), apart from the hands. Only for probes.</summary>
-    public float? PlanLeadSeconds { get; init; }
-
-    /// <summary>How far ahead the hands read the corner, apart from the plan. Only for probes.</summary>
-    public float? SteerLeadSeconds { get; init; }
-
-    /// <summary>Seconds more the hands read ahead with the car at each station, on top of the rest. Only for probes.</summary>
-    public float[]? SteerLeadExtra { get; init; }
 
     /// <summary>
     /// Feedback is pure pursuit in the path's frame: aim at a point this many
@@ -185,18 +84,6 @@ public sealed record LaneDriverGains
         new(Corner: 1.0000f, Brake: 1.0000f, Traction: 0.9000f, Cap: 1.0000f),
     ];
 
-    /// <summary>
-    /// Share of the axles' live grip the command may ask for: what a tyre
-    /// holds, not its peak, so the physics' own figure for it. It was 0.90,
-    /// set when a tyre held nine tenths of its peak, and stayed there when
-    /// the steering stopped winding itself off and the tyre came to hold
-    /// 0.98 (the car's ICarGripFeel.SustainablePeakShare, when this is not set). The envelope the plan is
-    /// drawn on moved with the physics and the hands did not: the plan asked
-    /// 93% of the peak of hands that would give 90, and with nothing over to
-    /// steer back with, a car a little late into a long corner ran wider all
-    /// the way round it, at Zandvoort's Scheivlak off the road.
-    /// </summary>
-    public float? AxleCapShare { get; init; }
 
     public float SpeedGain { get; init; } = 6f;
 
@@ -679,7 +566,6 @@ public sealed class LaneDriver : IDriverController
         // across the lane's own heading, and bends by what its sideways
         // speed changes over the road the car covers.
         float moveSpeed = MoveAt((int)MathF.Round(station), 0f).Speed;
-        LastMoveSpeed = moveSpeed;
         float pathHeading = MathF.Atan2(tangent.Y, tangent.X) - MathF.Atan2(moveSpeed, MathF.Max(speed, 5f));
         Vector2 toCar = car.Position - refPosition;
         float leftError = tangent.X * toCar.Y - tangent.Y * toCar.X;
@@ -688,24 +574,14 @@ public sealed class LaneDriver : IDriverController
         // be crawling or facing across it, and the way it moves says little.
         float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
         UpdateRejoin(context, car, leftError, facing);
-        float turnIn = (Gains.SteerLeadSeconds ?? Gains.CurvaturePreviewSeconds ??
-                        _turnLag.Seconds(speed) + (Gains.FeelTurnLag ? FeltExtraLag(MathF.Max(0f, -_lastAccel)) : 0f)) +
-                       (Gains.SteerLeadExtra is { } extra && extra.Length == _lanes.Count ? extra[_lanes.Wrap((int)MathF.Round(station))] : 0f);
-        if (Gains.LeadFromTurnIn && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null && WindsOn(station, speed))
+        float turnIn = _turnLag.Seconds(speed);
+        if (WindsOn(station, speed))
             turnIn = MathF.Max(turnIn, _turnLag.Seconds(speed, PlannedBraking(station, speed) / MathF.Max(_envelope.Brake(speed), 1f)));
-        if (Gains.LeadFromGrip && Gains.SteerLeadSeconds is null && Gains.CurvaturePreviewSeconds is null)
-            turnIn = MathF.Max(turnIn, GripLead(station, speed, turnIn));
-        LastLeadSeconds = turnIn;
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
         float feedforward = BlendedCurvature(previewStation) + BlendedSteer(previewStation) + moveCurvature;
         float here = BlendedCurvature(station);
-        LastHereCurvature = here;
-        // How fast the line ahead asks the car to wind on its rotation.
-        _yawAccelAsk = speed * speed * (BlendedCurvature(previewStation + 1f) - BlendedCurvature(previewStation - 1f)) / (2f * _lanes.Spacing) +
-                       feedforward * MotionOf(car).StepLongitudinalAccel;
-
         float pursuit = MathF.Max(Gains.MinimumPursuitMeters, MathF.Max(speed, 0f) * Gains.PursuitSeconds);
         // What the axles will hold at the braking being done right now.
         float braking = Math.Clamp(-MotionOf(car).StepLongitudinalAccel / MathF.Max(_envelope.Brake(speed), 1f), 0f, 1f);
@@ -751,8 +627,8 @@ public sealed class LaneDriver : IDriverController
             // A mistake is a misreading of the grip, so the hands believe it too.
             float misread = _performance?.CornerOverstep ?? 0f;
             float capShare = _style is { } capStyle
-                ? ((Gains.AxleCapShare ?? _feel.SustainablePeakShare) * capStyle.Cap + (_performance?.LimitOveruse ?? 0f)) * (1f + 2f * misread)
-                : ((Gains.AxleCapShare ?? _feel.SustainablePeakShare) + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority * (1f + 2f * misread);
+                ? (_feel.SustainablePeakShare * capStyle.Cap + (_performance?.LimitOveruse ?? 0f)) * (1f + 2f * misread)
+                : ((_feel.SustainablePeakShare) + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority * (1f + 2f * misread);
             available = Gains.CommandLateralShare * capShare * MathF.Max(1f, MathF.Min(front, rear));
         }
         float lean = att.LateralGravityDemand(StandardGravity, speed);
@@ -845,7 +721,7 @@ public sealed class LaneDriver : IDriverController
                       _envelope.Loss(speed);
         // And brakes only over it, as Simplix does: under the plan the car
         // has the braking curve still to reach.
-        if (accel < 0f && speed < target && Gains.BrakeOnlyOverPlan)
+        if (accel < 0f && speed < target)
             accel = 0f;
         // Flat out where the plan is. Where the speed wanted a moment ahead
         // is no less than full drive would bring, the plan is the motor's
@@ -977,8 +853,6 @@ public sealed class LaneDriver : IDriverController
                 accel = MathF.Min(accel, MathF.Max(_lastAccel, 0f) + FootThrottleRate * MathF.Max(dt, 0f));
         }
         _lastAccel = accel;
-        if (Gains.FeelTurnLag)
-            FeelTurn(curvature, MotionOf(car).Curvature, speed, accel, dt);
 
         LastTelemetry = new LaneDriverTelemetry(
             -leftError, headingError, target, feedforward, curvature, accel, Range, Side, wanted, curvature >= 0f ? upper : lower);
@@ -987,16 +861,7 @@ public sealed class LaneDriver : IDriverController
         // The lock for that curvature as a driver who knew the car exactly
         // would put on (SteeringEstimate), misjudged by this driver's hands;
         // the line takes up what is left.
-        float steer = (Gains.OwnLock ? LockFor(car.Steering, curvature)
-                       : Gains.LockForRotation || Gains.LockWhereTheCarIs || Gains.FadeByAsk ? TurnInLock(car, curvature)
-                       : car.Steering.AngleFor(curvature)) *
-                      (1f + (_performance?.SteeringRead ?? 0f));
-        if (Gains.LockIntegralSeconds is { } hold && hold > 0f)
-        {
-            _lock = Math.Clamp(_lock + car.Steering.WheelBaseMeters * (curvature - MotionOf(car).Curvature) * dt / hold, -0.03f, 0.03f);
-            steer += _lock;
-        }
-        LastLock = _lock;
+        float steer = LockFor(car, curvature) * (1f + (_performance?.SteeringRead ?? 0f));
         return new DriverInput(steer, accel)
         {
             Axles = new AxleBias(BrakeBias(tyres, accel), 0f),
@@ -1008,54 +873,13 @@ public sealed class LaneDriver : IDriverController
     private GripUse _axles;
 
     /// <summary>
-    /// The lock for a curvature as these hands judge it (LaneDriverGains.OwnLock):
-    /// the estimate's own reckoning, the wheels turned past the corner's
-    /// angle by the front's slip angle less the rear's, but each end read
-    /// off what the brakes or the drive leave it, as the tyres themselves
-    /// share it out, and off the grip the seat feels it has this step.
-    /// Under the brakes the rear sits near the top of its curve, where a
-    /// couple of hundredths of grip misread is a slip angle twice the
-    /// size; read off the whole circle it came out bigger than the front's,
-    /// and the hands took lock off a car that was not sliding.
+    /// The estimate's lock (SteeringEstimate.AngleFor), with the slip angles'
+    /// part faded in by how much of the corner asked for the car is already
+    /// cornering, not by how much of all its grip: read against all of it, a
+    /// gentle bend taken fast on a car pressed down by its wings never
+    /// counted as loaded, and half the lock it wanted was left off.
     /// </summary>
-    private float LockFor(SteeringEstimate estimate, float curvature)
-    {
-        const float epsilon = 1e-4f;
-        float wheelBase = MathF.Max(estimate.WheelBaseMeters, epsilon);
-        float frontArm = MathF.Max(estimate.FrontArmMeters, epsilon);
-        float rearArm = MathF.Max(estimate.RearArmMeters, epsilon);
-        static float Circle(float use)
-        {
-            float u = Math.Clamp(use, 0f, 0.99f);
-            return MathF.Sqrt(1f - u * u);
-        }
-        float frontGrip = _axles.FrontGripAccel > epsilon ? _axles.FrontGripAccel : estimate.FrontGripAccel;
-        float rearGrip = _axles.RearGripAccel > epsilon ? _axles.RearGripAccel : estimate.RearGripAccel;
-        float frontCapacity = MathF.Max(frontGrip * Circle(_axles.FrontLongitudinal), epsilon);
-        float rearCapacity = MathF.Max(rearGrip * Circle(_axles.RearLongitudinal), epsilon);
-        float holdable = SteeringEstimate.InversionShare * MathF.Min(frontCapacity * wheelBase / rearArm, rearCapacity * wheelBase / frontArm);
-        float corner = Math.Clamp(estimate.LateralDemand(curvature), -holdable, holdable);
-        float slip = estimate.FrontPeakSlipAngleRatio * _feel.SlipAngleAtShare(rearArm / wheelBase * corner / frontCapacity) -
-                     _feel.SlipAngleAtShare(frontArm / wheelBase * corner / rearCapacity);
-        float loaded = SteeringEstimate.FullSlipCompensationShare * MathF.Max(estimate.FrontGripAccel + estimate.RearGripAccel, epsilon);
-        float load = Math.Clamp(MathF.Abs(estimate.ActualLateralAccel) / loaded, 0f, 1f);
-        float angle = MathF.Atan(wheelBase * curvature) + slip * load +
-                      estimate.CurvatureFeedbackGain * wheelBase * (curvature - estimate.ActualCurvature);
-        float maximum = MathF.Max(estimate.MaxSteerAngleRadians, 0f);
-        return Math.Clamp(angle, -maximum, maximum);
-    }
-
-    // The yaw acceleration the line ahead asks for this step, rad/s^2 (LockForRotation).
-    private float _yawAccelAsk;
-
-    /// <summary>
-    /// The estimate's lock (SteeringEstimate.AngleFor), the slip-angle part
-    /// read for a car turning in (LockForRotation, LockWhereTheCarIs).
-    /// Under the brakes the rear works near its limit, where the car turns
-    /// a great deal for a little lock and a few hundredths of the rear's
-    /// share read as a slip angle several milliradians off.
-    /// </summary>
-    private float TurnInLock(RaceCarSnapshot car, float curvature)
+    private float LockFor(RaceCarSnapshot car, float curvature)
     {
         const float epsilon = 1e-4f;
         SteeringEstimate estimate = car.Steering;
@@ -1066,22 +890,12 @@ public sealed class LaneDriver : IDriverController
         float rearCapacity = MathF.Max(estimate.RearGripAccel, epsilon);
         float holdable = SteeringEstimate.InversionShare * MathF.Min(frontCapacity * wheelBase / rearArm, rearCapacity * wheelBase / frontArm);
         float asked = estimate.LateralDemand(curvature);
-        float corner = Gains.LockWhereTheCarIs && MathF.Abs(estimate.ActualLateralAccel) < MathF.Abs(asked)
-            ? MathF.CopySign(MathF.Abs(estimate.ActualLateralAccel), asked)
-            : asked;
-        corner = Math.Clamp(corner, -holdable, holdable);
-        // Rotating the car faster takes a moment about its centre: the front
-        // pushes that much harder and the rear that much less.
-        float turning = Gains.LockForRotation
-            ? _model.Spec.YawInertiaKgM2 * _yawAccelAsk / (MathF.Max(_model.TotalMassKg(_plan), 1f) * wheelBase)
-            : 0f;
-        float front = Math.Clamp(rearArm / wheelBase * corner + turning, -holdable, holdable);
-        float rear = Math.Clamp(frontArm / wheelBase * corner - turning, -holdable, holdable);
+        float corner = Math.Clamp(asked, -holdable, holdable);
+        float front = rearArm / wheelBase * corner;
+        float rear = frontArm / wheelBase * corner;
         float slip = estimate.FrontPeakSlipAngleRatio * _feel.SlipAngleAtShare(front / frontCapacity) -
                      _feel.SlipAngleAtShare(rear / rearCapacity);
-        float loaded = Gains.FadeByAsk
-            ? MathF.Max(MathF.Abs(asked), epsilon)
-            : SteeringEstimate.FullSlipCompensationShare * MathF.Max(estimate.FrontGripAccel + estimate.RearGripAccel, epsilon);
+        float loaded = MathF.Max(MathF.Abs(asked), epsilon);
         float load = Math.Clamp(MathF.Abs(estimate.ActualLateralAccel) / loaded, 0f, 1f);
         float angle = MathF.Atan(wheelBase * curvature) + slip * load +
                       estimate.CurvatureFeedbackGain * wheelBase * (curvature - estimate.ActualCurvature);
@@ -1089,37 +903,7 @@ public sealed class LaneDriver : IDriverController
         return Math.Clamp(angle, -maximum, maximum);
     }
 
-    // Lock wound on beyond the estimate's, radians (LockIntegralSeconds).
-    private float _lock;
 
-    /// <summary>Lock wound on beyond the estimate's this step, radians. For probes.</summary>
-    public float LastLock { get; private set; }
-
-    /// <summary>How far ahead the hands read the corner this step, seconds. For probes.</summary>
-    public float LastLeadSeconds { get; private set; }
-
-    /// <summary>How fast a lane move under way carries the line sideways, m/s, this step. For probes.</summary>
-    public float LastMoveSpeed { get; private set; }
-
-    /// <summary>The line's own curvature where the car is, this step. For probes.</summary>
-    public float LastHereCurvature { get; private set; }
-
-    // How late the car answers the wheel against how much of the rear's grip
-    // it is already spending sideways: the nearer the tyre is to its peak,
-    // the flatter its curve, and the slower the same turn of the wheel builds
-    // the slip the corner needs. Driven at Maggotts' turn-in, the medians of
-    // 300 random lines: about 0.05 s at a third of the rear, 0.067 s on the
-    // lines that stayed on at two thirds, 0.10 s on those that ran wide at
-    // four fifths. Past that the same slope, to 0.12 s: read further ahead
-    // still, the car turned in early and ran onto the inside.
-    private static readonly (float Use, float Seconds)[] GripLeads = [(0.35f, 0.05f), (0.64f, 0.067f), (0.82f, 0.10f), (0.93f, 0.12f)];
-
-    /// <summary>
-    /// How far ahead the hands read the corner with the rear as used as it is
-    /// now: only while the corner ahead tightens, as the wheel is wound on.
-    /// Unwinding, a longer lead lets the wheel off before the corner opens
-    /// and the car runs wide out of it.
-    /// </summary>
     /// <summary>
     /// The braking the plan has over the turn-in to come, m/s², not the foot's
     /// now: into a slow corner the brakes come off half their pressure in a
@@ -1153,145 +937,6 @@ public sealed class LaneDriver : IDriverController
                 return true;
         }
         return false;
-    }
-
-    private float GripLead(float station, float speed, float turnIn)
-    {
-        // The corner being wound into, over as far ahead as the longest lead:
-        // its most curved point and what the plan has the tyres doing there.
-        // One point read at that distance came and went with every ripple of
-        // a drawn line, and the lead with it; read only as far as the lead in
-        // force, the way out of Maggotts' left still looked like unwinding
-        // when the wheel was already due over to the right.
-        float here = BlendedCurvature(station);
-        float reach = MathF.Max(0f, speed) * GripLeads[^1].Seconds / _lanes.Spacing;
-        float use = 0f;
-        bool windsOn = false;
-        for (float d = 0.5f; d <= reach + 1e-3f; d += 0.5f)
-        {
-            float k = BlendedCurvature(station + d);
-            // Wound on towards it: from the straight, from less of it, or
-            // from the other way, as out of Maggotts' left into its right.
-            if (k * (k - here) <= 0f)
-                continue;
-            windsOn = true;
-            // What the plan has the tyres doing there, not what the rear
-            // feels now: into Maggotts' right the car is still crossing over
-            // from the left as the wheel has to go, the rear at a fifth of its
-            // grip, and read off it the lead came once the corner was on.
-            float v = SpeedAt(station + d);
-            use = MathF.Max(use, v * v * MathF.Abs(k) / MathF.Max(_envelope.ForTurn(k).Lateral(v), 1f));
-        }
-        if (!windsOn)
-            return turnIn;
-        if (use <= GripLeads[0].Use)
-            return GripLeads[0].Seconds;
-        for (int i = 1; i < GripLeads.Length; i++)
-            if (use <= GripLeads[i].Use)
-            {
-                float u = (use - GripLeads[i - 1].Use) / (GripLeads[i].Use - GripLeads[i - 1].Use);
-                return GripLeads[i - 1].Seconds + (GripLeads[i].Seconds - GripLeads[i - 1].Seconds) * u;
-            }
-        return GripLeads[^1].Seconds;
-    }
-
-    // How late the car answers the wheel, felt. The turn lag (TurnLag) is
-    // measured once, on a car already in a corner asked for a little more:
-    // turned into Maggotts' right-hander under the brakes the car took 0.07
-    // to 0.10 s to make the path the hands asked for, against the 0.03 to
-    // 0.05 the hands read ahead by, and fell behind the line by more than a
-    // metre on 130 of 300 random lines. Read 0.10 s ahead there, none did;
-    // read that far ahead everywhere, the plan slowed every corner and
-    // corners taken off the brakes wanted less. So the hands feel it, as a
-    // driver feels a car that is slow to turn in: what they asked for over
-    // the last moments against the path the car made, the delay that best
-    // lines one up behind the other, kept for how hard the car was braking.
-    private const int FeelWindow = 36;
-    private const int FeelMaxShift = 18;
-    private const int FeelEvery = 6;
-    private const float FeelMinimumTurn = 5f;
-    private const float FeelRate = 0.3f;
-    private const float FeelMaxExtraSeconds = 0.15f;
-    private static readonly float[] FeelBrakings = [0f, 10f, 20f, 30f];
-    private readonly float[] _asked = new float[FeelWindow + FeelMaxShift];
-    private readonly float[] _made = new float[FeelWindow + FeelMaxShift];
-    private readonly float[] _feltBraking = new float[FeelWindow + FeelMaxShift];
-    private readonly float[] _extraLag = new float[4];
-    private int _feelSamples;
-
-    /// <summary>How much later than its turn lag the car has been felt to answer, coasting to braking hard. For probes.</summary>
-    public IReadOnlyList<float> FeltExtraLags => _extraLag;
-
-    /// <summary>How much later than its turn lag the car has been felt to answer, braking this hard.</summary>
-    private float FeltExtraLag(float braking)
-    {
-        if (braking <= FeelBrakings[0])
-            return _extraLag[0];
-        for (int i = 1; i < FeelBrakings.Length; i++)
-            if (braking <= FeelBrakings[i])
-            {
-                float t = (braking - FeelBrakings[i - 1]) / (FeelBrakings[i] - FeelBrakings[i - 1]);
-                return _extraLag[i - 1] + (_extraLag[i] - _extraLag[i - 1]) * t;
-            }
-        return _extraLag[^1];
-    }
-
-    private void FeelTurn(float askedCurvature, float madeCurvature, float speed, float accel, float dt)
-    {
-        int n = _asked.Length;
-        Array.Copy(_asked, 1, _asked, 0, n - 1);
-        Array.Copy(_made, 1, _made, 0, n - 1);
-        Array.Copy(_feltBraking, 1, _feltBraking, 0, n - 1);
-        float v2 = speed * speed;
-        _asked[n - 1] = askedCurvature * v2;
-        _made[n - 1] = madeCurvature * v2;
-        _feltBraking[n - 1] = MathF.Max(0f, -accel);
-        _feelSamples++;
-        if (_feelSamples < n || _feelSamples % FeelEvery != 0 || speed < 15f)
-            return;
-        // Only a real turn of the wheel says how late the car answers it.
-        float low = float.PositiveInfinity, high = float.NegativeInfinity;
-        for (int k = n - FeelWindow - FeelMaxShift; k < n; k++)
-        {
-            low = MathF.Min(low, _asked[k]);
-            high = MathF.Max(high, _asked[k]);
-        }
-        if (high - low < FeelMinimumTurn)
-            return;
-        int best = 0;
-        float bestError = float.PositiveInfinity;
-        for (int shift = 0; shift <= FeelMaxShift; shift++)
-        {
-            float sxy = 0f, sxx = 0f, syy = 0f;
-            for (int k = n - FeelWindow; k < n; k++)
-            {
-                float x = _asked[k - shift], y = _made[k];
-                sxy += x * y;
-                sxx += x * x;
-                syy += y * y;
-            }
-            if (sxx <= 1e-3f)
-                continue;
-            float error = syy - sxy * sxy / sxx;
-            if (error < bestError)
-            {
-                bestError = error;
-                best = shift;
-            }
-        }
-        float braking = 0f;
-        for (int k = n - FeelWindow; k < n; k++)
-            braking += _feltBraking[k];
-        braking /= FeelWindow;
-        float extra = Math.Clamp(best * dt - _turnLag.Seconds(speed), 0f, FeelMaxExtraSeconds);
-        for (int i = 0; i < FeelBrakings.Length; i++)
-        {
-            float width = FeelBrakings[1] - FeelBrakings[0];
-            float weight = Math.Clamp(1f - MathF.Abs(braking - FeelBrakings[i]) / width, 0f, 1f);
-            if (i == FeelBrakings.Length - 1 && braking > FeelBrakings[i])
-                weight = 1f;
-            _extraLag[i] += FeelRate * weight * (extra - _extraLag[i]);
-        }
     }
 
     /// <summary>
@@ -2279,7 +1924,7 @@ public sealed class LaneDriver : IDriverController
         for (int k = 0; k < n; k++)
         {
             float v = speedGuess[k];
-            float seconds = Gains.PlanLeadSeconds ?? Gains.CurvaturePreviewSeconds ?? _turnLag.Seconds(v);
+            float seconds = _turnLag.Seconds(v);
             int lead = (int)MathF.Ceiling(MathF.Max(0f, v) * seconds / _lanes.Spacing);
             float sharpest = _leadBuffer[k];
             for (int j = 1; j <= lead && k + j < n; j++)
@@ -2363,15 +2008,13 @@ public sealed class LaneDriver : IDriverController
         float u = station - i0;
         Vector2 a = BlendedPosition(i0, Range, Side);
         Vector2 b = BlendedPosition(i0 + 1, Range, Side);
-        Vector2 tangent = b - a;
-        if (Gains.SmoothHeading)
-        {
-            // Each station's own heading, through its neighbours, turned
-            // between them as the car goes.
-            Vector2 before = Vector2.Normalize(b - BlendedPosition(i0 - 1, Range, Side));
-            Vector2 after = Vector2.Normalize(BlendedPosition(i0 + 2, Range, Side) - a);
-            tangent = before + (after - before) * u;
-        }
+        // Each station's own heading, through its neighbours, turned between
+        // them as the car goes. Held along each two-metre chord instead, the
+        // heading error jumped at every station round a bend and the wheel
+        // chattered with it.
+        Vector2 before = Vector2.Normalize(b - BlendedPosition(i0 - 1, Range, Side));
+        Vector2 after = Vector2.Normalize(BlendedPosition(i0 + 2, Range, Side) - a);
+        Vector2 tangent = before + (after - before) * u;
         float length = tangent.Length();
         tangent = length > 1e-5f ? tangent / length : new Vector2(1f, 0f);
         return (a + (b - a) * u, tangent);
