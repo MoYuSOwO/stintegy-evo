@@ -213,6 +213,16 @@ public sealed class LaneDriver : IDriverController
     private readonly float[][] _speed = new float[LaneSet.LaneCount][];
     private LaneSet _lanes = null!;
     private LaneEnvelope _envelope;
+    private readonly List<Leader> _leaders = new();
+    private readonly Dictionary<(int, int, int), LaneEnvelope> _wakeEnvelopes = new();
+
+    /// <summary>A car ahead as the plan reads it: how far behind it the driver is in time, and how far off the racing line it keeps.</summary>
+    private readonly record struct Leader(float TimeGap, float HalfLengths, float OffLine, CarWake Wake, float Width);
+
+    // The furthest ahead a car can be and still put its wake on a corner
+    // this plan reaches: one 80 m ahead at the end of a straight is a few
+    // tens of metres ahead by the apex, where both are slower.
+    private const float LeaderLookMeters = 300f;
     private readonly Dictionary<string, float> _referenceLateral = new();
     private LanePerformance? _performance;
     private readonly float[][] _corner = new float[LaneSet.LaneCount][];
@@ -485,7 +495,7 @@ public sealed class LaneDriver : IDriverController
         _familiarSegment = -1;
         _scaredInSegment = false;
         _familiarLap = int.MinValue;
-        PlanAhead(context.Car, context.Environment.SurfaceGripScalar, 0f);
+        PlanAhead(context, 0f);
         _sincePlan = PlanIntervalSeconds * Phase(context.Car.Id);
     }
 
@@ -533,7 +543,7 @@ public sealed class LaneDriver : IDriverController
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
         {
-            PlanAhead(car, context.Environment.SurfaceGripScalar, _sincePlan);
+            PlanAhead(context, _sincePlan);
             _sincePlan = 0f;
         }
         ScaleMove(car, dt);
@@ -1599,12 +1609,15 @@ public sealed class LaneDriver : IDriverController
     }
 
     /// <summary>The road ahead of the car on every lane, on the grip it has now.</summary>
-    private void PlanAhead(RaceCarSnapshot car, float roadGrip, float dt)
+    private void PlanAhead(in DriverContext context, float dt)
     {
+        RaceCarSnapshot car = context.Car;
+        float roadGrip = context.Environment.SurfaceGripScalar;
         int start = (int)MathF.Floor(_lanes.StationOf(car.TrackS));
         int n = _aheadSpeed.Length;
         bool sides = Range > 1e-3f || TargetRange > 1e-3f;
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
+        PlanTheWake(car, context.Frame, context.CarSnapshotIndex, start, n + 1, sides);
         for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             if (!Reads(lane))
@@ -1704,6 +1717,97 @@ public sealed class LaneDriver : IDriverController
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The air each station ahead will be in behind the cars ahead, folded
+    /// into the corner and brake factors there. The plan's envelope is the
+    /// air the car is in now; but the car ahead is not always where it is
+    /// now. Held at the same gap in time, it is closer where both are slower,
+    /// into the corners, and further on the straights, and it keeps as far
+    /// off the racing line as it is now. Where the air will be dirtier than
+    /// here a corner and its braking are taken at less, where cleaner at more.
+    /// With nobody near ahead nothing changes.
+    /// </summary>
+    private void PlanTheWake(RaceCarSnapshot car, RaceFrameSnapshot frame, int self, int start, int count, bool sides)
+    {
+        _leaders.Clear();
+        float length = MathF.Max(car.TrackLengthMeters, 1f);
+        float speed = MathF.Max(car.SpeedMetersPerSecond, 1f);
+        for (int j = 0; j < frame.Count; j++)
+        {
+            if (j == self)
+                continue;
+            RaceCarSnapshot other = frame[j];
+            if (other.Wake is not { } wake)
+                continue;
+            float along = ((other.TrackS - car.TrackS) % length + length) % length;
+            if (along <= 0f || along > MathF.Min(LeaderLookMeters, length * 0.5f))
+                continue;
+            // A car pointed the other way punches its hole the other way.
+            if (MathF.Cos(other.VelocityHeadingRadians - car.VelocityHeadingRadians) <= 0.5f)
+                continue;
+            int theirs = (int)MathF.Round(_lanes.StationOf(other.TrackS));
+            _leaders.Add(new Leader(along / speed, 0.5f * (car.LengthMeters + other.LengthMeters),
+                other.TrackD - _lanes.Offset(LaneId.Free, theirs), wake, other.WidthMeters));
+        }
+        if (_leaders.Count == 0)
+            return;
+
+        _wakeEnvelopes.Clear();
+        var now = new CarAir(car.AirVelocityDeficit, car.DownforceVelocityDeficit, car.WakeDownforceLoss);
+        (int, int, int) nowKey = AirKey(now);
+        LaneEnvelope here = WakeEnvelope(car, nowKey);
+        for (int lane = 0; lane < (sides ? LaneSet.LaneCount : 1); lane++)
+        {
+            for (int k = 0, n = _lanes.Count; k < Math.Min(count, n); k++)
+            {
+                int i = _lanes.Wrap(start + k);
+                float v = _speed[lane][i] > 1f ? _speed[lane][i] : car.SpeedMetersPerSecond;
+                float mine = _lanes.Offset((LaneId)lane, i);
+                CarAir strongest = CarAir.Clean;
+                foreach (Leader leader in _leaders)
+                {
+                    float ahead = leader.TimeGap * v;
+                    float gap = ahead - leader.HalfLengths;
+                    if (gap <= 0f || gap >= WakeAir.ReachMeters)
+                        continue;
+                    int at = i + (int)MathF.Round(ahead / _lanes.Spacing);
+                    float theirs = _lanes.Offset(LaneId.Free, at) + leader.OffLine;
+                    strongest = WakeAir.Strongest(strongest, WakeAir.Behind(leader.Wake, leader.Width, gap, theirs - mine));
+                }
+                (int, int, int) key = AirKey(WakeAir.Felt(strongest, car.DirtyAirSensitivity));
+                if (key == nowKey)
+                    continue;
+                LaneEnvelope there = WakeEnvelope(car, key);
+                _corner[lane][i] *= there.Lateral(v) / here.Lateral(v);
+                _brake[lane][i] *= there.Brake(v) / here.Brake(v);
+            }
+        }
+        // The planning copy back in the air the car is in.
+        _motion.Assume(_plan, _motion.Motion(_plan), now);
+    }
+
+    // The air in steps fine enough that the grip between two of them is a
+    // tenth of a percent, so a plan reads a few dozen envelopes, not one a station.
+    private const float TowStep = 0.01f;
+    private const float DownforceStep = 0.005f;
+
+    private static (int, int, int) AirKey(CarAir air) => (
+        (int)MathF.Round(air.VelocityDeficit / TowStep),
+        (int)MathF.Round(air.DownforceVelocityDeficit / DownforceStep),
+        (int)MathF.Round(air.DownforceLoss / DownforceStep));
+
+    /// <summary>The car's envelope as it is now but in other air: only the ratio to the one in the air here is read.</summary>
+    private LaneEnvelope WakeEnvelope(RaceCarSnapshot car, (int Tow, int Deficit, int Loss) key)
+    {
+        if (_wakeEnvelopes.TryGetValue(key, out LaneEnvelope known))
+            return known;
+        var air = new CarAir(key.Tow * TowStep, key.Deficit * DownforceStep, key.Loss * DownforceStep);
+        _motion.Assume(_plan, _motion.Motion(_plan), air);
+        LaneEnvelope envelope = LaneEnvelope.From(_plan, _carEnvelope, _feel, car.Strategy);
+        _wakeEnvelopes[key] = envelope;
+        return envelope;
     }
 
     private float SpeedAt(float station)
