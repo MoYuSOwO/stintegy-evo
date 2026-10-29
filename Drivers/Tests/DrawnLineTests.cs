@@ -38,6 +38,35 @@ public sealed class DrawnLineTests
         Assert.Equal(0f, lap.WallSeconds);
     }
 
+    [Fact]
+    public void ALineRedrawnAsItWasLeavesNoSeamWhereTheDrawingsJoin()
+    {
+        // Out towards the edge, where the line gives way to the road, drawn
+        // once, and drawn again as it was a quarter second on at 80 m/s.
+        TrackData track = GameMods.Registry.Circuits.Get("silverstone").Track;
+        LaneSet lanes = LaneTrackFile.ForCircuit("silverstone", track).LanesFor(track);
+        var planned = new float[lanes.Count];
+        Array.Fill(planned, 80f);
+        var points = new float[DrawnLine.PointMeters.Length];
+        Array.Fill(points, 6f);
+        const int car = 500, on = 10;
+        var once = new DrawnLine(lanes);
+        once.Draw(car, 80f, 0f, planned, points, 1f);
+        var twice = new DrawnLine(lanes);
+        twice.Draw(car, 80f, 0f, planned, points, 1f);
+        twice.Draw(car + on, 80f, twice.At(car + on), planned, points, 1f);
+
+        float worst = 0f;
+        int worstAt = 0;
+        for (int i = car + on; i < car + 150; i++)
+        {
+            float gap = MathF.Abs(twice.At(i) - once.At(i));
+            if (gap > worst)
+                (worst, worstAt) = (gap, i);
+        }
+        Assert.True(worst < 0.02f, $"the redrawn line stands {worst:F3} m off the line drawn once, {(worstAt - car) * lanes.Spacing:F0} m on");
+    }
+
     // One lap of Silverstone with the line redrawn every quarter second from
     // what each point ahead should be, and how far aside of the racing line
     // the car ran on average.

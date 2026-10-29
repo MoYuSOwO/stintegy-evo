@@ -55,6 +55,10 @@ public sealed class DrawnLine
 
     private readonly LaneSet _lanes;
     private readonly float[] _delta;
+    // The same line before it gives way to the road's edges: a new drawing
+    // carries on from this, not from the line as given way, or every redraw
+    // near an edge gave way twice where it joined and left a step behind.
+    private readonly float[] _bent;
     // The span the drawing covers, as stations from where it starts; outside
     // it the line is the racing line.
     private int _from;
@@ -66,6 +70,7 @@ public sealed class DrawnLine
     {
         _lanes = lanes;
         _delta = new float[lanes.Count];
+        _bent = new float[lanes.Count];
     }
 
     /// <summary>Whether a line is drawn at all.</summary>
@@ -104,7 +109,10 @@ public sealed class DrawnLine
         int car = (int)MathF.Floor(station);
         bool held = Active;
         if (!held)
+        {
             Array.Clear(_delta);
+            Array.Clear(_bent);
+        }
 
         // Where the new drawing takes over: past the part the car reaches in
         // about a second, never beyond the end of the last drawing.
@@ -113,8 +121,8 @@ public sealed class DrawnLine
         if (held)
             join = Math.Min(join, _from + _span);
         float joinX = (join - car) * spacing;
-        float joinY = held ? At(join) : carOffset;
-        float joinSlope = held ? (At(join + 1) - At(join - 1)) / (2f * spacing) : 0f;
+        float joinY = held ? Bent(join) : OffRoad(car, carOffset);
+        float joinSlope = held ? (Bent(join + 1) - Bent(join - 1)) / (2f * spacing) : 0f;
 
         _knotX.Clear();
         _knotY.Clear();
@@ -159,13 +167,17 @@ public sealed class DrawnLine
                 slope += Math.Clamp(wanted - slope, -bend * spacing, bend * spacing);
                 y += slope * spacing;
             }
+            _bent[_lanes.Wrap(i)] = y;
             _delta[_lanes.Wrap(i)] = OnRoad(i, y);
             end = i;
             if (k >= count && MathF.Abs(y) < 0.01f && MathF.Abs(slope) < 1e-3f)
                 break;
         }
         for (int i = end + 1; i <= drawnEnd; i++)
+        {
             _delta[_lanes.Wrap(i)] = 0f;
+            _bent[_lanes.Wrap(i)] = 0f;
+        }
         end = Math.Max(end, drawnEnd);
 
         _from = car - BehindStations;
@@ -178,6 +190,7 @@ public sealed class DrawnLine
     public void Clear()
     {
         Array.Clear(_delta);
+        Array.Clear(_bent);
         _span = 0;
         BrakeFactor = 1f;
         Version++;
@@ -199,6 +212,23 @@ public sealed class DrawnLine
         if (room <= 1e-3f)
             return 0f;
         return room * MathF.Tanh(delta / room);
+    }
+
+    // Where the line stood before giving way, for an offset after it.
+    private float OffRoad(int station, float offset)
+    {
+        float free = _lanes.Offset(LaneId.Free, station);
+        float edge = MathF.Max(0f, _lanes.HalfWidth(station) - LaneSet.EdgeMarginMeters);
+        float room = offset >= 0f ? edge - free : edge + free;
+        if (room <= 1e-3f)
+            return 0f;
+        return room * MathF.Atanh(Math.Clamp(offset / room, -0.999f, 0.999f));
+    }
+
+    private float Bent(int station)
+    {
+        int rel = _lanes.Wrap(station - _from);
+        return rel <= _span ? _bent[_lanes.Wrap(station)] : 0f;
     }
 
     // The knots joined by a shape-preserving cubic (Fritsch-Carlson): it never
