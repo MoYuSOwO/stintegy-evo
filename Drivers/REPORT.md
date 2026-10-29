@@ -69,7 +69,7 @@
 
 # 三线车手（`research/three-lane-driver-f1e`，2026-10-18）
 
-照 Speed Dreams 的 Simplix 做：三条烘焙好的线，速度现场算，每段学一个系数。代码在 `Drivers/Lanes/`，学习入口是 `Drivers/Tests/LaneCircuitLearning.cs`（`LearnBakedCircuit`）。
+照 Speed Dreams 的 Simplix 做：三条烘焙好的线，速度现场算，不事先学系数。代码在 `Drivers/Lanes/`。事先学习的部分（每段系数、转向修正）已删除，驾驶员只在比赛中动态学习。
 
 ## 怎么做的
 

@@ -119,13 +119,13 @@ public sealed class LaneDriverTests
         TrackData track = TestTracks.SilverstoneStyleTestTrack();
         LaneTrackFile file = Silverstone(track);
         file.MarkLearnedNow();
-        file.Energy = LaneEnergyRungs.From([1f, 0.6f, 0.4f, 0.3f, 0f], raceLaps: 52);
         string folder = Path.Combine(Path.GetTempPath(), "stintegy-circuit-roundtrip", Guid.NewGuid().ToString("N"));
         file.SaveCircuit(folder, "silverstone");
         LaneTrackFile back = LaneTrackFile.LoadCircuit(folder, track);
         Assert.True(back.IsCurrent);
-        Assert.Equal(file.Energy, back.Energy);
-        Assert.Equal(file.Factors(LaneId.Free), back.Factors(LaneId.Free));
+        LaneSet a = file.LanesFor(track), b = back.LanesFor(track);
+        for (int i = 0; i < a.Count; i += 37)
+            Assert.Equal(a.Offset(LaneId.Free, i), b.Offset(LaneId.Free, i), 3);
         Directory.Delete(folder, recursive: true);
     }
 
