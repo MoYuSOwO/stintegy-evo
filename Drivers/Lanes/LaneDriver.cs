@@ -255,6 +255,46 @@ public sealed class LaneDriver : IDriverController
     private int _windowStart = -1;
     private float _windowRange = -1f;
     private float _windowSide;
+    private int _windowDrawn = -1;
+    private float _carSpeed;
+
+    // A line drawn from outside, and the next drawing waiting for the car.
+    private DrawnLine? _drawn;
+    private readonly float[] _pendingLine = new float[DrawnLine.PointMeters.Length];
+    private float _pendingBrake = 1f;
+    private bool _pendingDraw;
+    private bool _pendingClear;
+
+    /// <summary>
+    /// Drive a line drawn from outside instead of the lanes: one offset from
+    /// the racing line, positive to the left, for each of
+    /// <see cref="DrawnLine.PointMeters"/> ahead of the car, and the share of
+    /// the planned braking to take the next braking zone at. It takes hold
+    /// the next step; the part the car reaches within about a second keeps
+    /// the last drawing. The lane sliders are left where they are and should
+    /// rest on the free lane while a line is drawn.
+    /// </summary>
+    public void DrawLine(ReadOnlySpan<float> offsetsFromRacingLine, float brakeFactor = 1f)
+    {
+        if (offsetsFromRacingLine.Length != _pendingLine.Length)
+            throw new ArgumentException($"A drawn line has {_pendingLine.Length} points.", nameof(offsetsFromRacingLine));
+        offsetsFromRacingLine.CopyTo(_pendingLine);
+        _pendingBrake = brakeFactor;
+        _pendingDraw = true;
+        _pendingClear = false;
+    }
+
+    /// <summary>Back to the lanes: the drawn line is dropped the next step.</summary>
+    public void ClearLine()
+    {
+        _pendingDraw = false;
+        _pendingClear = true;
+    }
+
+    /// <summary>Whether a drawn line is being driven.</summary>
+    public bool DrivesDrawnLine => Drawing;
+
+    private bool Drawing => _drawn is { Active: true };
 
     /// <summary>What the driver cannot drive a car without, and what it uses when the car has it.</summary>
     public static readonly CarNeeds CarNeeds = new(
@@ -435,6 +475,9 @@ public sealed class LaneDriver : IDriverController
     {
         _lanes = _file.LanesFor(context.Track);
         _trackView = context.Track;
+        _drawn = new DrawnLine(_lanes);
+        _pendingDraw = _pendingClear = false;
+        _windowDrawn = -1;
         for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             int count = _lanes.Count;
@@ -540,6 +583,19 @@ public sealed class LaneDriver : IDriverController
             _performance.Update(lap, car.TrackS, dt);
             Familiarise(car, lap);
         }
+        if (_pendingClear)
+        {
+            _drawn?.Clear();
+            _pendingClear = false;
+        }
+        if (_pendingDraw)
+        {
+            float drawnAt = _lanes.StationOf(car.TrackS);
+            int near = (int)MathF.Round(drawnAt);
+            float carOffset = Vector2.Dot(car.Position - _lanes.Centre(near), _lanes.Normal(near)) - _lanes.Offset(LaneId.Free, near);
+            _drawn?.Draw(drawnAt, car.SpeedMetersPerSecond, carOffset, _speed[0], _pendingLine, _pendingBrake);
+            _pendingDraw = false;
+        }
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
         {
@@ -551,6 +607,7 @@ public sealed class LaneDriver : IDriverController
 
         _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
+        _carSpeed = speed;
         float station = _lanes.StationOf(car.TrackS);
 
         // Where the plan is, at the car and a little ahead.
@@ -1812,7 +1869,7 @@ public sealed class LaneDriver : IDriverController
 
     private float SpeedAt(float station)
     {
-        if (Range <= 1e-3f && TargetRange <= 1e-3f)
+        if (Range <= 1e-3f && TargetRange <= 1e-3f && !Drawing)
             return Interpolate(_speed[0], station);
         // Settled on a side lane or the middle one, the blend is that lane,
         // and its own plan is the blend's plan.
@@ -1828,7 +1885,8 @@ public sealed class LaneDriver : IDriverController
         // and a lap held on a side lane took four times as long to drive.
         int start = (int)MathF.Floor(station);
         if (start < _windowStart || start > _windowStart + _windowSpeed.Length - 2 ||
-            MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f)
+            MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f ||
+            _windowDrawn != DrawnVersion)
             PlanBlendWindow(start);
         float local = station - _windowStart;
         int i0 = Math.Clamp((int)MathF.Floor(local), 0, _windowSpeed.Length - 2);
@@ -1858,10 +1916,11 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The blend's window, planned from the car's own station once a station.</summary>
     private void AnchorBlendWindow(float station)
     {
-        if (Range <= 1e-3f && TargetRange <= 1e-3f || SettledSideLane() >= 0)
+        if ((Range <= 1e-3f && TargetRange <= 1e-3f && !Drawing) || SettledSideLane() >= 0)
             return;
         int start = (int)MathF.Floor(station);
-        if (start != _windowStart || MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f)
+        if (start != _windowStart || MathF.Abs(Range - _windowRange) > 0.02f || MathF.Abs(Side - _windowSide) > 0.02f ||
+            _windowDrawn != DrawnVersion)
             PlanBlendWindow(start);
     }
 
@@ -1892,9 +1951,9 @@ public sealed class LaneDriver : IDriverController
         for (int k = 0; k < n; k++)
         {
             int i = start + k;
-            _windowCurvature[k] = BlendedCurvatureFor(i, Range, Side);
-            _windowRoad[k] = RoadAt(i, _lanes.BlendedOffset(i, Range, Side));
-            _windowStep[k] = (BlendedPosition(i + 1, Range, Side) - BlendedPosition(i, Range, Side)).Length();
+            _windowCurvature[k] = ReferenceCurvatureFor(i);
+            _windowRoad[k] = RoadAt(i, ReferenceOffset(i));
+            _windowStep[k] = (ReferencePosition(i + 1) - ReferencePosition(i)).Length();
             _windowFactor[k] = FactorFor(i, Range, Side);
             _windowBrake[k] = BlendOf(lane => _brake[(int)lane], i, Range, Side);
             _leadGuess[k] = WindowGuess(i);
@@ -1904,16 +1963,74 @@ public sealed class LaneDriver : IDriverController
         int end = _lanes.Wrap(start + n - 1);
         // Ending on the slowest of the lanes the blend lies between: the
         // free one, the middle one and the side lane it is towards.
+        // A drawn line ends back on the racing line, and so does its window.
         int sideLane = Side >= 0f ? (int)LaneId.Left : (int)LaneId.Right;
-        float terminal = MathF.Min(_speed[0][end], MathF.Min(_speed[sideLane][end], _speed[(int)LaneId.Middle][end]));
-        LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
+        float terminal = Drawing
+            ? _speed[0][end]
+            : MathF.Min(_speed[0][end], MathF.Min(_speed[sideLane][end], _speed[(int)LaneId.Middle][end]));
+        if (Drawing)
+        {
+            ScaleNextBraking(start, _drawn!.BrakeFactor);
+            // Driven on from the car's own speed as well as braked back from
+            // the corners: planned on the corners alone, the speed under the
+            // car read as whatever the road allowed, every braking zone in
+            // the window looked slower than it, and the car lifted and
+            // coasted out of corners it should have been driving out of,
+            // four seconds a lap at Silverstone.
+            LaneSpeedPlanner.PlanAhead(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares,
+                startSpeed: _carSpeed, terminalSpeed: terminal, _windowSpeed);
+        }
+        else
+            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
         _windowStillSpeed = _windowSpeed[0];
         if (Gains.FollowLaneMoves && PlanMoveWindow(start))
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
         _windowStart = start;
         _windowRange = Range;
         _windowSide = Side;
+        _windowDrawn = DrawnVersion;
     }
+
+    private int DrawnVersion => Drawing ? _drawn!.Version : -1;
+
+    /// <summary>
+    /// The drawn line's say over the brakes: the next braking zone on the
+    /// racing line's plan, from where its speed starts to fall to where it
+    /// stops, is taken at that share of the braking planned there. Below one
+    /// the car brakes earlier and gentler; above, later and harder.
+    /// </summary>
+    private void ScaleNextBraking(int start, float factor)
+    {
+        if (factor == 1f)
+            return;
+        int n = _windowBrake.Length;
+        bool inZone = false;
+        for (int k = 0; k + 1 < n; k++)
+        {
+            int i = _lanes.Wrap(start + k);
+            bool falling = _speed[0][_lanes.Wrap(i + 1)] < _speed[0][i] - 1e-3f;
+            if (falling)
+            {
+                inZone = true;
+                _windowBrake[k] *= factor;
+            }
+            else if (inZone)
+                break;
+        }
+    }
+
+    // The line the car is driving: the drawn one where there is one, else
+    // the lanes as blended now.
+    private float ReferenceOffset(int station) =>
+        Drawing ? _lanes.Offset(LaneId.Free, station) + _drawn!.At(station) : _lanes.BlendedOffset(station, Range, Side);
+
+    private Vector2 ReferencePosition(int station) => _lanes.Position(station, ReferenceOffset(station));
+
+    private float ReferenceCurvatureFor(int station) =>
+        LaneSet.Curvature(
+            ReferencePosition(station - CurvatureChordStations),
+            ReferencePosition(station),
+            ReferencePosition(station + CurvatureChordStations));
 
     /// <summary>
     /// The window as the move under way will drive it: the blend carried on
@@ -2065,8 +2182,8 @@ public sealed class LaneDriver : IDriverController
     {
         int i0 = (int)MathF.Floor(station);
         float u = station - i0;
-        float a = BlendedCurvatureFor(i0, Range, Side);
-        float b = BlendedCurvatureFor(i0 + 1, Range, Side);
+        float a = ReferenceCurvatureFor(i0);
+        float b = ReferenceCurvatureFor(i0 + 1);
         return a + (b - a) * u;
     }
 
@@ -2074,14 +2191,14 @@ public sealed class LaneDriver : IDriverController
     {
         int i0 = (int)MathF.Floor(station);
         float u = station - i0;
-        Vector2 a = BlendedPosition(i0, Range, Side);
-        Vector2 b = BlendedPosition(i0 + 1, Range, Side);
+        Vector2 a = ReferencePosition(i0);
+        Vector2 b = ReferencePosition(i0 + 1);
         // Each station's own heading, through its neighbours, turned between
         // them as the car goes. Held along each two-metre chord instead, the
         // heading error jumped at every station round a bend and the wheel
         // chattered with it.
-        Vector2 before = Vector2.Normalize(b - BlendedPosition(i0 - 1, Range, Side));
-        Vector2 after = Vector2.Normalize(BlendedPosition(i0 + 2, Range, Side) - a);
+        Vector2 before = Vector2.Normalize(b - ReferencePosition(i0 - 1));
+        Vector2 after = Vector2.Normalize(ReferencePosition(i0 + 2) - a);
         Vector2 tangent = before + (after - before) * u;
         float length = tangent.Length();
         tangent = length > 1e-5f ? tangent / length : new Vector2(1f, 0f);
