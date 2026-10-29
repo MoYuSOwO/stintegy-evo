@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 
@@ -12,17 +13,19 @@ public sealed class RaceCar
         ICar car,
         Driver? driver = null,
         CarState? state = null,
-        CarCollisionConfig? collision = null,
         bool installFreshTires = true
     )
     {
         Id = string.IsNullOrWhiteSpace(id) ? throw new ArgumentException("Car id is required.", nameof(id)) : id;
         Car = car ?? throw new ArgumentNullException(nameof(car));
+        if (car.Spec.Problems().ToArray() is { Length: > 0 } undeclared)
+            throw new ArgumentException(
+                $"A {car.GetType().Name} declares itself wrongly: {string.Join("; ", undeclared)}.", nameof(car));
         if (driver is not null)
             CheckFits(driver, car);
         Driver = driver;
         State = state ?? new CarState();
-        Collision = collision ?? new CarCollisionConfig();
+        Collision = CarCollisionConfig.For(car);
 
         if (installFreshTires && Car is ICarTires tires)
             tires.InstallFreshTires(State);
@@ -37,19 +40,6 @@ public sealed class RaceCar
         IReadOnlyList<Type> missing = driver.Controller.Needs.MissingFrom(car);
         if (missing.Count > 0)
             throw new CarUnfitForDriverException(driver.Profile.Id, car, missing);
-    }
-
-    /// <summary>A car on the game's own chassis, made of these numbers.</summary>
-    public RaceCar(
-        string id,
-        CarConfig carConfig,
-        TireConfig tireConfig,
-        Driver? driver = null,
-        CarState? state = null,
-        CarCollisionConfig? collision = null,
-        bool installFreshTires = true
-    ) : this(id, new SingleTrackCar(carConfig, tireConfig), driver, state, collision, installFreshTires)
-    {
     }
 
     public string Id { get; }
@@ -96,31 +86,67 @@ public sealed class RaceCar
     public float BoundaryContactSeconds { get; internal set; }
 
     internal bool TouchedBoundaryThisSubstep { get; set; }
+
+    // What hit the car since its last step, and what it was handed at its
+    // last step: two lists that trade places, so a race allocates nothing
+    // for them once they have grown.
+    private List<CarImpact> _felt = [];
+    private List<CarImpact> _delivered = [];
+
+    /// <summary>A push the world gave the car, at <paramref name="point"/>, both in world coordinates.</summary>
+    internal void Felt(ImpactWith with, Vector2 point, Vector2 impulse)
+    {
+        if (CarImpact.Felt(with, State.Position, State.Heading, point, impulse) is { } impact)
+            _felt.Add(impact);
+    }
+
+    /// <summary>A wall contact's push, if it pushed at all.</summary>
+    internal void Felt(TrackBoundaryContact? contact)
+    {
+        if (contact is { } wall)
+            Felt(ImpactWith.Wall, wall.Point, wall.Impulse);
+    }
+
+    /// <summary>Everything that hit the car since its last step, handed over for this one.</summary>
+    internal IReadOnlyList<CarImpact> TakeImpacts()
+    {
+        (_felt, _delivered) = (_delivered, _felt);
+        _felt.Clear();
+        return _delivered;
+    }
     public bool HitCarThisStep { get; internal set; }
 
     /// <summary>A new set of what is on, on a car with changeable tyres; nothing on one without.</summary>
     public void InstallFreshTires() => (Car as ICarTires)?.InstallFreshTires(State);
 }
 
+/// <summary>
+/// A car's body as the world's contacts use it: the body the car declares
+/// (<see cref="CarSpec.Body"/>), paired with the world's own contact solver.
+/// </summary>
 public sealed class CarCollisionConfig
 {
-    public float LengthMeters { get; init; } = 4.8f;
-    public float WidthMeters { get; init; } = 1.9f;
-    public float Restitution { get; init; } = 0.05f;
-    public float Friction { get; init; } = 0.35f;
-    /// <summary>
-    /// How much of the speed into the barrier comes back out of it. Full-scale
-    /// crash tests into rigid barriers measure about a tenth: the car
-    /// crumples and the barrier hardly gives.
-    /// </summary>
-    public float WallRestitution { get; init; } = 0.1f;
+    /// <summary>How many passes the world's contact solver makes: the world's, not the car's.</summary>
+    public const int DefaultSolverIterations = 6;
 
-    /// <summary>
-    /// Sliding friction between the car and the barrier: carbon, aluminium
-    /// and tyre sidewall on steel and concrete.
-    /// </summary>
-    public float WallFriction { get; init; } = 0.5f;
-    public int SolverIterations { get; init; } = 6;
+    public CarCollisionConfig(CarBody body, int solverIterations = DefaultSolverIterations)
+    {
+        Body = body ?? throw new ArgumentNullException(nameof(body));
+        SolverIterations = solverIterations;
+    }
+
+    /// <summary>The body <paramref name="car"/> declares, with the world's solver.</summary>
+    public static CarCollisionConfig For(ICar car) => new(car.Spec.Body);
+
+    public CarBody Body { get; }
+    public int SolverIterations { get; }
+
+    public float LengthMeters => Body.LengthMeters;
+    public float WidthMeters => Body.WidthMeters;
+    public float Restitution => Body.Restitution;
+    public float Friction => Body.Friction;
+    public float WallRestitution => Body.WallRestitution;
+    public float WallFriction => Body.WallFriction;
 
     public float HalfLengthMeters => LengthMeters * 0.5f;
     public float HalfWidthMeters => WidthMeters * 0.5f;

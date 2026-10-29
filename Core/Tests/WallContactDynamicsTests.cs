@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -21,7 +22,7 @@ namespace StintegyEVO.Core.Tests;
 /// </summary>
 public sealed class WallContactDynamicsTests
 {
-    private static readonly TrackData Track = TrackFactory.SimpleTestTrack();
+    private static readonly TrackData Track = TestTracks.SimpleTestTrack();
     internal static TrackData TrackForTrace => Track;
     internal static (Vector2 Position, float Heading) NearLeftWallForTrace(float s, float offset, float heading) => NearLeftWall(s, offset, heading);
 
@@ -77,7 +78,7 @@ public sealed class WallContactDynamicsTests
             SideslipAngleRadians = 0.12f,
             YawRateRadiansPerSecond = 0.3f
         };
-        CarCollisionConfig collision = new();
+        CarCollisionConfig collision = new(new CarConfig().Body);
         CarConfig car = new();
         Assert.False(
             TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision),
@@ -162,7 +163,7 @@ public sealed class WallContactDynamicsTests
             Speed = 0.5f,
             YawRateRadiansPerSecond = 10f * TowardsLeftWall(100f)
         };
-        CarCollisionConfig collision = new();
+        CarCollisionConfig collision = new(new CarConfig().Body);
         Assert.False(TrackBoundaryResolver.IsInsideTrackWalls(Track, state, collision));
 
         TrackBoundaryResolver.ResolveCurrent(Track, state, collision, new SingleTrackCar(new CarConfig(), new TireConfig()));
@@ -351,7 +352,7 @@ public sealed class WallContactDynamicsTests
     [Fact]
     public void ACarFlushWithTheWallThroughABendCanRunAlongIt()
     {
-        var collision = new CarCollisionConfig();
+        var collision = new CarCollisionConfig(new CarConfig().Body);
         ICar car = new SingleTrackCar(new CarConfig(), new TireConfig());
         int poses = 0;
         for (float s = 0f; s < Track.LengthMeters; s += 7f)

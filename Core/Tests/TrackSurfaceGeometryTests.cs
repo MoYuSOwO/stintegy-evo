@@ -7,7 +7,7 @@ namespace StintegyEVO.Core.Tests;
 
 public class TrackSurfaceGeometryTests
 {
-    private static readonly Lazy<TrackData> Circuit = new(TrackFactory.SilverstoneStyleTestTrack);
+    private static readonly Lazy<TrackData> Circuit = new(TestTracks.SilverstoneStyleTestTrack);
 
     [Fact]
     public void SurfaceClosesAtLapSeamAndWrapsNegativeDistances()

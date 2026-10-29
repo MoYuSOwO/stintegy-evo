@@ -1,4 +1,5 @@
 using System.Reflection;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -43,7 +44,7 @@ public sealed class DriverAbilityTests
     [Fact]
     public void AbilitiesAreDeliveredButDoNotSecretlyChangePhysicalResults()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         TrackSample at = track.Sample(100f);
         (RaceSimulation Race, RaceCar Car, FixedController Controller) Entry(float ability)
         {
@@ -54,7 +55,7 @@ public sealed class DriverAbilityTests
                 TireManagement = ability, EnergyManagement = ability, Adaptability = ability,
                 Reactions = ability, Awareness = ability, Overtaking = ability, Defending = ability, Boldness = ability
             }, 42);
-            RaceCar car = new("car", new(), new(), new Driver(profile, controller),
+            RaceCar car = new("car", new SingleTrackCar(new CarConfig(), new TireConfig()), new Driver(profile, controller),
                 new CarState { Position = at.Center, Heading = at.Heading, Speed = 10f });
             RaceSimulation race = new(track);
             race.AddCar(car);

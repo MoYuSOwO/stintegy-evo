@@ -5,6 +5,7 @@ using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
+using StintegyEVO.GodotApp.Interop;
 using StintegyEVO.GodotApp.LowPoly;
 
 namespace StintegyEVO.Presentation.Tests;
@@ -105,7 +106,7 @@ public partial class CompositionSmoke : Node
     private static RaceCar Car(TrackData track, string id, float s, float speed, Driver? driver = null)
     {
         TrackSample at = track.Sample(s);
-        return new RaceCar(id, new(), new(), driver,
+        return new RaceCar(id, GodotMods.Registry.Cars.Get("official:formula_a_mixed").Car, driver,
             new CarState { Position = at.Center, Heading = at.Heading, Speed = speed });
     }
 

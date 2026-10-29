@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A throwaway mod's code for the registry tests: built with them, never referenced by them. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AssemblyName>alpha_mod</AssemblyName>
+    <OutDir>$(MSBuildThisFileDirectory)../../bin/ModFixtures/alpha/</OutDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../StintegyEVO.Core.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

@@ -19,7 +19,7 @@ public sealed class BoundaryContactTimeTests
     [Fact]
     public void ACarOnTheRoadSpendsNoTimeAgainstAnything()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         RaceSimulation simulation = new(track);
         RaceCar car = OnTheCenterline(track, 100f, 30f);
         simulation.AddCar(car);
@@ -112,7 +112,7 @@ public sealed class BoundaryContactTimeTests
         bool steerOffAfterContact = false
     )
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         TrackSample at = track.Sample(275f);
         float wanted = curvature;
         RaceCar car = TestControlFixtures.CurvatureCar(

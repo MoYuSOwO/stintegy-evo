@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The game's own mod, built as any mod is: its code references Core and
+    nothing else, and its assembly is built into this folder, beside its
+    mod.json and its data, where the game finds it as it finds anyone's.
+    The game never references it.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <AssemblyName>official</AssemblyName>
+    <RootNamespace>Official</RootNamespace>
+    <OutDir>$(MSBuildThisFileDirectory)</OutDir>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Tests/**" />
+    <Compile Remove="data/**" />
+    <InternalsVisibleTo Include="official.Tests" />
+    <InternalsVisibleTo Include="StintegyEVO.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core is the game's: the mod is built against it, never ships it. -->
+    <ProjectReference Include="../../Core/StintegyEVO.Core.csproj" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

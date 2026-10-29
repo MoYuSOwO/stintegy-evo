@@ -16,7 +16,7 @@ public sealed class DaytonaTests
     [Fact]
     public void TheTurnsAreBankedAndTheStraightsAreNot()
     {
-        TrackData track = TrackFactory.DaytonaStyleTestTrack();
+        TrackData track = TestTracks.DaytonaStyleTestTrack();
         int metres = (int)track.LengthMeters;
         float steepest = 0f, shallowest = 1f;
         int banked = 0;
@@ -44,7 +44,7 @@ public sealed class DaytonaTests
         // Reading the banking off the curvature instead puts it on in a
         // metre, and a car meets a thirty-one degree corner's lateral
         // gravity in one wheel rotation.
-        TrackData track = TrackFactory.DaytonaStyleTestTrack();
+        TrackData track = TestTracks.DaytonaStyleTestTrack();
         int metres = (int)track.LengthMeters;
         float worst = 0f;
         for (int s = 0; s < metres; s++)

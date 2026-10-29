@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
 namespace StintegyEVO.Core.Cars;
 
 /// <summary>
@@ -12,20 +15,26 @@ namespace StintegyEVO.Core.Cars;
 /// exactly would choose).</param>
 public readonly record struct DriverInput(
     float SteerAngleRadians,
-    float DesiredAccel,
-    // Signed fraction of total braking demand. Positive values move braking
-    // toward the front axle; zero retains the dynamically optimal split.
-    float FrontBrakeBiasOffset = 0f,
-    // Signed fraction of total drive moved toward the front axle, off the
-    // split the car makes by grip; zero keeps that split.
-    float FrontDriveBiasOffset = 0f,
-    // How hard this driver's hands are on the tyres beyond what the single
-    // track resolves (the small slides and corrections, the kerbs, the
-    // wheelspin it averages away), as a share more wear than the driver the
-    // tyre was calibrated with: -0.1 wears a tenth less. Zero is that
-    // driver, so an input nobody filled in wears as it always did.
-    float TyreWearExcess = 0f
-);
+    float DesiredAccel
+)
+{
+    /// <summary>
+    /// How hard this driver's hands are on the tyres beyond what the car's
+    /// model resolves (the small slides and corrections, the kerbs, the
+    /// wheelspin it averages away), as a share more wear than the driver the
+    /// tyre was calibrated with: -0.1 wears a tenth less. Zero is that
+    /// driver, so an input nobody filled in wears as it always did.
+    /// </summary>
+    public float TyreWearExcess { get; init; }
+
+    /// <summary>
+    /// How the driver moves the brakes and the drive between the axles, off
+    /// the car's own split: a command for a car with two axles
+    /// (<see cref="ICarAxles"/>) and for no other. None leaves the car's split
+    /// as it is; the race refuses one sent to a car without axles.
+    /// </summary>
+    public AxleBias Axles { get; init; }
+}
 
 /// <summary>
 /// Everything the strategist sets, as opposed to everything the driver does.
@@ -176,7 +185,7 @@ public readonly record struct CarStrategy
     }
 }
 
-public readonly record struct CarPhysicsStepInput(
+public readonly record struct CarStepInput(
     DriverInput DriverInput,
     CarStrategy Strategy,
     float AirTempC,
@@ -202,6 +211,83 @@ public readonly record struct CarPhysicsStepInput(
     /// track says otherwise.
     /// </summary>
     public float SurfaceAbrasion { get; init; } = 1f;
+
+    /// <summary>
+    /// The air the car sits in this step, worked out by the world from where
+    /// every car was at the start of the frame. None leaves the car with the
+    /// air it last had: a bench test or a predictor that sets it itself.
+    /// </summary>
+    public CarAir? Air { get; init; }
+
+    /// <summary>
+    /// The game's randomness for this car and this step
+    /// (<see cref="RandomSource"/>): the same on the same seed, different
+    /// from every other car's and every other step's. Whatever in the car
+    /// wants a chance takes it from here, never from <see cref="System.Random"/>
+    /// or the clock. The default source for a caller with no race: a bench
+    /// test, a predictor.
+    /// </summary>
+    public RandomSource Random { get; init; }
+
+    /// <summary>
+    /// What hit the car since its last step: every push the walls and other
+    /// cars gave it to keep it out of them, how hard, where on the body and
+    /// against what. The world has already moved the car for them; this is
+    /// for a car that wants to know, to break a wing or bend a link. None
+    /// for a car that hit nothing. Read it during the step: the race reuses
+    /// the list for the next one.
+    /// </summary>
+    public IReadOnlyList<CarImpact> Impacts { get; init; } = [];
+}
+
+/// <summary>What a car met in an impact.</summary>
+public enum ImpactWith
+{
+    Car,
+    Wall
+}
+
+/// <summary>
+/// One push the world gave a car to keep it out of a wall or another car.
+/// </summary>
+/// <param name="With">A car or a wall.</param>
+/// <param name="ImpulseNewtonSeconds">How hard: the impulse the car took, N·s. Divided by the car's mass it is the speed the blow changed.</param>
+/// <param name="Where">Where on the body, m from the centre of mass: X forward, Y to the left.</param>
+/// <param name="Direction">Which way the blow pushed the car, in the same frame, one long.</param>
+public readonly record struct CarImpact(ImpactWith With, float ImpulseNewtonSeconds, Vector2 Where, Vector2 Direction)
+{
+    /// <summary>
+    /// The blow <paramref name="impulse"/> at <paramref name="point"/>, both
+    /// in world coordinates, as the car facing <paramref name="heading"/>
+    /// from <paramref name="position"/> feels it; none for no push at all.
+    /// </summary>
+    public static CarImpact? Felt(ImpactWith with, Vector2 position, float heading, Vector2 point, Vector2 impulse)
+    {
+        float magnitude = impulse.Length();
+        if (!(magnitude > 0f))
+            return null;
+        Vector2 forward = new(MathF.Cos(heading), MathF.Sin(heading));
+        Vector2 left = new(-forward.Y, forward.X);
+        Vector2 arm = point - position;
+        return new CarImpact(
+            with,
+            magnitude,
+            new Vector2(Vector2.Dot(arm, forward), Vector2.Dot(arm, left)),
+            new Vector2(Vector2.Dot(impulse, forward), Vector2.Dot(impulse, left)) / magnitude);
+    }
+}
+
+/// <summary>
+/// The air a car sits in, as shares of the oncoming air's speed and of the
+/// downforce it would make: what the cars ahead have done to it. Zero is
+/// clean air.
+/// </summary>
+/// <param name="VelocityDeficit">How much of its own speed the air around the body already carries: the tow.</param>
+/// <param name="DownforceVelocityDeficit">How much of the oncoming air's speed is missing at the working aero surfaces.</param>
+/// <param name="DownforceLoss">How much downforce the turbulent part of the wake takes, beyond the slower air.</param>
+public readonly record struct CarAir(float VelocityDeficit, float DownforceVelocityDeficit, float DownforceLoss)
+{
+    public static readonly CarAir Clean = default;
 }
 
 /// <summary>

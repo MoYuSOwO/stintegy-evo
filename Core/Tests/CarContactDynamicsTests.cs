@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
@@ -146,15 +147,15 @@ public sealed class CarContactDynamicsTests
     [Fact]
     public void ASidewaysCarFromAContactIsTakenOverByTheDynamics()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         TrackSample at = track.Sample(track.StartingLineS + 300f);
         Vector2 left = new(-MathF.Sin(at.Heading), MathF.Cos(at.Heading));
         RaceCar stopped = new(
-            "stopped", Config, new TireConfig(), null,
+            "stopped", new SingleTrackCar(Config, new TireConfig()), null,
             new CarState { Position = at.Center, Heading = at.Heading }
         );
         RaceCar hitter = new(
-            "hitter", Config, new TireConfig(), null,
+            "hitter", new SingleTrackCar(Config, new TireConfig()), null,
             new CarState
             {
                 Position = at.Center - left * 3.2f,
@@ -272,8 +273,7 @@ public sealed class CarContactDynamicsTests
         float speed = forwardSpeed / MathF.Cos(sideslip);
         return new RaceCar(
             id,
-            Config,
-            new TireConfig(),
+            new SingleTrackCar(Config, new TireConfig()),
             null,
             new CarState
             {

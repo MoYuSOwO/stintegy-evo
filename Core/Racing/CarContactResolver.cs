@@ -323,6 +323,7 @@ public static class CarContactResolver
         float normalSpeed = Vector2.Dot(relativeVelocity, normal);
         if (normalSpeed >= 0f)
             return;
+        Vector2 onB = Vector2.Zero;
 
         float restitution = MathF.Min(a.Collision.Restitution, b.Collision.Restitution);
         float normalMass = EffectiveInverseMass(
@@ -354,9 +355,12 @@ public static class CarContactResolver
 
         ApplyMotion(a.State, velocityA, yawA);
         ApplyMotion(b.State, velocityB, yawB);
+        a.Felt(ImpactWith.Car, point, -onB);
+        b.Felt(ImpactWith.Car, point, onB);
 
         void Apply(Vector2 impulse)
         {
+            onB += impulse;
             velocityA -= impulse * invMassA;
             yawA -= Cross(armA, impulse) * invInertiaA;
             velocityB += impulse * invMassB;

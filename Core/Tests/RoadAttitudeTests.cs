@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Track;
 using StintegyEVO.Core.Util;
@@ -135,7 +136,7 @@ public sealed class RoadAttitudeTests
     [Fact]
     public void RoadCircuitsAreCrownedOnStraightsAndTiltIntoCorners()
     {
-        TrackData track = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData track = TestTracks.SilverstoneStyleTestTrack();
         TrackSample straight = FlattestPoint(track);
         TrackSample corner = track.Sample(SharpestPoint(track));
 
@@ -158,10 +159,10 @@ public sealed class RoadAttitudeTests
     {
         foreach (TrackData track in new[]
                  {
-                     TrackFactory.SilverstoneStyleTestTrack(),
-                     TrackFactory.MonacoStyleTestTrack(),
-                     TrackFactory.ShanghaiStyleTestTrack(),
-                     TrackFactory.SepangStyleTestTrack()
+                     TestTracks.SilverstoneStyleTestTrack(),
+                     TestTracks.MonacoStyleTestTrack(),
+                     TestTracks.ShanghaiStyleTestTrack(),
+                     TestTracks.SepangStyleTestTrack()
                  })
         {
             TrackSample corner = track.Sample(SharpestPoint(track));
@@ -173,8 +174,8 @@ public sealed class RoadAttitudeTests
     [Fact]
     public void TheSpeedwayIsBankedFarBeyondAnyRoadCircuit()
     {
-        TrackData speedway = TrackFactory.BankedSpeedwayTestTrack();
-        TrackData road = TrackFactory.SilverstoneStyleTestTrack();
+        TrackData speedway = TestTracks.BankedSpeedwayTestTrack();
+        TrackData road = TestTracks.SilverstoneStyleTestTrack();
         TrackSample turn = speedway.Sample(SharpestPoint(speedway));
         TrackSample roadCorner = road.Sample(SharpestPoint(road));
 
@@ -313,11 +314,11 @@ public sealed class RoadAttitudeTests
         // Ranked by how much each circuit actually climbs, by the survey:
         // Monaco far beyond the rest, Shanghai on reclaimed marsh flatter
         // even than Silverstone's airfield.
-        float monaco = ElevationRange(TrackFactory.MonacoStyleTestTrack());
-        float sepang = ElevationRange(TrackFactory.SepangStyleTestTrack());
-        float shanghai = ElevationRange(TrackFactory.ShanghaiStyleTestTrack());
+        float monaco = ElevationRange(TestTracks.MonacoStyleTestTrack());
+        float sepang = ElevationRange(TestTracks.SepangStyleTestTrack());
+        float shanghai = ElevationRange(TestTracks.ShanghaiStyleTestTrack());
         float silverstone = ElevationRange(
-            TrackFactory.SilverstoneStyleTestTrack()
+            TestTracks.SilverstoneStyleTestTrack()
         );
 
         Assert.True(monaco > sepang, $"monaco {monaco:0.0} vs sepang {sepang:0.0}");
@@ -325,16 +326,16 @@ public sealed class RoadAttitudeTests
         Assert.True(silverstone > shanghai);
         // Monaco's climb out of Sainte Dévote is the steepest thing here
         // and is a real gradient, not a rounding artefact.
-        Assert.True(SteepestGrade(TrackFactory.MonacoStyleTestTrack()) > 0.03f);
+        Assert.True(SteepestGrade(TestTracks.MonacoStyleTestTrack()) > 0.03f);
         Assert.True(
-            SteepestGrade(TrackFactory.SilverstoneStyleTestTrack()) < 0.03f
+            SteepestGrade(TestTracks.SilverstoneStyleTestTrack()) < 0.03f
         );
     }
 
     [Fact]
     public void TheSimpleLayoutClimbsItsStartStraightAndGivesItBack()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
 
         // Up the start/finish straight, level across the top through the
         // hairpin and esses, and all of it back down the back straight.
@@ -352,7 +353,7 @@ public sealed class RoadAttitudeTests
     [Fact]
     public void TheSimpleLayoutBanksTheHairpinAndTheLongLeft()
     {
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
 
         float hairpin = MathF.Abs(track.Sample(580f).BankSlope);
         float sweeper = MathF.Abs(track.Sample(1450f).BankSlope);
@@ -380,7 +381,7 @@ public sealed class RoadAttitudeTests
         // The surface is placed by distances written beside the layout. If
         // anyone edits the layout without moving them, the bank lands on a
         // straight and this catches it.
-        TrackData track = TrackFactory.SimpleTestTrack();
+        TrackData track = TestTracks.SimpleTestTrack();
         Assert.True(MathF.Abs(track.Sample(580f).Curvature) > 0.02f);
         Assert.True(MathF.Abs(track.Sample(1450f).Curvature) > 0.005f);
         Assert.True(MathF.Abs(track.Sample(275f).Curvature) < 0.002f);
@@ -475,13 +476,13 @@ public sealed class RoadAttitudeTests
 
     private static IEnumerable<(string, TrackData)> NamedCircuits()
     {
-        yield return ("silverstone", TrackFactory.SilverstoneStyleTestTrack());
-        yield return ("monaco", TrackFactory.MonacoStyleTestTrack());
-        yield return ("shanghai", TrackFactory.ShanghaiStyleTestTrack());
-        yield return ("sepang", TrackFactory.SepangStyleTestTrack());
-        yield return ("speedway", TrackFactory.BankedSpeedwayTestTrack());
-        yield return ("simple", TrackFactory.SimpleTestTrack());
-        yield return ("simple_left", TrackFactory.SimpleTestTrack(isLeft: true));
+        yield return ("silverstone", TestTracks.SilverstoneStyleTestTrack());
+        yield return ("monaco", TestTracks.MonacoStyleTestTrack());
+        yield return ("shanghai", TestTracks.ShanghaiStyleTestTrack());
+        yield return ("sepang", TestTracks.SepangStyleTestTrack());
+        yield return ("speedway", TestTracks.BankedSpeedwayTestTrack());
+        yield return ("simple", TestTracks.SimpleTestTrack());
+        yield return ("simple_left", TestTracks.SimpleTestTrack(isLeft: true));
     }
 
     private static float ElevationRange(TrackData track)
@@ -571,7 +572,7 @@ public sealed class RoadAttitudeTests
             Heading = 0f,
             Speed = 50f
         }.WithEnergy(PowertrainState.Filled(0.8f));
-        CarPhysicsStepInput input = new(
+        CarStepInput input = new(
             new DriverInput(0f, 0f),
             CarStrategy.Default,
             AirTempC: 25f

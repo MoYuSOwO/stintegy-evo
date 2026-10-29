@@ -80,14 +80,3 @@ public struct PowertrainState : IEquatable<PowertrainState>
         return $"({Primary:0.###}, {Secondary:0.###})";
     }
 }
-
-/// <summary>
-/// What one step took out of the stores, and what it cost to take it. The
-/// power drawn is larger than the power that reached the road, because
-/// nothing converts for free - it is reported so telemetry can show the bill
-/// rather than the delivery.
-/// </summary>
-public readonly record struct PowertrainSettlement(
-    PowertrainState Energy,
-    float DrawnPowerWatts
-);

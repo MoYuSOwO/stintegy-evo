@@ -59,16 +59,17 @@ public static class TrackBoundaryResolver
     )
     {
         TrackBoundaryContact? lastContact = null;
+        Vector2 impulse = Vector2.Zero;
 
         for (int i = 0; i < Math.Max(1, collision.SolverIterations); i++)
         {
             CarBodyGeometry body = CarBodyGeometry.FromState(state, collision);
             if (!TryFindDeepestViolation(track, body, out WallViolation violation))
-                return lastContact;
+                break;
 
             state.Position += violation.Normal * (violation.Penetration + Epsilon);
-            ApplyWallVelocityResponse(state, collision, car, violation.Normal, violation.Arm);
-            lastContact = CreateContact(violation, impactFraction: 0f, state.Position);
+            impulse += ApplyWallVelocityResponse(state, collision, car, violation.Normal, violation.Arm);
+            lastContact = CreateContact(violation, impactFraction: 0f, state.Position) with { Impulse = impulse };
         }
 
         return lastContact;
@@ -163,9 +164,9 @@ public static class TrackBoundaryResolver
         if (!TryFindDeepestViolation(track, contactBody, out WallViolation contactViolation))
             contactViolation = targetViolation;
 
-        ApplyWallVelocityResponse(
+        Vector2 impulse = ApplyWallVelocityResponse(
             targetState, collision, car, contactViolation.Normal, contactViolation.Arm);
-        return CreateContact(contactViolation, low, targetState.Position);
+        return CreateContact(contactViolation, low, targetState.Position) with { Impulse = impulse };
     }
 
     /// <summary>
@@ -410,8 +411,10 @@ public static class TrackBoundaryResolver
     /// snapped onto the new velocity and the slide is not zeroed: that
     /// belonged to the car model before slip angles, and on this one it
     /// made the wall a free recovery for a car that was losing it.
+    ///
+    /// Returns the impulse the wall gave the car, N·s.
     /// </summary>
-    private static void ApplyWallVelocityResponse(
+    private static Vector2 ApplyWallVelocityResponse(
         CarState state,
         CarCollisionConfig collision,
         ICar car,
@@ -443,8 +446,9 @@ public static class TrackBoundaryResolver
         Vector2 pointVelocity = PointVelocity(velocity, yawRate, arm);
         float normalSpeed = Vector2.Dot(pointVelocity, normal);
         if (normalSpeed >= 0f)
-            return;
+            return Vector2.Zero;
 
+        Vector2 total = Vector2.Zero;
         float normalImpulse = -(1f + collision.WallRestitution) * normalSpeed /
                               EffectiveInverseMass(normal, arm, invMass, invInertia);
         Apply(normal * normalImpulse);
@@ -487,16 +491,18 @@ public static class TrackBoundaryResolver
                 state.SideslipAngleRadians = 0f;
                 state.YawRateRadiansPerSecond = 0f;
             }
-            return;
+            return total;
         }
 
         state.YawRateRadiansPerSecond = yawRate;
         state.SideslipAngleRadians = MathHelper.NormalizeAngle(
             MathF.Atan2(velocity.Y, velocity.X) - state.Heading
         );
+        return total;
 
         void Apply(Vector2 impulse)
         {
+            total += impulse;
             velocity += impulse * invMass;
             yawRate += Cross(arm, impulse) * invInertia;
         }
@@ -532,7 +538,10 @@ public static class TrackBoundaryResolver
             impactFraction,
             correctedPosition,
             violation.Pose
-        );
+        )
+        {
+            Point = violation.Point
+        };
     }
 
     private static float LerpAngle(float from, float to, float weight)

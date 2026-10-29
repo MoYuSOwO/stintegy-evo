@@ -34,9 +34,9 @@ TestResults/
 *.trx
 *.coverage
 
-# Car packs are built into their folders under data/; the build output is
-# not source. A pack's car.json and models are.
-/data/**/*.dll
-/data/**/*.pdb
-/data/**/*.runtimeconfig.json
-/data/**/*.deps.json
+# A mod's code is built into its folder under mods/; the build output is
+# not source. Its mod.json, data and models are.
+/mods/**/*.dll
+/mods/**/*.pdb
+/mods/**/*.runtimeconfig.json
+/mods/**/*.deps.json

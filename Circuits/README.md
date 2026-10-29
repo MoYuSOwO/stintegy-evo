@@ -1,13 +1,12 @@
 # Circuits
 
-Circuits are namespaced packs, like cars and tyres: one folder per circuit,
-`data/<namespace>/circuits/<name>/`, named by its id (`official:silverstone`;
-a bare name is the game's own). Everything about a circuit that is not a car
-or a driver lives in its folder; the game reads it as it is and changes
-nothing.
+A circuit is data a mod lists in its `mod.json`: one folder per circuit,
+registered by its id (`official:silverstone`; a bare name is the game's
+own). Everything about a circuit that is not a car or a driver lives in its
+folder; the game reads it as it is and changes nothing.
 
 ```
-data/official/circuits/silverstone/
+mods/official/data/circuits/silverstone/
   circuit.json      name, start line, grid, where the data came from
   track.csv         the road, one row a metre
   scenery.json      which props stand where (see SCENERY.md)
@@ -15,13 +14,12 @@ data/official/circuits/silverstone/
   LICENSE.*         the terms of the source data, where it has any
 ```
 
-A circuit of your own goes under your own namespace,
-`data/<your_namespace>/circuits/<name>/`, laid out the same way, in any data
-folder the game reads (the player's is `user://data/`). The game's own
-circuits are found first, so nobody's circuit can stand in for one of them.
-Namespaces and names are lower case letters, digits and underscores only, so
-the same id names the same folder on every file system; `"id"` in
-`circuit.json` is the folder's name.
+A circuit of your own goes in your own mod, laid out the same way and
+listed in its `mod.json` (`"circuits": ["data/circuits/their_ring"]`); it is
+registered in your mod's namespace, `someone:their_ring`, and nobody's
+circuit can stand in for one of the game's. Names are lower case letters,
+digits and underscores only, and `"id"` in `circuit.json` is the name it is
+registered by. See [`mods/MODDING.md`](../mods/MODDING.md).
 
 ## `track.csv`
 

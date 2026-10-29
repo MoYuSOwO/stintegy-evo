@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Official.SingleTrack;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -20,6 +21,30 @@ namespace StintegyEVO.Core.Tests;
 /// </summary>
 public sealed class CarInterfaceTests
 {
+    /// <summary>
+    /// Moving the brakes between the axles is a command for a car with two
+    /// axles: sent to one without, the race says so rather than dropping it.
+    /// </summary>
+    [Fact]
+    public void AnAxleBiasIsACommandOnlyForACarWithAxles()
+    {
+        TrackData track = new TrackBuilder(Vector2.Zero, 14f)
+            .AddStraight(400f).AddTurn(180f, 50f).AddStraight(400f).AddTurn(180f, 50f)
+            .CloseLoop().Build(new TrackGridConfig());
+        TrackSample start = track.Sample(10f);
+        var box = new RaceCar("box", new RollingBox(), state: new CarState { Position = start.Center, Heading = start.Heading });
+        var simulation = new RaceSimulation(track);
+        simulation.AddCar(box);
+
+        box.ExternalInput = new DriverInput(0f, 0f) { Axles = new AxleBias(0.1f, 0f) };
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => simulation.Step(1f / 60f));
+        Assert.Contains("box", refused.Message);
+
+        box.ExternalInput = new DriverInput(0f, 0f);
+        simulation.Step(1f / 60f);
+        Assert.Null(simulation.CaptureFrame()[0].GripUse);
+    }
+
     [Fact]
     public void ACarOfItsOwnRacesThroughTheInterfaceAlone()
     {
@@ -101,6 +126,24 @@ public sealed class CarInterfaceTests
     }
 
     /// <summary>
+    /// The world reads a car's body, its wake and how it takes dirty air
+    /// from the car alone, so a car that declares one of them wrongly is
+    /// refused before it races, by the field it got wrong.
+    /// </summary>
+    [Fact]
+    public void ACarThatDeclaresItselfWronglyIsRefusedByTheField()
+    {
+        var flat = new BareBody(new BareBody().Spec with { Body = BoxBody with { WidthMeters = 0f } });
+        var bouncy = new BareBody(new BareBody().Spec with { Body = BoxBody with { WallRestitution = 1.5f } });
+        var sucking = new BareBody(new BareBody().Spec with { DirtyAirSensitivity = -1f });
+
+        Assert.Contains("Body.WidthMeters", Assert.Throws<ArgumentException>(() => new RaceCar("flat", flat)).Message);
+        Assert.Contains("Body.WallRestitution", Assert.Throws<ArgumentException>(() => new RaceCar("bouncy", bouncy)).Message);
+        Assert.Contains("DirtyAirSensitivity", Assert.Throws<ArgumentException>(() => new RaceCar("sucking", sucking)).Message);
+        Assert.Empty(new BareBody().Spec.Problems());
+    }
+
+    /// <summary>
     /// A driver who cannot drive without feeling the grip is not put in a
     /// car that does not say; one who only uses it when it is there is.
     /// </summary>
@@ -160,7 +203,7 @@ public sealed class CarInterfaceTests
         {
             var state = new CarState { Speed = 5f }.WithEnergy(PowertrainState.Filled(0.9f));
             model.As<ICarTires>().InstallFreshTires(state);
-            var input = new CarPhysicsStepInput(new DriverInput(0f, 12f), CarStrategy.Default, 25f, 35f);
+            var input = new CarStepInput(new DriverInput(0f, 12f), CarStrategy.Default, 25f, 35f);
             for (int i = 0; i < 60; i++)
                 model.Step(state, input, 1f / 60f);
             return state.Speed;
@@ -176,7 +219,7 @@ public sealed class CarInterfaceTests
     /// <summary>Holds a launch to three metres a second squared below twenty metres a second.</summary>
     private sealed class LaunchControlledCar() : SingleTrackCar(new CarConfig(), new TireConfig())
     {
-        public override void Step(CarState state, CarPhysicsStepInput input, float dt)
+        public override void Step(CarState state, CarStepInput input, float dt)
         {
             if (state.Speed < 20f && input.DriverInput.DesiredAccel > 3f)
                 input = input with { DriverInput = input.DriverInput with { DesiredAccel = 3f } };
@@ -203,10 +246,29 @@ public sealed class CarInterfaceTests
         public float OutputAvailability(in PowertrainState energy) => 1f;
     }
 
-    /// <summary>A body that rolls straight on at its speed, and has nothing else at all.</summary>
-    private sealed class BareBody : ICar
+    private static readonly CarBody BoxBody = new()
     {
-        public CarSpec Spec { get; } = new()
+        LengthMeters = 4f,
+        WidthMeters = 1.8f,
+        Restitution = 0.1f,
+        Friction = 0.3f,
+        WallRestitution = 0.1f,
+        WallFriction = 0.5f,
+    };
+
+    private static readonly CarWake BoxWake = new()
+    {
+        VelocityDeficit = 0f,
+        TowHalfDistanceMeters = 10f,
+        DownforceDecayLengthMeters = 10f,
+        DownforceDisruption = 0f,
+        DirtyAirDecayLengthMeters = 10f,
+    };
+
+    /// <summary>A body that rolls straight on at its speed, and has nothing else at all.</summary>
+    private sealed class BareBody(CarSpec? spec = null) : ICar
+    {
+        public CarSpec Spec { get; } = spec ?? new()
         {
             WheelBaseMeters = 2.5f,
             FrontAxleOffsetMeters = 1.2f,
@@ -215,12 +277,15 @@ public sealed class CarInterfaceTests
             YawInertiaKgM2 = 1200f,
             MaximumBrakeDeceleration = 9f,
             KinematicBelowSpeed = 1f,
+            Body = BoxBody,
+            Wake = BoxWake,
+            DirtyAirSensitivity = 0f,
         };
 
         public IReadOnlyList<ModeLadder> Ladders => [];
         public float TotalMassKg(CarState state) => 800f;
 
-        public void Step(CarState state, CarPhysicsStepInput input, float dt) =>
+        public void Step(CarState state, CarStepInput input, float dt) =>
             state.Position += new Vector2(MathF.Cos(state.Heading), MathF.Sin(state.Heading)) * state.Speed * dt;
 
         public void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy) => dashboard.SetMass(800f);
@@ -260,6 +325,9 @@ public sealed class CarInterfaceTests
             YawInertiaKgM2 = 1200f,
             MaximumBrakeDeceleration = Brake,
             KinematicBelowSpeed = 1f,
+            Body = BoxBody,
+            Wake = BoxWake,
+            DirtyAirSensitivity = 0f,
         };
 
         private readonly BoxEngine _engine = new();
@@ -268,7 +336,7 @@ public sealed class CarInterfaceTests
 
         public float TotalMassKg(CarState state) => 800f;
 
-        public void Step(CarState state, CarPhysicsStepInput input, float dt)
+        public void Step(CarState state, CarStepInput input, float dt)
         {
             Steps++;
             state.Position += new Vector2(MathF.Cos(state.Heading), MathF.Sin(state.Heading)) * state.Speed * dt;
@@ -277,7 +345,7 @@ public sealed class CarInterfaceTests
 
         public CarPerformanceLimits EstimatePerformanceLimits(
             CarState state, CarStrategy strategy, float speed, float curvature, float gripUsage = 1f,
-            float assumedLongitudinalAcceleration = 0f, float frontBrakeBiasOffset = 0f) =>
+            float assumedLongitudinalAcceleration = 0f) =>
             new(10f, 5f, Brake, 0f);
 
         public float EstimateCorneringLimit(CarState state, CarStrategy strategy, float speed, float gripUsage = 1f) => 10f;
@@ -296,8 +364,6 @@ public sealed class CarInterfaceTests
 
         public CarCapabilities Capabilities(CarState state, CarStrategy strategy) =>
             new(800f, 0.2f, SteerLock, 1f, 5f, 5f, 1f);
-
-        public AxleLayout Layout { get; } = new(0.5f, 0f, false, null);
 
         public void Describe(CarDashboard dashboard, CarState state, CarStrategy strategy)
         {

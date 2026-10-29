@@ -32,7 +32,7 @@ namespace StintegyEVO.Core.Cars;
 /// one means the car's cornering envelope is still the one the chassis was
 /// calibrated to - three and a half g, unchanged by any of this.
 /// </summary>
-internal static class TireSlipCurve
+public static class TireSlipCurve
 {
     /// <summary>
     /// Where a tyre gives its most. Eight degrees is a racing slick's
@@ -79,7 +79,7 @@ internal static class TireSlipCurve
     /// number and not the circle.
     ///
     /// It read nine tenths until the steering stopped winding itself off
-    /// near the limit (CarPhysics.SteeringInversionShare): a tenth of the
+    /// near the limit (the chassis's SteeringInversionShare): a tenth of the
     /// car's cornering had been the steering's, not the tyres'.
     /// </summary>
     public const float SustainablePeakShare = 0.98f;
