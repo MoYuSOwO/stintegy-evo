@@ -239,32 +239,8 @@ public sealed class RaceSimulation
     }
 
     /// <summary>
-    /// Downforce recovers quickly once a car moves sideways out of the wake;
-    /// experiments find it recovers faster laterally than drag.
-    /// </summary>
-    private const float DirtyAirLateralRecovery = 2f;
-
-    /// <summary>
-    /// How fast the wake widens with distance, as a half angle. A turbulent
-    /// wake spreads into a cone of a few degrees, which is why sitting exactly
-    /// behind matters when close and matters much less far back: the hole is
-    /// narrow and strong at a car length and broad and weak at fifty metres.
-    /// </summary>
-    private const float WakeSpreadPerMeter = 0.123f;
-
-    /// <summary>Beyond this there is nothing left worth computing.</summary>
-    private const float WakeReachMeters = 80f;
-
-    private static float GaussianFalloff(float gap, float decayLengthMeters)
-    {
-        float scale = MathF.Max(decayLengthMeters, 1e-3f);
-        float normalized = gap / scale;
-        return MathF.Exp(-normalized * normalized);
-    }
-
-    /// <summary>
     /// How much of its own speed each car's air is already carrying, because
-    /// somebody in front has dragged it along.
+    /// somebody in front has dragged it along (<see cref="WakeAir"/>).
     ///
     /// Read from one finished picture of the grid and written back before any
     /// car plans anything, so a car's tow does not depend on where it sits in
@@ -277,9 +253,7 @@ public sealed class RaceSimulation
         for (int i = 0; i < carCount; i++)
         {
             RaceCarSnapshot ego = snapshots[i];
-            float strongestTow = 0f;
-            float strongestDownforceDeficit = 0f;
-            float strongestDirtyAir = 0f;
+            CarAir strongest = CarAir.Clean;
             for (int j = 0; j < carCount; j++)
             {
                 if (j == i)
@@ -291,7 +265,7 @@ public sealed class RaceSimulation
                     along -= Track.LengthMeters;
 
                 float gap = along - (ego.LengthMeters + other.LengthMeters) * 0.5f;
-                if (gap <= 0f || gap >= WakeReachMeters)
+                if (gap <= 0f || gap >= WakeAir.ReachMeters)
                     continue;
 
                 // A car pointed the other way punches its hole the other way.
@@ -301,66 +275,16 @@ public sealed class RaceSimulation
                     continue;
                 }
 
-                CarWake wakeCar = _cars[j].Car.Spec.Wake;
-                // The wake's two faces part company with distance: it rises
-                // off the road as it ages, so the follower's body stays sunk
-                // in slowed air - the drag relief keeps a long hyperbolic
-                // tail - while wings and floor climb out of it within a
-                // couple of car lengths, so everything the downforce model
-                // reads decays on the short Gaussians.
-                float towDeficit = wakeCar.VelocityDeficit /
-                                   (1f + gap / MathF.Max(
-                                       wakeCar.TowHalfDistanceMeters,
-                                       1e-3f
-                                   ));
-                float downforceDeficit = wakeCar.VelocityDeficit *
-                                         GaussianFalloff(
-                                             gap,
-                                             wakeCar.DownforceDecayLengthMeters
-                                         );
-                float downforceLoss = wakeCar.DownforceDisruption *
-                                      GaussianFalloff(
-                                          gap,
-                                          wakeCar.DirtyAirDecayLengthMeters
-                                      );
-
-                // Across the wake the deficit falls away from the middle, and
-                // the middle is wider the further back it is read. Downforce
-                // recovers faster sideways than the tow does.
-                float halfWidth = other.WidthMeters * 0.5f +
-                                  gap * WakeSpreadPerMeter;
-                float sideways = MathF.Abs(other.TrackD - ego.TrackD) /
-                                 MathF.Max(halfWidth, 0.1f);
-                towDeficit *= MathF.Exp(-sideways * sideways);
-                float lateralRecovery = MathF.Exp(
-                    -DirtyAirLateralRecovery * sideways * sideways
-                );
-                downforceDeficit *= lateralRecovery;
-                downforceLoss *= lateralRecovery;
-
-                strongestTow = MathF.Max(strongestTow, towDeficit);
-                strongestDownforceDeficit = MathF.Max(
-                    strongestDownforceDeficit,
-                    downforceDeficit
-                );
-                strongestDirtyAir = MathF.Max(
-                    strongestDirtyAir,
-                    downforceLoss
-                );
+                strongest = WakeAir.Strongest(strongest,
+                    WakeAir.Behind(_cars[j].Car.Spec.Wake, other.WidthMeters, gap, other.TrackD - ego.TrackD));
             }
 
-            // The drag relief of a tow is universal; how much of the
-            // disturbed air reaches the working surfaces is the follower's
-            // own trait.
-            float sensitivity = MathF.Max(
-                0f,
-                _cars[i].Car.Spec.DirtyAirSensitivity
-            );
+            CarAir felt = WakeAir.Felt(strongest, _cars[i].Car.Spec.DirtyAirSensitivity);
             snapshots[i] = ego with
             {
-                AirVelocityDeficit = strongestTow,
-                DownforceVelocityDeficit = MathF.Min(1f, strongestDownforceDeficit * sensitivity),
-                WakeDownforceLoss = MathF.Min(1f, strongestDirtyAir * sensitivity)
+                AirVelocityDeficit = felt.VelocityDeficit,
+                DownforceVelocityDeficit = felt.DownforceVelocityDeficit,
+                WakeDownforceLoss = felt.DownforceLoss
             };
         }
     }
