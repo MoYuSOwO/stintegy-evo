@@ -5,7 +5,7 @@ The lanes are drawn on the circuit's own centreline and widths (data/official/ci
 each as the line that bends least within its part of the road: the free lane on the
 whole road, the left and right lanes each on their own half, the middle lane within
 a few metres of the centre. Speeds are not baked: the driver plans them from the car's
-envelope and the learner corrects them, so a lane here is only where to drive.
+envelope, so a lane here is only where to drive.
 
 Against TUM's 3D minimum-time bake (bake_lanes_3d.py) on Silverstone, learned, the
 free lane was 0.4 s a lap slower, followed more closely, and straight on the
