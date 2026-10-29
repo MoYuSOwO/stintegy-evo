@@ -629,6 +629,36 @@ public sealed class RaceSimulationTests
     private static CarBody TestBody(float length, float width) =>
         new CarConfig().Body with { LengthMeters = length, WidthMeters = width };
 
+    [Fact]
+    public void TheWakeRuleADriverCanReadIsTheOneTheRaceUses()
+    {
+        TrackData track = BuildTrack();
+        RaceCar follower = CreateRaceCar("wake-follower", track, track.Sample(10f), speed: 30f, new FixedDriver(default));
+        follower.State.Position += track.Sample(10f).Normal * 0.7f;
+        RaceCar leader = CreateRaceCar("wake-leader", track, track.Sample(22f), speed: 30f, new FixedDriver(default));
+        RaceSimulation simulation = new(track);
+        simulation.AddCar(follower);
+        simulation.AddCar(leader);
+
+        RaceFrameSnapshot frame = simulation.CaptureFrame();
+        RaceCarSnapshot behind = frame[0], ahead = frame[1];
+        float gap = ahead.TrackS - behind.TrackS - (ahead.LengthMeters + behind.LengthMeters) * 0.5f;
+        CarAir read = WakeAir.Felt(
+            WakeAir.Behind(ahead.Wake!, ahead.WidthMeters, gap, ahead.TrackD - behind.TrackD),
+            behind.DirtyAirSensitivity);
+
+        Assert.True(read.DownforceLoss > 0f);
+        Assert.Equal(behind.AirVelocityDeficit, read.VelocityDeficit);
+        Assert.Equal(behind.DownforceVelocityDeficit, read.DownforceVelocityDeficit);
+        Assert.Equal(behind.WakeDownforceLoss, read.DownforceLoss);
+        // Further back, and further aside, the air is cleaner.
+        Assert.True(WakeAir.Behind(ahead.Wake!, ahead.WidthMeters, gap * 3f, 0f).DownforceLoss <
+                    WakeAir.Behind(ahead.Wake!, ahead.WidthMeters, gap, 0f).DownforceLoss);
+        Assert.True(WakeAir.Behind(ahead.Wake!, ahead.WidthMeters, gap, 2.5f).DownforceLoss <
+                    WakeAir.Behind(ahead.Wake!, ahead.WidthMeters, gap, 0f).DownforceLoss);
+        Assert.Equal(CarAir.Clean, WakeAir.Behind(ahead.Wake!, ahead.WidthMeters, WakeAir.ReachMeters + 1f, 0f));
+    }
+
     private static (float Tow, float DirtyAir) MeasureWake(
         float centerSeparationMeters,
         float lateralOffsetMeters
