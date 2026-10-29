@@ -53,3 +53,6 @@ Drivers/Bake/daytona_road_course_osm.png*
 /mods/**/*.pdb
 /mods/**/*.runtimeconfig.json
 /mods/**/*.deps.json
+
+# Racecraft training runs: logs and checkpoints stay local.
+/Tools/RacecraftHost/runs/
