@@ -45,6 +45,12 @@ public readonly record struct RaceCarSnapshot(
     public float DownforceVelocityDeficit { get; init; }
     public float WakeDownforceLoss { get; init; }
 
+    /// <summary>The air the car leaves behind it, as it declares it, for whoever follows (<see cref="WakeAir"/>); none on a snapshot made by hand.</summary>
+    public CarWake? Wake { get; init; }
+
+    /// <summary>How much of the disturbed air in front reaches the car's working surfaces, as it declares it.</summary>
+    public float DirtyAirSensitivity { get; init; }
+
     /// <summary>
     /// The four tyres, front left, front right, rear left, rear right; empty
     /// on a car without changeable tyres (<see cref="ICarTires"/>).
@@ -158,7 +164,9 @@ public readonly record struct RaceCarSnapshot(
             RaceDistanceMeters = car.Progress.RaceDistanceMeters,
             TrackLengthMeters = MathF.Max(0f, trackLengthMeters),
             TrackWidthMeters = pose.Sample.Width,
-            WheelBaseMeters = model.Spec.WheelBaseMeters
+            WheelBaseMeters = model.Spec.WheelBaseMeters,
+            Wake = model.Spec.Wake,
+            DirtyAirSensitivity = model.Spec.DirtyAirSensitivity
         };
     }
 }
