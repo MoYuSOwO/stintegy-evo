@@ -31,6 +31,35 @@ public sealed class FollowTests
         Assert.True(closestSeconds > 0.5f * gap, $"came within {closestSeconds:F2} s of the car ahead, told to keep {gap:F1} s");
     }
 
+    [Fact]
+    public void FollowingCloseAtSpeedItStopsBehindACarAheadThatStampsOnTheBrakes()
+    {
+        // Two plain drivers nose to tail round Silverstone; half a minute in,
+        // flat out on a straight, the one ahead brakes down to a crawl.
+        TrackData track = GameMods.Registry.Circuits.Get("silverstone").Track;
+        LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
+        LaneSet lanes = file.LanesFor(track);
+        var simulation = new RaceSimulation(track);
+        string compound = DevelopmentTyres.SuperId;
+        float start = track.StartingLineS;
+        (RaceCar ahead, LaneDriver aheadDriver) = LaneGrid.Seat(simulation, file, lanes, "ahead", StockCar.Build(compound), compound,
+            start + 30f, 0f, 60f, shares: new LaneShares { Lateral = 0.85f, Brake = 0.82f, Drive = 0.9f });
+        (RaceCar behind, _) = LaneGrid.Seat(simulation, file, lanes, "behind", StockCar.Build(compound), compound, start, 0f, 60f);
+        bool braked = false, hit = false;
+        for (int i = 0; i < 60 * 45; i++)
+        {
+            if (!braked && i > 60 * 30 && ahead.State.Speed > 70f)
+            {
+                aheadDriver.SpeedCap = 20f;
+                braked = true;
+            }
+            simulation.Step(Dt);
+            hit |= behind.HitCarThisStep;
+        }
+        Assert.True(braked, "the car ahead never reached a fast straight to brake on");
+        Assert.False(hit, "ran into the back of the car that braked");
+    }
+
     // Silverstone, a car held to 45 m/s and another 80 m behind it free to
     // go as fast as the road lets it: whether they touched, and how close
     // the one behind came, in metres of gap and, once it had caught up, in

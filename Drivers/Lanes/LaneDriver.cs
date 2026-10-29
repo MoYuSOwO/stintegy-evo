@@ -430,8 +430,8 @@ public sealed class LaneDriver : IDriverController
     // road it covers before its foot reacts to the car ahead braking on top.
     private const float RacingGapMeters = 2f;
     private const float FollowReactionSeconds = 0.2f;
-    // The share of its own braking the car reckons on having to stop behind
-    // a car ahead that brakes as hard as a car like it can.
+    // The share of its own braking the car reckons on giving to stop behind
+    // a car ahead that brakes as hard.
     private const float FollowBrakeShare = 0.85f;
     private float? _followCap;
 
@@ -1168,13 +1168,15 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// The speed the car may be doing now and still stop the gap it keeps
-    /// behind the car ahead on its line, should that car brake now as hard as
-    /// a car like this one can: after the reaction, braking no harder than
-    /// its share. Read as the car ahead holding its speed, a car two metres
-    /// behind it stayed two metres behind until it braked, and was into the
-    /// back of it before its own foot had moved. The line is the one the car
-    /// is driving, drawn or not, where the car ahead is, so a car the line
-    /// goes round is no car in the way. Null with nobody in the way.
+    /// behind the car ahead on its line, should that car brake now as hard
+    /// as this one brakes for it, after its reaction (Gipps' safe speed).
+    /// Read as the car ahead holding its speed, the TORCS bots' way, a car
+    /// two metres behind stayed there until it braked and was into the back
+    /// of it before its own foot had moved. Read as the car ahead braking as
+    /// hard as any car could, the follower held a third of a second back on
+    /// every straight and never got into the tow. The line is the one the
+    /// car is driving, drawn or not, where the car ahead is, so a car the
+    /// line goes round is no car in the way. Null with nobody in the way.
     /// </summary>
     private float? FollowCap(in DriverContext context, RaceCarSnapshot car, float speed)
     {
@@ -1198,8 +1200,9 @@ public sealed class LaneDriver : IDriverController
             if (across > 0.5f * (car.WidthMeters + other.WidthMeters) + FollowSideMarginMeters)
                 continue;
             float theirSpeed = MathF.Max(0f, other.SpeedMetersPerSecond);
-            float theirStop = theirSpeed * theirSpeed / (2f * MathF.Max(1f, _envelope.Brake(theirSpeed)));
-            float room = along - 0.5f * (car.LengthMeters + other.LengthMeters) - keep + theirStop;
+            float gap = along - 0.5f * (car.LengthMeters + other.LengthMeters);
+            // Its stop if it braked as hard as this car brakes for it.
+            float room = gap - keep + theirSpeed * theirSpeed / (2f * brake);
             // The speed whose reaction road and stop at the share fill the room.
             float v = room <= 0f ? 0f : brake * (MathF.Sqrt(react * react + 2f * room / brake) - react);
             cap = cap is { } c ? MathF.Min(c, v) : v;
