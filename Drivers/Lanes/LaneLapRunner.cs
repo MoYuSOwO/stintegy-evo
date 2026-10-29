@@ -87,13 +87,7 @@ public static class LaneLapRunner
     )
     {
         LaneSet lanes = file.LanesFor(track);
-        float startS = track.StartingLineS;
-        int station = (int)MathF.Round(lanes.StationOf(startS));
-        float offset = lanes.Offset(LaneId.Free, station);
-        Vector2 here = lanes.Position(station, offset);
-        Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
-        float heading = MathF.Atan2(next.Y - here.Y, next.X - here.X);
-
+        var simulation = new RaceSimulation(track, new RaceEnvironment { SurfaceGripScalar = roadGrip });
         // The development compound unless a run asks for another: a lap that
         // goes wrong should have gone wrong in the driving.
         compound ??= DevelopmentTyres.SuperId;
@@ -101,33 +95,8 @@ public static class LaneLapRunner
         // compound alone unless a run brings its own. The driver keeps its
         // own copy of what it is, and knows it only by its features.
         model ??= StockCar.Build(compound);
-        var driver = new LaneDriver(file, model)
-        {
-            Gains = gains ?? new LaneDriverGains(),
-            Shares = shares ?? new LaneShares(),
-            // A lap of the plan and the notes, not of a driver's nerves.
-            LearnsAsItDrives = false
-        };
-        var profile = new DriverProfile("lanes", abilities ?? new DriverAbilities());
-        var car = new RaceCar(
-            "lanes",
-            model,
-            new Driver(profile, driver),
-            new CarState
-            {
-                Position = here,
-                Heading = heading,
-                Speed = startSpeed
-            }
-        )
-        {
-            Strategy = strategy ?? CarStrategy.Default
-        };
-        ((ICarTires)model).FitTires(car.State, compound);
-        ((ICarStores)model).Fill(car.State, PowertrainState.Filled(startingCharge));
-        ((ICarTires)model).WarmTires(car.State, tireTempC, tireTempC);
-        var simulation = new RaceSimulation(track, new RaceEnvironment { SurfaceGripScalar = roadGrip });
-        simulation.AddCar(car);
+        (RaceCar car, LaneDriver driver) = LaneGrid.Seat(simulation, file, lanes, "lanes", model, compound,
+            track.StartingLineS, 0f, startSpeed, gains, shares, abilities, strategy, startingCharge, tireTempC);
 
         const float dt = 1f / 60f;
         float length = track.LengthMeters;

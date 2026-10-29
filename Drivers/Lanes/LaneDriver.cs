@@ -415,6 +415,24 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     public float? SpeedCap { get; set; }
 
+    /// <summary>
+    /// Following, as the strategist orders it: the gap in time kept to a car
+    /// ahead on the car's own line. Zero is racing it, when no gap is kept
+    /// beyond not running into the back of it.
+    /// </summary>
+    public float FollowGapSeconds { get; set; }
+
+    // A car ahead is looked for this far up the road, and counts as on the
+    // line when it overlaps it by more than this margin between the two.
+    private const float FollowLookMeters = 150f;
+    private const float FollowSideMarginMeters = 0.4f;
+    // Racing, the nose is kept this far off the car ahead's tail.
+    private const float RacingGapMeters = 2f;
+    // The share of its braking the car reckons on giving to come down to
+    // the speed of the car ahead: the rest is left for that car braking too.
+    private const float FollowBrakeShare = 0.6f;
+    private float? _followCap;
+
     /// <summary>Blend travel per second, in units of the blend.</summary>
     public float RangeRate { get; init; } = 0.6f;
     public float SideRate { get; init; } = 0.8f;
@@ -608,6 +626,7 @@ public sealed class LaneDriver : IDriverController
         _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
         _carSpeed = speed;
+        _followCap = FollowCap(context, car, speed);
         float station = _lanes.StationOf(car.TrackS);
 
         // Where the plan is, at the car and a little ahead.
@@ -752,7 +771,7 @@ public sealed class LaneDriver : IDriverController
         target *= speedScale;
         ahead *= speedScale;
         float uncapped = target;
-        if (SpeedCap is { } cap)
+        if (Cap is { } cap)
         {
             target = MathF.Min(target, cap);
             ahead = MathF.Min(ahead, cap);
@@ -1141,6 +1160,49 @@ public sealed class LaneDriver : IDriverController
         return TrafficComing(context, car) ? 0f : Gains.RejoinEdgeSpeed;
     }
 
+    private float? Cap => SpeedCap is { } cap
+        ? _followCap is { } follow ? MathF.Min(cap, follow) : cap
+        : _followCap;
+
+    /// <summary>
+    /// The speed the car may be doing now and still come down to the speed
+    /// of the car ahead on its line by the time it is the gap it keeps off
+    /// it, braking no harder than its share; over the gap already, the speed
+    /// of the car ahead less a metre a second for each half metre too close.
+    /// The line is the one the car is driving, drawn or not, where the car
+    /// ahead is, so a car the line goes round is no car in the way. Null
+    /// with nobody in the way.
+    /// </summary>
+    private float? FollowCap(in DriverContext context, RaceCarSnapshot car, float speed)
+    {
+        float length = MathF.Max(car.TrackLengthMeters, 1f);
+        float keep = RacingGapMeters + FollowGapSeconds * MathF.Max(0f, speed);
+        float brake = FollowBrakeShare * MathF.Max(1f, _envelope.Brake(MathF.Max(0f, speed)));
+        float? cap = null;
+        for (int i = 0; i < context.Frame.Count; i++)
+        {
+            if (i == context.CarSnapshotIndex)
+                continue;
+            RaceCarSnapshot other = context.Frame[i];
+            float along = ((other.TrackS - car.TrackS) % length + length) % length;
+            if (along <= 0f || along > MathF.Min(FollowLookMeters, length * 0.5f))
+                continue;
+            if (MathF.Cos(other.VelocityHeadingRadians - car.VelocityHeadingRadians) <= 0.5f)
+                continue;
+            int theirs = (int)MathF.Round(_lanes.StationOf(other.TrackS));
+            float across = MathF.Abs(other.TrackD - ReferenceOffset(theirs));
+            if (across > 0.5f * (car.WidthMeters + other.WidthMeters) + FollowSideMarginMeters)
+                continue;
+            float room = along - 0.5f * (car.LengthMeters + other.LengthMeters) - keep;
+            float theirSpeed = MathF.Max(0f, other.SpeedMetersPerSecond);
+            float v = room >= 0f
+                ? MathF.Sqrt(theirSpeed * theirSpeed + 2f * brake * room)
+                : MathF.Max(0f, theirSpeed + 2f * room);
+            cap = cap is { } c ? MathF.Min(c, v) : v;
+        }
+        return cap;
+    }
+
     /// <summary>A car within the gap in time behind, or still alongside, on the road.</summary>
     private bool TrafficComing(in DriverContext context, RaceCarSnapshot car)
     {
@@ -1370,6 +1432,7 @@ public sealed class LaneDriver : IDriverController
             Combined(axles.RearLateral, axles.RearLongitudinal)));
         bool gentleRung = DrivenRung(car) < 2f;
         if (gentleRung || _phase != SlidePhase.None || SpeedCap is not null ||
+            (_followCap is { } follow && follow < car.SpeedMetersPerSecond + 1f) ||
             car.SpeedMetersPerSecond < UnderPlanShare * PlannedSpeedAt(car.TrackS))
             _segmentHeldBack = true;
     }
