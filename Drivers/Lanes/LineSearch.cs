@@ -225,6 +225,227 @@ internal sealed class LineSearch
     }
 
     /// <summary>
+    /// What is baked: for every place, heading and speed on every row, the
+    /// seconds the fastest way from there to the end takes, and the step
+    /// that way starts with.
+    /// </summary>
+    public sealed class Table
+    {
+        public required int From { get; init; }
+        public required int Rows { get; init; }
+        public required List<float>[] Places { get; init; }
+        public required int Bins { get; init; }
+        public required float[][] Value { get; init; }
+        public required int[][] NextRow { get; init; }
+        public required int[][] Next { get; init; }
+    }
+
+    /// <summary>
+    /// Bake the stretch of <paramref name="rows"/> rows from
+    /// <paramref name="from"/> from its end back: it ends on the racing line,
+    /// the road beyond charged by <paramref name="terminal"/>.
+    /// </summary>
+    public Table Bake(int from, int rows, Func<float, float> terminal)
+    {
+        int bins = (int)MathF.Ceiling((LaneSpeedPlanner.TopSpeed - MinSpeed) / SpeedStep) + 1;
+        int slopes = Slopes.Length;
+        int zeroSlope = Array.IndexOf(Slopes, 0f);
+        var places = new List<float>[rows + 1];
+        for (int r = 0; r <= rows; r++)
+        {
+            (float lo, float hi) = Room(from + r * RowStations);
+            var ys = new List<float>();
+            for (float y = MathF.Ceiling(lo / LateralStep) * LateralStep; y <= hi + 1e-3f; y += LateralStep)
+                if (r < rows || MathF.Abs(y) < 1e-3f)
+                    ys.Add(y);
+            places[r] = ys;
+        }
+        var value = new float[rows + 1][];
+        var nextRow = new int[rows + 1][];
+        var next = new int[rows + 1][];
+        for (int r = 0; r <= rows; r++)
+        {
+            value[r] = new float[places[r].Count * slopes * bins];
+            nextRow[r] = new int[value[r].Length];
+            next[r] = new int[value[r].Length];
+            Array.Fill(value[r], float.PositiveInfinity);
+            Array.Fill(next[r], -1);
+        }
+        int end = places[rows].FindIndex(y => MathF.Abs(y) < 1e-3f);
+        for (int b = 0; b < bins; b++)
+            value[rows][(end * slopes + zeroSlope) * bins + b] = terminal(MinSpeed + b * SpeedStep);
+
+        for (int r0 = rows - 1; r0 >= 0; r0--)
+        {
+            int row0 = r0;
+            List<float> here = places[r0];
+            Parallel.For(0, here.Count * slopes, source =>
+            {
+                int i = source / slopes, hi = source % slopes;
+                float[] best = value[row0];
+                for (int sp = 0; sp < Spans.Length; sp++)
+                {
+                    int r1 = row0 + Spans[sp];
+                    if (r1 > rows)
+                        continue;
+                    List<float> there = places[r1];
+                    float[] later = value[r1];
+                    var edge = new Edge(Spans[sp] * RowStations);
+                    for (int j = 0; j < there.Count; j++)
+                    {
+                        if (MathF.Abs(there[j] - here[i]) > MaxLateralJumps[sp] + 1e-3f)
+                            continue;
+                        for (int hj = 0; hj < slopes; hj++)
+                        {
+                            int target = (j * slopes + hj) * bins;
+                            bool any = false;
+                            for (int b = 0; b < bins && !any; b++)
+                                any = later[target + b] < float.PositiveInfinity;
+                            if (!any || !Shape(edge, from, row0, here[i], Slopes[hi], there[j], Slopes[hj], null))
+                                continue;
+                            for (int b0 = 0; b0 < bins; b0++)
+                            {
+                                float v0 = MinSpeed + b0 * SpeedStep;
+                                if (v0 > edge.Limit[0] + 1e-3f)
+                                    break;
+                                (float vLow, float vHigh) = Reach(edge, v0);
+                                int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
+                                int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
+                                int at = source * bins + b0;
+                                for (int b1 = bLow; b1 <= bHigh; b1++)
+                                {
+                                    float rest = later[target + b1];
+                                    if (rest == float.PositiveInfinity)
+                                        continue;
+                                    float seconds = Seconds(edge, v0, MinSpeed + b1 * SpeedStep);
+                                    if (seconds + rest < best[at])
+                                    {
+                                        best[at] = seconds + rest;
+                                        nextRow[row0][at] = r1;
+                                        next[row0][at] = target + b1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        return new Table { From = from, Rows = rows, Places = places, Bins = bins, Value = value, NextRow = nextRow, Next = next };
+    }
+
+    /// <summary>The way the baked table leads from a place, heading and speed on a row to the end.</summary>
+    public Way? Follow(Table table, int row, float y, float slope, float speed)
+    {
+        int slopes = Slopes.Length;
+        int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
+        int heading = Array.IndexOf(Slopes, slope);
+        if (place < 0 || heading < 0)
+            return null;
+        int state = (place * slopes + heading) * table.Bins + Math.Clamp((int)MathF.Round((speed - MinSpeed) / SpeedStep), 0, table.Bins - 1);
+        float total = table.Value[row][state];
+        if (total == float.PositiveInfinity)
+            return null;
+        var path = new List<(int Row, int State)> { (row, state) };
+        while (path[^1].Row < table.Rows)
+        {
+            (int r, int s0) = path[^1];
+            path.Add((table.NextRow[r][s0], table.Next[r][s0]));
+        }
+        return Draw(table, path, total);
+    }
+
+    private Way Draw(Table table, List<(int Row, int State)> path, float total)
+    {
+        int slopes = Slopes.Length;
+        int first = path[0].Row;
+        int n = (table.Rows - first) * RowStations + 1;
+        var offset = new float[n];
+        var speed = new float[n];
+        for (int p = 0; p + 1 < path.Count; p++)
+        {
+            (int r0, int s0) = path[p];
+            (int r1, int s1) = path[p + 1];
+            (int i, int hi, int b0) = Split(s0, slopes, table.Bins);
+            (int j, int hj, int b1) = Split(s1, slopes, table.Bins);
+            var shape = new Edge((r1 - r0) * RowStations);
+            Shape(shape, table.From, r0, table.Places[r0][i], Slopes[hi], table.Places[r1][j], Slopes[hj], null);
+            float v0 = MinSpeed + b0 * SpeedStep, v1 = MinSpeed + b1 * SpeedStep;
+            for (int k = 0; k <= shape.Step.Length; k++)
+            {
+                offset[(r0 - first) * RowStations + k] = shape.Offset[k];
+                speed[(r0 - first) * RowStations + k] = Along(v0, v1, shape, k);
+            }
+        }
+        float endSpeed = MinSpeed + Split(path[^1].State, slopes, table.Bins).Bin * SpeedStep;
+        float terminal = table.Value[table.Rows][path[^1].State];
+        return new Way(table.From + first * RowStations, offset, speed, total - terminal, endSpeed, terminal);
+    }
+
+    /// <summary>
+    /// The step to take now, from a car at a place and heading on a row and
+    /// at any speed: every step out of there and every speed it could end
+    /// at, each charged its own seconds and the baked rest of the way; and
+    /// <paramref name="extra"/>, what the cars around add to a step (infinite
+    /// where it runs into one). The seconds, the row it ends on, and the
+    /// state there.
+    /// </summary>
+    public (float Seconds, int Row, int State) Decide(Table table, int row, float y, float slope, float speed,
+        Func<int, int, float[], float, float, float>? extra = null)
+    {
+        int slopes = Slopes.Length;
+        int bins = table.Bins;
+        float bestSeconds = float.PositiveInfinity;
+        int bestRow = -1, bestState = -1;
+        int sourceAt = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
+        if (sourceAt < 0)
+            return (bestSeconds, bestRow, bestState);
+        for (int sp = 0; sp < Spans.Length; sp++)
+        {
+            int r1 = row + Spans[sp];
+            if (r1 > table.Rows)
+                continue;
+            List<float> there = table.Places[r1];
+            float[] later = table.Value[r1];
+            var edge = new Edge(Spans[sp] * RowStations);
+            for (int j = 0; j < there.Count; j++)
+            {
+                if (MathF.Abs(there[j] - y) > MaxLateralJumps[sp] + 1e-3f)
+                    continue;
+                for (int hj = 0; hj < slopes; hj++)
+                {
+                    int target = (j * slopes + hj) * bins;
+                    if (!Shape(edge, table.From, row, y, slope, there[j], Slopes[hj], null) || speed > edge.Limit[0] + 1e-3f)
+                        continue;
+                    (float vLow, float vHigh) = Reach(edge, speed);
+                    int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
+                    int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
+                    for (int b1 = bLow; b1 <= bHigh; b1++)
+                    {
+                        float rest = later[target + b1];
+                        if (rest == float.PositiveInfinity)
+                            continue;
+                        float v1 = MinSpeed + b1 * SpeedStep;
+                        float seconds = Seconds(edge, speed, v1);
+                        if (extra is not null)
+                            seconds += extra(row, r1, edge.Offset, speed, v1);
+                        if (seconds + rest < bestSeconds)
+                            (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
+                    }
+                }
+            }
+        }
+        return (bestSeconds, bestRow, bestState);
+    }
+
+    /// <summary>The place, heading and speed a baked state stands for.</summary>
+    public (float Y, float Slope, float Speed) StateOf(Table table, int row, int state)
+    {
+        (int place, int heading, int bin) = Split(state, Slopes.Length, table.Bins);
+        return (table.Places[row][place], Slopes[heading], MinSpeed + bin * SpeedStep);
+    }
+
+    /// <summary>
     /// The way's line with the joins between its steps eased: each step is
     /// smooth and meets the next heading the same way, but the corner can
     /// change at a join all at once, a wheel turned in no time. Averaged
