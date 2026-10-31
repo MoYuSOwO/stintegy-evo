@@ -53,6 +53,33 @@ internal sealed class LineSearch
         _shares = shares;
         _factor = factor;
         _road = road;
+        _roads = new LaneRoad[lanes.Count][];
+    }
+
+    // The road across each station, read once on a fine grid and
+    // interpolated: a step is read at every station it crosses, and the
+    // same stations are crossed by every step that passes.
+    private const float RoadGrid = 0.5f;
+    private readonly LaneRoad[]?[] _roads;
+
+    private LaneRoad RoadAt(int station, float y)
+    {
+        int st = _lanes.Wrap(station);
+        (float lo, float hi) = Room(st);
+        LaneRoad[]? across = _roads[st];
+        if (across is null)
+        {
+            across = new LaneRoad[(int)MathF.Ceiling((hi - lo) / RoadGrid) + 1];
+            float free = _lanes.Offset(LaneId.Free, st);
+            for (int i = 0; i < across.Length; i++)
+                across[i] = _road(st, free + lo + i * RoadGrid);
+            _roads[st] = across;
+        }
+        float at = Math.Clamp((y - lo) / RoadGrid, 0f, across.Length - 1);
+        int a = Math.Min((int)at, across.Length - 1), b = Math.Min(a + 1, across.Length - 1);
+        float t = at - a;
+        LaneRoad ra = across[a], rb = across[b];
+        return new LaneRoad(ra.Grade + (rb.Grade - ra.Grade) * t, ra.Bank + (rb.Bank - ra.Bank) * t, ra.Vertical + (rb.Vertical - ra.Vertical) * t);
     }
 
     /// <summary>A way found: the offset from the racing line and the speed at each station, and the time it takes.</summary>
@@ -243,9 +270,11 @@ internal sealed class LineSearch
     /// <summary>
     /// Bake the stretch of <paramref name="rows"/> rows from
     /// <paramref name="from"/> from its end back: it ends on the racing line,
-    /// the road beyond charged by <paramref name="terminal"/>.
+    /// the road beyond charged by <paramref name="terminal"/>. Speeds below
+    /// <paramref name="slowest"/> at a station are not baked there: no car
+    /// racing comes by that slow, and one that does is rejoining, not racing.
     /// </summary>
-    public Table Bake(int from, int rows, Func<float, float> terminal)
+    public Table Bake(int from, int rows, Func<float, float> terminal, Func<int, float>? slowest = null)
     {
         int bins = (int)MathF.Ceiling((LaneSpeedPlanner.TopSpeed - MinSpeed) / SpeedStep) + 1;
         int slopes = Slopes.Length;
@@ -291,6 +320,8 @@ internal sealed class LineSearch
                     List<float> there = places[r1];
                     float[] later = value[r1];
                     var edge = new Edge(Spans[sp] * RowStations);
+                    var lows = new float[bins];
+                    var highs = new float[bins];
                     for (int j = 0; j < there.Count; j++)
                     {
                         if (MathF.Abs(there[j] - here[i]) > MaxLateralJumps[sp] + 1e-3f)
@@ -303,12 +334,15 @@ internal sealed class LineSearch
                                 any = later[target + b] < float.PositiveInfinity;
                             if (!any || !Shape(edge, from, row0, here[i], Slopes[hi], there[j], Slopes[hj], null))
                                 continue;
-                            for (int b0 = 0; b0 < bins; b0++)
+                            int top = Math.Min(bins - 1, (int)MathF.Floor((edge.Limit[0] + 1e-3f - MinSpeed) / SpeedStep));
+                            if (top < 0)
+                                continue;
+                            int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(from + row0 * RowStations) - MinSpeed) / SpeedStep), 0, top);
+                            AllChains(edge, bottom, top, lows, highs);
+                            for (int b0 = bottom; b0 <= top; b0++)
                             {
                                 float v0 = MinSpeed + b0 * SpeedStep;
-                                if (v0 > edge.Limit[0] + 1e-3f)
-                                    break;
-                                (float vLow, float vHigh) = Reach(edge, v0);
+                                float vLow = lows[b0], vHigh = Held(edge, v0, highs[b0]);
                                 int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
                                 int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
                                 int at = source * bins + b0;
@@ -558,6 +592,7 @@ internal sealed class LineSearch
         public readonly float[] Limit = new float[stations];
         public readonly float[] Factor = new float[stations];
         public readonly LaneRoad[] Road = new LaneRoad[stations];
+        public float Length;
     }
 
     // The smooth curve from one place and heading to the next, kept on the
@@ -587,22 +622,34 @@ internal sealed class LineSearch
                 return false;
             edge.Offset[k] = y;
         }
+        edge.Length = 0f;
         for (int k = 0; k < n; k++)
         {
             int st = st0 + k;
             float kappa = LaneSet.Curvature(P(k - Chord), P(k), P(k + Chord));
             edge.Curvature[k] = kappa;
             edge.Step[k] = (P(k + 1) - P(k)).Length();
+            edge.Length += edge.Step[k];
             edge.Factor[k] = _factor(st);
-            edge.Road[k] = _road(st, _lanes.Offset(LaneId.Free, st) + edge.Offset[k]);
+            edge.Road[k] = RoadAt(st, edge.Offset[k]);
             edge.Limit[k] = LaneSpeedPlanner.CornerLimit(_envelope.ForTurn(kappa), kappa, edge.Factor[k] * _shares.Lateral, edge.Road[k]);
         }
         return true;
     }
 
     // The slowest and the fastest the car can be at the far end of a step
-    // from v0: braking all the way, or full drive held under each corner.
+    // from v0: braking all the way, or full drive held under each corner;
+    // and no faster than a steady change of v² from v0 keeps every station
+    // on the way inside the corner its tyres hold.
     private (float Low, float High) Reach(Edge edge, float v0)
+    {
+        (float low, float high) = Chains(edge, v0);
+        return (low, Held(edge, v0, high));
+    }
+
+    // Braking all the way and full drive held under each corner, station by
+    // station: what a step costs to bake.
+    private (float Low, float High) Chains(Edge edge, float v0)
     {
         float low = v0, high = v0;
         for (int k = 0; k < edge.Step.Length; k++)
@@ -614,20 +661,53 @@ internal sealed class LineSearch
         return (low, high);
     }
 
-    // The step taken at a steady change of v² from v0 to v1: its time, or
-    // never if a station on it asks more corner than the tyres hold there.
-    private float Seconds(Edge edge, float v0, float v1)
+    // No faster than a steady change of v² from v0 keeps every station on
+    // the way inside the corner its tyres hold; negative if none does.
+    private static float Held(Edge edge, float v0, float high)
     {
-        float seconds = 0f;
-        for (int k = 0; k < edge.Step.Length; k++)
+        int n = edge.Step.Length;
+        float rise = float.PositiveInfinity;
+        for (int k = 1; k < n; k++)
         {
-            float a = Along(v0, v1, edge, k), b = Along(v0, v1, edge, k + 1);
-            if (a > edge.Limit[k] + 1e-3f)
-                return float.PositiveInfinity;
-            seconds += edge.Step[k] / MathF.Max(0.5f * (a + b), 1f);
+            float limit = edge.Limit[k] + 1e-3f;
+            rise = MathF.Min(rise, (limit * limit - v0 * v0) * n / k);
         }
-        return seconds;
+        if (rise == float.PositiveInfinity)
+            return high;
+        return v0 * v0 + rise < 0f ? -1f : MathF.Min(high, MathF.Sqrt(v0 * v0 + rise));
     }
+
+    /// <summary>
+    /// How many speed bins apart the bake rides a step's chains; the bins
+    /// between take them in a straight line. They bend gently with the
+    /// speed they start from, and a step's whole cost is in them.
+    /// </summary>
+    public int ChainStride { get; init; } = 8;
+
+    // The chains for every speed bin from bottom to top.
+    private void AllChains(Edge edge, int bottom, int top, float[] low, float[] high)
+    {
+        int last = -1;
+        for (int b = bottom; ; b = Math.Min(b + ChainStride, top))
+        {
+            (low[b], high[b]) = Chains(edge, MinSpeed + b * SpeedStep);
+            if (last >= 0)
+                for (int m = last + 1; m < b; m++)
+                {
+                    float t = (m - last) / (float)(b - last);
+                    low[m] = low[last] + (low[b] - low[last]) * t;
+                    high[m] = high[last] + (high[b] - high[last]) * t;
+                }
+            last = b;
+            if (b == top)
+                break;
+        }
+    }
+
+    // The step taken at a steady change of v² from v0 to v1, which is a
+    // steady acceleration: its length over the mean of its ends.
+    private static float Seconds(Edge edge, float v0, float v1) =>
+        edge.Length / MathF.Max(0.5f * (v0 + v1), 1f);
 
     private static float Along(float v0, float v1, Edge edge, int k)
     {
