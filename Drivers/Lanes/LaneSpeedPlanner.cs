@@ -413,8 +413,6 @@ internal static class LaneSpeedPlanner
 
     private static float BrakeFrom(in LaneEnvelope envelope, float vNext, float curvature, float ds, float factor, float brakeFactor, LaneRoad road, LaneShares shares)
     {
-        LaneEnvelope e = envelope.ForTurn(curvature);
-        RoadAttitude att = road.Attitude;
         // The step is driven at every speed between the one it starts at and
         // vNext, so the corner it carries and the grip it has are read at
         // their middle, the start found by asking again, as Simplix does
@@ -425,29 +423,43 @@ internal static class LaneSpeedPlanner
         for (int pass = 0; pass < 3; pass++)
         {
             float v = 0.5f * (v0 + vNext);
-            // Braking unloads the rear by as much as it brakes, not by the most
-            // it could: take the lateral limit part way to the full-braking
-            // one, in proportion to how hard the first guess brakes, and ask again.
-            (float ay, float load) = Corner(v, curvature, road);
-            float lateral = e.Lateral(v, load);
-            float brakingShare = e.LateralBraking(v) / MathF.Max(e.Lateral(v), 1f);
-            float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(v, load));
-            float coast = factor * shares.Lateral * lateral;
-            float full = shares.BrakingCoupling ? coast * brakingShare : coast;
-            float ax = brake * Ellipse(ay, coast);
-            for (int k = 0; k < 2; k++)
-            {
-                float limit = coast + (full - coast) * (ax / MathF.Max(brake, 1e-3f));
-                ax = brake * Ellipse(ay, limit);
-            }
-
-            // What the road does to the car along it, the physics' way round:
-            // the axles are scaled onto the slope, gravity is added on top.
-            float decel = (ax + e.Loss(v)) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, v);
-            v0 = MathF.Sqrt(vNext * vNext + 2f * MathF.Max(0.1f, decel) * ds);
+            v0 = MathF.Sqrt(vNext * vNext + 2f * Deceleration(envelope, v, curvature, factor, brakeFactor, road, shares) * ds);
         }
         return v0;
     }
+
+    /// <summary>
+    /// The braking the car has at <paramref name="v"/> on this stretch, as
+    /// the backward sweep reckons it at the middle of a step: for a search
+    /// that runs forwards, so the two stop the car in the same road.
+    /// </summary>
+    internal static float Deceleration(in LaneEnvelope envelope, float v, float curvature, float factor, float brakeFactor, LaneRoad road, LaneShares shares)
+    {
+        LaneEnvelope e = envelope.ForTurn(curvature);
+        RoadAttitude att = road.Attitude;
+        (float ay, float load) = Corner(v, curvature, road);
+        float lateral = e.Lateral(v, load);
+        // Braking unloads the rear by as much as it brakes, not by the most
+        // it could: take the lateral limit part way to the full-braking
+        // one, in proportion to how hard the first guess brakes, and ask again.
+        float brakingShare = e.LateralBraking(v) / MathF.Max(e.Lateral(v), 1f);
+        float brake = brakeFactor * shares.Brake * MathF.Max(1f, e.Brake(v, load));
+        float coast = factor * shares.Lateral * lateral;
+        float full = shares.BrakingCoupling ? coast * brakingShare : coast;
+        float ax = brake * Ellipse(ay, coast);
+        for (int k = 0; k < 2; k++)
+        {
+            float limit = coast + (full - coast) * (ax / MathF.Max(brake, 1e-3f));
+            ax = brake * Ellipse(ay, limit);
+        }
+        // What the road does to the car along it, the physics' way round:
+        // the axles are scaled onto the slope, gravity is added on top.
+        return MathF.Max(0.1f, (ax + e.Loss(v)) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, v));
+    }
+
+    /// <summary>Full drive over one step, from <paramref name="v"/>: the forward sweep's own step.</summary>
+    internal static float Driven(in LaneEnvelope envelope, float v, float curvature, float ds, float factor, LaneRoad road, LaneShares shares) =>
+        DriveFrom(envelope, v, curvature, ds, factor, road, shares);
 
     private static float Ellipse(float used, float limit)
     {
