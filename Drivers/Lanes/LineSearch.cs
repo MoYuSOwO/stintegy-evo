@@ -281,20 +281,50 @@ internal sealed class LineSearch
     {
         /// <summary>Where the steps out of each place and heading start in the lists below, one more than there are.</summary>
         public required int[] First { get; init; }
+        /// <summary>Where the first of those steps' chains starts in <see cref="Chains"/>; the rest follow in order.</summary>
+        public required int[] ChainFirst { get; init; }
         public required byte[] Rows { get; init; }
         /// <summary>The place and heading a step ends on, on its own row.</summary>
-        public required int[] Target { get; init; }
-        public required float[] Length { get; init; }
+        public required ushort[] Target { get; init; }
+        /// <summary>How long a step is, in <see cref="LengthUnit"/>s.</summary>
+        public required ushort[] Length { get; init; }
         /// <summary>The slowest and fastest speed bins a step can start at.</summary>
-        public required short[] Bottom { get; init; }
-        public required short[] Top { get; init; }
-        /// <summary>Where a step's chains start in <see cref="Chains"/>: slowest and fastest end, pairs, every chain stride from the bottom bin to the top one.</summary>
-        public required int[] Chain { get; init; }
-        public required float[] Chains { get; init; }
+        public required byte[] Bottom { get; init; }
+        public required byte[] Top { get; init; }
+        /// <summary>
+        /// Each step's chains, slowest and fastest end in pairs, every chain
+        /// stride from the bottom bin to the top one, in <see cref="ChainUnit"/>s:
+        /// the slow end as how far under the speed it starts at, which it
+        /// never ends over, the fast end as the change either way. A fast
+        /// end that no speed is held to is <see cref="NoSpeed"/>; what does
+        /// not fit is <see cref="Escape"/> or <see cref="SlowEscape"/> here
+        /// and kept in <see cref="Escaped"/> as it is, by its place in this list.
+        /// </summary>
+        public required byte[] Chains { get; init; }
+        public required Dictionary<int, float> Escaped { get; init; }
     }
 
+    /// <summary>
+    /// A chain's resolution: a quarter of a speed bin's width is as fine as a
+    /// float's for every step's time the bake reaches (measured on
+    /// Brooklands), and a byte of them spans thirty metres a second each way.
+    /// </summary>
+    public const float ChainUnit = 0.25f;
+
+    /// <summary>A step's length's resolution: two millimetres.</summary>
+    public const float LengthUnit = 1f / 512f;
+
+    /// <summary>The stored chain number for a fast end that no speed is held to (<see cref="Held"/>).</summary>
+    public const sbyte NoSpeed = sbyte.MinValue;
+
+    /// <summary>The stored chain number for one kept apart in <see cref="Steps.Escaped"/>.</summary>
+    public const sbyte Escape = sbyte.MinValue + 1;
+
+    /// <summary>The same for a slow end.</summary>
+    public const byte SlowEscape = byte.MaxValue;
+
     // One step's record, while the bake makes it.
-    private readonly record struct Made(byte Rows, int Target, float Length, short Bottom, short Top, float[] Chains);
+    private readonly record struct Made(byte Rows, ushort Target, ushort Length, byte Bottom, byte Top, float[] Chains);
 
     /// <summary>
     /// Bake the stretch of <paramref name="rows"/> rows from
@@ -306,6 +336,8 @@ internal sealed class LineSearch
     public Table Bake(int from, int rows, Func<float, float> terminal, Func<int, float>? slowest = null)
     {
         int bins = (int)MathF.Ceiling((LaneSpeedPlanner.TopSpeed - MinSpeed) / SpeedStep) + 1;
+        if (bins > byte.MaxValue + 1)
+            throw new InvalidOperationException($"{bins} speed bins do not fit a byte.");
         int slopes = Slopes.Length;
         int zeroSlope = Array.IndexOf(Slopes, 0f);
         var places = new List<float>[rows + 1];
@@ -364,12 +396,15 @@ internal sealed class LineSearch
                                 any = later[target + b] < float.PositiveInfinity;
                             if (!any || !Shape(edge, from, row0, here[i], Slopes[hi], there[j], Slopes[hj], null))
                                 continue;
+                            // Timed on the length it is stored at.
+                            ushort length = (ushort)MathF.Round(edge.Length / LengthUnit);
+                            edge.Length = length * LengthUnit;
                             int top = Math.Min(bins - 1, (int)MathF.Floor((edge.Limit[0] + 1e-3f - MinSpeed) / SpeedStep));
                             if (top < 0)
                                 continue;
                             int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(from + row0 * RowStations) - MinSpeed) / SpeedStep), 0, top);
                             float[] chains = AllChains(edge, bottom, top);
-                            mine.Add(new Made((byte)Spans[sp], j * slopes + hj, edge.Length, (short)bottom, (short)top, chains));
+                            mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, (byte)bottom, (byte)top, chains));
                             for (int b0 = bottom; b0 <= top; b0++)
                             {
                                 float v0 = MinSpeed + b0 * SpeedStep;
@@ -490,15 +525,18 @@ internal sealed class LineSearch
         Steps steps = table.Steps[row];
         int node = place * slopes + heading;
         float bin = (speed - MinSpeed) / SpeedStep;
+        int at = steps.ChainFirst[node];
         for (int e = steps.First[node]; e < steps.First[node + 1]; e++)
         {
+            int count = 2 * ChainCount(steps.Bottom[e], steps.Top[e]);
+            int here = at;
+            at += count;
             if (bin > steps.Top[e] + 1e-3f)
                 continue;
             int r1 = row + steps.Rows[e];
             float[] later = table.Value[r1];
             int target = steps.Target[e] * bins;
-            int count = 2 * ((steps.Top[e] - steps.Bottom[e] + ChainStride - 1) / ChainStride + 1);
-            (float vLow, float vHigh) = ChainAt(steps.Chains.AsSpan(steps.Chain[e], count), steps.Bottom[e], steps.Top[e], bin);
+            (float vLow, float vHigh) = ChainAt(steps, e, here, count / 2, bin);
             int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
             int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
             Move move = default;
@@ -513,7 +551,7 @@ internal sealed class LineSearch
                 if (rest == float.PositiveInfinity)
                     continue;
                 float v1 = MinSpeed + b1 * SpeedStep;
-                float seconds = steps.Length[e] / MathF.Max(0.5f * (speed + v1), 1f);
+                float seconds = steps.Length[e] * LengthUnit / MathF.Max(0.5f * (speed + v1), 1f);
                 if (extra is not null)
                     seconds += extra(move, speed, v1);
                 if (seconds + rest < bestSeconds)
@@ -738,56 +776,153 @@ internal sealed class LineSearch
         {
             float v0 = MinSpeed + Math.Min(bottom + q * ChainStride, top) * SpeedStep;
             (float low, float high) = Chains(edge, v0);
-            chains[2 * q] = low;
-            chains[2 * q + 1] = Held(edge, v0, high);
+            chains[2 * q] = StoredSlow(v0, low);
+            chains[2 * q + 1] = StoredFast(v0, Held(edge, v0, high));
         }
         return chains;
     }
 
+    // A chain's number as it is stored, so the bake charges what a decision
+    // will read: on the quarter metre a second from the start speed where a
+    // byte holds it, as it is where not.
+    private static float StoredFast(float v0, float x)
+    {
+        if (x < 0f)
+            return x;
+        float q = MathF.Round((x - v0) / ChainUnit);
+        return q > Escape && q <= sbyte.MaxValue ? v0 + q * ChainUnit : x;
+    }
+
+    private static float StoredSlow(float v0, float x)
+    {
+        float q = MathF.Round((v0 - x) / ChainUnit);
+        return q >= 0f && q < SlowEscape ? v0 - q * ChainUnit : x;
+    }
+
+    private int ChainCount(int bottom, int top) => (top - bottom + ChainStride - 1) / ChainStride + 1;
+
     // The chains at a speed bin, fractional, between the strides either side.
     private (float Low, float High) ChainAt(ReadOnlySpan<float> chains, int bottom, int top, float bin)
     {
-        float x = Math.Clamp(bin, bottom, top) - bottom;
-        int q = Math.Min((int)(x / ChainStride), chains.Length / 2 - 1);
-        int b0 = q * ChainStride, b1 = Math.Min(b0 + ChainStride, top - bottom);
-        if (b1 <= b0 || q + 1 >= chains.Length / 2)
+        (int q, int pairs, float t) = Locate(chains.Length / 2, bottom, top, bin);
+        if (pairs == 1)
             return (chains[2 * q], chains[2 * q + 1]);
-        float t = (x - b0) / (b1 - b0);
         return (chains[2 * q] + (chains[2 * q + 2] - chains[2 * q]) * t,
                 chains[2 * q + 1] + (chains[2 * q + 3] - chains[2 * q + 1]) * t);
     }
 
-    private static Steps Pack(List<Made>[] made)
+    // The same off the stored step: only the samples either side are read.
+    private (float Low, float High) ChainAt(Steps steps, int e, int at, int count, float bin)
     {
-        int total = 0, floats = 0;
+        (int q, int pairs, float t) = Locate(count, steps.Bottom[e], steps.Top[e], bin);
+        Span<float> near = stackalloc float[4];
+        Unpack(steps, e, at, 2 * q, near[..(2 * pairs)]);
+        if (pairs == 1)
+            return (near[0], near[1]);
+        return (near[0] + (near[2] - near[0]) * t, near[1] + (near[3] - near[1]) * t);
+    }
+
+    // Which sample a speed bin falls after, whether there is one after it
+    // to go towards, and how far.
+    private (int Sample, int Pairs, float T) Locate(int samples, int bottom, int top, float bin)
+    {
+        float x = Math.Clamp(bin, bottom, top) - bottom;
+        int q = Math.Min((int)(x / ChainStride), samples - 1);
+        int b0 = q * ChainStride, b1 = Math.Min(b0 + ChainStride, top - bottom);
+        if (b1 <= b0 || q + 1 >= samples)
+            return (q, 1, 0f);
+        return (q, 2, (x - b0) / (b1 - b0));
+    }
+
+    private Steps Pack(List<Made>[] made)
+    {
+        int total = 0, numbers = 0;
         foreach (List<Made> list in made)
             foreach (Made m in list)
             {
                 total++;
-                floats += m.Chains.Length;
+                numbers += m.Chains.Length;
             }
         var first = new int[made.Length + 1];
+        var chainFirst = new int[made.Length + 1];
         var rowsOf = new byte[total];
-        var target = new int[total];
-        var length = new float[total];
-        var bottom = new short[total];
-        var top = new short[total];
-        var chain = new int[total];
-        var chains = new float[floats];
+        var target = new ushort[total];
+        var length = new ushort[total];
+        var bottom = new byte[total];
+        var top = new byte[total];
+        var chains = new byte[numbers];
+        var escaped = new Dictionary<int, float>();
         int e = 0, f = 0;
         for (int node = 0; node < made.Length; node++)
         {
             first[node] = e;
+            chainFirst[node] = f;
             foreach (Made m in made[node])
             {
-                (rowsOf[e], target[e], length[e], bottom[e], top[e], chain[e]) = (m.Rows, m.Target, m.Length, m.Bottom, m.Top, f);
-                m.Chains.CopyTo(chains, f);
-                f += m.Chains.Length;
+                (rowsOf[e], target[e], length[e], bottom[e], top[e]) = (m.Rows, m.Target, m.Length, m.Bottom, m.Top);
+                for (int k = 0; k < m.Chains.Length; k++, f++)
+                {
+                    float v0 = SampleSpeed(m.Bottom, m.Top, k / 2);
+                    float x = m.Chains[k];
+                    if (k % 2 == 0)
+                    {
+                        float q = MathF.Round((v0 - x) / ChainUnit);
+                        if (q >= 0f && q < SlowEscape)
+                            chains[f] = (byte)q;
+                        else
+                        {
+                            chains[f] = SlowEscape;
+                            escaped[f] = x;
+                        }
+                    }
+                    else
+                    {
+                        float q = MathF.Round((x - v0) / ChainUnit);
+                        if (x < 0f)
+                            chains[f] = unchecked((byte)NoSpeed);
+                        else if (q <= Escape || q > sbyte.MaxValue)
+                        {
+                            chains[f] = unchecked((byte)Escape);
+                            escaped[f] = x;
+                        }
+                        else
+                            chains[f] = unchecked((byte)(sbyte)q);
+                    }
+                }
                 e++;
             }
         }
         first[made.Length] = e;
-        return new Steps { First = first, Rows = rowsOf, Target = target, Length = length, Bottom = bottom, Top = top, Chain = chain, Chains = chains };
+        chainFirst[made.Length] = f;
+        return new Steps
+        {
+            First = first, ChainFirst = chainFirst, Rows = rowsOf, Target = target, Length = length,
+            Bottom = bottom, Top = top, Chains = chains, Escaped = escaped,
+        };
+    }
+
+    // The speed a chain's sample starts at.
+    private float SampleSpeed(int bottom, int top, int sample) =>
+        MinSpeed + Math.Min(bottom + sample * ChainStride, top) * SpeedStep;
+
+    // A step's chains read back as the bake stored them.
+    private void Unpack(Steps steps, int e, int at, int from, Span<float> into)
+    {
+        for (int i = 0; i < into.Length; i++)
+        {
+            int k = from + i;
+            float v0 = SampleSpeed(steps.Bottom[e], steps.Top[e], k / 2);
+            byte stored = steps.Chains[at + k];
+            if (k % 2 == 0)
+                into[i] = stored == SlowEscape ? steps.Escaped[at + k] : v0 - stored * ChainUnit;
+            else
+                into[i] = unchecked((sbyte)stored) switch
+                {
+                    NoSpeed => -1f,
+                    Escape => steps.Escaped[at + k],
+                    var q => v0 + q * ChainUnit,
+                };
+        }
     }
 
     // The step taken at a steady change of v² from v0 to v1, which is a
