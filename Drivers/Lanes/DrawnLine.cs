@@ -186,6 +186,30 @@ public sealed class DrawnLine
         Version++;
     }
 
+    /// <summary>
+    /// A line made in advance, driven as it is: one offset from the racing
+    /// line per station from <paramref name="from"/>, positive to the left,
+    /// and the racing line beyond them. Nothing is bent or given way here: a
+    /// made line is smooth and on the road already, and it is its maker's to
+    /// start it where the car is.
+    /// </summary>
+    public void Set(int from, ReadOnlySpan<float> offsets, float brakeFactor)
+    {
+        if (offsets.Length < 2 || offsets.Length > _lanes.Count)
+            throw new ArgumentException($"A made line covers 2 to {_lanes.Count} stations, not {offsets.Length}.", nameof(offsets));
+        Array.Clear(_delta);
+        Array.Clear(_bent);
+        for (int k = 0; k < offsets.Length; k++)
+        {
+            _delta[_lanes.Wrap(from + k)] = offsets[k];
+            _bent[_lanes.Wrap(from + k)] = offsets[k];
+        }
+        _from = from;
+        _span = offsets.Length - 1;
+        BrakeFactor = brakeFactor;
+        Version++;
+    }
+
     /// <summary>Back to the racing line everywhere.</summary>
     public void Clear()
     {

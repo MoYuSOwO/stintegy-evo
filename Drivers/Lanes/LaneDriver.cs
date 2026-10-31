@@ -264,6 +264,10 @@ public sealed class LaneDriver : IDriverController
     private float _pendingBrake = 1f;
     private bool _pendingDraw;
     private bool _pendingClear;
+    // A line made in advance, waiting for the car.
+    private float[] _pendingMade = [];
+    private int _pendingMadeFrom, _pendingMadeCount;
+    private bool _pendingSet;
 
     /// <summary>
     /// Drive a line drawn from outside instead of the lanes: one offset from
@@ -281,6 +285,27 @@ public sealed class LaneDriver : IDriverController
         offsetsFromRacingLine.CopyTo(_pendingLine);
         _pendingBrake = brakeFactor;
         _pendingDraw = true;
+        _pendingSet = false;
+        _pendingClear = false;
+    }
+
+    /// <summary>
+    /// Drive a line made in advance, as it is: one offset from the racing
+    /// line, positive to the left, for each station from
+    /// <paramref name="fromStation"/>, and the share of the planned braking
+    /// to take the next braking zone at. It takes hold the next step, all of
+    /// it, so it should start where the car is.
+    /// </summary>
+    public void DriveLine(int fromStation, ReadOnlySpan<float> offsetsFromRacingLine, float brakeFactor = 1f)
+    {
+        if (_pendingMade.Length < offsetsFromRacingLine.Length)
+            _pendingMade = new float[offsetsFromRacingLine.Length];
+        offsetsFromRacingLine.CopyTo(_pendingMade);
+        _pendingMadeFrom = fromStation;
+        _pendingMadeCount = offsetsFromRacingLine.Length;
+        _pendingBrake = brakeFactor;
+        _pendingSet = true;
+        _pendingDraw = false;
         _pendingClear = false;
     }
 
@@ -288,6 +313,7 @@ public sealed class LaneDriver : IDriverController
     public void ClearLine()
     {
         _pendingDraw = false;
+        _pendingSet = false;
         _pendingClear = true;
     }
 
@@ -615,6 +641,11 @@ public sealed class LaneDriver : IDriverController
             float carOffset = Vector2.Dot(car.Position - _lanes.Centre(near), _lanes.Normal(near)) - _lanes.Offset(LaneId.Free, near);
             _drawn?.Draw(drawnAt, car.SpeedMetersPerSecond, carOffset, _speed[0], _pendingLine, _pendingBrake);
             _pendingDraw = false;
+        }
+        if (_pendingSet)
+        {
+            _drawn?.Set(_pendingMadeFrom, _pendingMade.AsSpan(0, _pendingMadeCount), _pendingBrake);
+            _pendingSet = false;
         }
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))

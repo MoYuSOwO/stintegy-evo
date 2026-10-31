@@ -67,6 +67,38 @@ public sealed class DrawnLineTests
         Assert.True(worst < 0.02f, $"the redrawn line stands {worst:F3} m off the line drawn once, {(worstAt - car) * lanes.Spacing:F0} m on");
     }
 
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(-1f)]
+    public void ASideLaneMadeInAdvanceIsDrivenAsFastAsTheLaneItself(float side)
+    {
+        // A lane is a line made in advance; handed over whole as one, it is
+        // driven as it is, with no redrawing to come in late where it closes
+        // in on the racing line along an edge.
+        TrackData track = GameMods.Registry.Circuits.Get("silverstone").Track;
+        LaneTrackFile file = LaneTrackFile.ForCircuit("silverstone", track);
+        LaneSet lanes = file.LanesFor(track);
+        LaneId lane = side > 0f ? LaneId.Left : LaneId.Right;
+        LaneLapResult held = LaneLapRunner.Run(track, file, onStep: (_, driver, _) =>
+        {
+            driver.TargetRange = 1f;
+            driver.TargetSide = side;
+        });
+        var made = new float[lanes.Count];
+        for (int i = 0; i < made.Length; i++)
+            made[i] = lanes.Offset(lane, i) - lanes.Offset(LaneId.Free, i);
+        bool handed = false;
+        LaneLapResult driven = LaneLapRunner.Run(track, file, onStep: (_, driver, _) =>
+        {
+            if (!handed)
+                driver.DriveLine(0, made);
+            handed = true;
+        });
+        Assert.True(held.Finished && driven.Finished, $"held: {held}\nmade: {driven}");
+        Assert.True(driven.FlyingLapSeconds < held.FlyingLapSeconds * 1.01f,
+            $"the lane held laps in {held.FlyingLapSeconds:F2} s, made in advance in {driven.FlyingLapSeconds:F2} s");
+    }
+
     // One lap of Silverstone with the line redrawn every quarter second from
     // what each point ahead should be, and how far aside of the racing line
     // the car ran on average.
