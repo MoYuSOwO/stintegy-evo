@@ -265,7 +265,36 @@ internal sealed class LineSearch
         public required float[][] Value { get; init; }
         public required int[][] NextRow { get; init; }
         public required int[][] Next { get; init; }
+
+        /// <summary>Every step out of every place and heading on a row, as the bake charged it.</summary>
+        public required Steps[] Steps { get; init; }
     }
+
+    /// <summary>
+    /// The steps out of one row, all of them: where each ends, how long it
+    /// is, and how slow and how fast it can end from each speed it can start
+    /// at. The bake times every step off these and nothing else, so a
+    /// decision read off them is the bake's own; none is left out, since the
+    /// one left out may be the way past a car that the others brake for.
+    /// </summary>
+    public sealed class Steps
+    {
+        /// <summary>Where the steps out of each place and heading start in the lists below, one more than there are.</summary>
+        public required int[] First { get; init; }
+        public required byte[] Rows { get; init; }
+        /// <summary>The place and heading a step ends on, on its own row.</summary>
+        public required int[] Target { get; init; }
+        public required float[] Length { get; init; }
+        /// <summary>The slowest and fastest speed bins a step can start at.</summary>
+        public required short[] Bottom { get; init; }
+        public required short[] Top { get; init; }
+        /// <summary>Where a step's chains start in <see cref="Chains"/>: slowest and fastest end, pairs, every chain stride from the bottom bin to the top one.</summary>
+        public required int[] Chain { get; init; }
+        public required float[] Chains { get; init; }
+    }
+
+    // One step's record, while the bake makes it.
+    private readonly record struct Made(byte Rows, int Target, float Length, short Bottom, short Top, float[] Chains);
 
     /// <summary>
     /// Bake the stretch of <paramref name="rows"/> rows from
@@ -304,14 +333,17 @@ internal sealed class LineSearch
         for (int b = 0; b < bins; b++)
             value[rows][(end * slopes + zeroSlope) * bins + b] = terminal(MinSpeed + b * SpeedStep);
 
+        var steps = new Steps[rows];
         for (int r0 = rows - 1; r0 >= 0; r0--)
         {
             int row0 = r0;
             List<float> here = places[r0];
+            var made = new List<Made>[here.Count * slopes];
             Parallel.For(0, here.Count * slopes, source =>
             {
                 int i = source / slopes, hi = source % slopes;
                 float[] best = value[row0];
+                var mine = made[source] = new List<Made>();
                 for (int sp = 0; sp < Spans.Length; sp++)
                 {
                     int r1 = row0 + Spans[sp];
@@ -320,8 +352,6 @@ internal sealed class LineSearch
                     List<float> there = places[r1];
                     float[] later = value[r1];
                     var edge = new Edge(Spans[sp] * RowStations);
-                    var lows = new float[bins];
-                    var highs = new float[bins];
                     for (int j = 0; j < there.Count; j++)
                     {
                         if (MathF.Abs(there[j] - here[i]) > MaxLateralJumps[sp] + 1e-3f)
@@ -338,11 +368,12 @@ internal sealed class LineSearch
                             if (top < 0)
                                 continue;
                             int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(from + row0 * RowStations) - MinSpeed) / SpeedStep), 0, top);
-                            AllChains(edge, bottom, top, lows, highs);
+                            float[] chains = AllChains(edge, bottom, top);
+                            mine.Add(new Made((byte)Spans[sp], j * slopes + hj, edge.Length, (short)bottom, (short)top, chains));
                             for (int b0 = bottom; b0 <= top; b0++)
                             {
                                 float v0 = MinSpeed + b0 * SpeedStep;
-                                float vLow = lows[b0], vHigh = Held(edge, v0, highs[b0]);
+                                (float vLow, float vHigh) = ChainAt(chains, bottom, top, b0);
                                 int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
                                 int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
                                 int at = source * bins + b0;
@@ -364,8 +395,9 @@ internal sealed class LineSearch
                     }
                 }
             });
+            steps[row0] = Pack(made);
         }
-        return new Table { From = from, Rows = rows, Places = places, Bins = bins, Value = value, NextRow = nextRow, Next = next };
+        return new Table { From = from, Rows = rows, Places = places, Bins = bins, Value = value, NextRow = nextRow, Next = next, Steps = steps };
     }
 
     /// <summary>The way the baked table leads from a place, heading and speed on a row to the end.</summary>
@@ -417,56 +449,75 @@ internal sealed class LineSearch
     }
 
     /// <summary>
+    /// A step of the lattice: from a place and heading on one row to a place
+    /// and heading on a later one.
+    /// </summary>
+    public readonly record struct Move(int Row, int ToRow, float Y, float Slope, float ToY, float ToSlope);
+
+    /// <summary>Where a move has the car across the road, as metres from the racing line, a station into it.</summary>
+    public float OffsetOn(Move move, int station) =>
+        Hermite(move.Y, move.Slope, move.ToY, move.ToSlope, (move.ToRow - move.Row) * RowStations, station);
+
+    private float Hermite(float y0, float h0, float y1, float h1, int n, int k)
+    {
+        float length = n * _lanes.Spacing;
+        float t = k / (float)n;
+        float t2 = t * t, t3 = t2 * t;
+        return (2f * t3 - 3f * t2 + 1f) * y0 + (t3 - 2f * t2 + t) * length * h0 +
+               (-2f * t3 + 3f * t2) * y1 + (t3 - t2) * length * h1;
+    }
+
+    /// <summary>
     /// The step to take now, from a car at a place and heading on a row and
     /// at any speed: every step out of there and every speed it could end
     /// at, each charged its own seconds and the baked rest of the way; and
     /// <paramref name="extra"/>, what the cars around add to a step (infinite
-    /// where it runs into one). The seconds, the row it ends on, and the
-    /// state there.
+    /// where it runs into one). All of it read off the table: nothing is
+    /// shaped or driven here. The seconds, the row it ends on, and the state
+    /// there.
     /// </summary>
     public (float Seconds, int Row, int State) Decide(Table table, int row, float y, float slope, float speed,
-        Func<int, int, float[], float, float, float>? extra = null)
+        Func<Move, float, float, float>? extra = null)
     {
         int slopes = Slopes.Length;
         int bins = table.Bins;
         float bestSeconds = float.PositiveInfinity;
         int bestRow = -1, bestState = -1;
-        int sourceAt = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
-        if (sourceAt < 0)
+        int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
+        int heading = Array.IndexOf(Slopes, slope);
+        if (place < 0 || heading < 0 || row >= table.Rows)
             return (bestSeconds, bestRow, bestState);
-        for (int sp = 0; sp < Spans.Length; sp++)
+        Steps steps = table.Steps[row];
+        int node = place * slopes + heading;
+        float bin = (speed - MinSpeed) / SpeedStep;
+        for (int e = steps.First[node]; e < steps.First[node + 1]; e++)
         {
-            int r1 = row + Spans[sp];
-            if (r1 > table.Rows)
+            if (bin > steps.Top[e] + 1e-3f)
                 continue;
-            List<float> there = table.Places[r1];
+            int r1 = row + steps.Rows[e];
             float[] later = table.Value[r1];
-            var edge = new Edge(Spans[sp] * RowStations);
-            for (int j = 0; j < there.Count; j++)
+            int target = steps.Target[e] * bins;
+            int count = 2 * ((steps.Top[e] - steps.Bottom[e] + ChainStride - 1) / ChainStride + 1);
+            (float vLow, float vHigh) = ChainAt(steps.Chains.AsSpan(steps.Chain[e], count), steps.Bottom[e], steps.Top[e], bin);
+            int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
+            int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
+            Move move = default;
+            if (extra is not null)
             {
-                if (MathF.Abs(there[j] - y) > MaxLateralJumps[sp] + 1e-3f)
+                (int j, int hj) = (steps.Target[e] / slopes, steps.Target[e] % slopes);
+                move = new Move(row, r1, y, slope, table.Places[r1][j], Slopes[hj]);
+            }
+            for (int b1 = bLow; b1 <= bHigh; b1++)
+            {
+                float rest = later[target + b1];
+                if (rest == float.PositiveInfinity)
                     continue;
-                for (int hj = 0; hj < slopes; hj++)
-                {
-                    int target = (j * slopes + hj) * bins;
-                    if (!Shape(edge, table.From, row, y, slope, there[j], Slopes[hj], null) || speed > edge.Limit[0] + 1e-3f)
-                        continue;
-                    (float vLow, float vHigh) = Reach(edge, speed);
-                    int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
-                    int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
-                    for (int b1 = bLow; b1 <= bHigh; b1++)
-                    {
-                        float rest = later[target + b1];
-                        if (rest == float.PositiveInfinity)
-                            continue;
-                        float v1 = MinSpeed + b1 * SpeedStep;
-                        float seconds = Seconds(edge, speed, v1);
-                        if (extra is not null)
-                            seconds += extra(row, r1, edge.Offset, speed, v1);
-                        if (seconds + rest < bestSeconds)
-                            (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
-                    }
-                }
+                float v1 = MinSpeed + b1 * SpeedStep;
+                float seconds = steps.Length[e] / MathF.Max(0.5f * (speed + v1), 1f);
+                if (extra is not null)
+                    seconds += extra(move, speed, v1);
+                if (seconds + rest < bestSeconds)
+                    (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
             }
         }
         return (bestSeconds, bestRow, bestState);
@@ -602,14 +653,7 @@ internal sealed class LineSearch
     {
         int n = edge.Step.Length;
         int st0 = from + row * RowStations;
-        float length = n * _lanes.Spacing;
-        float Y(int k)
-        {
-            float t = k / (float)n;
-            float t2 = t * t, t3 = t2 * t;
-            return (2f * t3 - 3f * t2 + 1f) * y0 + (t3 - 2f * t2 + t) * length * h0 +
-                   (-2f * t3 + 3f * t2) * y1 + (t3 - t2) * length * h1;
-        }
+        float Y(int k) => Hermite(y0, h0, y1, h1, n, k);
         Vector2 P(int k) => _lanes.Position(st0 + k, _lanes.Offset(LaneId.Free, st0 + k) + Y(k));
         for (int k = 0; k <= n; k++)
         {
@@ -684,24 +728,66 @@ internal sealed class LineSearch
     /// </summary>
     public int ChainStride { get; init; } = 8;
 
-    // The chains for every speed bin from bottom to top.
-    private void AllChains(Edge edge, int bottom, int top, float[] low, float[] high)
+    // A step's chains every stride from the bottom bin to the top one, the
+    // fastest end held under the corners on the way.
+    private float[] AllChains(Edge edge, int bottom, int top)
     {
-        int last = -1;
-        for (int b = bottom; ; b = Math.Min(b + ChainStride, top))
+        int count = (top - bottom + ChainStride - 1) / ChainStride + 1;
+        var chains = new float[2 * count];
+        for (int q = 0; q < count; q++)
         {
-            (low[b], high[b]) = Chains(edge, MinSpeed + b * SpeedStep);
-            if (last >= 0)
-                for (int m = last + 1; m < b; m++)
-                {
-                    float t = (m - last) / (float)(b - last);
-                    low[m] = low[last] + (low[b] - low[last]) * t;
-                    high[m] = high[last] + (high[b] - high[last]) * t;
-                }
-            last = b;
-            if (b == top)
-                break;
+            float v0 = MinSpeed + Math.Min(bottom + q * ChainStride, top) * SpeedStep;
+            (float low, float high) = Chains(edge, v0);
+            chains[2 * q] = low;
+            chains[2 * q + 1] = Held(edge, v0, high);
         }
+        return chains;
+    }
+
+    // The chains at a speed bin, fractional, between the strides either side.
+    private (float Low, float High) ChainAt(ReadOnlySpan<float> chains, int bottom, int top, float bin)
+    {
+        float x = Math.Clamp(bin, bottom, top) - bottom;
+        int q = Math.Min((int)(x / ChainStride), chains.Length / 2 - 1);
+        int b0 = q * ChainStride, b1 = Math.Min(b0 + ChainStride, top - bottom);
+        if (b1 <= b0 || q + 1 >= chains.Length / 2)
+            return (chains[2 * q], chains[2 * q + 1]);
+        float t = (x - b0) / (b1 - b0);
+        return (chains[2 * q] + (chains[2 * q + 2] - chains[2 * q]) * t,
+                chains[2 * q + 1] + (chains[2 * q + 3] - chains[2 * q + 1]) * t);
+    }
+
+    private static Steps Pack(List<Made>[] made)
+    {
+        int total = 0, floats = 0;
+        foreach (List<Made> list in made)
+            foreach (Made m in list)
+            {
+                total++;
+                floats += m.Chains.Length;
+            }
+        var first = new int[made.Length + 1];
+        var rowsOf = new byte[total];
+        var target = new int[total];
+        var length = new float[total];
+        var bottom = new short[total];
+        var top = new short[total];
+        var chain = new int[total];
+        var chains = new float[floats];
+        int e = 0, f = 0;
+        for (int node = 0; node < made.Length; node++)
+        {
+            first[node] = e;
+            foreach (Made m in made[node])
+            {
+                (rowsOf[e], target[e], length[e], bottom[e], top[e], chain[e]) = (m.Rows, m.Target, m.Length, m.Bottom, m.Top, f);
+                m.Chains.CopyTo(chains, f);
+                f += m.Chains.Length;
+                e++;
+            }
+        }
+        first[made.Length] = e;
+        return new Steps { First = first, Rows = rowsOf, Target = target, Length = length, Bottom = bottom, Top = top, Chain = chain, Chains = chains };
     }
 
     // The step taken at a steady change of v² from v0 to v1, which is a
