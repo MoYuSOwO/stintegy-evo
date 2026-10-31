@@ -15,20 +15,30 @@ internal readonly struct LaneEnvelope
 {
     private static readonly float[] Anchors = [15f, 40f, 70f, 90f];
 
+    // How much of the corner the tyres are carrying, as a share of what they
+    // hold, at which the loss is read in a corner.
+    private static readonly float[] Uses = [0f, 0.4f, 0.6f, 0.75f, 0.85f, 0.92f, 1f];
+
     private readonly float[] _lateral;
     private readonly float[] _lateralBraking;
     private readonly float[] _brake;
     private readonly float[] _drive;
     private readonly float[] _loss;
 
+    // Per share of the corner (Uses), per speed (Anchors): the drag the
+    // corner adds to the air's.
+    private readonly float[][] _cornerDrag;
+
     // The same car in a left-hand and a right-hand corner: weight thrown onto
     // the outside tyres, so the corner is held by those two, at their
     // temperature and wear, not by an average of all four.
     private readonly LaneEnvelope[]? _turns;
 
-    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss, float loadExponent, LaneEnvelope[]? turns = null)
+    private LaneEnvelope(float[] lateral, float[] lateralBraking, float[] brake, float[] drive, float[] loss,
+        float[][] cornerDrag, float loadExponent, LaneEnvelope[]? turns = null)
     {
         _turns = turns;
+        _cornerDrag = cornerDrag;
         LoadExponent = loadExponent;
         _lateral = lateral;
         _lateralBraking = lateralBraking;
@@ -109,7 +119,8 @@ internal readonly struct LaneEnvelope
         if (!turnAware)
             return straight;
         var turns = new[] { From(plan, car, strategy, +1f, straight), From(plan, car, strategy, -1f, straight) };
-        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent, turns);
+        return new LaneEnvelope(straight._lateral, straight._lateralBraking, straight._brake, straight._drive, straight._loss,
+            straight._cornerDrag, straight.LoadExponent, turns);
     }
 
     /// <summary>
@@ -143,7 +154,36 @@ internal readonly struct LaneEnvelope
             lateral[i] = MathF.Max(1f, corner.LateralAccelerationLimit);
             lateralBraking[i] = MathF.Max(1f, cornerBraking.LateralAccelerationLimit);
         }
-        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss, straight.LoadExponent);
+        return new LaneEnvelope(lateral, lateralBraking, straight._brake, straight._drive, straight._loss,
+            CornerDrag(plan, car, strategy, sign, lateral, straight._loss), straight.LoadExponent);
+    }
+
+    /// <summary>
+    /// The drag a corner adds, read off the car's own estimate at each share
+    /// of the corner: the slip angles a corner takes tilt the tyres' force
+    /// back against the car. Left out, the plan had the car at Luffield's
+    /// apex losing what the air takes and no more, held its speed there
+    /// while the coasting car lost four metres a second squared, and drove
+    /// out of it later than the plan said by a tenth and a half.
+    /// </summary>
+    private static float[][] CornerDrag(
+        CarState plan, ICarEnvelope car, CarStrategy strategy, float sign, float[] lateral, float[] straightLoss)
+    {
+        float cornerGrip = car.GripUsage(strategy);
+        var drag = new float[Uses.Length][];
+        for (int u = 0; u < Uses.Length; u++)
+        {
+            drag[u] = new float[Anchors.Length];
+            for (int i = 0; i < Anchors.Length; i++)
+            {
+                float v = Anchors[i];
+                float curvature = sign * Uses[u] * lateral[i] / (v * v);
+                CarPerformanceLimits corner = car.EstimatePerformanceLimits(
+                    plan, strategy, v, curvature, cornerGrip);
+                drag[u][i] = MathF.Max(0f, corner.LossAcceleration - straightLoss[i]);
+            }
+        }
+        return drag;
     }
 
     public static LaneEnvelope From(CarState plan, ICarEnvelope car, ICarGripFeel feel, CarStrategy strategy)
@@ -182,14 +222,16 @@ internal readonly struct LaneEnvelope
             loss[i] = MathF.Max(0f, coast.LossAcceleration);
         }
 
-        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss, 1f - Math.Clamp(feel.LoadSensitivity(plan), 0f, 1f));
+        return new LaneEnvelope(lateral, lateralBraking, brake, drive, loss,
+            CornerDrag(plan, car, strategy, +1f, lateral, loss), 1f - Math.Clamp(feel.LoadSensitivity(plan), 0f, 1f));
     }
 
     /// <summary>
     /// The same car on a road worth <paramref name="scale"/> of a clean one.
     /// The published envelope does not read the day's surface grip, so the
     /// driver folds it in here: corner and brakes go with the road, the motor
-    /// does not.
+    /// does not. The corner's drag goes with the road too: it is the
+    /// corner's force at its angle.
     /// </summary>
     public LaneEnvelope WithRoadGrip(float scale)
     {
@@ -200,6 +242,7 @@ internal readonly struct LaneEnvelope
             _brake.Select(x => x * s).ToArray(),
             _drive,
             _loss,
+            _cornerDrag.Select(row => row.Select(x => x * s).ToArray()).ToArray(),
             LoadExponent,
             _turns?.Select(e => e.WithRoadGrip(scale)).ToArray());
     }
@@ -209,6 +252,20 @@ internal readonly struct LaneEnvelope
     public float Brake(float v) => Interpolate(_brake, v, extrapolate: false);
     public float Drive(float v) => Interpolate(_drive, v, extrapolate: false);
     public float Loss(float v) => Interpolate(_loss, v, extrapolate: true);
+
+    /// <summary>The drag a corner adds to <see cref="Loss(float)"/> while the tyres carry <paramref name="use"/> of what they hold.</summary>
+    public float CornerDrag(float v, float use)
+    {
+        // Past the limit the last stretch carries on: the notes take some
+        // corners a little over what the envelope says the tyres hold.
+        float u = MathF.Max(use, 0f);
+        int hi = 1;
+        while (hi < Uses.Length - 1 && Uses[hi] < u)
+            hi++;
+        float t = (u - Uses[hi - 1]) / (Uses[hi] - Uses[hi - 1]);
+        float low = Interpolate(_cornerDrag[hi - 1], v, extrapolate: true);
+        return low + (Interpolate(_cornerDrag[hi], v, extrapolate: true) - low) * t;
+    }
 
     private static float Interpolate(float[] values, float v, bool extrapolate)
     {
@@ -463,7 +520,8 @@ internal static class LaneSpeedPlanner
         }
         // What the road does to the car along it, the physics' way round:
         // the axles are scaled onto the slope, gravity is added on top.
-        return MathF.Max(0.1f, (ax + e.Loss(v)) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, v));
+        float loss = e.Loss(v) + e.CornerDrag(v, ay / MathF.Max(lateral, 1f));
+        return MathF.Max(0.1f, (ax + loss) * att.LongitudinalDemandScale - att.AlongTrackGravity(Gravity, v));
     }
 
     /// <summary>Full drive over one step, from <paramref name="v"/>: the forward sweep's own step.</summary>
@@ -502,7 +560,10 @@ internal static class LaneSpeedPlanner
         float traction = grip * MathF.Sqrt(MathF.Max(0f, shares.Traction * shares.Traction - use * use));
         float push = shares.Drive * MathF.Min(e.Drive(v), traction);
         RoadAttitude att = road.Attitude;
-        float accel = (push - e.Loss(v)) * att.LongitudinalDemandScale + att.AlongTrackGravity(Gravity, v);
+        // The corner's drag is the tyres', at how full they are: of what
+        // they hold, not of what the notes let the corner be taken at.
+        float loss = e.Loss(v) + e.CornerDrag(v, ay / MathF.Max(e.Lateral(v, load), 1f));
+        float accel = (push - loss) * att.LongitudinalDemandScale + att.AlongTrackGravity(Gravity, v);
         return MathF.Sqrt(MathF.Max(0f, v * v + 2f * accel * ds));
     }
 }
