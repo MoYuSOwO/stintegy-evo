@@ -877,9 +877,7 @@ public sealed class LaneDriver : IDriverController
         float lineCurvature = Math.Clamp(wanted, -maxRequest, maxRequest);
         float tyreCorner = MathF.Abs(att.CurvatureDemandScale * speed * speed * lineCurvature +
                                      att.LateralGravityDemand(StandardGravity, speed));
-        float circle = (_style is { } throttleStyle
-                ? throttleStyle.Traction + (_performance?.LimitOveruse ?? 0f)
-                : (Gains.TractionUse + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority)
+        float circle = ThrottleCircle(_performance?.LimitOveruse ?? 0f)
             * (1f + 2f * (_performance?.CornerOverstep ?? 0f))
             * TractionHere((int)MathF.Round(station));
         // One axle's room for drive: the circle a tyre holds (about nine
@@ -1404,6 +1402,12 @@ public sealed class LaneDriver : IDriverController
     /// The share of the general traction to take at this corner's exit: what
     /// the driver has learned of it as it drives, one where it has learned nothing.
     /// </summary>
+    // The share of a tyre's grip the foot takes the driven axle to, the
+    // corner it carries counted in: the rung's, or the driver's own held to
+    // its authority over the tyres; the plan reckons its exits on the same.
+    private float ThrottleCircle(float overuse) =>
+        _style is { } style ? style.Traction + overuse : (Gains.TractionUse + overuse) * _tyreAuthority;
+
     private float TractionHere(int station) =>
         _familiar is { } familiar ? familiar.Traction[familiar.SegmentOf(station * _lanes.Spacing)] : 1f;
 
@@ -1843,9 +1847,9 @@ public sealed class LaneDriver : IDriverController
         _style = Gains.TyreRungStyles
             ? Rung(TyreStyles, DrivenRung(car))
             : null;
-        _planShares = _style is { } style
+        _planShares = (_style is { } style
             ? Shares with { Lateral = Shares.Lateral * style.Corner, Brake = Shares.Brake * style.Brake }
-            : Shares;
+            : Shares) with { Traction = ThrottleCircle(0f) };
         // The road is the day's surface on this circuit's asphalt. Grip is
         // read against the circuit at its best, so full grip means new tyres
         // in their window on a clean track here, wherever here is: the

@@ -238,6 +238,15 @@ public sealed record LaneShares
     public float Brake { get; init; } = 0.92f;
     public float Drive { get; init; } = 1f;
 
+    /// <summary>
+    /// The share of a tyre's grip the throttle may take it to, corner and
+    /// drive together: the circle the driver's foot holds the driven axle
+    /// to. Out of a corner the plan drives no sooner than the foot will;
+    /// planned on its own corner share, it had the car holding speed round
+    /// a slow apex the foot was coasting through, and fell behind by the exit.
+    /// </summary>
+    public float Traction { get; init; } = 0.90f;
+
     /// <summary>Whether braking takes lateral grip from the rear. Off only for probes.</summary>
     public bool BrakingCoupling { get; init; } = true;
 }
@@ -481,14 +490,16 @@ internal static class LaneSpeedPlanner
     {
         LaneEnvelope e = envelope.ForTurn(curvature);
         (float ay, float load) = Corner(v, curvature, road);
-        float lateralLimit = factor * shares.Lateral * e.Lateral(v, load);
+        float grip = MathF.Max(factor * e.Lateral(v, load), 1f);
         // The motor's drive or what the tyres have left beside the corner,
         // whichever is less. Scaling the motor by the ellipse charged it for
         // grip it never asked for: up a fast bend at 240 km/h the motor gives
         // nine metres a second squared against tyres good for fifty, and the
         // plan had it give seven, so the car was held to part throttle with
-        // half its grip unused.
-        float traction = lateralLimit * Ellipse(ay, lateralLimit);
+        // half its grip unused. What is left is read in the foot's own
+        // circle (LaneShares.Traction).
+        float use = ay / grip;
+        float traction = grip * MathF.Sqrt(MathF.Max(0f, shares.Traction * shares.Traction - use * use));
         float push = shares.Drive * MathF.Min(e.Drive(v), traction);
         RoadAttitude att = road.Attitude;
         float accel = (push - e.Loss(v)) * att.LongitudinalDemandScale + att.AlongTrackGravity(Gravity, v);
