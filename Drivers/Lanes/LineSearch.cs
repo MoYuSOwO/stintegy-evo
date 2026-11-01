@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace StintegyEVO.Drivers.Lanes;
 
@@ -270,6 +271,131 @@ internal sealed class LineSearch
 
         /// <summary>Every step out of every place and heading on a row, as the bake charged it.</summary>
         public required Steps[] Steps { get; init; }
+
+        private const int FileVersion = 1;
+
+        /// <summary>
+        /// Keep the table in a file, under <paramref name="key"/>: what it was
+        /// baked for (the circuit, the car, the grip, the lattice), so a file
+        /// baked for something else is never read back as this.
+        /// </summary>
+        public void Save(string path, string key)
+        {
+            string temp = path + ".part";
+            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20))
+            using (var w = new BinaryWriter(stream))
+            {
+                w.Write(FileVersion);
+                w.Write(key);
+                w.Write(From);
+                w.Write(Rows);
+                w.Write(Bins);
+                Ints(w, Starts);
+                foreach (List<float> places in Places)
+                    Floats(w, places.ToArray());
+                foreach (float[] value in Value)
+                    Floats(w, value);
+                foreach (int[] row in NextRow)
+                    Ints(w, row);
+                foreach (int[] next in Next)
+                    Ints(w, next);
+                foreach (Steps s in Steps)
+                {
+                    bool made = s is not null;
+                    w.Write(made);
+                    if (!made)
+                        continue;
+                    Ints(w, s!.First);
+                    Ints(w, s.ChainFirst);
+                    Bytes(w, s.Rows);
+                    Bytes(w, MemoryMarshal.AsBytes<ushort>(s.Target));
+                    Bytes(w, MemoryMarshal.AsBytes<ushort>(s.Length));
+                    Bytes(w, s.Bottom);
+                    Bytes(w, s.Top);
+                    Bytes(w, s.Chains);
+                    w.Write(s.Escaped.Count);
+                    foreach ((int at, float v) in s.Escaped)
+                    {
+                        w.Write(at);
+                        w.Write(v);
+                    }
+                }
+            }
+            File.Move(temp, path, overwrite: true);
+        }
+
+        /// <summary>The table kept in a file under <paramref name="key"/>; null if there is none, or it was baked for something else.</summary>
+        public static Table? Load(string path, string key)
+        {
+            if (!File.Exists(path))
+                return null;
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20);
+            using var r = new BinaryReader(stream);
+            if (r.ReadInt32() != FileVersion || r.ReadString() != key)
+                return null;
+            int from = r.ReadInt32(), rows = r.ReadInt32(), bins = r.ReadInt32();
+            int[] starts = ReadInts(r);
+            var places = new List<float>[rows + 1];
+            for (int i = 0; i <= rows; i++)
+                places[i] = [.. ReadFloats(r)];
+            var value = new float[rows + 1][];
+            for (int i = 0; i <= rows; i++)
+                value[i] = ReadFloats(r);
+            var nextRow = new int[rows + 1][];
+            for (int i = 0; i < nextRow.Length; i++)
+                nextRow[i] = ReadInts(r);
+            var next = new int[rows + 1][];
+            for (int i = 0; i < next.Length; i++)
+                next[i] = ReadInts(r);
+            var steps = new Steps[rows];
+            for (int i = 0; i < steps.Length; i++)
+            {
+                if (!r.ReadBoolean())
+                    continue;
+                int[] first = ReadInts(r), chainFirst = ReadInts(r);
+                byte[] rowsOf = ReadBytes(r);
+                ushort[] target = MemoryMarshal.Cast<byte, ushort>(ReadBytes(r)).ToArray();
+                ushort[] length = MemoryMarshal.Cast<byte, ushort>(ReadBytes(r)).ToArray();
+                byte[] bottom = ReadBytes(r), top = ReadBytes(r), chains = ReadBytes(r);
+                int escapes = r.ReadInt32();
+                var escaped = new Dictionary<int, float>(escapes);
+                for (int e = 0; e < escapes; e++)
+                    escaped[r.ReadInt32()] = r.ReadSingle();
+                steps[i] = new Steps
+                {
+                    First = first, ChainFirst = chainFirst, Rows = rowsOf, Target = target, Length = length,
+                    Bottom = bottom, Top = top, Chains = chains, Escaped = escaped
+                };
+            }
+            return new Table
+            {
+                From = from, Rows = rows, Starts = starts, Places = places, Bins = bins,
+                Value = value, NextRow = nextRow, Next = next, Steps = steps
+            };
+        }
+
+        private static void Bytes(BinaryWriter w, ReadOnlySpan<byte> bytes)
+        {
+            w.Write(bytes.Length);
+            w.Write(bytes);
+        }
+
+        private static void Ints(BinaryWriter w, int[] values) => Bytes(w, MemoryMarshal.AsBytes<int>(values));
+
+        private static void Floats(BinaryWriter w, float[] values) => Bytes(w, MemoryMarshal.AsBytes<float>(values));
+
+        private static byte[] ReadBytes(BinaryReader r)
+        {
+            int n = r.ReadInt32();
+            byte[] bytes = r.ReadBytes(n);
+            if (bytes.Length != n)
+                throw new EndOfStreamException("A baked table's file ends early.");
+            return bytes;
+        }
+
+        private static int[] ReadInts(BinaryReader r) => MemoryMarshal.Cast<byte, int>(ReadBytes(r)).ToArray();
+
+        private static float[] ReadFloats(BinaryReader r) => MemoryMarshal.Cast<byte, float>(ReadBytes(r)).ToArray();
     }
 
     /// <summary>
