@@ -179,7 +179,7 @@ internal sealed class LineSearch
                                 for (int b1 = bLow; b1 <= bHigh; b1++)
                                 {
                                     float v1 = MinSpeed + b1 * SpeedStep;
-                                    float seconds = Seconds(edge, v0, v1);
+                                    float seconds = Seconds(edge, v0, v1) + Bend(edge);
                                     if (seconds == float.PositiveInfinity)
                                         continue;
                                     int to = target * bins + b1;
@@ -272,7 +272,7 @@ internal sealed class LineSearch
         /// <summary>Every step out of every place and heading on a row, as the bake charged it.</summary>
         public required Steps[] Steps { get; init; }
 
-        private const int FileVersion = 1;
+        private const int FileVersion = 2;
 
         /// <summary>
         /// Keep the table in a file, under <paramref name="key"/>: what it was
@@ -310,6 +310,7 @@ internal sealed class LineSearch
                     Bytes(w, s.Rows);
                     Bytes(w, MemoryMarshal.AsBytes<ushort>(s.Target));
                     Bytes(w, MemoryMarshal.AsBytes<ushort>(s.Length));
+                    Bytes(w, MemoryMarshal.AsBytes<ushort>(s.Bend));
                     Bytes(w, s.Bottom);
                     Bytes(w, s.Top);
                     Bytes(w, s.Chains);
@@ -356,6 +357,7 @@ internal sealed class LineSearch
                 byte[] rowsOf = ReadBytes(r);
                 ushort[] target = MemoryMarshal.Cast<byte, ushort>(ReadBytes(r)).ToArray();
                 ushort[] length = MemoryMarshal.Cast<byte, ushort>(ReadBytes(r)).ToArray();
+                ushort[] bend = MemoryMarshal.Cast<byte, ushort>(ReadBytes(r)).ToArray();
                 byte[] bottom = ReadBytes(r), top = ReadBytes(r), chains = ReadBytes(r);
                 int escapes = r.ReadInt32();
                 var escaped = new Dictionary<int, float>(escapes);
@@ -363,7 +365,7 @@ internal sealed class LineSearch
                     escaped[r.ReadInt32()] = r.ReadSingle();
                 steps[i] = new Steps
                 {
-                    First = first, ChainFirst = chainFirst, Rows = rowsOf, Target = target, Length = length,
+                    First = first, ChainFirst = chainFirst, Rows = rowsOf, Target = target, Length = length, Bend = bend,
                     Bottom = bottom, Top = top, Chains = chains, Escaped = escaped
                 };
             }
@@ -416,6 +418,8 @@ internal sealed class LineSearch
         public required ushort[] Target { get; init; }
         /// <summary>How long a step is, in <see cref="LengthUnit"/>s.</summary>
         public required ushort[] Length { get; init; }
+        /// <summary>What a step's bending is charged, in <see cref="BendUnit"/>s (<see cref="BendSeconds"/>).</summary>
+        public required ushort[] Bend { get; init; }
         /// <summary>The slowest and fastest speed bins a step can start at.</summary>
         public required byte[] Bottom { get; init; }
         public required byte[] Top { get; init; }
@@ -439,6 +443,19 @@ internal sealed class LineSearch
     /// </summary>
     public const float ChainUnit = 0.25f;
 
+    /// <summary>
+    /// What a line's bending is charged, seconds for each metre it runs at a
+    /// curvature of one per metre, squared: as fast is as fast, but of two
+    /// ways about as quick the one bent the least is taken, the wheel turned
+    /// the least (the minimum-curvature line's choice). Small enough that a
+    /// metre or four across a straight costs a fraction of a millisecond,
+    /// and a way any quicker than that is still the one taken.
+    /// </summary>
+    public float BendSeconds { get; init; } = 0.1f;
+
+    /// <summary>A step's bending charge's resolution: ten microseconds.</summary>
+    public const float BendUnit = 1e-5f;
+
     /// <summary>A step's length's resolution: two millimetres.</summary>
     public const float LengthUnit = 1f / 512f;
 
@@ -452,7 +469,7 @@ internal sealed class LineSearch
     public const byte SlowEscape = byte.MaxValue;
 
     // One step's record, while the bake makes it.
-    private readonly record struct Made(byte Rows, ushort Target, ushort Length, byte Bottom, byte Top, float[] Chains);
+    private readonly record struct Made(byte Rows, ushort Target, ushort Length, ushort Bend, byte Bottom, byte Top, float[] Chains);
 
     /// <summary>
     /// Bake the stretch of <paramref name="rows"/> rows from
@@ -574,7 +591,10 @@ internal sealed class LineSearch
                                 continue;
                             int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(starts[row0]) - MinSpeed) / SpeedStep), 0, top);
                             float[] chains = AllChains(edge, bottom, top);
-                            mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, (byte)bottom, (byte)top, chains));
+                            // Charged on the bend it is stored at.
+                            ushort bend = (ushort)Math.Min(ushort.MaxValue, MathF.Round(Bend(edge) / BendUnit));
+                            float bent = bend * BendUnit;
+                            mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, bend, (byte)bottom, (byte)top, chains));
                             for (int b0 = bottom; b0 <= top; b0++)
                             {
                                 float v0 = MinSpeed + b0 * SpeedStep;
@@ -587,7 +607,7 @@ internal sealed class LineSearch
                                     float rest = later[target + b1];
                                     if (rest == float.PositiveInfinity)
                                         continue;
-                                    float seconds = Seconds(edge, v0, MinSpeed + b1 * SpeedStep);
+                                    float seconds = Seconds(edge, v0, MinSpeed + b1 * SpeedStep) + bent;
                                     if (seconds + rest < best[at])
                                     {
                                         best[at] = seconds + rest;
@@ -722,7 +742,7 @@ internal sealed class LineSearch
                 if (rest == float.PositiveInfinity)
                     continue;
                 float v1 = MinSpeed + b1 * SpeedStep;
-                float seconds = steps.Length[e] * LengthUnit / MathF.Max(0.5f * (speed + v1), 1f);
+                float seconds = steps.Length[e] * LengthUnit / MathF.Max(0.5f * (speed + v1), 1f) + steps.Bend[e] * BendUnit;
                 if (extra is not null)
                     seconds += extra(move, speed, v1);
                 if (seconds + rest < bestSeconds)
@@ -1020,6 +1040,7 @@ internal sealed class LineSearch
         var rowsOf = new byte[total];
         var target = new ushort[total];
         var length = new ushort[total];
+        var bend = new ushort[total];
         var bottom = new byte[total];
         var top = new byte[total];
         var chains = new byte[numbers];
@@ -1031,7 +1052,7 @@ internal sealed class LineSearch
             chainFirst[node] = f;
             foreach (Made m in made[node])
             {
-                (rowsOf[e], target[e], length[e], bottom[e], top[e]) = (m.Rows, m.Target, m.Length, m.Bottom, m.Top);
+                (rowsOf[e], target[e], length[e], bend[e], bottom[e], top[e]) = (m.Rows, m.Target, m.Length, m.Bend, m.Bottom, m.Top);
                 for (int k = 0; k < m.Chains.Length; k++, f++)
                 {
                     float v0 = SampleSpeed(m.Bottom, m.Top, k / 2);
@@ -1068,7 +1089,7 @@ internal sealed class LineSearch
         chainFirst[made.Length] = f;
         return new Steps
         {
-            First = first, ChainFirst = chainFirst, Rows = rowsOf, Target = target, Length = length,
+            First = first, ChainFirst = chainFirst, Rows = rowsOf, Target = target, Length = length, Bend = bend,
             Bottom = bottom, Top = top, Chains = chains, Escaped = escaped,
         };
     }
@@ -1099,12 +1120,24 @@ internal sealed class LineSearch
 
     // The step taken at a steady change of v² from v0 to v1, which is a
     // steady acceleration: its length over the mean of its ends.
+    // What a step's bending is charged: its curvature squared over its length.
+    private float Bend(Edge edge)
+    {
+        float sum = 0f;
+        for (int k = 0; k < edge.N; k++)
+            sum += edge.Curvature[k] * edge.Curvature[k] * edge.Step[k];
+        return BendSeconds * sum;
+    }
+
     private static float Seconds(Edge edge, float v0, float v1) =>
         edge.Length / MathF.Max(0.5f * (v0 + v1), 1f);
 
-    private static float Along(float v0, float v1, Edge edge, int k)
+    private static float Along(float v0, float v1, Edge edge, int k) => SpeedOn(v0, v1, edge.N, k);
+
+    /// <summary>The speed a step from <paramref name="v0"/> to <paramref name="v1"/> over so many stations is timed at, a station into it: v² changing steadily.</summary>
+    public static float SpeedOn(float v0, float v1, int stations, int station)
     {
-        float t = k / (float)edge.N;
+        float t = station / (float)stations;
         return MathF.Sqrt(v0 * v0 + (v1 * v1 - v0 * v0) * t);
     }
 }
