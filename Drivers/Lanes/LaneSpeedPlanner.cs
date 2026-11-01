@@ -462,6 +462,130 @@ internal static class LaneSpeedPlanner
             speed[k + 1] = MathF.Min(speed[k + 1], DriveFrom(envelope, speed[k], curvature[k], stepLength[k], factor[k], Road(road, k), shares));
     }
 
+    /// <summary>
+    /// The stretch just ahead of the car with its speed chosen, not only
+    /// swept: at every station each speed the car can be doing there, from
+    /// braking all the way to driving all the way out of the one before,
+    /// charged the time it takes and <paramref name="extra"/>, what the cars
+    /// around add to a station's step (infinite where it runs into one); the
+    /// far end charged <paramref name="rest"/>, the seconds from there on at
+    /// the speed it ends at. Speeds are kept in bins of
+    /// <paramref name="speedStep"/>, each holding the speed it was reached at
+    /// as it is, so a station's few hundredths of drive at the top are not
+    /// lost to the bin. With nothing around, the fastest way is the sweeps'
+    /// own. The seconds it all takes; the speed at each station in
+    /// <paramref name="speed"/>.
+    /// </summary>
+    public static float ChooseAhead(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> stepLength,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<float> brakeFactor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        float startSpeed,
+        Func<float, float> rest,
+        Func<int, float, float, float>? extra,
+        Span<float> speed,
+        float speedStep = 0.25f,
+        ReadOnlySpan<float> slowest = default
+    )
+    {
+        int count = speed.Length;
+        int bins = (int)MathF.Ceiling(TopSpeed / speedStep) + 2;
+        Choice[] grid = ChoiceGrid(count * bins);
+        Array.Fill(grid, Choice.None, 0, count * bins);
+        var lo = new int[count];
+        var hi = new int[count];
+        Array.Fill(lo, int.MaxValue);
+        Array.Fill(hi, -1);
+        int Bin(float v) => Math.Clamp((int)MathF.Round(v / speedStep), 0, bins - 1);
+        void Reach(int k, int bin, float seconds, float v, int from)
+        {
+            ref Choice c = ref grid[k * bins + bin];
+            if (seconds >= c.Seconds)
+                return;
+            c = new Choice(seconds, v, from);
+            lo[k] = Math.Min(lo[k], bin);
+            hi[k] = Math.Max(hi[k], bin);
+        }
+        Reach(0, Bin(startSpeed), 0f, startSpeed, -1);
+        for (int k = 0; k + 1 < count; k++)
+        {
+            float limit = CornerLimit(envelope.ForTurn(curvature[k + 1]), curvature[k + 1], factor[k + 1] * shares.Lateral, Road(road, k + 1));
+            float floor = slowest.IsEmpty ? 0f : slowest[k + 1];
+            float ds = stepLength[k];
+            for (int b = lo[k]; b <= hi[k]; b++)
+            {
+                Choice here = grid[k * bins + b];
+                if (here.From == Choice.Unreached)
+                    continue;
+                float v = here.Speed;
+                float high = MathF.Min(DriveFrom(envelope, v, curvature[k], ds, factor[k], Road(road, k), shares), limit);
+                // Braked all the way, the braking read at the step's middle
+                // speed, as the backward sweep reads it.
+                float low = v;
+                for (int pass = 0; pass < 3; pass++)
+                {
+                    float mid = 0.5f * (v + low);
+                    low = MathF.Sqrt(MathF.Max(0f, v * v - 2f * Deceleration(envelope, mid, curvature[k], factor[k], brakeFactor[k], Road(road, k), shares) * ds));
+                }
+                low = MathF.Max(low, floor);
+                if (low > high)
+                    continue;
+                Try(k, b, here.Seconds, v, high, ds);
+                if (low < high)
+                    Try(k, b, here.Seconds, v, low, ds);
+                for (int b1 = Bin(low) + 1; b1 * speedStep < high; b1++)
+                    Try(k, b, here.Seconds, v, b1 * speedStep, ds);
+            }
+        }
+        void Try(int k, int b, float before, float v, float v1, float ds)
+        {
+            float seconds = before + ds / MathF.Max(0.5f * (v + v1), 1f);
+            if (extra is not null)
+                seconds += extra(k, v, v1);
+            if (seconds < float.PositiveInfinity)
+                Reach(k + 1, Bin(v1), seconds, v1, b);
+        }
+        int last = count - 1, best = -1;
+        float bestSeconds = float.PositiveInfinity;
+        for (int b = lo[last]; b <= hi[last]; b++)
+        {
+            Choice end = grid[last * bins + b];
+            if (end.From == Choice.Unreached)
+                continue;
+            float total = end.Seconds + rest(end.Speed);
+            if (total < bestSeconds)
+                (bestSeconds, best) = (total, b);
+        }
+        if (best < 0)
+            return float.PositiveInfinity;
+        for (int k = last, b = best; k >= 0; k--)
+        {
+            Choice c = grid[k * bins + b];
+            speed[k] = c.Speed;
+            b = c.From;
+        }
+        return bestSeconds;
+    }
+
+    private readonly record struct Choice(float Seconds, float Speed, int From)
+    {
+        public const int Unreached = -2;
+        public static readonly Choice None = new(float.PositiveInfinity, 0f, Unreached);
+    }
+
+    [ThreadStatic] private static Choice[]? _choiceGrid;
+
+    private static Choice[] ChoiceGrid(int size)
+    {
+        if (_choiceGrid is null || _choiceGrid.Length < size)
+            _choiceGrid = new Choice[size];
+        return _choiceGrid;
+    }
+
     private static LaneRoad Road(ReadOnlySpan<LaneRoad> road, int i) => road.IsEmpty ? default : road[i];
 
     /// <summary>The tyres' share of the corner at this speed, and how hard the road presses on them.</summary>

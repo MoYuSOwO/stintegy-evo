@@ -59,6 +59,9 @@ public sealed class DrawnLine
     // carries on from this, not from the line as given way, or every redraw
     // near an edge gave way twice where it joined and left a step behind.
     private readonly float[] _bent;
+    // The speed a made line was made for at each station, where its maker
+    // gave one; NaN where it did not.
+    private readonly float[] _speed;
     // The span the drawing covers, as stations from where it starts; outside
     // it the line is the racing line.
     private int _from;
@@ -71,6 +74,17 @@ public sealed class DrawnLine
         _lanes = lanes;
         _delta = new float[lanes.Count];
         _bent = new float[lanes.Count];
+        _speed = new float[lanes.Count];
+        Array.Fill(_speed, float.NaN);
+    }
+
+    /// <summary>The speed a made line was made for at a station; NaN where none was given.</summary>
+    public float SpeedAt(int station)
+    {
+        if (!Active)
+            return float.NaN;
+        int rel = _lanes.Wrap(station - _from);
+        return rel <= _span ? _speed[_lanes.Wrap(station)] : float.NaN;
     }
 
     /// <summary>Whether a line is drawn at all.</summary>
@@ -108,6 +122,8 @@ public sealed class DrawnLine
         float spacing = _lanes.Spacing;
         int car = (int)MathF.Floor(station);
         bool held = Active;
+        // A drawing has no speeds of its own: the driver plans them.
+        Array.Fill(_speed, float.NaN);
         if (!held)
         {
             Array.Clear(_delta);
@@ -193,16 +209,29 @@ public sealed class DrawnLine
     /// made line is smooth and on the road already, and it is its maker's to
     /// start it where the car is.
     /// </summary>
-    public void Set(int from, ReadOnlySpan<float> offsets, float brakeFactor)
+    public void Set(int from, ReadOnlySpan<float> offsets, float brakeFactor) => Set(from, offsets, [], brakeFactor);
+
+    /// <summary>
+    /// A line made in advance with the speed it was made for at each of its
+    /// stations, driven at those speeds: the line and its speeds were chosen
+    /// together, and a speed planned again on the line alone is another
+    /// choice than its maker's.
+    /// </summary>
+    public void Set(int from, ReadOnlySpan<float> offsets, ReadOnlySpan<float> speeds, float brakeFactor)
     {
+        if (speeds.Length != 0 && speeds.Length != offsets.Length)
+            throw new ArgumentException("A made line's speeds are one per station of it.", nameof(speeds));
         if (offsets.Length < 2 || offsets.Length > _lanes.Count)
             throw new ArgumentException($"A made line covers 2 to {_lanes.Count} stations, not {offsets.Length}.", nameof(offsets));
         Array.Clear(_delta);
         Array.Clear(_bent);
+        Array.Fill(_speed, float.NaN);
         for (int k = 0; k < offsets.Length; k++)
         {
             _delta[_lanes.Wrap(from + k)] = offsets[k];
             _bent[_lanes.Wrap(from + k)] = offsets[k];
+            if (speeds.Length != 0)
+                _speed[_lanes.Wrap(from + k)] = speeds[k];
         }
         _from = from;
         _span = offsets.Length - 1;
@@ -215,6 +244,7 @@ public sealed class DrawnLine
     {
         Array.Clear(_delta);
         Array.Clear(_bent);
+        Array.Fill(_speed, float.NaN);
         _span = 0;
         BrakeFactor = 1f;
         Version++;

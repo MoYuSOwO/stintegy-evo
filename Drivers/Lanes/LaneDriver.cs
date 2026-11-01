@@ -266,7 +266,17 @@ public sealed class LaneDriver : IDriverController
     private bool _pendingClear;
     // A line made in advance, waiting for the car.
     private float[] _pendingMade = [];
+    private float[] _pendingMadeSpeed = [];
     private int _pendingMadeFrom, _pendingMadeCount;
+    private bool _pendingMadeSpeeds;
+    // Where the speed is chosen to on a made line, and what the road on from
+    // there costs at each speed the car could reach it at.
+    private int _restStation = -1;
+    private Func<float, float>? _rest;
+    private float[] _chosen = [];
+    // How long choosing has taken, for the probes.
+    internal long ChooseTicks;
+    internal int ChooseCalls;
     private bool _pendingSet;
 
     /// <summary>
@@ -301,12 +311,45 @@ public sealed class LaneDriver : IDriverController
         if (_pendingMade.Length < offsetsFromRacingLine.Length)
             _pendingMade = new float[offsetsFromRacingLine.Length];
         offsetsFromRacingLine.CopyTo(_pendingMade);
+        _pendingMadeSpeeds = false;
         _pendingMadeFrom = fromStation;
         _pendingMadeCount = offsetsFromRacingLine.Length;
         _pendingBrake = brakeFactor;
         _pendingSet = true;
         _pendingDraw = false;
         _pendingClear = false;
+    }
+
+    /// <summary>
+    /// Drive a line made in advance at the speeds it was made for: one
+    /// offset from the racing line and one speed, m/s, for each station from
+    /// <paramref name="fromStation"/>. Its maker chose the line and the speeds
+    /// together, so the speeds are driven as given, not planned again on the
+    /// line alone. It takes hold the next step, all of it.
+    /// </summary>
+    public void DriveLine(int fromStation, ReadOnlySpan<float> offsetsFromRacingLine, ReadOnlySpan<float> speeds)
+    {
+        if (speeds.Length != offsetsFromRacingLine.Length)
+            throw new ArgumentException("A made line's speeds are one per station of it.", nameof(speeds));
+        DriveLine(fromStation, offsetsFromRacingLine);
+        if (_pendingMadeSpeed.Length < speeds.Length)
+            _pendingMadeSpeed = new float[speeds.Length];
+        speeds.CopyTo(_pendingMadeSpeed);
+        _pendingMadeSpeeds = true;
+    }
+
+    /// <summary>
+    /// On a made line, choose the speed station by station up to
+    /// <paramref name="station"/> instead of only sweeping it: there, each
+    /// speed the car could be doing is charged <paramref name="rest"/>, the
+    /// seconds from there on at that speed, and the stretch to it each
+    /// speed it could take at each station (<see cref="LaneSpeedPlanner.ChooseAhead"/>).
+    /// </summary>
+    public void ChooseSpeedsTo(int station, Func<float, float> rest)
+    {
+        _restStation = _lanes.Wrap(station);
+        _rest = rest;
+        _windowStart = -1;
     }
 
     /// <summary>Back to the lanes: the drawn line is dropped the next step.</summary>
@@ -644,7 +687,8 @@ public sealed class LaneDriver : IDriverController
         }
         if (_pendingSet)
         {
-            _drawn?.Set(_pendingMadeFrom, _pendingMade.AsSpan(0, _pendingMadeCount), _pendingBrake);
+            _drawn?.Set(_pendingMadeFrom, _pendingMade.AsSpan(0, _pendingMadeCount),
+                _pendingMadeSpeeds ? _pendingMadeSpeed.AsSpan(0, _pendingMadeCount) : [], _pendingBrake);
             _pendingSet = false;
         }
         _sincePlan += dt;
@@ -2087,13 +2131,46 @@ public sealed class LaneDriver : IDriverController
         }
         else
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
+        if (Drawing && _rest is not null)
+            ChooseWindow(start, n);
         _windowStillSpeed = _windowSpeed[0];
         if (Gains.FollowLaneMoves && PlanMoveWindow(start))
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
+        // A made line's own speeds, where it has them, are the plan.
+        if (Drawing)
+            for (int k = 0; k < n; k++)
+            {
+                float made = _drawn!.SpeedAt(start + k);
+                if (!float.IsNaN(made))
+                    _windowSpeed[k] = made;
+            }
         _windowStart = start;
         _windowRange = Range;
         _windowSide = Side;
         _windowDrawn = DrawnVersion;
+    }
+
+    // The window's speeds up to where they are chosen to, chosen; past it,
+    // no faster than driving on from what was chosen there.
+    private void ChooseWindow(int start, int n)
+    {
+        int end = _lanes.Wrap(_restStation - start);
+        if (end <= 0 || end >= n)
+            return;
+        if (_chosen.Length < n)
+            _chosen = new float[n];
+        long clock = System.Diagnostics.Stopwatch.GetTimestamp();
+        float seconds = LaneSpeedPlanner.ChooseAhead(_envelope, _windowCurvature.AsSpan(0, end + 1), _windowStep.AsSpan(0, end + 1),
+            _windowFactor.AsSpan(0, end + 1), _windowBrake.AsSpan(0, end + 1), _windowRoad.AsSpan(0, end + 1), _planShares,
+            _carSpeed, _rest!, null, _chosen.AsSpan(0, end + 1));
+        ChooseTicks += System.Diagnostics.Stopwatch.GetTimestamp() - clock;
+        ChooseCalls++;
+        if (!float.IsFinite(seconds))
+            return;
+        for (int k = 0; k <= end; k++)
+            _windowSpeed[k] = _chosen[k];
+        for (int k = end; k + 1 < n; k++)
+            _windowSpeed[k + 1] = MathF.Min(_windowSpeed[k + 1], LaneSpeedPlanner.Driven(_envelope, _windowSpeed[k], _windowCurvature[k], _windowStep[k], _windowFactor[k], _windowRoad[k], _planShares));
     }
 
     private int DrawnVersion => Drawing ? _drawn!.Version : -1;
