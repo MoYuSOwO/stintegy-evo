@@ -463,6 +463,33 @@ internal static class LaneSpeedPlanner
     }
 
     /// <summary>
+    /// The curvature a plan corners on: at each station the sharpest of the
+    /// road from there to as far as the car covers in its turn lag, the time
+    /// the hands steer ahead by (TurnLag). The wheel is turned now for the
+    /// road that far on, so into a corner that tightens the tyres are asked
+    /// for more than the road under the car alone would ask; planned on the
+    /// road under the car, the plan had nothing over for it, and into
+    /// Zandvoort's Scheivlak and Sepang's second corner the car ran wide and
+    /// off. Read with the speed the car is guessed to be doing at each
+    /// station. The driver and the corner table both corner on it.
+    /// </summary>
+    public static void LeadCurvatures(ReadOnlySpan<float> curvature, ReadOnlySpan<float> speedGuess, Func<float, float> lagSeconds,
+        float spacing, Span<float> into)
+    {
+        int n = into.Length;
+        for (int k = 0; k < n; k++)
+        {
+            float v = speedGuess[k];
+            int lead = (int)MathF.Ceiling(MathF.Max(0f, v) * lagSeconds(v) / spacing);
+            float sharpest = curvature[k];
+            for (int j = 1; j <= lead && k + j < curvature.Length; j++)
+                if (MathF.Abs(curvature[k + j]) > MathF.Abs(sharpest))
+                    sharpest = curvature[k + j];
+            into[k] = sharpest;
+        }
+    }
+
+    /// <summary>
     /// The stretch just ahead of the car with its speed chosen, not only
     /// swept: at every station each speed the car can be doing there, from
     /// braking all the way to driving all the way out of the one before,
@@ -655,7 +682,7 @@ internal static class LaneSpeedPlanner
         return (demand, load);
     }
 
-    private static float BrakeFrom(in LaneEnvelope envelope, float vNext, float curvature, float ds, float factor, float brakeFactor, LaneRoad road, LaneShares shares)
+    internal static float BrakeFrom(in LaneEnvelope envelope, float vNext, float curvature, float ds, float factor, float brakeFactor, LaneRoad road, LaneShares shares)
     {
         // The step is driven at every speed between the one it starts at and
         // vNext, so the corner it carries and the grip it has are read at

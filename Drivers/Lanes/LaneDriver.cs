@@ -2313,17 +2313,7 @@ public sealed class LaneDriver : IDriverController
         if (!Gains.PlanTurnLead)
             return;
         Array.Copy(curvature, _leadBuffer, n);
-        for (int k = 0; k < n; k++)
-        {
-            float v = speedGuess[k];
-            float seconds = _turnLag.Seconds(v);
-            int lead = (int)MathF.Ceiling(MathF.Max(0f, v) * seconds / _lanes.Spacing);
-            float sharpest = _leadBuffer[k];
-            for (int j = 1; j <= lead && k + j < n; j++)
-                if (MathF.Abs(_leadBuffer[k + j]) > MathF.Abs(sharpest))
-                    sharpest = _leadBuffer[k + j];
-            curvature[k] = sharpest;
-        }
+        LaneSpeedPlanner.LeadCurvatures(_leadBuffer.AsSpan(0, n), speedGuess.AsSpan(0, n), _turnLag.Seconds, _lanes.Spacing, curvature.AsSpan(0, n));
     }
 
     /// <summary>The window's speed at its start with the blend held where it stands.</summary>
