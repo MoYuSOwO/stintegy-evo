@@ -162,7 +162,7 @@ internal sealed class LineSearch
                             bool any = false;
                             for (int b = 0; b < bins && !any; b++)
                                 any = costHere[source + b] < float.PositiveInfinity;
-                            if (!any || !Shape(edge, from, r0, here[i], Slopes[hi], there[j], Slopes[hj], allowed))
+                            if (!any || !Shape(edge, from + r0 * RowStations, r0, here[i], Slopes[hi], there[j], Slopes[hj], allowed))
                                 continue;
                             for (int b0 = 0; b0 < bins; b0++)
                             {
@@ -240,9 +240,9 @@ internal sealed class LineSearch
             (int i, int hi, int b0) = Split(s0, slopes, bins);
             (int j, int hj, int b1) = Split(s1, slopes, bins);
             var shape = new Edge((r1 - r0) * RowStations);
-            Shape(shape, from, r0, places[r0][i], Slopes[hi], places[r1][j], Slopes[hj], null);
+            Shape(shape, from + r0 * RowStations, r0, places[r0][i], Slopes[hi], places[r1][j], Slopes[hj], null);
             float v0 = MinSpeed + b0 * SpeedStep, v1 = MinSpeed + b1 * SpeedStep;
-            for (int k = 0; k <= shape.Step.Length; k++)
+            for (int k = 0; k <= shape.N; k++)
             {
                 offset[r0 * RowStations + k] = shape.Offset[k];
                 speed[r0 * RowStations + k] = Along(v0, v1, shape, k);
@@ -260,6 +260,8 @@ internal sealed class LineSearch
     {
         public required int From { get; init; }
         public required int Rows { get; init; }
+        /// <summary>The station each row is at, unwrapped; a lap's last row is its first.</summary>
+        public required int[] Starts { get; init; }
         public required List<float>[] Places { get; init; }
         public required int Bins { get; init; }
         public required float[][] Value { get; init; }
@@ -335,18 +337,59 @@ internal sealed class LineSearch
     /// </summary>
     public Table Bake(int from, int rows, Func<float, float> terminal, Func<int, float>? slowest = null)
     {
+        int zero = Array.IndexOf(Slopes, 0f);
+        var starts = new int[rows + 1];
+        for (int r = 0; r <= rows; r++)
+            starts[r] = from + r * RowStations;
+        return Bake(from, starts, lap: false, (y, h, v) => MathF.Abs(y) < 1e-3f && h == zero ? terminal(v) : float.PositiveInfinity, slowest);
+    }
+
+    /// <summary>
+    /// Bake a whole lap from <paramref name="from"/> round to itself, the
+    /// last row one station longer or more where the lap's stations do not
+    /// share out evenly. The lap's end is its start: <paramref name="next"/>
+    /// charges each place, heading and speed there what the next lap from
+    /// it costs, which is what the last bake gave its first row, or nothing
+    /// on the first bake.
+    /// </summary>
+    public Table BakeLap(int from, Table? next, Func<int, float>? slowest = null)
+    {
+        int rows = _lanes.Count / RowStations;
+        var starts = new int[rows + 1];
+        for (int r = 0; r < rows; r++)
+            starts[r] = from + r * RowStations;
+        starts[rows] = from + _lanes.Count;
+        int slopes = Slopes.Length;
+        Func<float, int, float, float> terminal = (y, h, v) => 0f;
+        if (next is not null)
+        {
+            terminal = (y, h, v) =>
+            {
+                int place = next.Places[0].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
+                int bin = (int)MathF.Round((v - MinSpeed) / SpeedStep);
+                return place < 0 ? float.PositiveInfinity : next.Value[0][(place * slopes + h) * next.Bins + bin];
+            };
+        }
+        return Bake(from, starts, lap: true, terminal, slowest);
+    }
+
+    private Table Bake(int from, int[] starts, bool lap, Func<float, int, float, float> terminal, Func<int, float>? slowest)
+    {
+        int rows = starts.Length - 1;
+        int widest = 0;
+        for (int r = 0; r < rows; r++)
+            widest = Math.Max(widest, starts[r + 1] - starts[r]);
         int bins = (int)MathF.Ceiling((LaneSpeedPlanner.TopSpeed - MinSpeed) / SpeedStep) + 1;
         if (bins > byte.MaxValue + 1)
             throw new InvalidOperationException($"{bins} speed bins do not fit a byte.");
         int slopes = Slopes.Length;
-        int zeroSlope = Array.IndexOf(Slopes, 0f);
         var places = new List<float>[rows + 1];
         for (int r = 0; r <= rows; r++)
         {
-            (float lo, float hi) = Room(from + r * RowStations);
+            (float lo, float hi) = Room(starts[r]);
             var ys = new List<float>();
             for (float y = MathF.Ceiling(lo / LateralStep) * LateralStep; y <= hi + 1e-3f; y += LateralStep)
-                if (r < rows || MathF.Abs(y) < 1e-3f)
+                if (r < rows || lap || MathF.Abs(y) < 1e-3f)
                     ys.Add(y);
             places[r] = ys;
         }
@@ -361,9 +404,10 @@ internal sealed class LineSearch
             Array.Fill(value[r], float.PositiveInfinity);
             Array.Fill(next[r], -1);
         }
-        int end = places[rows].FindIndex(y => MathF.Abs(y) < 1e-3f);
-        for (int b = 0; b < bins; b++)
-            value[rows][(end * slopes + zeroSlope) * bins + b] = terminal(MinSpeed + b * SpeedStep);
+        for (int p = 0; p < places[rows].Count; p++)
+            for (int h = 0; h < slopes; h++)
+                for (int b = 0; b < bins; b++)
+                    value[rows][(p * slopes + h) * bins + b] = terminal(places[rows][p], h, MinSpeed + b * SpeedStep);
 
         var steps = new Steps[rows];
         for (int r0 = rows - 1; r0 >= 0; r0--)
@@ -383,7 +427,7 @@ internal sealed class LineSearch
                         continue;
                     List<float> there = places[r1];
                     float[] later = value[r1];
-                    var edge = new Edge(Spans[sp] * RowStations);
+                    var edge = new Edge(Spans[sp] * widest) { N = starts[r1] - starts[row0] };
                     for (int j = 0; j < there.Count; j++)
                     {
                         if (MathF.Abs(there[j] - here[i]) > MaxLateralJumps[sp] + 1e-3f)
@@ -394,7 +438,7 @@ internal sealed class LineSearch
                             bool any = false;
                             for (int b = 0; b < bins && !any; b++)
                                 any = later[target + b] < float.PositiveInfinity;
-                            if (!any || !Shape(edge, from, row0, here[i], Slopes[hi], there[j], Slopes[hj], null))
+                            if (!any || !Shape(edge, starts[row0], row0, here[i], Slopes[hi], there[j], Slopes[hj], null))
                                 continue;
                             // Timed on the length it is stored at.
                             ushort length = (ushort)MathF.Round(edge.Length / LengthUnit);
@@ -402,7 +446,7 @@ internal sealed class LineSearch
                             int top = Math.Min(bins - 1, (int)MathF.Floor((edge.Limit[0] + 1e-3f - MinSpeed) / SpeedStep));
                             if (top < 0)
                                 continue;
-                            int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(from + row0 * RowStations) - MinSpeed) / SpeedStep), 0, top);
+                            int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(starts[row0]) - MinSpeed) / SpeedStep), 0, top);
                             float[] chains = AllChains(edge, bottom, top);
                             mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, (byte)bottom, (byte)top, chains));
                             for (int b0 = bottom; b0 <= top; b0++)
@@ -432,7 +476,7 @@ internal sealed class LineSearch
             });
             steps[row0] = Pack(made);
         }
-        return new Table { From = from, Rows = rows, Places = places, Bins = bins, Value = value, NextRow = nextRow, Next = next, Steps = steps };
+        return new Table { From = from, Rows = rows, Starts = starts, Places = places, Bins = bins, Value = value, NextRow = nextRow, Next = next, Steps = steps };
     }
 
     /// <summary>The way the baked table leads from a place, heading and speed on a row to the end.</summary>
@@ -460,7 +504,7 @@ internal sealed class LineSearch
     {
         int slopes = Slopes.Length;
         int first = path[0].Row;
-        int n = (table.Rows - first) * RowStations + 1;
+        int n = table.Starts[table.Rows] - table.Starts[first] + 1;
         var offset = new float[n];
         var speed = new float[n];
         for (int p = 0; p + 1 < path.Count; p++)
@@ -469,29 +513,30 @@ internal sealed class LineSearch
             (int r1, int s1) = path[p + 1];
             (int i, int hi, int b0) = Split(s0, slopes, table.Bins);
             (int j, int hj, int b1) = Split(s1, slopes, table.Bins);
-            var shape = new Edge((r1 - r0) * RowStations);
-            Shape(shape, table.From, r0, table.Places[r0][i], Slopes[hi], table.Places[r1][j], Slopes[hj], null);
+            var shape = new Edge(table.Starts[r1] - table.Starts[r0]);
+            Shape(shape, table.Starts[r0], r0, table.Places[r0][i], Slopes[hi], table.Places[r1][j], Slopes[hj], null);
             float v0 = MinSpeed + b0 * SpeedStep, v1 = MinSpeed + b1 * SpeedStep;
-            for (int k = 0; k <= shape.Step.Length; k++)
+            int at = table.Starts[r0] - table.Starts[first];
+            for (int k = 0; k <= shape.N; k++)
             {
-                offset[(r0 - first) * RowStations + k] = shape.Offset[k];
-                speed[(r0 - first) * RowStations + k] = Along(v0, v1, shape, k);
+                offset[at + k] = shape.Offset[k];
+                speed[at + k] = Along(v0, v1, shape, k);
             }
         }
         float endSpeed = MinSpeed + Split(path[^1].State, slopes, table.Bins).Bin * SpeedStep;
         float terminal = table.Value[table.Rows][path[^1].State];
-        return new Way(table.From + first * RowStations, offset, speed, total - terminal, endSpeed, terminal);
+        return new Way(table.Starts[first], offset, speed, total - terminal, endSpeed, terminal);
     }
 
     /// <summary>
     /// A step of the lattice: from a place and heading on one row to a place
     /// and heading on a later one.
     /// </summary>
-    public readonly record struct Move(int Row, int ToRow, float Y, float Slope, float ToY, float ToSlope);
+    public readonly record struct Move(int Row, int ToRow, int Stations, float Y, float Slope, float ToY, float ToSlope);
 
     /// <summary>Where a move has the car across the road, as metres from the racing line, a station into it.</summary>
     public float OffsetOn(Move move, int station) =>
-        Hermite(move.Y, move.Slope, move.ToY, move.ToSlope, (move.ToRow - move.Row) * RowStations, station);
+        Hermite(move.Y, move.Slope, move.ToY, move.ToSlope, move.Stations, station);
 
     private float Hermite(float y0, float h0, float y1, float h1, int n, int k)
     {
@@ -543,7 +588,7 @@ internal sealed class LineSearch
             if (extra is not null)
             {
                 (int j, int hj) = (steps.Target[e] / slopes, steps.Target[e] % slopes);
-                move = new Move(row, r1, y, slope, table.Places[r1][j], Slopes[hj]);
+                move = new Move(row, r1, table.Starts[r1] - table.Starts[row], y, slope, table.Places[r1][j], Slopes[hj]);
             }
             for (int b1 = bLow; b1 <= bHigh; b1++)
             {
@@ -675,6 +720,8 @@ internal sealed class LineSearch
     // One step of the lattice as the car drives it.
     private sealed class Edge(int stations)
     {
+        /// <summary>How many stations the step crosses: up to as many as it was made for.</summary>
+        public int N = stations;
         public readonly float[] Offset = new float[stations + 1];
         public readonly float[] Curvature = new float[stations];
         public readonly float[] Step = new float[stations];
@@ -687,10 +734,9 @@ internal sealed class LineSearch
     // The smooth curve from one place and heading to the next, kept on the
     // road; its corner, step lengths and the speed its corner allows at
     // each station. False if it leaves the road.
-    private bool Shape(Edge edge, int from, int row, float y0, float h0, float y1, float h1, Func<int, float, bool>? allowed)
+    private bool Shape(Edge edge, int st0, int row, float y0, float h0, float y1, float h1, Func<int, float, bool>? allowed)
     {
-        int n = edge.Step.Length;
-        int st0 = from + row * RowStations;
+        int n = edge.N;
         float Y(int k) => Hermite(y0, h0, y1, h1, n, k);
         Vector2 P(int k) => _lanes.Position(st0 + k, _lanes.Offset(LaneId.Free, st0 + k) + Y(k));
         for (int k = 0; k <= n; k++)
@@ -734,7 +780,7 @@ internal sealed class LineSearch
     private (float Low, float High) Chains(Edge edge, float v0)
     {
         float low = v0, high = v0;
-        for (int k = 0; k < edge.Step.Length; k++)
+        for (int k = 0; k < edge.N; k++)
         {
             float decel = LaneSpeedPlanner.Deceleration(_envelope, low, edge.Curvature[k], edge.Factor[k], 1f, edge.Road[k], _shares);
             low = MathF.Sqrt(MathF.Max(0f, low * low - 2f * decel * edge.Step[k]));
@@ -747,7 +793,7 @@ internal sealed class LineSearch
     // the way inside the corner its tyres hold; negative if none does.
     private static float Held(Edge edge, float v0, float high)
     {
-        int n = edge.Step.Length;
+        int n = edge.N;
         float rise = float.PositiveInfinity;
         for (int k = 1; k < n; k++)
         {
@@ -932,7 +978,7 @@ internal sealed class LineSearch
 
     private static float Along(float v0, float v1, Edge edge, int k)
     {
-        float t = k / (float)edge.Step.Length;
+        float t = k / (float)edge.N;
         return MathF.Sqrt(v0 * v0 + (v1 * v1 - v0 * v0) * t);
     }
 }
