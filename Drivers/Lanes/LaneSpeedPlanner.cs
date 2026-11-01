@@ -473,8 +473,11 @@ internal static class LaneSpeedPlanner
     /// <paramref name="speedStep"/>, each holding the speed it was reached at
     /// as it is, so a station's few hundredths of drive at the top are not
     /// lost to the bin. With nothing around, the fastest way is the sweeps'
-    /// own. The seconds it all takes; the speed at each station in
-    /// <paramref name="speed"/>.
+    /// own. How hard the car can drive or brake at a station is read every
+    /// <see cref="ChooseSample"/> m/s and taken in a straight line between:
+    /// it bends gently with the speed. Speeds below
+    /// <paramref name="slowest"/> are not looked at. The seconds it all
+    /// takes; the speed at each station in <paramref name="speed"/>.
     /// </summary>
     public static float ChooseAhead(
         in LaneEnvelope envelope,
@@ -488,8 +491,9 @@ internal static class LaneSpeedPlanner
         Func<float, float> rest,
         Func<int, float, float, float>? extra,
         Span<float> speed,
-        float speedStep = 0.25f,
-        ReadOnlySpan<float> slowest = default
+        float speedStep = 0.5f,
+        ReadOnlySpan<float> slowest = default,
+        float sample = ChooseSample
     )
     {
         int count = speed.Length;
@@ -516,21 +520,68 @@ internal static class LaneSpeedPlanner
             float limit = CornerLimit(envelope.ForTurn(curvature[k + 1]), curvature[k + 1], factor[k + 1] * shares.Lateral, Road(road, k + 1));
             float floor = slowest.IsEmpty ? 0f : slowest[k + 1];
             float ds = stepLength[k];
+            // Full drive and full braking out of this station, read at every
+            // sample speed the reached speeds lie between.
+            float vMin = float.PositiveInfinity, vMax = 0f;
+            for (int b = lo[k]; b <= hi[k]; b++)
+                if (grid[k * bins + b].From != Choice.Unreached)
+                {
+                    vMin = MathF.Min(vMin, grid[k * bins + b].Speed);
+                    vMax = MathF.Max(vMax, grid[k * bins + b].Speed);
+                }
+            if (vMax <= 0f)
+                break;
+            bool exact = sample <= 0f;
+            float every = exact ? ChooseSample : sample;
+            int s0 = (int)MathF.Floor(vMin / every), s1 = (int)MathF.Ceiling(vMax / every);
+            if (exact)
+                s1 = s0 + 1;
+            if (s1 == s0)
+                s1++;
+            Span<float> drive = stackalloc float[s1 - s0 + 1];
+            Span<float> brake = stackalloc float[s1 - s0 + 1];
+            for (int i = 0; i <= s1 - s0; i++)
+            {
+                if (exact)
+                    break;
+                float vs = MathF.Max((s0 + i) * every, 0.5f);
+                drive[i] = DriveFrom(envelope, vs, curvature[k], ds, factor[k], Road(road, k), shares);
+                // Braked all the way, the braking read at the step's middle
+                // speed, as the backward sweep reads it.
+                float braked = vs;
+                for (int pass = 0; pass < 3; pass++)
+                {
+                    float mid = 0.5f * (vs + braked);
+                    braked = MathF.Sqrt(MathF.Max(0f, vs * vs - 2f * Deceleration(envelope, mid, curvature[k], factor[k], brakeFactor[k], Road(road, k), shares) * ds));
+                }
+                brake[i] = braked;
+            }
             for (int b = lo[k]; b <= hi[k]; b++)
             {
                 Choice here = grid[k * bins + b];
                 if (here.From == Choice.Unreached)
                     continue;
                 float v = here.Speed;
-                float high = MathF.Min(DriveFrom(envelope, v, curvature[k], ds, factor[k], Road(road, k), shares), limit);
-                // Braked all the way, the braking read at the step's middle
-                // speed, as the backward sweep reads it.
-                float low = v;
-                for (int pass = 0; pass < 3; pass++)
+                float high, low;
+                if (exact)
                 {
-                    float mid = 0.5f * (v + low);
-                    low = MathF.Sqrt(MathF.Max(0f, v * v - 2f * Deceleration(envelope, mid, curvature[k], factor[k], brakeFactor[k], Road(road, k), shares) * ds));
+                    high = DriveFrom(envelope, v, curvature[k], ds, factor[k], Road(road, k), shares);
+                    low = v;
+                    for (int pass = 0; pass < 3; pass++)
+                    {
+                        float mid = 0.5f * (v + low);
+                        low = MathF.Sqrt(MathF.Max(0f, v * v - 2f * Deceleration(envelope, mid, curvature[k], factor[k], brakeFactor[k], Road(road, k), shares) * ds));
+                    }
                 }
+                else
+                {
+                    float x = v / every - s0;
+                    int i0 = Math.Clamp((int)x, 0, s1 - s0 - 1);
+                    float u = x - i0;
+                    high = drive[i0] + (drive[i0 + 1] - drive[i0]) * u;
+                    low = brake[i0] + (brake[i0 + 1] - brake[i0]) * u;
+                }
+                high = MathF.Min(high, limit);
                 low = MathF.Max(low, floor);
                 if (low > high)
                     continue;
@@ -570,6 +621,9 @@ internal static class LaneSpeedPlanner
         }
         return bestSeconds;
     }
+
+    /// <summary>How far apart in speed the drive and braking a choice reads are taken, m/s.</summary>
+    public const float ChooseSample = 2f;
 
     private readonly record struct Choice(float Seconds, float Speed, int From)
     {

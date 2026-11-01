@@ -274,8 +274,13 @@ public sealed class LaneDriver : IDriverController
     private int _restStation = -1;
     private Func<float, float>? _rest;
     private float[] _chosen = [];
+    private float[] _slowest = [];
     // How long choosing has taken, for the probes.
     internal long ChooseTicks;
+    // The choice's settings, for the probes to try others.
+    internal float ChooseStep = 0.5f;
+    internal float ChooseSampleStep = LaneSpeedPlanner.ChooseSample;
+    internal bool ChooseFloor = true;
     internal int ChooseCalls;
     private bool _pendingSet;
 
@@ -2158,11 +2163,19 @@ public sealed class LaneDriver : IDriverController
         if (end <= 0 || end >= n)
             return;
         if (_chosen.Length < n)
+        {
             _chosen = new float[n];
+            _slowest = new float[n];
+        }
+        // No slower than six tenths of the fastest the line allows: a car
+        // racing never comes by that slow, one that does is rejoining.
+        for (int k = 0; k <= end; k++)
+            _slowest[k] = 0.6f * _windowSpeed[k];
         long clock = System.Diagnostics.Stopwatch.GetTimestamp();
         float seconds = LaneSpeedPlanner.ChooseAhead(_envelope, _windowCurvature.AsSpan(0, end + 1), _windowStep.AsSpan(0, end + 1),
             _windowFactor.AsSpan(0, end + 1), _windowBrake.AsSpan(0, end + 1), _windowRoad.AsSpan(0, end + 1), _planShares,
-            _carSpeed, _rest!, null, _chosen.AsSpan(0, end + 1));
+            _carSpeed, _rest!, null, _chosen.AsSpan(0, end + 1), ChooseStep,
+            ChooseFloor ? _slowest.AsSpan(0, end + 1) : default, ChooseSampleStep);
         ChooseTicks += System.Diagnostics.Stopwatch.GetTimestamp() - clock;
         ChooseCalls++;
         if (!float.IsFinite(seconds))
