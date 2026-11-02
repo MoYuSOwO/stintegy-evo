@@ -45,6 +45,14 @@ public sealed record LaneDriverGains
     /// <summary>Lane moves eased in and out (LaneDriver.RangeAcceleration); off, at a fixed rate.</summary>
     public bool EaseLaneMoves { get; init; } = true;
 
+    /// <summary>
+    /// On a drawn line, only the corners and the braking into them hold the
+    /// car back: where the plan is under them it is only what the motor was
+    /// reckoned to reach, and a car past it on a tow or a push is driven flat
+    /// out, not slowed back to it.
+    /// </summary>
+    public bool PowerIsNoCeiling { get; init; } = true;
+
     /// <summary>Steering for a lane move's own sideways motion (LaneDriver.MoveAt).</summary>
     public bool FollowLaneMoves { get; init; } = true;
 
@@ -247,6 +255,8 @@ public sealed class LaneDriver : IDriverController
     private float[] _aheadSpeed = [];
 
     private float[] _windowSpeed = [];
+    // The window's corners and the braking into them alone, on a drawn line: what the car may not pass.
+    private float[] _windowCeiling = [];
     private float[] _windowCurvature = [];
     private LaneRoad[] _windowRoad = [];
     private float[] _windowStep = [];
@@ -591,6 +601,7 @@ public sealed class LaneDriver : IDriverController
 
         int window = (int)MathF.Ceiling(WindowMeters / _lanes.Spacing);
         _windowSpeed = new float[window];
+        _windowCeiling = new float[window];
         _windowCurvature = new float[window];
         _windowRoad = new LaneRoad[window];
         _windowStep = new float[window];
@@ -852,6 +863,20 @@ public sealed class LaneDriver : IDriverController
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
         target *= speedScale;
         ahead *= speedScale;
+        // Where the plan is under the corners and the braking into them, it
+        // is only what the motor was reckoned to reach: a tow or a push
+        // carries the car past it, and that is no reason to lift. There the
+        // corners' ceiling is the speed wanted.
+        if (Gains.PowerIsNoCeiling && Drawing && _windowStart >= 0)
+        {
+            float look = station + MathF.Max(0f, speed) * preview / _lanes.Spacing;
+            float roof = speedScale * CeilingAt(look);
+            if (target < roof - FlatOutToleranceMps)
+            {
+                target = roof;
+                ahead = MathF.Max(ahead, speedScale * CeilingAt(look + 5f / _lanes.Spacing));
+            }
+        }
         float uncapped = target;
         if (Cap is { } cap)
         {
@@ -898,6 +923,7 @@ public sealed class LaneDriver : IDriverController
         bool capped = target < uncapped - 0.1f;
         if (!capped && target >= flatOut - FlatOutToleranceMps)
             accel = MathF.Max(accel, _maxDrive);
+
 
         // Lift and coast: off the throttle this long before a braking zone.
         // The speed given up would have gone into the brakes a moment later,
@@ -2050,6 +2076,15 @@ public sealed class LaneDriver : IDriverController
         return MathF.Min(planned, BlendTargetCeiling(station));
     }
 
+    // The corners' ceiling over the drawn line's window, where the window holds the station.
+    private float CeilingAt(float station)
+    {
+        float local = station - _windowStart;
+        int i0 = Math.Clamp((int)MathF.Floor(local), 0, _windowCeiling.Length - 2);
+        float u = Math.Clamp(local - i0, 0f, 1f);
+        return _windowCeiling[i0] + (_windowCeiling[i0 + 1] - _windowCeiling[i0]) * u;
+    }
+
     /// <summary>
     /// The lane off the free one the car is settled on, all the way out and
     /// not moving: a side lane or the middle one, or -1. There the blend is
@@ -2133,6 +2168,7 @@ public sealed class LaneDriver : IDriverController
             // four seconds a lap at Silverstone.
             LaneSpeedPlanner.PlanAhead(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares,
                 startSpeed: _carSpeed, terminalSpeed: terminal, _windowSpeed);
+            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowCeiling);
         }
         else
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
