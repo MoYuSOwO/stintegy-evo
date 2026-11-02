@@ -499,26 +499,6 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     public float? SpeedCap { get; set; }
 
-    /// <summary>
-    /// Following, as the strategist orders it: the gap in time kept to a car
-    /// ahead on the car's own line. Zero is racing it, when no gap is kept
-    /// beyond not running into the back of it.
-    /// </summary>
-    public float FollowGapSeconds { get; set; }
-
-    // A car ahead is looked for this far up the road, and counts as on the
-    // line when it overlaps it by more than this margin between the two.
-    private const float FollowLookMeters = 150f;
-    private const float FollowSideMarginMeters = 0.4f;
-    // Racing, the nose is kept this far off the car ahead's tail, with the
-    // road it covers before its foot reacts to the car ahead braking on top.
-    private const float RacingGapMeters = 2f;
-    private const float FollowReactionSeconds = 0.2f;
-    // The share of its own braking the car reckons on giving to stop behind
-    // a car ahead that brakes as hard.
-    private const float FollowBrakeShare = 0.85f;
-    private float? _followCap;
-
     /// <summary>Blend travel per second, in units of the blend.</summary>
     public float RangeRate { get; init; } = 0.6f;
     public float SideRate { get; init; } = 0.8f;
@@ -719,7 +699,6 @@ public sealed class LaneDriver : IDriverController
         _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
         _carSpeed = speed;
-        _followCap = FollowCap(context, car, speed);
         float station = _lanes.StationOf(car.TrackS);
 
         // Where the plan is, at the car and a little ahead.
@@ -1266,53 +1245,7 @@ public sealed class LaneDriver : IDriverController
         return TrafficComing(context, car) ? 0f : Gains.RejoinEdgeSpeed;
     }
 
-    private float? Cap => SpeedCap is { } cap
-        ? _followCap is { } follow ? MathF.Min(cap, follow) : cap
-        : _followCap;
-
-    /// <summary>
-    /// The speed the car may be doing now and still stop the gap it keeps
-    /// behind the car ahead on its line, should that car brake now as hard
-    /// as this one brakes for it, after its reaction (Gipps' safe speed).
-    /// Read as the car ahead holding its speed, the TORCS bots' way, a car
-    /// two metres behind stayed there until it braked and was into the back
-    /// of it before its own foot had moved. Read as the car ahead braking as
-    /// hard as any car could, the follower held a third of a second back on
-    /// every straight and never got into the tow. The line is the one the
-    /// car is driving, drawn or not, where the car ahead is, so a car the
-    /// line goes round is no car in the way. Null with nobody in the way.
-    /// </summary>
-    private float? FollowCap(in DriverContext context, RaceCarSnapshot car, float speed)
-    {
-        float length = MathF.Max(car.TrackLengthMeters, 1f);
-        float keep = RacingGapMeters + FollowGapSeconds * MathF.Max(0f, speed);
-        float brake = FollowBrakeShare * MathF.Max(1f, _envelope.Brake(MathF.Max(0f, speed)));
-        const float react = FollowReactionSeconds;
-        float? cap = null;
-        for (int i = 0; i < context.Frame.Count; i++)
-        {
-            if (i == context.CarSnapshotIndex)
-                continue;
-            RaceCarSnapshot other = context.Frame[i];
-            float along = ((other.TrackS - car.TrackS) % length + length) % length;
-            if (along <= 0f || along > MathF.Min(FollowLookMeters, length * 0.5f))
-                continue;
-            if (MathF.Cos(other.VelocityHeadingRadians - car.VelocityHeadingRadians) <= 0.5f)
-                continue;
-            int theirs = (int)MathF.Round(_lanes.StationOf(other.TrackS));
-            float across = MathF.Abs(other.TrackD - ReferenceOffset(theirs));
-            if (across > 0.5f * (car.WidthMeters + other.WidthMeters) + FollowSideMarginMeters)
-                continue;
-            float theirSpeed = MathF.Max(0f, other.SpeedMetersPerSecond);
-            float gap = along - 0.5f * (car.LengthMeters + other.LengthMeters);
-            // Its stop if it braked as hard as this car brakes for it.
-            float room = gap - keep + theirSpeed * theirSpeed / (2f * brake);
-            // The speed whose reaction road and stop at the share fill the room.
-            float v = room <= 0f ? 0f : brake * (MathF.Sqrt(react * react + 2f * room / brake) - react);
-            cap = cap is { } c ? MathF.Min(c, v) : v;
-        }
-        return cap;
-    }
+    private float? Cap => SpeedCap;
 
     /// <summary>A car within the gap in time behind, or still alongside, on the road.</summary>
     private bool TrafficComing(in DriverContext context, RaceCarSnapshot car)
@@ -1549,7 +1482,6 @@ public sealed class LaneDriver : IDriverController
             Combined(axles.RearLateral, axles.RearLongitudinal)));
         bool gentleRung = DrivenRung(car) < 2f;
         if (gentleRung || _phase != SlidePhase.None || SpeedCap is not null ||
-            (_followCap is { } follow && follow < car.SpeedMetersPerSecond + 1f) ||
             car.SpeedMetersPerSecond < UnderPlanShare * PlannedSpeedAt(car.TrackS))
             _segmentHeldBack = true;
     }
