@@ -95,6 +95,20 @@ internal sealed class LineSearch
 
     private readonly LaneSet _lanes;
     private readonly LaneEnvelope _envelope;
+
+    /// <summary>
+    /// The motor the car has now, where it is not the one the table was
+    /// baked on (a push held, say): <see cref="DecideOnline"/> drives each
+    /// step on it. Null, the table's own.
+    /// </summary>
+    internal LaneEnvelope? Motor { get; set; }
+
+    /// <summary>
+    /// A charge on a step <see cref="DecideOnline"/> weighs, given the step,
+    /// its end speed, and per station the speed full drive reaches and the
+    /// speed braking to that end allows.
+    /// </summary>
+    public delegate float StepCost(Move move, float v1, float[] driven, float[] braked);
     private readonly LaneShares _shares;
     private readonly Func<int, float> _factor;
     private readonly Func<int, float, LaneRoad> _road;
@@ -1032,7 +1046,7 @@ internal sealed class LineSearch
     public readonly long[] OnlineCalls = new long[5];
 
     public (float Seconds, int Row, int State) DecideOnline(Table table, int row, float y, float slope, float speed,
-        Func<Move, float, float, float>? extra = null)
+        Func<Move, float, float, float>? extra = null, StepCost? cost = null)
     {
         long mark = System.Diagnostics.Stopwatch.GetTimestamp();
         void Lap(int part)
@@ -1118,6 +1132,8 @@ internal sealed class LineSearch
                                 Lap(4);
                                 if (extra is not null)
                                     seconds += extra(new Move(row, r1, stations, y, slope, there[j], Slopes[hj]), speed, v1);
+                                if (cost is not null)
+                                    seconds += cost(new Move(row, r1, stations, y, slope, there[j], Slopes[hj]), v1, driven, back);
                                 if (seconds + rest < bestSeconds)
                                     (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
                             }
@@ -1552,7 +1568,7 @@ internal sealed class LineSearch
     {
         into[0] = MathF.Min(edge.Limit[0], v0);
         for (int k = 0; k < edge.N; k++)
-            into[k + 1] = MathF.Min(edge.Limit[k + 1], LaneSpeedPlanner.Driven(_envelope, into[k], edge.Corner[k], edge.Step[k], edge.Factor[k], edge.Road[k], _shares));
+            into[k + 1] = MathF.Min(edge.Limit[k + 1], LaneSpeedPlanner.Driven(Motor ?? _envelope, into[k], edge.Corner[k], edge.Step[k], edge.Factor[k], edge.Road[k], _shares));
     }
 
     // Braking back from v1 at the far end under each station's corner, the

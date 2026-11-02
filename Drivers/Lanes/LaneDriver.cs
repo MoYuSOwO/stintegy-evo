@@ -846,9 +846,9 @@ public sealed class LaneDriver : IDriverController
         // is only what the motor was reckoned to reach: a tow or a push
         // carries the car past it, and that is no reason to lift. There the
         // corners' ceiling is the speed wanted.
-        if (Gains.PowerIsNoCeiling && Drawing && _windowStart >= 0)
+        float look = station + MathF.Max(0f, speed) * preview / _lanes.Spacing;
+        if (FlatOutAt(look))
         {
-            float look = station + MathF.Max(0f, speed) * preview / _lanes.Spacing;
             float roof = speedScale * CeilingAt(look);
             if (target < roof - FlatOutToleranceMps)
             {
@@ -2009,6 +2009,20 @@ public sealed class LaneDriver : IDriverController
     }
 
     // The corners' ceiling over the drawn line's window, where the window holds the station.
+    // Where the made line hands no speed of its own, a speed only the motor
+    // set is no ceiling; a speed handed with the line is driven as given.
+    private bool FlatOutAt(float station) =>
+        Gains.PowerIsNoCeiling && Drawing && _windowStart >= 0 &&
+        float.IsNaN(_drawn!.SpeedAt((int)MathF.Round(station)));
+
+    /// <summary>
+    /// The corners and the braking into them, all that holds the car at
+    /// <paramref name="s"/> on the line it drives, m/s; infinite with no
+    /// window planned.
+    /// </summary>
+    public float CeilingSpeedAt(float s) =>
+        _windowStart >= 0 ? CeilingAt(_lanes.StationOf(s)) : float.PositiveInfinity;
+
     private float CeilingAt(float station)
     {
         float local = station - _windowStart;
