@@ -8,7 +8,7 @@ namespace StintegyEVO.Drivers.Lanes;
 internal readonly struct JointTraffic
 {
     private const float ForecastSeconds = 1.5f;
-    private const float NearbyDistance = 25f;
+    private const float NearbyDistance = 60f;
 
     /// <summary>Bench counters: how much of the join cost is geometry.</summary>
     public static long Joins;

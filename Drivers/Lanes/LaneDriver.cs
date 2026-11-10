@@ -457,7 +457,7 @@ public sealed class LaneDriver : IDriverController
     public bool ApproximateJointBraking { get; init; } = true;
     public bool JointProtect { get; init; } = true;
     /// <summary>Evaluate a second traffic-aware edge during close encounters.</summary>
-    public bool JointLookahead { get; init; }
+    public bool JointLookahead { get; init; } = true;
 
     /// <summary>What being past a rival is worth, in seconds of lap time.</summary>
     public float AttackBonus { get; init; }
