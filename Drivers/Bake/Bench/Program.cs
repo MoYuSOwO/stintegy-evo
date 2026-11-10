@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using StintegyEVO.Core.Cars;
@@ -20,6 +21,13 @@ static class Program
         public CarNeeds Needs => CarNeeds.None;
         public DriverInput GetControl(in DriverContext context, float dt) => Next;
     }
+
+    static readonly string[] Parts = ["shape", "join", "drive", "brake", "rest"];
+    static readonly string[] Sections =
+    [
+        "traffic", "envelope", "attack", "follow", "material", "rest",
+        "readGrip+wake", "joint total", "-", "PlanAhead total",
+    ];
 
     static void Main(string[] args)
     {
@@ -56,7 +64,12 @@ static class Program
             Vector2 here = lanes.Position(station, lanes.Offset(LaneId.Free, station));
             Vector2 next = lanes.Position(station + 1, lanes.Offset(LaneId.Free, station + 1));
             ICar model = StockCar.Build(DevelopmentTyres.SuperId);
-            var driver = new LaneDriver(file, model) { JointLookahead = lookahead, ApproximateJointBraking = !exactBraking, JointProtect = protect };
+            var driver = new LaneDriver(file, model)
+            {
+                JointLookahead = lookahead,
+                ApproximateJointBraking = !exactBraking,
+                JointProtect = protect,
+            };
             driver.UseJointTable(table);
             drivers[i] = driver;
             proxies[i] = new Proxy();
@@ -65,7 +78,7 @@ static class Program
             {
                 Position = here,
                 Heading = MathF.Atan2(next.Y - here.Y, next.X - here.X),
-                Speed = cars > 1 ? 45f - 2f * i : 45f
+                Speed = cars > 1 ? 45f - 2f * i : 45f,
             });
             (car.Car as ICarStores)?.Fill(car.State, PowertrainState.Filled(0.8f));
             raceCars[i] = car;
@@ -92,8 +105,8 @@ static class Program
         simulation.Step(dt);
 
         var samples = new double[steps];
-        var planning = new System.Collections.Generic.List<double>();
-        var between = new System.Collections.Generic.List<double>();
+        var planning = new List<double>();
+        var between = new List<double>();
         for (int step = 0; step < steps; step++)
         {
             for (int i = 0; i < cars; i++)
@@ -115,6 +128,7 @@ static class Program
         Array.Sort(samples);
         double sum = 0;
         foreach (double s in samples) sum += s;
+        int plans = Math.Max(1, drivers[0].JointPlansApplied);
         Console.WriteLine();
         Console.WriteLine($"cars={cars} lookahead={lookahead} steps={steps}");
         Console.WriteLine($"  mean   {sum / samples.Length:F3} ms");
@@ -124,34 +138,40 @@ static class Program
         Console.WriteLine($"  max    {samples[^1]:F3} ms");
         Console.WriteLine($"  plans  {drivers[0].JointPlansApplied} applied");
         Report("planning steps", planning);
-        string[] parts = ["shape", "join", "drive", "brake", "rest"];
-        long[] ticks = drivers[0].JointTicks, calls = drivers[0].JointCalls;
-        string[] sections = ["traffic", "envelope", "attack", "follow", "material", "rest"];
+        Report("other steps   ", between);
+
+        Console.WriteLine("  --- PlanAhead and the joint plan ---");
         long[] sectionTicks = drivers[0].JointParts;
-        Console.WriteLine("  --- PlanJointMove sections ---");
         for (int p = 0; p < sectionTicks.Length; p++)
         {
+            if (p == 8) continue;
             double ms = sectionTicks[p] * 1000.0 / Stopwatch.Frequency;
-            Console.WriteLine($"  {sections[p],-9} {ms,9:F1} ms total   {ms / Math.Max(1, drivers[0].JointPlansApplied):F3} ms/plan");
-        }        Console.WriteLine("  --- where the planning time went ---");
+            Console.WriteLine($"  {Sections[p],-14} {ms,9:F1} ms total   {ms / plans:F3} ms/plan");
+        }
+        double laneLoop = (sectionTicks[9] - sectionTicks[6] - sectionTicks[7]) * 1000.0 / Stopwatch.Frequency;
+        Console.WriteLine($"  {"lane loop",-14} {laneLoop,9:F1} ms total   {laneLoop / plans:F3} ms/plan");
+
+        Console.WriteLine("  --- inside the search ---");
+        long[] ticks = drivers[0].JointTicks, calls = drivers[0].JointCalls;
         for (int p = 0; p < ticks.Length; p++)
         {
             double ms = ticks[p] * 1000.0 / Stopwatch.Frequency;
-            Console.WriteLine($"  {parts[p],-6} {ms,9:F1} ms total   {calls[p],9:N0} calls   {ms / Math.Max(1, drivers[0].JointPlansApplied):F3} ms/plan");
+            Console.WriteLine($"  {Parts[p],-6} {ms,9:F1} ms total   {calls[p],9:N0} calls   {ms / plans:F3} ms/plan");
         }
-        Report("other steps   ", between);
+    }
 
-        static void Report(string label, System.Collections.Generic.List<double> list)
+    static void Report(string label, List<double> list)
+    {
+        if (list.Count == 0)
         {
-            if (list.Count == 0)
-            {
-                Console.WriteLine($"  {label}  none");
-                return;
-            }
-            list.Sort();
-            double total = 0;
-            foreach (double v in list) total += v;
-            Console.WriteLine($"  {label}  n={list.Count,4}  mean {total / list.Count,7:F3}  p50 {list[list.Count / 2],7:F3}  p95 {list[(int)(list.Count * 0.95)],7:F3}  max {list[^1],7:F3} ms");
+            Console.WriteLine($"  {label}  none");
+            return;
         }
+        list.Sort();
+        double total = 0;
+        foreach (double v in list) total += v;
+        Console.WriteLine(
+            $"  {label}  n={list.Count,4}  mean {total / list.Count,7:F3}  p50 {list[list.Count / 2],7:F3}  " +
+            $"p95 {list[(int)(list.Count * 0.95)],7:F3}  max {list[^1],7:F3} ms");
     }
 }

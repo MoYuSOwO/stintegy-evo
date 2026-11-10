@@ -429,7 +429,7 @@ public sealed class LaneDriver : IDriverController
     /// often it ran them — shape, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
-    public readonly long[] JointParts = new long[6];
+    public readonly long[] JointParts = new long[10];
     public long[] JointTicks => _jointSearch?.OnlineTicks ?? [];
     public long[] JointCalls => _jointSearch?.OnlineCalls ?? [];
     public bool ApproximateJointBraking { get; init; } = true;
@@ -740,7 +740,9 @@ public sealed class LaneDriver : IDriverController
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
         {
-            PlanAhead(context, _sincePlan);
+            long planMark = System.Diagnostics.Stopwatch.GetTimestamp();
+        PlanAhead(context, _sincePlan);
+        JointParts[9] += System.Diagnostics.Stopwatch.GetTimestamp() - planMark;
             _sincePlan = 0f;
         }
         ScaleMove(car, dt);
@@ -1832,6 +1834,13 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The road ahead of the car on every lane, on the grip it has now.</summary>
     private void PlanAhead(in DriverContext context, float dt)
     {
+        long mark = System.Diagnostics.Stopwatch.GetTimestamp();
+        void Part(int index)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            JointParts[index] += now - mark;
+            mark = now;
+        }
         RaceCarSnapshot car = context.Car;
         float roadGrip = context.Environment.SurfaceGripScalar;
         int start = (int)MathF.Floor(_lanes.StationOf(car.TrackS));
@@ -1839,8 +1848,10 @@ public sealed class LaneDriver : IDriverController
         bool sides = Range > 1e-3f || TargetRange > 1e-3f;
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
         PlanTheWake(car, context.Frame, context.CarSnapshotIndex, start, n + 1, sides);
+        Part(6);
         if (_jointTable is { } table)
             PlanJointMove(context, table.Data);
+        Part(7);
         for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             if (!Reads(lane))
