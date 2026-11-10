@@ -423,6 +423,15 @@ public sealed class LaneDriver : IDriverController
     private float _jointDefenceUntil;
     private int _jointDefenceSide;
     public int JointPlansApplied { get; private set; }
+
+    /// <summary>
+    /// Diagnostics: ticks spent in each part of the online decision, and how
+    /// often it ran them — shape, join, drive, brake, and the rest. Read by the
+    /// benchmark, which is the only thing that asks.
+    /// </summary>
+    public readonly long[] JointParts = new long[6];
+    public long[] JointTicks => _jointSearch?.OnlineTicks ?? [];
+    public long[] JointCalls => _jointSearch?.OnlineCalls ?? [];
     public bool ApproximateJointBraking { get; init; } = true;
     public bool JointProtect { get; init; } = true;
     /// <summary>Evaluate a second traffic-aware edge during close encounters.</summary>
@@ -1880,7 +1889,15 @@ public sealed class LaneDriver : IDriverController
         if (row < 0)
             row = ~row - 1;
         float relative = car.TrackD - _lanes.Offset(LaneId.Free, station);
+        long mark = System.Diagnostics.Stopwatch.GetTimestamp();
+        void Part(int index)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            JointParts[index] += now - mark;
+            mark = now;
+        }
         var traffic = JointTraffic.Capture(context, _lanes);
+        Part(0);
         float y = table.Places[row].MinBy(offset => MathF.Abs(offset - relative));
         if (car.SpeedMetersPerSecond < 10f)
             return;
@@ -1899,6 +1916,7 @@ public sealed class LaneDriver : IDriverController
         }
         LineSearch search = _jointSearch;
         search.UpdateOnlineEnvelope(_envelope, _planShares);
+        Part(1);
         int from = liveStart ? station : table.Starts[row];
         Vector2 tangent = _lanes.Position(from + 1, _lanes.Offset(LaneId.Free, from + 1)) -
                           _lanes.Position(from - 1, _lanes.Offset(LaneId.Free, from - 1));
@@ -1947,6 +1965,7 @@ public sealed class LaneDriver : IDriverController
         var attack = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
             cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
             startStation: startStation, beam: firstBeam);
+        Part(2);
         var following = (Seconds: float.PositiveInfinity, Row: -1, State: -1);
         if (traffic.HasClosingLeader || expand)
         {
@@ -1954,6 +1973,7 @@ public sealed class LaneDriver : IDriverController
                 cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
                 pace: FollowingPace, startStation: startStation, beam: paceBeam);
         }
+        Part(3);
         var choice = attack;
         var firstChoice = attack;
         (float[] Offset, float[] Speed)? materialized = null;
@@ -2011,6 +2031,7 @@ public sealed class LaneDriver : IDriverController
             }
             firstChoice = choice;
         }
+        Part(4);
         if (materialized is not { } plan)
             return;
 
@@ -2044,6 +2065,7 @@ public sealed class LaneDriver : IDriverController
         }
         else
             _drawn!.Set(from, plan.Offset, plan.Speed, 1f);
+        Part(5);
         JointPlansApplied++;
 
         (float[] Offset, float[] Speed)? MaterializeFirst((float Seconds, int Row, int State) candidate, bool follow,
