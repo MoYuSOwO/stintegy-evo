@@ -533,6 +533,67 @@ internal static class LaneSpeedPlanner
     }
 
     /// <summary>
+    /// The fastest each station's corner can be taken, solved once: the limit
+    /// every window planner starts from, so a window planned twice does not
+    /// solve every corner twice. Solved with the same bracketing the search
+    /// uses, so the two agree on the speed a corner holds.
+    /// </summary>
+    public static void CornerLimits(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        Span<float> limits
+    )
+    {
+        for (int i = 0; i < limits.Length; i++)
+            limits[i] = OnlineCornerLimit(envelope.ForTurn(curvature[i]), curvature[i], factor[i] * shares.Lateral, Road(road, i));
+    }
+
+    /// <summary>An open window ahead of the car, ending at a speed it must be able to meet, on limits already solved.</summary>
+    public static void PlanWindow(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> stepLength,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<float> brakeFactor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        float terminalSpeed,
+        ReadOnlySpan<float> limits,
+        Span<float> speed
+    )
+    {
+        int count = speed.Length;
+        limits[..count].CopyTo(speed);
+        speed[count - 1] = MathF.Min(speed[count - 1], terminalSpeed);
+        for (int k = count - 2; k >= 0; k--)
+            speed[k] = MathF.Min(speed[k], BrakeFrom(envelope, speed[k + 1], curvature[k], stepLength[k], factor[k], brakeFactor[k], Road(road, k), shares));
+    }
+
+    /// <summary>The stretch just ahead of the car, on limits already solved.</summary>
+    public static void PlanAhead(
+        in LaneEnvelope envelope,
+        ReadOnlySpan<float> curvature,
+        ReadOnlySpan<float> stepLength,
+        ReadOnlySpan<float> factor,
+        ReadOnlySpan<float> brakeFactor,
+        ReadOnlySpan<LaneRoad> road,
+        LaneShares shares,
+        float startSpeed,
+        float terminalSpeed,
+        ReadOnlySpan<float> limits,
+        Span<float> speed
+    )
+    {
+        PlanWindow(envelope, curvature, stepLength, factor, brakeFactor, road, shares, terminalSpeed, limits, speed);
+        speed[0] = MathF.Min(speed[0], startSpeed);
+        for (int k = 0; k < speed.Length - 1; k++)
+            speed[k + 1] = MathF.Min(speed[k + 1], DriveFrom(envelope, speed[k], curvature[k], stepLength[k], factor[k], Road(road, k), shares));
+    }
+
+    /// <summary>
     /// The curvature a plan corners on: at each station the sharpest of the
     /// road from there to as far as the car covers in its turn lag, the time
     /// the hands steer ahead by (TurnLag). The wheel is turned now for the

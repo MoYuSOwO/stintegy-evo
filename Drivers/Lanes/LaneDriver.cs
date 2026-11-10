@@ -262,6 +262,7 @@ public sealed class LaneDriver : IDriverController
     private float[] _windowStep = [];
     private float[] _windowFactor = [];
     private float[] _windowBrake = [];
+    private float[] _windowLimits = [];
     private int _windowStart = -1;
     private float _windowRange = -1f;
     private float _windowSide;
@@ -429,7 +430,7 @@ public sealed class LaneDriver : IDriverController
     /// often it ran them — shape, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
-    public readonly long[] JointParts = new long[16];
+    public readonly long[] JointParts = new long[17];
     public long[] JointTicks => _jointSearch?.OnlineTicks ?? [];
     public long[] JointCalls => _jointSearch?.OnlineCalls ?? [];
     public bool ApproximateJointBraking { get; init; } = true;
@@ -2490,6 +2491,11 @@ public sealed class LaneDriver : IDriverController
         float terminal = Drawing
             ? _speed[0][end]
             : MathF.Min(_speed[0][end], MathF.Min(_speed[sideLane][end], _speed[(int)LaneId.Middle][end]));
+        if (_windowLimits.Length != n)
+            _windowLimits = new float[n];
+        long limitMark = System.Diagnostics.Stopwatch.GetTimestamp();
+        LaneSpeedPlanner.CornerLimits(_envelope, _windowCurvature, _windowFactor, _windowRoad, _planShares, _windowLimits);
+        JointParts[16] += System.Diagnostics.Stopwatch.GetTimestamp() - limitMark;
         if (Drawing)
         {
             ScaleNextBraking(start, _drawn!.BrakeFactor);
@@ -2500,11 +2506,11 @@ public sealed class LaneDriver : IDriverController
             // coasted out of corners it should have been driving out of,
             // four seconds a lap at Silverstone.
             LaneSpeedPlanner.PlanAhead(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares,
-                startSpeed: _carSpeed, terminalSpeed: terminal, _windowSpeed);
-            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowCeiling);
+                startSpeed: _carSpeed, terminalSpeed: terminal, _windowLimits, _windowSpeed);
+            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowLimits, _windowCeiling);
         }
         else
-            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
+            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowLimits, _windowSpeed);
         if (Drawing && _rest is not null)
             ChooseWindow(start, n);
         _windowStillSpeed = _windowSpeed[0];

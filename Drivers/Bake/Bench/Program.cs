@@ -27,7 +27,7 @@ static class Program
     [
         "traffic", "envelope", "attack", "follow", "material", "rest",
         "readGrip+wake", "joint total", "-", "PlanAhead total",
-        "before plan", "plan block", "scale+blend", "steer geom", "cap", "tail",
+        "before plan", "plan block", "scale+blend", "steer geom", "cap", "tail", "corner limits",
     ];
 
     static void Main(string[] args)
