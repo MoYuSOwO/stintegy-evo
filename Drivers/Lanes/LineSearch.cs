@@ -1055,72 +1055,12 @@ internal sealed partial class LineSearch
 
     /// <summary>
     /// The step to take now, from a car at a place and heading on a row and
-    /// at any speed: every step out of there and every speed it could end
-    /// at, each charged its own seconds and the baked rest of the way; and
-    /// <paramref name="extra"/>, what the cars around add to a step (infinite
-    /// where it runs into one). All of it read off the table: nothing is
-    /// shaped or driven here. The seconds, the row it ends on, and the state
-    /// there.
-    /// </summary>
-    public (float Seconds, int Row, int State) Decide(Table table, int row, float y, float slope, float speed,
-        Func<Move, float, float, float>? extra = null)
-    {
-        if (ExactSpeeds)
-            throw new NotSupportedException("A table timed as the driver plans is for drawing a way, not for deciding on.");
-        int slopes = Slopes.Length;
-        int bins = table.Bins;
-        float bestSeconds = float.PositiveInfinity;
-        int bestRow = -1, bestState = -1;
-        int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
-        int heading = Array.IndexOf(Slopes, slope);
-        if (place < 0 || heading < 0 || row >= table.Rows)
-            return (bestSeconds, bestRow, bestState);
-        Steps steps = table.Steps[row];
-        int node = place * slopes + heading;
-        float bin = (speed - MinSpeed) / SpeedStep;
-        int at = steps.ChainFirst[node];
-        for (int e = steps.First[node]; e < steps.First[node + 1]; e++)
-        {
-            int count = 2 * ChainCount(steps.Bottom[e], steps.Top[e]);
-            int here = at;
-            at += count;
-            if (bin > steps.Top[e] + 1e-3f)
-                continue;
-            int r1 = row + steps.Rows[e];
-            float[] later = table.Value[r1];
-            ushort[] tailThere = table.Tail[r1];
-            ReadOnlySpan<ushort> ways = steps.Tails.AsSpan(steps.TailFirst[e], steps.TailFirst[e + 1] - steps.TailFirst[e]);
-            int target = steps.Target[e] * bins;
-            (float vLow, float vHigh) = ChainAt(steps, e, here, count / 2, bin);
-            int bLow = Math.Max(0, (int)MathF.Ceiling((vLow - MinSpeed) / SpeedStep));
-            int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
-            Move move = default;
-            if (extra is not null)
-            {
-                (int j, int hj) = (steps.Target[e] / slopes, steps.Target[e] % slopes);
-                move = new Move(row, r1, table.Starts[r1] - table.Starts[row], y, slope, table.Places[r1][j], Slopes[hj]);
-            }
-            for (int b1 = bLow; b1 <= bHigh; b1++)
-            {
-                float rest = later[target + b1];
-                if (rest == float.PositiveInfinity || !ways.Contains(tailThere[target + b1]))
-                    continue;
-                float v1 = MinSpeed + b1 * SpeedStep;
-                float seconds = steps.Length[e] * LengthUnit / MathF.Max(0.5f * (speed + v1), 1f) + steps.Bend[e] * BendUnit;
-                if (extra is not null)
-                    seconds += extra(move, speed, v1);
-                if (seconds + rest < bestSeconds)
-                    (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
-            }
-        }
-        return (bestSeconds, bestRow, bestState);
-    }
-
-    /// <summary>
-    /// The same decision as <see cref="Decide"/>, every step out of the place
-    /// shaped and driven here from the car's own speed instead of read off
-    /// stored chains: what a table that keeps only its values asks of a
-    /// decision. Timed as the table was baked, the driver's way or not.
+    /// at any speed: every step out of there shaped and driven here from the
+    /// car's own speed, each charged its own seconds and the baked rest of
+    /// the way; and <paramref name="cost"/>, what the cars around add to a
+    /// step (infinite where it runs into one). Timed as the table was baked,
+    /// the driver's way or not. The seconds, the row it ends on, and the
+    /// state there.
     /// </summary>
     /// <summary>Ticks spent in each part of <see cref="DecideOnline"/>, and how often: shape, join, drive, brake, time.</summary>
     public readonly long[] OnlineTicks = new long[6];
@@ -2042,17 +1982,6 @@ internal sealed partial class LineSearch
                 chains[2 * q + 1] + (chains[2 * q + 3] - chains[2 * q + 1]) * t);
     }
 
-    // The same off the stored step: only the samples either side are read.
-    private (float Low, float High) ChainAt(Steps steps, int e, int at, int count, float bin)
-    {
-        (int q, int pairs, float t) = Locate(count, steps.Bottom[e], steps.Top[e], bin);
-        Span<float> near = stackalloc float[4];
-        Unpack(steps, e, at, 2 * q, near[..(2 * pairs)]);
-        if (pairs == 1)
-            return (near[0], near[1]);
-        return (near[0] + (near[2] - near[0]) * t, near[1] + (near[3] - near[1]) * t);
-    }
-
     // Which sample a speed bin falls after, whether there is one after it
     // to go towards, and how far.
     private (int Sample, int Pairs, float T) Locate(int samples, int bottom, int top, float bin)
@@ -2141,26 +2070,6 @@ internal sealed partial class LineSearch
     // The speed a chain's sample starts at.
     private float SampleSpeed(int bottom, int top, int sample) =>
         MinSpeed + Math.Min(bottom + sample * ChainStride, top) * SpeedStep;
-
-    // A step's chains read back as the bake stored them.
-    private void Unpack(Steps steps, int e, int at, int from, Span<float> into)
-    {
-        for (int i = 0; i < into.Length; i++)
-        {
-            int k = from + i;
-            float v0 = SampleSpeed(steps.Bottom[e], steps.Top[e], k / 2);
-            byte stored = steps.Chains[at + k];
-            if (k % 2 == 0)
-                into[i] = stored == SlowEscape ? steps.Escaped[at + k] : v0 - stored * ChainUnit;
-            else
-                into[i] = unchecked((sbyte)stored) switch
-                {
-                    NoSpeed => -1f,
-                    Escape => steps.Escaped[at + k],
-                    var q => v0 + q * ChainUnit,
-                };
-        }
-    }
 
     // The step taken at a steady change of v² from v0 to v1, which is a
     // steady acceleration: its length over the mean of its ends.
