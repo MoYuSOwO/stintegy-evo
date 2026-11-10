@@ -12,13 +12,16 @@ namespace StintegyEVO.Drivers.Lanes;
 /// the corner the tyres hold, the braking and the drive the car has. Where
 /// the plan sweeps a line it was given, this finds the line.
 /// </summary>
-internal sealed class LineSearch
+internal sealed partial class LineSearch
 {
     /// <summary>Stations from one row of the lattice to the next.</summary>
     public int RowStations { get; init; } = 5;
 
     /// <summary>Metres between places across the road.</summary>
     public float LateralStep { get; init; } = 1f;
+
+    /// <summary>Keep packed edges for Decide. Follow and DecideOnline only need the state table.</summary>
+    public bool RetainBakedSteps { get; init; } = true;
 
     /// <summary>The furthest across the road one step may take the car, for each of <see cref="Spans"/>.</summary>
     public float[] MaxLateralJumps { get; init; } = [3f, 4f, 6f, 8f];
@@ -94,7 +97,7 @@ internal sealed class LineSearch
     public const ushort NoTail = ushort.MaxValue;
 
     private readonly LaneSet _lanes;
-    private readonly LaneEnvelope _envelope;
+    private LaneEnvelope _envelope;
 
     /// <summary>
     /// The motor the car has now, where it is not the one the table was
@@ -109,7 +112,8 @@ internal sealed class LineSearch
     /// speed braking to that end allows.
     /// </summary>
     public delegate float StepCost(Move move, float v1, float[] driven, float[] braked);
-    private readonly LaneShares _shares;
+    public delegate float PaceLimit(Move move, int station, float time, float speed);
+    private LaneShares _shares;
     private readonly Func<int, float> _factor;
     private readonly Func<int, float, LaneRoad> _road;
 
@@ -124,6 +128,12 @@ internal sealed class LineSearch
         _factor = factor;
         _road = road;
         _roads = new LaneRoad[lanes.Count][];
+    }
+
+    public void UpdateOnlineEnvelope(LaneEnvelope envelope, LaneShares shares)
+    {
+        _envelope = envelope;
+        _shares = shares;
     }
 
     // The road across each station, read once on a fine grid and
@@ -177,7 +187,7 @@ internal sealed class LineSearch
             for (float y = MathF.Ceiling(lo / LateralStep) * LateralStep; y <= hi + 1e-3f; y += LateralStep)
                 if ((!edge || MathF.Abs(y) < 1e-3f) && (allowed is null || allowed(r, y) || MathF.Abs(y) < 1e-3f && edge))
                     ys.Add(y);
-            places[r] = ys;
+            places[r] = LateralPlaces(ys);
         }
         int slopes = Slopes.Length;
         int zeroSlope = Array.IndexOf(Slopes, 0f);
@@ -351,6 +361,43 @@ internal sealed class LineSearch
         /// <summary>Every step out of every place and heading on a row, as the bake charged it.</summary>
         public required Steps[] Steps { get; init; }
 
+        internal readonly record struct ArrivalGroup(ushort Tail, int[] Bins, float MinimumRest);
+        internal ArrivalGroup[][][]? OnlineArrivals { get; private set; }
+        internal float[]? MinimumRowValue { get; private set; }
+
+        // Index the finite terminal speeds by continuation before the race.
+        // Keep the old first-seen tail order and ascending speed order.
+        internal void IndexOnlineArrivals()
+        {
+            var rows = new ArrivalGroup[Rows + 1][][];
+            var minimum = new float[Rows + 1];
+            for (int row = 0; row <= Rows; row++)
+            {
+                float[] values = Value[row];
+                minimum[row] = values.Length == 0 ? float.PositiveInfinity : values.Min();
+                ushort[] tails = Tail[row];
+                var targets = rows[row] = new ArrivalGroup[values.Length / Bins][];
+                for (int target = 0; target < targets.Length; target++)
+                {
+                    var groups = new Dictionary<ushort, List<int>>();
+                    int start = target * Bins;
+                    for (int b = 0; b < Bins; b++)
+                    {
+                        if (!float.IsFinite(values[start + b]))
+                            continue;
+                        ushort tail = tails[start + b];
+                        if (!groups.TryGetValue(tail, out var speeds))
+                            groups.Add(tail, speeds = []);
+                        speeds.Add(b);
+                    }
+                    targets[target] = groups.Select(pair =>
+                        new ArrivalGroup(pair.Key, pair.Value.ToArray(), pair.Value.Min(b => values[start + b]))).ToArray();
+                }
+            }
+            OnlineArrivals = rows;
+            MinimumRowValue = minimum;
+        }
+
         private const int FileVersion = 4;
 
         /// <summary>
@@ -415,7 +462,7 @@ internal sealed class LineSearch
         }
 
         /// <summary>The table kept in a file under <paramref name="key"/>; null if there is none, or it was baked for something else.</summary>
-        public static Table? Load(string path, string key)
+        public static Table? Load(string path, string key, bool readSteps = true)
         {
             if (!File.Exists(path))
                 return null;
@@ -449,7 +496,7 @@ internal sealed class LineSearch
                     tails[i].Add(ReadFloats(r));
             }
             var steps = new Steps[rows];
-            for (int i = 0; i < steps.Length; i++)
+            for (int i = 0; readSteps && i < steps.Length; i++)
             {
                 if (!r.ReadBoolean())
                     continue;
@@ -607,7 +654,7 @@ internal sealed class LineSearch
     /// it costs, which is what the last bake gave its first row, or nothing
     /// on the first bake.
     /// </summary>
-    public Table BakeLap(int from, Table? next, Func<int, float>? slowest = null)
+    public Table BakeLap(int from, Table? next, Func<int, float>? slowest = null, float? seamSpeed = null)
     {
         int rows = _lanes.Count / RowStations;
         var starts = new int[rows + 1];
@@ -616,7 +663,14 @@ internal sealed class LineSearch
         starts[rows] = from + _lanes.Count;
         int slopes = Slopes.Length;
         Func<float, int, float, float> terminal = (y, h, v) => 0f;
-        if (next is not null)
+        if (seamSpeed is float seam)
+        {
+            int seamBin = (int)MathF.Round((seam - MinSpeed) / SpeedStep);
+            int straight = Array.IndexOf(Slopes, 0f);
+            terminal = (y, h, v) => y == 0f && h == straight &&
+                (int)MathF.Round((v - MinSpeed) / SpeedStep) == seamBin ? 0f : float.PositiveInfinity;
+        }
+        else if (next is not null)
         {
             terminal = (y, h, v) =>
             {
@@ -649,7 +703,7 @@ internal sealed class LineSearch
             for (float y = MathF.Ceiling(lo / LateralStep) * LateralStep; y <= hi + 1e-3f; y += LateralStep)
                 if (r < rows || lap || MathF.Abs(y) < 1e-3f)
                     ys.Add(y);
-            places[r] = ys;
+            places[r] = LateralPlaces(ys);
         }
         var value = new float[rows + 1][];
         var nextRow = new int[rows + 1][];
@@ -746,7 +800,8 @@ internal sealed class LineSearch
                                     if (top < 0)
                                         continue;
                                     int bottom = slowest is null ? 0 : Math.Clamp((int)MathF.Ceiling((slowest(starts[row0]) - MinSpeed) / SpeedStep), 0, top);
-                                    mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, bend, [way], (byte)bottom, (byte)top, []));
+                                    if (RetainBakedSteps)
+                                        mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, bend, [way], (byte)bottom, (byte)top, []));
                                     Array.Clear(brakedMade);
                                     for (int b0 = bottom; b0 <= top; b0++)
                                     {
@@ -815,7 +870,8 @@ internal sealed class LineSearch
                             for (int g = 0; g < groups.Count; g++)
                             {
                                 (int bottom, int top, float[] chains, List<ushort> tailsOf) = groups[g];
-                                mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, bend, [.. tailsOf], (byte)bottom, (byte)top, chains));
+                                if (RetainBakedSteps)
+                                    mine.Add(new Made((byte)Spans[sp], (ushort)(j * slopes + hj), length, bend, [.. tailsOf], (byte)bottom, (byte)top, chains));
                                 for (int b0 = bottom; b0 <= top; b0++)
                                 {
                                     float v0 = MinSpeed + b0 * SpeedStep;
@@ -843,7 +899,8 @@ internal sealed class LineSearch
                     }
                 }
             });
-            steps[row0] = Pack(made);
+            if (RetainBakedSteps)
+                steps[row0] = Pack(made);
             MakeTails(row0, starts, places, bins, nextRow, nextState, tail, tails);
             Baked?.Invoke(row0);
         }
@@ -891,7 +948,7 @@ internal sealed class LineSearch
     }
 
     /// <summary>The way the baked table leads from a place, heading and speed on a row to the end.</summary>
-    public Way? Follow(Table table, int row, float y, float slope, float speed)
+    public Way? Follow(Table table, int row, float y, float slope, float speed, int maxStations = int.MaxValue)
     {
         int slopes = Slopes.Length;
         int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
@@ -903,7 +960,7 @@ internal sealed class LineSearch
         if (total == float.PositiveInfinity)
             return null;
         var path = new List<(int Row, int State)> { (row, state) };
-        while (path[^1].Row < table.Rows)
+        while (path[^1].Row < table.Rows && table.Starts[path[^1].Row] - table.Starts[row] < maxStations)
         {
             (int r, int s0) = path[^1];
             path.Add((table.NextRow[r][s0], table.Next[r][s0]));
@@ -915,7 +972,7 @@ internal sealed class LineSearch
     {
         int slopes = Slopes.Length;
         int first = path[0].Row;
-        int n = table.Starts[table.Rows] - table.Starts[first] + 1;
+        int n = table.Starts[path[^1].Row] - table.Starts[first] + 1;
         var offset = new float[n];
         var speed = new float[n];
         for (int p = 0; p + 1 < path.Count; p++)
@@ -946,7 +1003,7 @@ internal sealed class LineSearch
             }
         }
         float endSpeed = MinSpeed + Split(path[^1].State, slopes, table.Bins).Bin * SpeedStep;
-        float terminal = table.Value[table.Rows][path[^1].State];
+        float terminal = table.Value[path[^1].Row][path[^1].State];
         return new Way(table.Starts[first], offset, speed, total - terminal, endSpeed, terminal);
     }
 
@@ -955,6 +1012,33 @@ internal sealed class LineSearch
     /// and heading on a later one.
     /// </summary>
     public readonly record struct Move(int Row, int ToRow, int Stations, float Y, float Slope, float ToY, float ToSlope);
+
+    public (float[] Offset, float[] Speed)? MaterializeMove(Table table, int row, float y, float slope,
+        float speed, int endRow, int endState, StepCost? cost = null, PaceLimit? pace = null, int? startStation = null,
+        float[]? nextOffsets = null)
+    {
+        if (endRow <= row || endState < 0)
+            return null;
+        var (endY, endSlope, endSpeed) = StateOf(table, endRow, endState);
+        int start = startStation ?? table.Starts[row];
+        var edge = new Edge(table.Starts[endRow] - start, LeadMax + 1);
+        if (!Shape(edge, start, row, y, slope, endY, endSlope, null))
+            return null;
+        ushort tail = table.Tail[endRow][endState];
+        Join(edge, start, nextOffsets ?? (tail == NoTail ? null : table.Tails[endRow][tail]));
+        var driven = new float[edge.N + 1];
+        var braked = new float[edge.N + 1];
+        var move = new Move(row, endRow, edge.N, y, slope, endY, endSlope);
+        DriveOn(edge, speed, driven, move: move, pace: pace);
+        BrakeBack(edge, endSpeed, braked);
+        if (speed > braked[0] + 1e-3f || endSpeed > driven[^1] + 1e-3f ||
+            (cost is not null && !float.IsFinite(cost(
+                move, endSpeed, driven, braked))))
+            return null;
+        for (int k = 0; k < driven.Length; k++)
+            driven[k] = MathF.Min(driven[k], braked[k]);
+        return (edge.Offset, driven);
+    }
 
     /// <summary>Where a move has the car across the road, as metres from the racing line, a station into it.</summary>
     public float OffsetOn(Move move, int station) =>
@@ -1043,10 +1127,15 @@ internal sealed class LineSearch
 
     /// <summary>Join each way on only from the station it first changes (<see cref="DecideOnline"/>); off, every station again.</summary>
     public bool ShareJoin { get; set; } = true;
+    public bool ApproximateOnlineBraking { get; init; }
+    internal FixedGeometry? Geometry { get; init; }
     public readonly long[] OnlineCalls = new long[5];
 
     public (float Seconds, int Row, int State) DecideOnline(Table table, int row, float y, float slope, float speed,
-        Func<Move, float, float, float>? extra = null, StepCost? cost = null)
+        Func<Move, float, float, float>? extra = null, StepCost? cost = null,
+        int minimumEndStation = 0, bool nonnegativeCost = false, Func<Move, bool>? allowedMove = null,
+        PaceLimit? pace = null, int? startStation = null, (float Seconds, int Row, int State)[]? beam = null,
+        float maximumTotal = float.PositiveInfinity, float prefixTimeLower = 0f)
     {
         long mark = System.Diagnostics.Stopwatch.GetTimestamp();
         void Lap(int part)
@@ -1059,22 +1148,34 @@ internal sealed class LineSearch
         int slopes = Slopes.Length, bins = table.Bins;
         float bestSeconds = float.PositiveInfinity;
         int bestRow = -1, bestState = -1;
+        if (beam is not null)
+            Array.Fill(beam, (float.PositiveInfinity, -1, -1));
+        float Bound() => beam is { Length: > 0 } ? beam[^1].Seconds : bestSeconds;
         int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
         int heading = Array.IndexOf(Slopes, slope);
-        if (place < 0 || heading < 0 || row >= table.Rows)
+        if (row >= table.Rows || (startStation is null && (place < 0 || heading < 0)))
             return (bestSeconds, bestRow, bestState);
-        int st0 = table.Starts[row];
+        int st0 = startStation ?? table.Starts[row];
+        bool fixedStart = st0 == table.Starts[row] && place >= 0 && heading >= 0 && y == table.Places[row][place];
         var ways = new List<ushort>();
         int most = table.Starts[Math.Min(table.Rows, row + Spans[^1])] - st0 + 1;
         var driven = new float[most];
-        float[]?[] braked = new float[bins][];
+        var driveTimes = pace is null ? null : new float[most];
+        var back = new float[most];
+        var brakeBudget = new float[most];
+        var liveLimits = new Dictionary<(int Station, float Corner), float>();
+        bool bounded = float.IsFinite(maximumTotal);
+        Vector2 startPosition = bounded ? _lanes.Position(st0, _lanes.Offset(LaneId.Free, st0) + y) : default;
         for (int sp = 0; sp < Spans.Length; sp++)
         {
             int r1 = row + Spans[sp];
-            if (r1 > table.Rows)
+            if (r1 > table.Rows || table.Starts[r1] < minimumEndStation)
                 continue;
             int stations = table.Starts[r1] - st0;
-            var edge = new Edge(stations, LeadMax + 1);
+            var edge = new Edge(stations, LeadMax + 1)
+            {
+                ApproximateLimits = ExactSpeeds && ApproximateOnlineBraking
+            };
             List<float> there = table.Places[r1];
             float[] later = table.Value[r1];
             ushort[] tailThere = table.Tail[r1];
@@ -1082,47 +1183,134 @@ internal sealed class LineSearch
             {
                 if (MathF.Abs(there[j] - y) > MaxLateralJumps[sp] + 1e-3f)
                     continue;
+                float chordTime = 0f;
+                if (bounded)
+                {
+                    int endStation = table.Starts[r1];
+                    Vector2 endPosition = _lanes.Position(endStation, _lanes.Offset(LaneId.Free, endStation) + there[j]);
+                    chordTime = TimeLowerBound(Vector2.Distance(startPosition, endPosition));
+                }
                 for (int hj = 0; hj < slopes; hj++)
                 {
-                    int target = (j * slopes + hj) * bins;
-                    ways.Clear();
-                    for (int b = 0; b < bins; b++)
-                        if (later[target + b] < float.PositiveInfinity && !ways.Contains(tailThere[target + b]))
-                            ways.Add(tailThere[target + b]);
-                    if (ways.Count == 0)
+                    var move = new Move(row, r1, stations, y, slope, there[j], Slopes[hj]);
+                    if (allowedMove is not null && !allowedMove(move))
+                        continue;
+                    int node = j * slopes + hj;
+                    int target = node * bins;
+                    Table.ArrivalGroup[]? groups = table.OnlineArrivals?[r1][node];
+                    if (groups is null)
+                    {
+                        ways.Clear();
+                        for (int b = 0; b < bins; b++)
+                            if (later[target + b] < float.PositiveInfinity && !ways.Contains(tailThere[target + b]))
+                                ways.Add(tailThere[target + b]);
+                    }
+                    int groupCount = groups?.Length ?? ways.Count;
+                    if (groupCount == 0)
+                        continue;
+                    if (bounded && groups is not null &&
+                        AllAboveBound(groups, chordTime, prefixTimeLower, maximumTotal))
                         continue;
                     mark = System.Diagnostics.Stopwatch.GetTimestamp();
-                    bool shaped = Shape(edge, st0, row, y, slope, there[j], Slopes[hj], null);
+                    bool shaped = Geometry is not null && fixedStart
+                        ? ReadFixedShape(edge, st0, row, place, heading, sp, j, hj, y, slope, there[j], Slopes[hj])
+                        : Shape(edge, st0, row, y, slope, there[j], Slopes[hj], null);
                     Lap(0);
                     if (!shaped)
                         continue;
                     float bent = MathF.Round(Bend(edge) / BendUnit) * BendUnit;
                     float length = MathF.Round(edge.Length / LengthUnit) * LengthUnit;
                     int split = ShareJoin ? Split(edge, st0) : 0;
-                    foreach (ushort way in ways)
+                    int drivePrefix = Math.Max(0, split - 1);
+                    bool prefixReady = false;
+                    bool drivePrefixReady = false;
+                    liveLimits.Clear();
+                    // Every sample is capped by TopSpeed, even before the joined
+                    // geometry and live envelope give us a tighter bound.
+                    bool canPruneJoins = ExactSpeeds && nonnegativeCost && extra is null && groups is not null;
+                    float quickest = bent;
+                    if (canPruneJoins)
+                        for (int k = 0; k < edge.N; k++)
+                            quickest += edge.Step[k] / LaneSpeedPlanner.TopSpeed;
+                    float prefixBound = quickest;
+                    float lengthTime = bounded ? TimeLowerBound(edge.Length) : 0f;
+                    for (int group = 0; group < groupCount; group++)
                     {
+                        if (bounded && groups is not null && CannotImprove(prefixTimeLower, lengthTime,
+                            groups[group].MinimumRest, maximumTotal))
+                            continue;
+                        if (canPruneJoins && prefixBound + groups![group].MinimumRest >= Bound())
+                            continue;
+                        ushort way = groups is null ? ways[group] : groups[group].Tail;
+                        int[]? arrivals = groups?[group].Bins;
                         mark = System.Diagnostics.Stopwatch.GetTimestamp();
-                        Join(edge, st0, way == NoTail ? null : table.Tails[r1][way], split);
+                        if (groups is not null && Geometry is not null && ShareJoin && ExactSpeeds &&
+                            TurnLag is null && LeadSpeed is null && Geometry.ReadJoin(edge, group, split))
+                            SetCornerLimits(edge, split, edge.N + 1, liveLimits);
+                        else
+                            Join(edge, st0, way == NoTail ? null : table.Tails[r1][way], split, liveLimits);
                         Lap(1);
                         if (speed > edge.Limit[0] + 1e-3f)
                             continue;
                         int n = edge.N;
                         if (ExactSpeeds)
                         {
-                            Array.Clear(braked);
-                            DriveOn(edge, speed, driven);
-                            Lap(2);
-                            for (int b1 = 0; b1 < bins; b1++)
+                            // A different tail changes neither the earlier
+                            // speeds nor their elapsed time for traffic.
+                            DriveOn(edge, speed, driven, drivePrefixReady ? drivePrefix : 0,
+                                move, pace, driveTimes);
+                            if (!drivePrefixReady && canPruneJoins && drivePrefix > 0)
                             {
+                                // Every later join shares this driven prefix;
+                                // assume top speed over the unknown suffix.
+                                float lower = bent;
+                                for (int k = 0; k < n; k++)
+                                {
+                                    float upper = k < drivePrefix
+                                        ? MathF.Max(1f, 0.5f * (driven[k] + driven[k + 1]))
+                                        : LaneSpeedPlanner.TopSpeed;
+                                    lower += edge.Step[k] / upper;
+                                }
+                                prefixBound = MathF.Max(quickest, lower - 1e-4f);
+                            }
+                            drivePrefixReady = true;
+                            Lap(2);
+                            float fastest = bent;
+                            if (nonnegativeCost && extra is null)
+                                for (int k = 0; k < n; k++)
+                                    fastest += edge.Step[k] / MathF.Max(1f, 0.5f * (driven[k] + driven[k + 1]));
+                            bool brakeBudgetReady = false;
+                            int arrivalCount = arrivals?.Length ?? bins;
+                            for (int i = 0; i < arrivalCount; i++)
+                            {
+                                int b1 = arrivals is null ? i : arrivals[i];
                                 float v1 = MinSpeed + b1 * SpeedStep;
                                 if (v1 > driven[n] || v1 > edge.Limit[n])
                                     break;
                                 float rest = later[target + b1];
                                 if (rest == float.PositiveInfinity || tailThere[target + b1] != way)
                                     continue;
-                                float[] back = braked[b1] ??= new float[most];
+                                if (bounded && CannotImprove(prefixTimeLower, lengthTime, rest, maximumTotal))
+                                    continue;
+                                if (nonnegativeCost && extra is null && fastest + rest >= Bound())
+                                    continue;
                                 mark = System.Diagnostics.Stopwatch.GetTimestamp();
-                                BrakeBack(edge, v1, back);
+                                if (ApproximateOnlineBraking)
+                                {
+                                    if (!brakeBudgetReady)
+                                    {
+                                        if (!prefixReady)
+                                        {
+                                            PrepareBrakeBudget(edge, driven, brakeBudget, 0, split);
+                                            prefixReady = true;
+                                        }
+                                        PrepareBrakeBudget(edge, driven, brakeBudget, split, n);
+                                        brakeBudgetReady = true;
+                                    }
+                                    ReadBrakeBudget(edge, v1, brakeBudget, back);
+                                }
+                                else
+                                    BrakeBack(edge, v1, back);
                                 Lap(3);
                                 if (back[0] < speed)
                                     continue;
@@ -1131,11 +1319,15 @@ internal sealed class LineSearch
                                     seconds += edge.Step[k] / MathF.Max(1f, 0.5f * (MathF.Min(driven[k], back[k]) + MathF.Min(driven[k + 1], back[k + 1])));
                                 Lap(4);
                                 if (extra is not null)
-                                    seconds += extra(new Move(row, r1, stations, y, slope, there[j], Slopes[hj]), speed, v1);
+                                    seconds += extra(move, speed, v1);
+                                if (nonnegativeCost && seconds + rest >= Bound())
+                                    continue;
                                 if (cost is not null)
-                                    seconds += cost(new Move(row, r1, stations, y, slope, there[j], Slopes[hj]), v1, driven, back);
+                                    seconds += cost(move, v1, driven, back);
                                 if (seconds + rest < bestSeconds)
                                     (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
+                                if (beam is { Length: > 0 } && seconds + rest < Bound())
+                                    Keep(seconds + rest, r1, target + b1);
                             }
                             continue;
                         }
@@ -1159,7 +1351,44 @@ internal sealed class LineSearch
             }
         }
         return (bestSeconds, bestRow, bestState);
+
+        void Keep(float seconds, int endRow, int state)
+        {
+            // Keep alternatives with different lateral destinations or speeds.
+            int place = state / (bins * slopes);
+            int speedBand = (int)((state % bins) * SpeedStep / 4f);
+            int at = beam!.Length - 1;
+            for (int i = 0; i < beam.Length && beam[i].Row >= 0; i++)
+            {
+                int previous = beam[i].State;
+                if (previous / (bins * slopes) != place || (int)((previous % bins) * SpeedStep / 4f) != speedBand)
+                    continue;
+                if (beam[i].Seconds <= seconds)
+                    return;
+                at = i;
+                break;
+            }
+            while (at > 0 && seconds < beam[at - 1].Seconds)
+            {
+                beam[at] = beam[at - 1];
+                at--;
+            }
+            beam[at] = (seconds, endRow, state);
+        }
     }
+
+    private static bool AllAboveBound(Table.ArrivalGroup[] groups, float edgeTime, float prefixTime, float maximum)
+    {
+        foreach (var group in groups)
+            if (!CannotImprove(prefixTime, edgeTime, group.MinimumRest, maximum))
+                return false;
+        return true;
+    }
+
+    internal static bool CannotImprove(float prefixTime, float edgeTime, float terminalScore, float maximum) =>
+        prefixTime + edgeTime + terminalScore > maximum + 1e-3f;
+
+    internal static float TimeLowerBound(float distance) => distance / (LaneSpeedPlanner.TopSpeed + 0.01f);
 
     /// <summary>
     /// Each step out of every <paramref name="every"/>th place and heading on
@@ -1401,6 +1630,29 @@ internal sealed class LineSearch
     private static (int Place, int Slope, int Bin) Split(int state, int slopes, int bins) =>
         (state / bins / slopes, state / bins % slopes, state % bins);
 
+    // Sample the existing grid across the road, keeping both extremes and
+    // the racing line whenever it was an allowed place.
+    private List<float> LateralPlaces(List<float> places)
+    {
+        const int count = 5;
+        if (places.Count <= count)
+            return places;
+
+        var selected = new List<float>(count);
+        for (int i = 0; i < count; i++)
+            selected.Add(places[(int)MathF.Round(i * (places.Count - 1f) / (count - 1))]);
+
+        if (places.Contains(0f) && !selected.Contains(0f))
+        {
+            int nearest = 1;
+            for (int i = 2; i < count - 1; i++)
+                if (MathF.Abs(selected[i]) < MathF.Abs(selected[nearest]))
+                    nearest = i;
+            selected[nearest] = 0f;
+        }
+        return selected;
+    }
+
     // Where across the road a car may be, as metres from the racing line.
     private (float Lo, float Hi) Room(int station)
     {
@@ -1410,13 +1662,14 @@ internal sealed class LineSearch
     }
 
     // One step of the lattice as the car drives it.
-    private sealed class Edge(int stations, int ahead = 0)
+    internal sealed class Edge(int stations, int ahead = 0)
     {
         /// <summary>How many stations the step crosses: up to as many as it was made for.</summary>
         public int N = stations;
         /// <summary>Its curve's ends: place and heading.</summary>
         public float Y0, H0, Y1, H1;
         public readonly float[] Offset = new float[stations + 1];
+        public readonly Vector2[] Points = new Vector2[stations + 2 * Chord + 1];
         /// <summary>The curvature at each station, and on as far past the end as the lead reads.</summary>
         public readonly float[] Curvature = new float[stations + ahead + 1];
         /// <summary>The speed the driver guesses at each station, which sets how far its lead reads.</summary>
@@ -1428,6 +1681,8 @@ internal sealed class LineSearch
         public readonly float[] Factor = new float[stations + 1];
         public readonly LaneRoad[] Road = new LaneRoad[stations + 1];
         public float Length;
+        public long GeometryJoins;
+        public bool ApproximateLimits;
     }
 
     // The smooth curve from one place and heading to the next, kept on the
@@ -1435,12 +1690,19 @@ internal sealed class LineSearch
     // each station. False if it leaves the road.
     private bool Shape(Edge edge, int st0, int row, float y0, float h0, float y1, float h1, Func<int, float, bool>? allowed)
     {
+        edge.GeometryJoins = 0;
+        if (!ShapeGeometry(edge, st0, row, y0, h0, y1, h1, allowed))
+            return false;
+        FitShapeToCar(edge, st0, y0, h0, y1, h1);
+        return true;
+    }
+
+    private bool ShapeGeometry(Edge edge, int st0, int row, float y0, float h0, float y1, float h1, Func<int, float, bool>? allowed)
+    {
         int n = edge.N;
-        float Y(int k) => Hermite(y0, h0, y1, h1, n, k);
-        Vector2 P(int k) => _lanes.Position(st0 + k, _lanes.Offset(LaneId.Free, st0 + k) + Y(k));
         for (int k = 0; k <= n; k++)
         {
-            float y = Y(k);
+            float y = Hermite(y0, h0, y1, h1, n, k);
             (float lo, float hi) = Room(st0 + k);
             if (y < lo - 1e-3f || y > hi + 1e-3f)
                 return false;
@@ -1449,25 +1711,35 @@ internal sealed class LineSearch
                 return false;
             edge.Offset[k] = y;
         }
+        for (int k = -Chord; k <= n + Chord; k++)
+        {
+            float y = k >= 0 && k <= n ? edge.Offset[k] : Hermite(y0, h0, y1, h1, n, k);
+            edge.Points[k + Chord] = _lanes.Position(st0 + k, _lanes.Offset(LaneId.Free, st0 + k) + y);
+        }
         edge.Length = 0f;
         for (int k = 0; k < n; k++)
         {
-            int st = st0 + k;
-            edge.Curvature[k] = LaneSet.Curvature(P(k - Chord), P(k), P(k + Chord));
-            edge.Step[k] = (P(k + 1) - P(k)).Length();
+            edge.Curvature[k] = LaneSet.Curvature(edge.Points[k], edge.Points[k + Chord], edge.Points[k + 2 * Chord]);
+            edge.Step[k] = (edge.Points[k + Chord + 1] - edge.Points[k + Chord]).Length();
             edge.Length += edge.Step[k];
-            edge.Factor[k] = _factor(st);
-            edge.Road[k] = RoadAt(st, edge.Offset[k]);
         }
-        edge.Factor[n] = _factor(st0 + n);
-        edge.Road[n] = RoadAt(st0 + n, edge.Offset[n]);
         edge.Step[n] = 0f;
+        return true;
+    }
+
+    private void FitShapeToCar(Edge edge, int st0, float y0, float h0, float y1, float h1)
+    {
+        int n = edge.N;
+        for (int k = 0; k <= n; k++)
+        {
+            edge.Factor[k] = _factor(st0 + k);
+            edge.Road[k] = RoadAt(st0 + k, edge.Offset[k]);
+        }
         (edge.Y0, edge.H0, edge.Y1, edge.H1) = (y0, h0, y1, h1);
         if (LeadSpeed is not null)
             for (int k = 0; k <= n; k++)
                 edge.Guess[k] = LeadSpeed(st0 + k);
         Join(edge, st0, null);
-        return true;
     }
 
     // The step joined to the line the car runs on after it, tail (from the
@@ -1479,12 +1751,21 @@ internal sealed class LineSearch
     // Joined again to another tail, a step's stations before from are as the
     // last join left them: their corners read none of the road the tail
     // changes (Split), so only the stations from there on are read again.
-    private void Join(Edge edge, int st0, float[]? tail, int from = 0)
+    private void Join(Edge edge, int st0, float[]? tail, int from = 0,
+        Dictionary<(int Station, float Corner), float>? limits = null)
+    {
+        int end = JoinGeometry(edge, st0, tail, from);
+        SetCornerLimits(edge, from, end, limits);
+    }
+
+    private int JoinGeometry(Edge edge, int st0, float[]? tail, int from)
     {
         int n = edge.N;
         Vector2 P(int k)
         {
-            float y = tail is not null && k > n && k - n < tail.Length ? tail[k - n] : Hermite(edge.Y0, edge.H0, edge.Y1, edge.H1, n, k);
+            float y = k >= 0 && k <= n ? edge.Offset[k] :
+                tail is not null && k > n && k - n < tail.Length ? tail[k - n] :
+                Hermite(edge.Y0, edge.H0, edge.Y1, edge.H1, n, k);
             return _lanes.Position(st0 + k, _lanes.Offset(LaneId.Free, st0 + k) + y);
         }
         // Timed as the driver plans, the step's far end is a station of it too.
@@ -1496,11 +1777,34 @@ internal sealed class LineSearch
             Array.Copy(edge.Curvature, from, edge.Corner, from, m - from);
         else
             LaneSpeedPlanner.LeadCurvatures(edge.Curvature.AsSpan(from, extent - from), edge.Guess.AsSpan(from, m - from), TurnLag, _lanes.Spacing, edge.Corner.AsSpan(from, m - from));
-        for (int k = from; k < m; k++)
+        return m;
+    }
+
+    private void SetCornerLimits(Edge edge, int from, int end, Dictionary<(int Station, float Corner), float>? limits)
+    {
+        for (int k = from; k < end; k++)
         {
-            float kappa = edge.Corner[k];
-            edge.Limit[k] = LaneSpeedPlanner.CornerLimit(_envelope.ForTurn(kappa), kappa, edge.Factor[k] * _shares.Lateral, edge.Road[k]);
+            if (limits is null)
+                edge.Limit[k] = CornerLimit(edge, k);
+            else
+            {
+                ref float limit = ref CollectionsMarshal.GetValueRefOrAddDefault(limits, (k, edge.Corner[k]), out bool found);
+                if (!found)
+                    limit = CornerLimit(edge, k);
+                edge.Limit[k] = limit;
+            }
         }
+    }
+
+    private float CornerLimit(Edge edge, int station)
+    {
+        float corner = edge.Corner[station];
+        LaneEnvelope envelope = _envelope.ForTurn(corner);
+        float factor = edge.Factor[station] * _shares.Lateral;
+        LaneRoad road = edge.Road[station];
+        return edge.ApproximateLimits
+            ? LaneSpeedPlanner.OnlineCornerLimit(envelope, corner, factor, road)
+            : LaneSpeedPlanner.CornerLimit(envelope, corner, factor, road);
     }
 
     // The slowest and the fastest the car can be at the far end of a step
@@ -1564,11 +1868,33 @@ internal sealed class LineSearch
     // the driver's plan (LaneSpeedPlanner.PlanAhead) before the braking back
     // holds it: where that braking is lower the plan takes it, and full drive
     // on from a lower speed never passes it, so the plan is the lower of the two.
-    private void DriveOn(Edge edge, float v0, float[] into)
+    private void DriveOn(Edge edge, float v0, float[] into, int from = 0, Move move = default, PaceLimit? pace = null,
+        float[]? times = null)
     {
-        into[0] = MathF.Min(edge.Limit[0], v0);
-        for (int k = 0; k < edge.N; k++)
-            into[k + 1] = MathF.Min(edge.Limit[k + 1], LaneSpeedPlanner.Driven(Motor ?? _envelope, into[k], edge.Corner[k], edge.Step[k], edge.Factor[k], edge.Road[k], _shares));
+        if (from == 0)
+            into[0] = MathF.Min(edge.Limit[0], v0);
+        float time = times is null ? 0f : times[from];
+        for (int k = from; k < edge.N; k++)
+        {
+            float speed = into[k], ds = edge.Step[k];
+            float next = MathF.Min(edge.Limit[k + 1], LaneSpeedPlanner.Driven(Motor ?? _envelope, speed,
+                edge.Corner[k], ds, edge.Factor[k], edge.Road[k], _shares));
+            if (pace is not null)
+            {
+                float wanted = pace(move, k + 1, time + ds / MathF.Max(1f, speed), speed);
+                if (wanted < next)
+                {
+                    float decel = LaneSpeedPlanner.Deceleration(_envelope, speed, edge.Corner[k],
+                        edge.Factor[k], 1f, edge.Road[k], _shares);
+                    float reachable = MathF.Sqrt(MathF.Max(0f, speed * speed - 2f * decel * ds));
+                    next = MathF.Min(next, MathF.Max(wanted, reachable));
+                }
+                time += ds / MathF.Max(1f, 0.5f * (speed + next));
+                if (times is not null)
+                    times[k + 1] = time;
+            }
+            into[k + 1] = next;
+        }
     }
 
     // Braking back from v1 at the far end under each station's corner, the
@@ -1578,18 +1904,49 @@ internal sealed class LineSearch
         int n = edge.N;
         into[n] = MathF.Min(edge.Limit[n], v1);
         for (int k = n - 1; k >= 0; k--)
-            into[k] = MathF.Min(edge.Limit[k], LaneSpeedPlanner.BrakeFrom(_envelope, into[k + 1], edge.Corner[k], edge.Step[k], edge.Factor[k], 1f, edge.Road[k], _shares));
+            into[k] = MathF.Min(edge.Limit[k], LaneSpeedPlanner.BrakeFrom(_envelope, into[k + 1],
+                edge.Corner[k], edge.Step[k], edge.Factor[k], 1f, edge.Road[k], _shares));
+    }
+
+    // The forward sweep supplies a reference speed for the live tyre and road
+    // model. The resulting changes in v² are shared across all end speeds.
+    private void PrepareBrakeBudget(Edge edge, float[] driven, float[] budget, int from, int to)
+    {
+        for (int k = from; k < to; k++)
+        {
+            float speed = 0.5f * (driven[k] + driven[k + 1]);
+            float decel = LaneSpeedPlanner.Deceleration(_envelope, speed, edge.Corner[k],
+                edge.Factor[k], 1f, edge.Road[k], _shares);
+            budget[k] = 2f * decel * edge.Step[k];
+        }
+    }
+
+    private static void ReadBrakeBudget(Edge edge, float endSpeed, float[] budget, float[] into)
+    {
+        int n = edge.N;
+        into[n] = MathF.Min(edge.Limit[n], endSpeed);
+        float squared = into[n] * into[n];
+        for (int k = n - 1; k >= 0; k--)
+        {
+            float limit = edge.Limit[k];
+            squared = MathF.Min(limit * limit, squared + budget[k]);
+            into[k] = MathF.Sqrt(squared);
+        }
     }
 
     // The first station of a step whose corner the lead reads past the
     // stations its own curve alone settles: from there on the way on counts.
-    private int Split(Edge edge, int st0)
+    internal int UnchangedDriveStations(int stations, int start) => Math.Max(0, Split(stations, start) - 1);
+
+    private int Split(Edge edge, int st0) => Split(edge.N, st0);
+
+    private int Split(int stations, int st0)
     {
-        int n = edge.N, settled = n - Chord;
-        for (int k = 0; k < n; k++)
+        int settled = stations - Chord;
+        for (int k = 0; k < stations; k++)
             if (k + LeadStations(st0 + k) >= settled)
                 return k;
-        return n;
+        return stations;
     }
 
     // Every chain sample's slow and fast end and rise held at a station, from

@@ -4,7 +4,7 @@ using StintegyEVO.Core.Cars;
 
 namespace StintegyEVO.Core.Racing;
 
-internal readonly record struct CarBodyGeometry(
+public readonly record struct CarBodyGeometry(
     Vector2 Center,
     Vector2 Forward,
     Vector2 Left,

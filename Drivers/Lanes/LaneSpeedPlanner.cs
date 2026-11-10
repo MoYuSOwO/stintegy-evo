@@ -248,6 +248,7 @@ internal readonly struct LaneEnvelope
     }
 
     public float Lateral(float v) => Interpolate(_lateral, v, extrapolate: true);
+    internal float LateralAtSpeedSquared(float vv) => InterpolateSquared(_lateral, vv, extrapolate: true);
     public float LateralBraking(float v) => Interpolate(_lateralBraking, v, extrapolate: true);
     public float Brake(float v) => Interpolate(_brake, v, extrapolate: false);
     public float Drive(float v) => Interpolate(_drive, v, extrapolate: false);
@@ -267,9 +268,11 @@ internal readonly struct LaneEnvelope
         return low + (Interpolate(_cornerDrag[hi], v, extrapolate: true) - low) * t;
     }
 
-    private static float Interpolate(float[] values, float v, bool extrapolate)
+    private static float Interpolate(float[] values, float v, bool extrapolate) =>
+        InterpolateSquared(values, v * v, extrapolate);
+
+    private static float InterpolateSquared(float[] values, float vv, bool extrapolate)
     {
-        float vv = v * v;
         if (vv <= Anchors[0] * Anchors[0])
             return values[0];
         int last = Anchors.Length - 1;
@@ -341,24 +344,8 @@ internal static class LaneSpeedPlanner
     /// that speed. Solved by bisection on the interpolated envelope, which
     /// is not one line in v² (LaneEnvelope).
     /// </summary>
-    public static float CornerLimit(in LaneEnvelope envelope, float absCurvature, float factor)
-    {
-        LaneEnvelope e = envelope;
-        return Solve(v => absCurvature * v * v <= factor * e.Lateral(v));
-    }
-
-    private static float Solve(Func<float, bool> holds)
-    {
-        if (holds(TopSpeed))
-            return TopSpeed;
-        float lo = 1f, hi = TopSpeed;
-        for (int k = 0; k < 22; k++)
-        {
-            float mid = 0.5f * (lo + hi);
-            if (holds(mid)) lo = mid; else hi = mid;
-        }
-        return lo;
-    }
+    public static float CornerLimit(in LaneEnvelope envelope, float absCurvature, float factor, int passes = 22) =>
+        CornerLimit(envelope, absCurvature, factor, default(LaneRoad), passes);
 
     /// <summary>
     /// The fastest the corner can be taken where the road leans or climbs:
@@ -366,23 +353,106 @@ internal static class LaneSpeedPlanner
     /// the road, a crest lifts the car off them. Solved by bisection because
     /// the two no longer fold into one closed form.
     /// </summary>
-    public static float CornerLimit(in LaneEnvelope e, float curvature, float factor, LaneRoad road)
+    public static float CornerLimit(in LaneEnvelope e, float curvature, float factor, LaneRoad road, int passes = 22)
     {
-        if (road.IsFlat)
-            return CornerLimit(e, MathF.Abs(curvature), factor);
+        bool flat = road.IsFlat;
         RoadAttitude att = road.Attitude;
+        RoadAttitude loadAttitude = LaneRoad.BankAddsLoad ? att : new RoadAttitude(road.Grade, 0f, road.Vertical);
+        float demandScale = flat ? 1f : att.CurvatureDemandScale;
+        float absCurvature = MathF.Abs(curvature);
         LaneEnvelope env = e;
         bool Holds(float v)
         {
-            float demand = MathF.Abs(att.CurvatureDemandScale * v * v * curvature + att.LateralGravityDemand(Gravity, v));
-            float load = LaneRoad.BankAddsLoad
-                ? att.NormalGravity(Gravity, v, curvature) / Gravity
-                : new RoadAttitude(road.Grade, 0f, road.Vertical).NormalGravity(Gravity, v, curvature) / Gravity;
+            if (flat)
+                return absCurvature * v * v <= factor * env.Lateral(v);
+            float demand = MathF.Abs(demandScale * v * v * curvature + att.LateralGravityDemand(Gravity, v));
+            float load = loadAttitude.NormalGravity(Gravity, v, curvature) / Gravity;
             // The envelope read on the level, with the weight's share moved
             // by how hard the road presses the car into it.
             return demand <= factor * env.Lateral(v, load);
         }
-        return Solve(Holds);
+        if (Holds(TopSpeed))
+            return TopSpeed;
+        float lo = 1f, hi = TopSpeed;
+        for (int k = 0; k < passes; k++)
+        {
+            float mid = 0.5f * (lo + hi);
+            if (Holds(mid)) lo = mid; else hi = mid;
+        }
+        return lo;
+    }
+
+    /// <summary>Find the same conservative speed grid point as the online
+    /// nine-step solve, using secants in v² to bracket it sooner.</summary>
+    internal static float OnlineCornerLimit(in LaneEnvelope e, float curvature, float factor, LaneRoad road)
+    {
+        const int cells = 512;
+        const float step = (TopSpeed - 1f) / cells;
+        var env = e;
+        bool flat = road.IsFlat;
+        float grade = Finite(road.Grade);
+        float bank = Finite(road.Bank);
+        float vertical = Finite(road.Vertical);
+        float alongShape = MathF.Sqrt(1f + grade * grade);
+        float surfaceShape = MathF.Sqrt(1f + grade * grade + bank * bank);
+        float normalShape = LaneRoad.BankAddsLoad ? surfaceShape : alongShape;
+        float normalCurve = Finite(curvature) * (LaneRoad.BankAddsLoad ? bank : 0f) + vertical;
+        float demandScale = alongShape / surfaceShape;
+        float gravityShape = surfaceShape * alongShape;
+        float absCurvature = MathF.Abs(curvature);
+
+        float Residual(float v)
+        {
+            float squared = v * v;
+            float lateral = env.LateralAtSpeedSquared(squared);
+            if (flat)
+                return factor * lateral - absCurvature * v * v;
+            float demand = MathF.Abs(demandScale * v * v * curvature -
+                bank * (Gravity + squared * vertical) / gravityShape);
+            float load = MathF.Max((Gravity + squared * normalCurve) / normalShape,
+                Gravity * RoadAttitude.MinimumNormalShare) / Gravity;
+            return factor * LaneEnvelope.WithLoad(lateral, env.A, load, env.LoadExponent) - demand;
+        }
+
+        float highValue = Residual(TopSpeed);
+        if (highValue >= 0f)
+            return TopSpeed;
+        float lowValue = Residual(1f);
+        int low = 0, high = cells;
+        // A crossing is almost linear in v² on each grip interval. Test
+        // the grid point on either side of the estimate when it is close.
+        for (int i = 0; i < 2 && high - low > 1; i++)
+        {
+            float a = SpeedAt(low), b = SpeedAt(high);
+            float squared = a * a + (b * b - a * a) * (lowValue / (lowValue - highValue));
+            if (!float.IsFinite(squared) || squared <= a * a || squared >= b * b)
+                break;
+            int probe = Math.Clamp((int)((MathF.Sqrt(squared) - 1f) / step), low + 1, high - 1);
+            float value = Residual(SpeedAt(probe));
+            bool holds = value >= 0f;
+            Update(probe, value);
+            if (high - low == 1)
+                break;
+            int adjacent = holds ? probe + 1 : probe - 1;
+            Update(adjacent, Residual(SpeedAt(adjacent)));
+        }
+        while (high - low > 1)
+        {
+            int middle = (low + high) / 2;
+            Update(middle, Residual(SpeedAt(middle)));
+        }
+        return SpeedAt(low);
+
+        void Update(int at, float value)
+        {
+            if (value >= 0f)
+                (low, lowValue) = (at, value);
+            else
+                (high, highValue) = (at, value);
+        }
+
+        static float SpeedAt(int index) => 1f + index * step;
+        static float Finite(float value) => float.IsFinite(value) ? value : 0f;
     }
 
     /// <summary>A closed lap: the chain wraps, so it is swept twice each way.</summary>

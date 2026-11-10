@@ -416,6 +416,44 @@ public sealed class LaneDriver : IDriverController
 
     public LaneDriverGains Gains { get; init; } = new();
 
+    private JointTable? _jointTable;
+    private LineSearch? _jointSearch;
+    private string? _jointChallenger;
+    private float _jointDefenceOrigin;
+    private float _jointDefenceUntil;
+    private int _jointDefenceSide;
+    public int JointPlansApplied { get; private set; }
+    public bool ApproximateJointBraking { get; init; } = true;
+    public bool JointProtect { get; init; } = true;
+    /// <summary>Evaluate a second traffic-aware edge during close encounters.</summary>
+    public bool JointLookahead { get; init; }
+
+    /// <summary>An immutable joint table shared by the drivers in one race.</summary>
+    public sealed class JointTable : IDisposable
+    {
+        internal LineSearch.Table Data { get; }
+        internal LineSearch.FixedGeometry? Geometry { get; }
+        internal JointTable(LineSearch.Table data, LineSearch.FixedGeometry? geometry) =>
+            (Data, Geometry) = (data, geometry);
+        public void Dispose() => Geometry?.Dispose();
+    }
+
+    public static JointTable LoadJointTable(string path, string circuitId, string? geometryPath = null)
+    {
+        LineSearch.Table data = LineSearch.Table.Load(path, JointLineBake.TableKey(circuitId), readSteps: false)
+            ?? throw new InvalidDataException($"No matching five-place table in '{path}'.");
+        if (data.Places.Any(places => places.Count > 5))
+            throw new InvalidDataException("The joint driver requires a five-place table.");
+        data.IndexOnlineArrivals();
+        return new JointTable(data, geometryPath is null ? null : LineSearch.FixedGeometry.Load(geometryPath, data));
+    }
+
+    /// <summary>Opt in to the five-place joint planner before seating the driver.</summary>
+    public void UseJointTable(JointTable table)
+    {
+        _jointTable = table;
+    }
+
     /// <summary>Whether the driver's ratings shape the drive. Off only for probes of the plan itself.</summary>
     public bool UseAbilities { get; init; } = true;
 
@@ -559,6 +597,9 @@ public sealed class LaneDriver : IDriverController
     {
         _lanes = _file.LanesFor(context.Track);
         _trackView = context.Track;
+        _jointSearch = null;
+        _jointChallenger = null;
+        _jointDefenceSide = 0;
         _drawn = new DrawnLine(_lanes);
         _pendingDraw = _pendingClear = false;
         _windowDrawn = -1;
@@ -847,7 +888,9 @@ public sealed class LaneDriver : IDriverController
         // carries the car past it, and that is no reason to lift. There the
         // corners' ceiling is the speed wanted.
         float look = station + MathF.Max(0f, speed) * preview / _lanes.Spacing;
-        if (FlatOutAt(look))
+        bool jointSpeed = _jointTable is not null && Drawing &&
+            float.IsFinite(_drawn!.SpeedAt((int)MathF.Floor(look)));
+        if (!jointSpeed && FlatOutAt(look))
         {
             float roof = speedScale * CeilingAt(look);
             if (target < roof - FlatOutToleranceMps)
@@ -900,7 +943,7 @@ public sealed class LaneDriver : IDriverController
         // flat-out speed a step ahead is next to nothing, and every step that
         // read as the plan being flat out the pedal went to the floor.
         bool capped = target < uncapped - 0.1f;
-        if (!capped && target >= flatOut - FlatOutToleranceMps)
+        if (!jointSpeed && !capped && target >= flatOut - FlatOutToleranceMps)
             accel = MathF.Max(accel, _maxDrive);
 
 
@@ -1787,6 +1830,8 @@ public sealed class LaneDriver : IDriverController
         bool sides = Range > 1e-3f || TargetRange > 1e-3f;
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
         PlanTheWake(car, context.Frame, context.CarSnapshotIndex, start, n + 1, sides);
+        if (_jointTable is { } table)
+            PlanJointMove(context, table.Data);
         for (int lane = 0; lane < LaneSet.LaneCount; lane++)
         {
             if (!Reads(lane))
@@ -1823,6 +1868,302 @@ public sealed class LaneDriver : IDriverController
             _planned[lane] = true;
         }
         _windowStart = -1;
+    }
+
+    private void PlanJointMove(in DriverContext context, LineSearch.Table table)
+    {
+        if (table.Starts[0] != 0 || table.Starts[^1] != _lanes.Count)
+            throw new InvalidDataException("The joint table does not cover these lanes.");
+        RaceCarSnapshot car = context.Car;
+        int station = _lanes.Wrap((int)MathF.Floor(_lanes.StationOf(car.TrackS)));
+        int row = Array.BinarySearch(table.Starts, station);
+        if (row < 0)
+            row = ~row - 1;
+        float relative = car.TrackD - _lanes.Offset(LaneId.Free, station);
+        var traffic = JointTraffic.Capture(context, _lanes);
+        float y = table.Places[row].MinBy(offset => MathF.Abs(offset - relative));
+        if (car.SpeedMetersPerSecond < 10f)
+            return;
+        bool liveStart = traffic.HasRivals || MathF.Abs(y - relative) > 1.5f;
+        if (liveStart)
+            y = relative;
+
+        if (_jointSearch is null)
+        {
+            _jointTable?.Geometry?.Validate(_lanes, table);
+            _jointSearch = new LineSearch(_lanes, _envelope, _planShares, k => _corner[0][_lanes.Wrap(k)],
+                (k, offset) => RoadAt(k, offset))
+            {
+                ExactSpeeds = true, ApproximateOnlineBraking = ApproximateJointBraking, Geometry = _jointTable?.Geometry
+            };
+        }
+        LineSearch search = _jointSearch;
+        search.UpdateOnlineEnvelope(_envelope, _planShares);
+        int from = liveStart ? station : table.Starts[row];
+        Vector2 tangent = _lanes.Position(from + 1, _lanes.Offset(LaneId.Free, from + 1)) -
+                          _lanes.Position(from - 1, _lanes.Offset(LaneId.Free, from - 1));
+        float heading = MathF.Atan2(tangent.Y, tangent.X);
+        float delta = MathF.IEEERemainder(car.VelocityHeadingRadians - heading, 2f * MathF.PI);
+        float estimatedSlope = MathF.Tan(Math.Clamp(delta, -0.5f, 0.5f));
+        if (Vector2.Dot(new Vector2(-tangent.Y, tangent.X), _lanes.Normal(from)) < 0f)
+            estimatedSlope = -estimatedSlope;
+        float slope = liveStart ? estimatedSlope : search.Slopes.MinBy(value => MathF.Abs(value - estimatedSlope));
+        int? startStation = liveStart ? from : null;
+        float now = context.RaceTimeSeconds;
+        string? challenger = JointProtect && !traffic.HasClosingLeader ? traffic.Challenger(car.SpeedMetersPerSecond) : null;
+        if (challenger is not null)
+        {
+            if (challenger != _jointChallenger || now > _jointDefenceUntil)
+            {
+                _jointChallenger = challenger;
+                _jointDefenceOrigin = relative;
+                _jointDefenceSide = 0;
+            }
+            _jointDefenceUntil = now + 1f;
+        }
+        bool committed = _jointDefenceSide != 0 && now <= _jointDefenceUntil && !traffic.HasAlongside;
+        const float defenceLookahead = 0.65f;
+        var road = context.Track;
+        float startDistance = car.TrackS - from * _lanes.Spacing;
+        bool expand = JointLookahead && traffic.HasNearbyRival && row + 1 < table.Rows;
+        float lookahead = expand ? 0.3f : challenger is not null || traffic.HasNearbyRival
+            ? MathF.Max(PlanIntervalSeconds, defenceLookahead)
+            : PlanIntervalSeconds;
+        int horizon = Math.Min(_lanes.Count,
+            station + (int)MathF.Ceiling(car.SpeedMetersPerSecond * lookahead / _lanes.Spacing) + 3);
+        int edgeFrom = from;
+        float edgeTime = 0f, edgeSpeed = car.SpeedMetersPerSecond;
+        float edgeDistance = 0f, edgeOffset = car.TrackD;
+        Vector2 edgePosition = car.Position;
+        float arrivalTime = 0f, edgeCost = 0f;
+        bool measurePrefixLower = false;
+        float drivenPrefixLower = 0f;
+        LineSearch.StepCost? overlap = traffic.HasRivals ? OverlapCost : null;
+        Func<LineSearch.Move, bool>? allowed = committed
+            ? move => _jointDefenceSide * (move.ToY - relative) >= -0.6f
+            : null;
+        var firstBeam = expand ? new (float Seconds, int Row, int State)[2] : null;
+        var paceBeam = expand ? new (float Seconds, int Row, int State)[2] : null;
+        var attack = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
+            cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
+            startStation: startStation, beam: firstBeam);
+        var following = (Seconds: float.PositiveInfinity, Row: -1, State: -1);
+        if (traffic.HasClosingLeader || expand)
+        {
+            following = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
+                cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
+                pace: FollowingPace, startStation: startStation, beam: paceBeam);
+        }
+        var choice = attack;
+        var firstChoice = attack;
+        (float[] Offset, float[] Speed)? materialized = null;
+        if (expand)
+        {
+            float best = float.PositiveInfinity;
+            int bestOrder = int.MaxValue;
+            int order = 0;
+            var frontier = new PriorityQueue<((float Seconds, int Row, int State) First, bool Follow, float PrefixLower),
+                (float Lower, int Order)>(4);
+            foreach (var first in firstBeam!)
+                Enqueue(first, false);
+            foreach (var first in paceBeam!)
+                if (!firstBeam!.Any(normal => normal.Row == first.Row && normal.State == first.State &&
+                    MathF.Abs(normal.Seconds - first.Seconds) < 1e-5f))
+                    Enqueue(first, true);
+            while (frontier.TryDequeue(out var branch, out var priority) &&
+                !LineSearch.CannotImprove(0f, 0f, priority.Lower, best))
+                Extend(branch.First, branch.Follow, branch.PrefixLower, priority.Order, ref best, ref bestOrder);
+
+            void Enqueue((float Seconds, int Row, int State) first, bool follow)
+            {
+                if (first.Row < 0)
+                    return;
+                var (endOffset, _, endSpeed) = search.StateOf(table, first.Row, first.State);
+                int at = table.Starts[first.Row];
+                Vector2 junction = _lanes.Position(at, _lanes.Offset(LaneId.Free, at) + endOffset);
+                float prefix = LineSearch.TimeLowerBound(Vector2.Distance(car.Position, junction));
+                float remaining = first.Row == table.Rows ? table.Value[first.Row][first.State] : float.PositiveInfinity;
+                int earliestEnd = Math.Min(_lanes.Count, at + (int)MathF.Ceiling(0.25f * endSpeed / _lanes.Spacing));
+                foreach (int span in search.Spans)
+                {
+                    int endRow = first.Row + span;
+                    if (endRow > table.Rows || table.Starts[endRow] < earliestEnd)
+                        continue;
+                    int end = table.Starts[endRow];
+                    float free = _lanes.Offset(LaneId.Free, end);
+                    float chord = float.PositiveInfinity;
+                    foreach (float endY in table.Places[endRow])
+                        chord = MathF.Min(chord, Vector2.Distance(junction, _lanes.Position(end, free + endY)));
+                    remaining = MathF.Min(remaining, LineSearch.TimeLowerBound(chord) + table.MinimumRowValue![endRow]);
+                }
+                frontier.Enqueue((first, follow, prefix), (prefix + remaining, order++));
+            }
+        }
+        else
+        {
+            bool followFirst = following.Seconds < attack.Seconds;
+            choice = followFirst ? following : attack;
+            materialized = MaterializeFirst(choice, followFirst);
+            if (materialized is null)
+            {
+                choice = followFirst ? attack : following;
+                materialized = MaterializeFirst(choice, !followFirst);
+            }
+            firstChoice = choice;
+        }
+        if (materialized is not { } plan)
+            return;
+
+        // Draw the solo continuation after the traffic-aware speed plan.
+        var (endY, endSlope, endSpeed) = search.StateOf(table, choice.Row, choice.State);
+        float firstY = search.StateOf(table, firstChoice.Row, firstChoice.State).Y;
+        if (challenger is not null && _jointDefenceSide == 0 && MathF.Abs(firstY - _jointDefenceOrigin) >= 0.8f)
+            _jointDefenceSide = Math.Sign(firstY - _jointDefenceOrigin);
+        if (search.Follow(table, choice.Row, endY, endSlope, endSpeed, maxStations: 40) is { } continuation &&
+            continuation.Offset.Length > 1)
+        {
+            int prefix = plan.Offset.Length;
+            Array.Resize(ref plan.Offset, prefix + continuation.Offset.Length - 1);
+            Array.Resize(ref plan.Speed, plan.Offset.Length);
+            Array.Copy(continuation.Offset, 1, plan.Offset, prefix, continuation.Offset.Length - 1);
+            Array.Fill(plan.Speed, float.NaN, prefix, plan.Speed.Length - prefix);
+        }
+        if (liveStart)
+        {
+            // Steering reads a centred chord. Continue the start tangent
+            // behind the car instead of snapping that chord to the free line.
+            const int behind = CurvatureChordStations + 1;
+            var offsets = new float[behind + plan.Offset.Length];
+            var speeds = new float[offsets.Length];
+            for (int k = 0; k < behind; k++)
+                offsets[k] = y + (k - behind) * _lanes.Spacing * slope;
+            Array.Fill(speeds, float.NaN, 0, behind);
+            plan.Offset.CopyTo(offsets, behind);
+            plan.Speed.CopyTo(speeds, behind);
+            _drawn!.Set(from - behind, offsets, speeds, 1f);
+        }
+        else
+            _drawn!.Set(from, plan.Offset, plan.Speed, 1f);
+        JointPlansApplied++;
+
+        (float[] Offset, float[] Speed)? MaterializeFirst((float Seconds, int Row, int State) candidate, bool follow,
+            float[]? nextOffsets = null) =>
+            candidate.Row < 0 ? null : search.MaterializeMove(table, row, y, slope, car.SpeedMetersPerSecond,
+                candidate.Row, candidate.State, overlap, follow ? FollowingPace : null, startStation, nextOffsets);
+
+        void Extend((float Seconds, int Row, int State) first, bool follow, float prefixLower,
+            int order, ref float best, ref int bestOrder)
+        {
+            if (first.Row < 0)
+                return;
+            SetEdge(from, 0f, car.SpeedMetersPerSecond, car.TrackD, car.Position, 0f);
+            measurePrefixLower = float.IsFinite(best) && first.Row < table.Rows;
+            var initial = MaterializeFirst(first, follow);
+            measurePrefixLower = false;
+            if (initial is not { } head)
+                return;
+            if (first.Row == table.Rows)
+            {
+                float terminalScore = arrivalTime + edgeCost + table.Value[first.Row][first.State];
+                if (terminalScore < best || terminalScore == best && order < bestOrder)
+                    (best, bestOrder, firstChoice, choice, materialized) = (terminalScore, order, first, first, head);
+                return;
+            }
+            var (nextY, nextSlope, nextSpeed) = search.StateOf(table, first.Row, first.State);
+            int nextFrom = table.Starts[first.Row];
+            float nextOffset = _lanes.Offset(LaneId.Free, nextFrom) + nextY;
+            Vector2 nextPosition = _lanes.Position(nextFrom, nextOffset);
+            float nextDistance = (nextFrom - from) * _lanes.Spacing - startDistance;
+            int endAt = Math.Min(_lanes.Count, nextFrom + (int)MathF.Ceiling(
+                MathF.Max(0.25f, defenceLookahead - arrivalTime) * nextSpeed / _lanes.Spacing));
+            SetEdge(nextFrom, arrivalTime, nextSpeed, nextOffset, nextPosition, nextDistance);
+            var next = search.DecideOnline(table, first.Row, nextY, nextSlope, nextSpeed, cost: overlap,
+                minimumEndStation: endAt, nonnegativeCost: true, allowedMove: allowed, pace: follow ? FollowingPace : null,
+                maximumTotal: best, prefixTimeLower: MathF.Max(prefixLower, drivenPrefixLower));
+            if (MaterializeNext(next) is not { } tail)
+                return;
+            SetEdge(from, 0f, car.SpeedMetersPerSecond, car.TrackD, car.Position, 0f);
+            if (MaterializeFirst(first, follow, tail.Offset) is not { } joined)
+                return;
+            float firstCost = edgeCost;
+            SetEdge(nextFrom, arrivalTime, nextSpeed, nextOffset, nextPosition, nextDistance);
+            if (MaterializeNext(next) is not { } checkedTail)
+                return;
+            float score = arrivalTime + firstCost + edgeCost + table.Value[next.Row][next.State];
+            if (score > best || score == best && order >= bestOrder)
+                return;
+            int prefix = joined.Offset.Length;
+            Array.Resize(ref joined.Offset, prefix + checkedTail.Offset.Length - 1);
+            Array.Resize(ref joined.Speed, joined.Offset.Length);
+            Array.Copy(checkedTail.Offset, 1, joined.Offset, prefix, checkedTail.Offset.Length - 1);
+            Array.Copy(checkedTail.Speed, 1, joined.Speed, prefix, checkedTail.Speed.Length - 1);
+            (best, bestOrder, firstChoice, choice, materialized) = (score, order, first, next, joined);
+
+            (float[] Offset, float[] Speed)? MaterializeNext((float Seconds, int Row, int State) candidate) =>
+                candidate.Row < 0 ? null : search.MaterializeMove(table, first.Row, nextY, nextSlope, nextSpeed,
+                    candidate.Row, candidate.State, overlap, follow ? FollowingPace : null);
+        }
+
+        void SetEdge(int at, float time, float speed, float offset, Vector2 position, float distance) =>
+            (edgeFrom, edgeTime, edgeSpeed, edgeOffset, edgePosition, edgeDistance) = (at, time, speed, offset, position, distance);
+
+        float OffsetAt(LineSearch.Move move, int k) =>
+            _lanes.Offset(LaneId.Free, edgeFrom + k) + search.OffsetOn(move, k);
+
+        float FollowingPace(LineSearch.Move move, int k, float time, float speed)
+        {
+            float distance = (edgeFrom - from + k) * _lanes.Spacing - startDistance;
+            return distance <= 0f ? float.PositiveInfinity : traffic.Pace(distance, OffsetAt(move, k),
+                edgeTime + (edgeFrom == from ? MathF.Max(0f, time - startDistance / MathF.Max(1f, edgeSpeed)) : time), speed);
+        }
+
+        float OverlapCost(LineSearch.Move move, float _, float[] drive, float[] brake)
+        {
+            if (edgeTime == 0f && traffic.Overlaps(0f, car.TrackD, 0f))
+                return float.PositiveInfinity;
+            int first = Math.Max(1, station - edgeFrom + 1);
+            (float time, float speed, float offset, Vector2 position, float distance) =
+                (edgeTime, edgeSpeed, edgeOffset, edgePosition, edgeDistance);
+            float penalty = 0f;
+            float proximity = 0f;
+            int unchanged = measurePrefixLower ? search.UnchangedDriveStations(move.Stations, edgeFrom) : 0;
+            float optimistic = 0f, previousUpper = edgeSpeed;
+            for (int k = first; k <= move.Stations; k++)
+            {
+                float nextDistance = (edgeFrom - from + k) * _lanes.Spacing - startDistance;
+                float nextSpeed = MathF.Min(drive[k], brake[k]);
+                float nextOffset = OffsetAt(move, k);
+                Vector2 nextPosition = _lanes.Position(edgeFrom + k, nextOffset);
+                float stepLength = Vector2.Distance(position, nextPosition);
+                float nextTime = time + stepLength /
+                    MathF.Max(1f, 0.5f * (speed + nextSpeed));
+                if (measurePrefixLower)
+                {
+                    // Joining to another edge can change the braking
+                    // sweep, but cannot exceed the common forward sweep.
+                    float nextUpper = k <= unchanged ? drive[k] : LaneSpeedPlanner.TopSpeed + 0.01f;
+                    optimistic += stepLength / MathF.Max(1f, 0.5f * (previousUpper + nextUpper));
+                    previousUpper = nextUpper;
+                }
+                if (traffic.OverlapsBetween(distance, offset, time, nextDistance, nextOffset, nextTime, ref proximity) ||
+                    !traffic.KeepsAlongsideRoom(nextDistance, nextOffset, nextTime))
+                    return float.PositiveInfinity;
+                if (challenger is not null && time < defenceLookahead && nextTime >= defenceLookahead)
+                {
+                    float u = (defenceLookahead - time) / MathF.Max(1e-3f, nextTime - time);
+                    float at = distance + u * (nextDistance - distance);
+                    float atOffset = offset + u * (nextOffset - offset);
+                    penalty = traffic.DefencePenalty(challenger, at, atOffset, defenceLookahead,
+                        road.Sample(car.TrackS + at).HalfWidth);
+                }
+                (distance, speed, time, offset, position) = (nextDistance, nextSpeed, nextTime, nextOffset, nextPosition);
+            }
+            arrivalTime = time;
+            if (measurePrefixLower)
+                drivenPrefixLower = optimistic;
+            edgeCost = 0.35f * proximity + (challenger is not null && time < defenceLookahead && !expand ? 0.25f : penalty);
+            return edgeCost;
+        }
     }
 
     /// <summary>
