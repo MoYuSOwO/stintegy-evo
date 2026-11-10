@@ -22,7 +22,7 @@ static class Program
         public DriverInput GetControl(in DriverContext context, float dt) => Next;
     }
 
-    static readonly string[] Parts = ["shape", "join", "drive", "brake", "rest"];
+    static readonly string[] Parts = ["shape", "join", "drive", "brake", "rest", "traffic"];
     static readonly string[] Sections =
     [
         "traffic", "envelope", "attack", "follow", "material", "rest",
@@ -169,6 +169,16 @@ static class Program
             double ms = shapeTicks[p] * 1000.0 / Stopwatch.Frequency;
             Console.WriteLine($"  {halves[p],-10} {ms,9:F1} ms total   {ms / plans,9:F3} ms/plan");
         }
+        long[] hits = drivers[0].JointGeometryHits;
+        Console.WriteLine($"  from file  {hits[0],9:N0} shapes, {hits[1]:N0} joins" +
+            $"   of {calls[0]:N0} shapes, {calls[1]:N0} joins");
+        long[] loop = drivers[0].JointLoopCounts;
+        Console.WriteLine("  --- inside the successor loop ---");
+        Console.WriteLine($"  decisions    {loop[0],12:N0}   {loop[0] / plans,10:F1} per plan");
+        Console.WriteLine($"  successors   {loop[1],12:N0}   {loop[1] / plans,10:F1} per plan" +
+            $"   {(loop[0] == 0 ? 0 : (double)loop[1] / loop[0]):F1} per decision");
+        Console.WriteLine($"  slow ways    {loop[2],12:N0}   {loop[2] / plans,10:F1} per plan" +
+            $"   {(loop[1] == 0 ? 0 : 100.0 * loop[2] / loop[1]):F1}% of successors");
         Console.WriteLine("  --- inside the join ---");
         Console.WriteLine($"  joins        {counts[0],12:N0}   {counts[0] / plans,10:F1} per plan");
         Console.WriteLine($"  rival visits {counts[1],12:N0}   {counts[1] / plans,10:F1} per plan" +

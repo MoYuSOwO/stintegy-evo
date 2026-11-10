@@ -1123,14 +1123,21 @@ internal sealed partial class LineSearch
     /// decision. Timed as the table was baked, the driver's way or not.
     /// </summary>
     /// <summary>Ticks spent in each part of <see cref="DecideOnline"/>, and how often: shape, join, drive, brake, time.</summary>
-    public readonly long[] OnlineTicks = new long[5];
+    public readonly long[] OnlineTicks = new long[6];
     /// <summary>Join each way on only from the station it first changes (<see cref="DecideOnline"/>); off, every station again.</summary>
     public bool ShareJoin { get; set; } = true;
     public bool ApproximateOnlineBraking { get; init; }
     internal FixedGeometry? Geometry { get; init; }
-    public readonly long[] OnlineCalls = new long[5];
+    public readonly long[] OnlineCalls = new long[6];
     /// <summary>Ticks spent laying the geometry and fitting it to the car: the two halves of a shape.</summary>
     public readonly long[] ShapeTicks = new long[2];
+    /// <summary>Shapes and joins that came out of the precomputed geometry file.</summary>
+    public long GeometryShapeHits;
+    public long GeometryJoinHits;
+    /// <summary>Decisions taken, successors walked, and nodes that had to rebuild their arrival groups.</summary>
+    public long DecideCalls;
+    public long LoopIterations;
+    public long SlowWayNodes;
 
     public (float Seconds, int Row, int State) DecideOnline(Table table, int row, float y, float slope, float speed,
         Func<Move, float, float, float>? extra = null, StepCost? cost = null,
@@ -1139,6 +1146,7 @@ internal sealed partial class LineSearch
         float maximumTotal = float.PositiveInfinity, float prefixTimeLower = 0f)
     {
         long mark = System.Diagnostics.Stopwatch.GetTimestamp();
+        DecideCalls++;
         void Lap(int part)
         {
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1193,6 +1201,7 @@ internal sealed partial class LineSearch
                 }
                 for (int hj = 0; hj < slopes; hj++)
                 {
+                    LoopIterations++;
                     var move = new Move(row, r1, stations, y, slope, there[j], Slopes[hj]);
                     if (allowedMove is not null && !allowedMove(move))
                         continue;
@@ -1201,6 +1210,7 @@ internal sealed partial class LineSearch
                     Table.ArrivalGroup[]? groups = table.OnlineArrivals?[r1][node];
                     if (groups is null)
                     {
+                        SlowWayNodes++;
                         ways.Clear();
                         for (int b = 0; b < bins; b++)
                             if (later[target + b] < float.PositiveInfinity && !ways.Contains(tailThere[target + b]))
@@ -1247,7 +1257,10 @@ internal sealed partial class LineSearch
                         mark = System.Diagnostics.Stopwatch.GetTimestamp();
                         if (groups is not null && Geometry is not null && ShareJoin && ExactSpeeds &&
                             TurnLag is null && LeadSpeed is null && Geometry.ReadJoin(edge, group, split))
+                        {
+                            GeometryJoinHits++;
                             SetCornerLimits(edge, split, edge.N + 1, liveLimits);
+                        }
                         else
                             Join(edge, st0, way == NoTail ? null : table.Tails[r1][way], split, liveLimits);
                         Lap(1);
@@ -1324,7 +1337,10 @@ internal sealed partial class LineSearch
                                 if (nonnegativeCost && seconds + rest >= Bound())
                                     continue;
                                 if (cost is not null)
+                                {
                                     seconds += cost(move, v1, driven, back);
+                                    Lap(5);
+                                }
                                 if (seconds + rest < bestSeconds)
                                     (bestSeconds, bestRow, bestState) = (seconds + rest, r1, target + b1);
                                 if (beam is { Length: > 0 } && seconds + rest < Bound())

@@ -217,6 +217,7 @@ internal sealed partial class LineSearch
     {
         if (!Geometry!.Read(edge, row, place, heading, span, to, toHeading))
             return false;
+        GeometryShapeHits++;
         FitShapeToCar(edge, st0, y, slope, endY, endSlope);
         return true;
     }

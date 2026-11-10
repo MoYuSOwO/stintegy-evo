@@ -434,6 +434,9 @@ public sealed class LaneDriver : IDriverController
     public long[] JointTicks => _jointSearch?.OnlineTicks ?? [];
     public long[] JointCalls => _jointSearch?.OnlineCalls ?? [];
     public long[] JointShapeTicks => _jointSearch?.ShapeTicks ?? [];
+    public long[] JointGeometryHits => _jointSearch is { } s ? [s.GeometryShapeHits, s.GeometryJoinHits] : [];
+    public long[] JointLoopCounts =>
+        _jointSearch is { } s ? [s.DecideCalls, s.LoopIterations, s.SlowWayNodes] : [];
 
     /// <summary>Joins, rival visits, body tests and pace-limited fallbacks since the last reset.</summary>
     public long[] JointCounts => [JointTraffic.Joins, JointTraffic.RivalVisits, JointTraffic.BodyTests, FollowFallbacks];
