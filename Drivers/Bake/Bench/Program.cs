@@ -161,6 +161,14 @@ static class Program
         }
 
         long[] counts = drivers[0].JointCounts;
+        long[] shapeTicks = drivers[0].JointShapeTicks;
+        Console.WriteLine("  --- inside a shape ---");
+        string[] halves = ["geometry", "fit+join"];
+        for (int p = 0; p < shapeTicks.Length; p++)
+        {
+            double ms = shapeTicks[p] * 1000.0 / Stopwatch.Frequency;
+            Console.WriteLine($"  {halves[p],-10} {ms,9:F1} ms total   {ms / plans,9:F3} ms/plan");
+        }
         Console.WriteLine("  --- inside the join ---");
         Console.WriteLine($"  joins        {counts[0],12:N0}   {counts[0] / plans,10:F1} per plan");
         Console.WriteLine($"  rival visits {counts[1],12:N0}   {counts[1] / plans,10:F1} per plan" +

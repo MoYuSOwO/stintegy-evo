@@ -1124,12 +1124,13 @@ internal sealed partial class LineSearch
     /// </summary>
     /// <summary>Ticks spent in each part of <see cref="DecideOnline"/>, and how often: shape, join, drive, brake, time.</summary>
     public readonly long[] OnlineTicks = new long[5];
-
     /// <summary>Join each way on only from the station it first changes (<see cref="DecideOnline"/>); off, every station again.</summary>
     public bool ShareJoin { get; set; } = true;
     public bool ApproximateOnlineBraking { get; init; }
     internal FixedGeometry? Geometry { get; init; }
     public readonly long[] OnlineCalls = new long[5];
+    /// <summary>Ticks spent laying the geometry and fitting it to the car: the two halves of a shape.</summary>
+    public readonly long[] ShapeTicks = new long[2];
 
     public (float Seconds, int Row, int State) DecideOnline(Table table, int row, float y, float slope, float speed,
         Func<Move, float, float, float>? extra = null, StepCost? cost = null,
@@ -1691,9 +1692,13 @@ internal sealed partial class LineSearch
     private bool Shape(Edge edge, int st0, int row, float y0, float h0, float y1, float h1, Func<int, float, bool>? allowed)
     {
         edge.GeometryJoins = 0;
+        long mark = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!ShapeGeometry(edge, st0, row, y0, h0, y1, h1, allowed))
             return false;
+        ShapeTicks[0] += System.Diagnostics.Stopwatch.GetTimestamp() - mark;
+        mark = System.Diagnostics.Stopwatch.GetTimestamp();
         FitShapeToCar(edge, st0, y0, h0, y1, h1);
+        ShapeTicks[1] += System.Diagnostics.Stopwatch.GetTimestamp() - mark;
         return true;
     }
 
