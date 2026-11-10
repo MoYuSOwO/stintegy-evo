@@ -40,7 +40,9 @@ static class Program
         int steps = args.Length > 5 ? int.Parse(args[5]) : 600;
         bool exactBraking = args.Length > 6 && args[6].Contains("exact");
         bool protect = args.Length <= 6 || !args[6].Contains("noprotect");
-
+        float attackBonus = Flag(args, "attack", 1f);
+        float blockedSeconds = Flag(args, "blocked", 1f);
+        float defenceSeconds = Flag(args, "defence", 1f);
         var watch = Stopwatch.StartNew();
         TrackData track = GameMods.Registry.Circuits.Get(circuitId).Track;
         Console.WriteLine($"track      {circuitId}  {track.LengthMeters:F0} m   ({watch.ElapsedMilliseconds} ms)");
@@ -70,6 +72,9 @@ static class Program
                 JointLookahead = lookahead,
                 ApproximateJointBraking = !exactBraking,
                 JointProtect = protect,
+                AttackBonus = attackBonus,
+                BlockedSeconds = blockedSeconds,
+                DefenceSeconds = defenceSeconds,
             };
             driver.UseJointTable(table);
             drivers[i] = driver;
@@ -108,6 +113,8 @@ static class Program
         var samples = new double[steps];
         var planning = new List<double>();
         var between = new List<double>();
+        float firstGap = 0f, lastGap = 0f, bestGap = float.PositiveInfinity, maxLateral = 0f;
+        bool passed = false;
         for (int step = 0; step < steps; step++)
         {
             for (int i = 0; i < cars; i++)
@@ -124,6 +131,20 @@ static class Program
                 proxies[i].Next = input;
             }
             simulation.Step(dt);
+            if (cars > 1)
+            {
+                var frame = simulation.CaptureFrame();
+                float gap = MathF.IEEERemainder(frame[0].TrackS - frame[1].TrackS, track.LengthMeters);
+                if (step == 0)
+                    firstGap = gap;
+                lastGap = gap;
+                bestGap = MathF.Min(bestGap, gap);
+                if (gap > 0f)
+                    passed = true;
+                int at = (int)lanes.StationOf(frame[0].TrackS);
+                float off = frame[0].TrackD - lanes.Offset(LaneId.Free, at);
+                maxLateral = MathF.Max(maxLateral, MathF.Abs(off));
+            }
         }
 
         Array.Sort(samples);
@@ -138,6 +159,9 @@ static class Program
         Console.WriteLine($"  p99    {samples[(int)(samples.Length * 0.99)]:F3} ms");
         Console.WriteLine($"  max    {samples[^1]:F3} ms");
         Console.WriteLine($"  plans  {drivers[0].JointPlansApplied} applied");
+        if (cars > 1)
+            Console.WriteLine($"  gap    {firstGap,8:F1} m start   {lastGap,8:F1} m end" +
+                $"   {bestGap,8:F1} m closest   {maxLateral,5:F1} m off line   {(passed ? "PASSED" : "held")}");
         Report("planning steps", planning);
         Report("other steps   ", between);
 
@@ -186,6 +210,20 @@ static class Program
         Console.WriteLine($"  body tests   {counts[2],12:N0}   {counts[2] / plans,10:F1} per plan" +
             $"   {(counts[1] == 0 ? 0 : (double)counts[2] / counts[1]):F3} per visit");
         Console.WriteLine($"  follow fallback {counts[3],9:N0}   {counts[3] / plans,10:F1} per plan");
+        long[] terms = drivers[0].JointTermCounts;
+        Console.WriteLine($"  terms        {terms[0],12:N0}   {terms[0] / plans,10:F1} per plan" +
+            $"   {terms[1]:N0} found a rival ({(terms[0] == 0 ? 0 : 100.0 * terms[1] / terms[0]):F1}%)");
+    }
+
+    static float Flag(string[] args, string name, float fallback)
+    {
+        if (args.Length <= 6)
+            return fallback;
+        foreach (string part in args[6].Split(','))
+            if (part.StartsWith(name + "=", StringComparison.Ordinal) &&
+                float.TryParse(part[(name.Length + 1)..], out float value))
+                return value;
+        return fallback;
     }
 
     static void Report(string label, List<double> list)

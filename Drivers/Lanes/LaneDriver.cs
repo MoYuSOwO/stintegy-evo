@@ -427,7 +427,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// Diagnostics: ticks spent in each part of the online decision, and how
-    /// often it ran them â€” shape, join, drive, brake, and the rest. Read by the
+    /// often it ran them â€?shape, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
     public readonly long[] JointParts = new long[17];
@@ -440,6 +440,9 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>Joins, rival visits, body tests and pace-limited fallbacks since the last reset.</summary>
     public long[] JointCounts => [JointTraffic.Joins, JointTraffic.RivalVisits, JointTraffic.BodyTests, FollowFallbacks];
+
+    /// <summary>Position terms asked for, and how many found a rival in the way.</summary>
+    public long[] JointTermCounts => [JointTraffic.PositionTerms, JointTraffic.PositionTermsMatched];
 
     /// <summary>How often the free plan could not be drawn and the pace-limited one was run.</summary>
     public static long FollowFallbacks;
@@ -455,6 +458,15 @@ public sealed class LaneDriver : IDriverController
     public bool JointProtect { get; init; } = true;
     /// <summary>Evaluate a second traffic-aware edge during close encounters.</summary>
     public bool JointLookahead { get; init; }
+
+    /// <summary>What being past a rival is worth, in seconds of lap time.</summary>
+    public float AttackBonus { get; init; }
+
+    /// <summary>What sitting in a rival's wake costs, in seconds.</summary>
+    public float BlockedSeconds { get; init; }
+
+    /// <summary>What holding a line across the challenger's path is worth, in seconds.</summary>
+    public float DefenceSeconds { get; init; } = 1f;
 
     /// <summary>An immutable joint table shared by the drivers in one race.</summary>
     public sealed class JointTable : IDisposable
@@ -2000,6 +2012,7 @@ public sealed class LaneDriver : IDriverController
         bool measurePrefixLower = false;
         float drivenPrefixLower = 0f;
         LineSearch.StepCost? overlap = traffic.HasRivals ? OverlapCost : null;
+        Func<int, int, float, float>? terminal = traffic.HasRivals ? TerminalCost : null;
         Func<LineSearch.Move, bool>? allowed = committed
             ? move => _jointDefenceSide * (move.ToY - relative) >= -0.6f
             : null;
@@ -2007,7 +2020,7 @@ public sealed class LaneDriver : IDriverController
         var paceBeam = expand ? new (float Seconds, int Row, int State)[2] : null;
         var attack = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
             cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
-            startStation: startStation, beam: firstBeam);
+            startStation: startStation, beam: firstBeam, terminal: terminal);
         Part(2);
         var following = (Seconds: float.PositiveInfinity, Row: -1, State: -1);
         if (expand)
@@ -2189,6 +2202,18 @@ public sealed class LaneDriver : IDriverController
                 edgeTime + (edgeFrom == from ? MathF.Max(0f, time - startDistance / MathF.Max(1f, edgeSpeed)) : time), speed);
         }
 
+        // What the baked rest of the way is worth once the cars around are
+        // taken into account: the free line's seconds, plus what being past a
+        // rival is worth or still being behind one costs.
+        float TerminalCost(int atRow, int atState, float seconds)
+        {
+            var (endY, _, _) = search.StateOf(table, atRow, atState);
+            int station = table.Starts[atRow];
+            float distance = (station - from) * _lanes.Spacing - startDistance;
+            float offset = _lanes.Offset(LaneId.Free, station) + endY;
+            return traffic.PositionTerm(distance, offset, seconds, AttackBonus, BlockedSeconds);
+        }
+
         float OverlapCost(LineSearch.Move move, float _, float[] drive, float[] brake)
         {
             if (edgeTime == 0f && traffic.Overlaps(0f, car.TrackD, 0f))
@@ -2233,7 +2258,8 @@ public sealed class LaneDriver : IDriverController
             arrivalTime = time;
             if (measurePrefixLower)
                 drivenPrefixLower = optimistic;
-            edgeCost = 0.35f * proximity + (challenger is not null && time < defenceLookahead && !expand ? 0.25f : penalty);
+            edgeCost = 0.35f * proximity +
+                (challenger is not null && time < defenceLookahead && !expand ? DefenceSeconds : penalty);
             return edgeCost;
         }
     }

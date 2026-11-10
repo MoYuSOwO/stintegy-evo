@@ -14,6 +14,9 @@ internal readonly struct JointTraffic
     public static long Joins;
     public static long RivalVisits;
     public static long BodyTests;
+    /// <summary>How often the position term was asked for, and how often it found a rival in the way.</summary>
+    public static long PositionTerms;
+    public static long PositionTermsMatched;
     private readonly Rival[] _rivals;
     private readonly float _ownOffset;
     private readonly DriverTrackView _track;
@@ -340,6 +343,34 @@ internal readonly struct JointTraffic
                 return false;
         }
         return true;
+    }
+
+    // What being here at this time is worth against the cars around, in
+    // seconds. A rival ahead on the line I am on is one I would have to
+    // follow, and what sitting in his wake costs is what pulling out of it is
+    // worth; past him instead, the bonus. The gap barely moves over a step, so
+    // it is being on his line or off it that a step can change, and that is
+    // the first half of every overtake.
+    public float PositionTerm(float distance, float offset, float time, float aheadBonus, float blockedSeconds)
+    {
+        float term = 0f;
+        PositionTerms++;
+        foreach (Rival rival in _rivals)
+        {
+            float gap = rival.Position(time) - distance;
+            if (gap > 60f || gap < -20f)
+                continue;
+            PositionTermsMatched++;
+            bool clear = MathF.Abs(rival.Side(time) - offset) > rival.HalfWidth + 1.2f;
+            if (gap > 0f)
+            {
+                if (!clear)
+                    term = MathF.Max(term, blockedSeconds);
+            }
+            else if (!clear)
+                term = MathF.Min(term, -aheadBonus);
+        }
+        return term;
     }
 
     public float Pace(float distance, float offset, float time, float speed)

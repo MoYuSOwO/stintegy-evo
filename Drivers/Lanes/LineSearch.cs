@@ -1083,6 +1083,7 @@ internal sealed partial class LineSearch
         Func<Move, float, float, float>? extra = null, StepCost? cost = null,
         int minimumEndStation = 0, bool nonnegativeCost = false, Func<Move, bool>? allowedMove = null,
         PaceLimit? pace = null, int? startStation = null, (float Seconds, int Row, int State)[]? beam = null,
+        Func<int, int, float, float>? terminal = null,
         float maximumTotal = float.PositiveInfinity, float prefixTimeLower = 0f)
     {
         long mark = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1178,7 +1179,8 @@ internal sealed partial class LineSearch
                     liveLimits.Clear();
                     // Every sample is capped by TopSpeed, even before the joined
                     // geometry and live envelope give us a tighter bound.
-                    bool canPruneJoins = ExactSpeeds && nonnegativeCost && extra is null && groups is not null;
+                    bool canPruneJoins = ExactSpeeds && nonnegativeCost && extra is null && terminal is null &&
+                        groups is not null;
                     float quickest = bent;
                     if (canPruneJoins)
                         for (int k = 0; k < edge.N; k++)
@@ -1246,7 +1248,7 @@ internal sealed partial class LineSearch
                                     continue;
                                 if (bounded && CannotImprove(prefixTimeLower, lengthTime, rest, maximumTotal))
                                     continue;
-                                if (nonnegativeCost && extra is null && fastest + rest >= Bound())
+                                if (nonnegativeCost && extra is null && terminal is null && fastest + rest >= Bound())
                                     continue;
                                 mark = System.Diagnostics.Stopwatch.GetTimestamp();
                                 if (ApproximateOnlineBraking)
@@ -1274,6 +1276,8 @@ internal sealed partial class LineSearch
                                 Lap(4);
                                 if (extra is not null)
                                     seconds += extra(move, speed, v1);
+                                if (terminal is not null)
+                                    rest += terminal(r1, target + b1, seconds);
                                 if (nonnegativeCost && seconds + rest >= Bound())
                                     continue;
                                 if (cost is not null)
