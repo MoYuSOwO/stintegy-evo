@@ -1005,14 +1005,7 @@ public sealed class LaneDriver : IDriverController
         // flat-out speed a step ahead is next to nothing, and every step that
         // read as the plan being flat out the pedal went to the floor.
         bool capped = target < uncapped - 0.1f;
-        // Flat out wherever the plan is still climbing. A corner ahead and a
-        // car in the way are the only two things that can hold the plan
-        // flat; where it is rising, nothing is holding it and the speed it
-        // is rising to is the motor's, so the pedal stays down. Read as a
-        // speed to track instead, a plan that had levelled off asked for no
-        // acceleration at all and the throttle fell away in the middle of a
-        // straight. A plan that has levelled off is left to the throttle.
-        if (!capped && ahead > target + FlatOutToleranceMps)
+        if (!jointSpeed && !capped && target >= flatOut - FlatOutToleranceMps)
             accel = MathF.Max(accel, _maxDrive);
 
 
