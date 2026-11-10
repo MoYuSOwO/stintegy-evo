@@ -429,7 +429,7 @@ public sealed class LaneDriver : IDriverController
     /// often it ran them — shape, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
-    public readonly long[] JointParts = new long[10];
+    public readonly long[] JointParts = new long[16];
     public long[] JointTicks => _jointSearch?.OnlineTicks ?? [];
     public long[] JointCalls => _jointSearch?.OnlineCalls ?? [];
     public bool ApproximateJointBraking { get; init; } = true;
@@ -709,6 +709,13 @@ public sealed class LaneDriver : IDriverController
 
     public DriverInput GetControl(in DriverContext context, float dt)
     {
+        long mark = System.Diagnostics.Stopwatch.GetTimestamp();
+        void Part(int index)
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            JointParts[index] += now - mark;
+            mark = now;
+        }
         RaceCarSnapshot car = context.Car;
         ManageEnergy(car);
         if (_performance is not null)
@@ -737,6 +744,7 @@ public sealed class LaneDriver : IDriverController
                 _pendingMadeSpeeds ? _pendingMadeSpeed.AsSpan(0, _pendingMadeCount) : [], _pendingBrake);
             _pendingSet = false;
         }
+        Part(10);
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
         {
@@ -745,8 +753,10 @@ public sealed class LaneDriver : IDriverController
         JointParts[9] += System.Diagnostics.Stopwatch.GetTimestamp() - planMark;
             _sincePlan = 0f;
         }
+        Part(11);
         ScaleMove(car, dt);
         MoveBlend(dt);
+        Part(12);
 
         _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
@@ -778,6 +788,7 @@ public sealed class LaneDriver : IDriverController
                               MathF.Max(speed * speed, 25f);
         float feedforward = BlendedCurvature(previewStation) + moveCurvature;
         float here = BlendedCurvature(station);
+        Part(13);
         float pursuit = MathF.Max(Gains.MinimumPursuitMeters, MathF.Max(speed, 0f) * Gains.PursuitSeconds);
         // What the axles will hold at the braking being done right now.
         float braking = Math.Clamp(-MotionOf(car).StepLongitudinalAccel / MathF.Max(_envelope.Brake(speed), 1f), 0f, 1f);
@@ -834,6 +845,7 @@ public sealed class LaneDriver : IDriverController
         float lower = MathF.Max(-maxRequest, MathF.Min((-available - lean) / scale, -1e-4f));
         float wanted = curvature;
         curvature = Math.Clamp(curvature, lower, upper);
+        Part(14);
         _moveBound = (wanted > upper && _moveCurvature > 0f) || (wanted < lower && _moveCurvature < 0f);
 
         float slip = MathF.Abs(car.SideslipAngleRadians);
@@ -1073,6 +1085,7 @@ public sealed class LaneDriver : IDriverController
         // would put on (SteeringEstimate), misjudged by this driver's hands;
         // the line takes up what is left.
         float steer = LockFor(car, curvature) * (1f + (_performance?.SteeringRead ?? 0f));
+        Part(15);
         return new DriverInput(steer, accel)
         {
             Axles = new AxleBias(BrakeBias(tyres, accel), 0f),
