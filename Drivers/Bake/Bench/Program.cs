@@ -50,6 +50,10 @@ static class Program
         LaneTrackFile file = LaneTrackFile.ForCircuit(circuitId, track);
         LaneSet lanes = file.LanesFor(track);
         Console.WriteLine($"lanes      {lanes.Count} stations, {lanes.Spacing:F3} m apart, current={file.IsCurrent}");
+        float widest = 0f;
+        for (int i = 0; i < lanes.Count; i++)
+            widest = MathF.Max(widest, lanes.HalfWidth(i));
+        Console.WriteLine($"road       widest half width {widest:F1} m");
 
         watch.Restart();
         LaneDriver.JointTable table = LaneDriver.LoadJointTable(tablePath, circuitId, geometryPath);
@@ -113,7 +117,8 @@ static class Program
         var samples = new double[steps];
         var planning = new List<double>();
         var between = new List<double>();
-        float firstGap = 0f, lastGap = 0f, bestGap = float.PositiveInfinity, maxLateral = 0f;
+        float firstGap = 0f, lastGap = 0f, bestGap = float.PositiveInfinity, maxLateral = 0f, chaseLateral = 0f;
+        double ran0 = 0, ran1 = 0;
         bool passed = false;
         for (int step = 0; step < steps; step++)
         {
@@ -144,6 +149,11 @@ static class Program
                 int at = (int)lanes.StationOf(frame[0].TrackS);
                 float off = frame[0].TrackD - lanes.Offset(LaneId.Free, at);
                 maxLateral = MathF.Max(maxLateral, MathF.Abs(off));
+                ran0 += frame[0].SpeedMetersPerSecond * dt;
+                ran1 += frame[1].SpeedMetersPerSecond * dt;
+                int at1 = (int)lanes.StationOf(frame[1].TrackS);
+                chaseLateral = MathF.Max(chaseLateral,
+                    MathF.Abs(frame[1].TrackD - lanes.Offset(LaneId.Free, at1)));
             }
         }
 
@@ -161,7 +171,9 @@ static class Program
         Console.WriteLine($"  plans  {drivers[0].JointPlansApplied} applied");
         if (cars > 1)
             Console.WriteLine($"  gap    {firstGap,8:F1} m start   {lastGap,8:F1} m end" +
-                $"   {bestGap,8:F1} m closest   {maxLateral,5:F1} m off line   {(passed ? "PASSED" : "held")}");
+                $"   {bestGap,8:F1} m closest   {maxLateral,5:F1} m lead off line   {chaseLateral,5:F1} m chase off line   {(passed ? "PASSED" : "held")}");
+        if (cars > 1)
+            Console.WriteLine($"  ran    {ran0,8:F1} m lead   {ran1,8:F1} m chase   {ran0 - ran1,7:F1} m apart");
         Report("planning steps", planning);
         Report("other steps   ", between);
 

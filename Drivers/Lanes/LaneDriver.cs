@@ -427,7 +427,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// Diagnostics: ticks spent in each part of the online decision, and how
-    /// often it ran them â€?shape, join, drive, brake, and the rest. Read by the
+    /// often it ran them â€”shape, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
     public readonly long[] JointParts = new long[17];
@@ -447,12 +447,20 @@ public sealed class LaneDriver : IDriverController
     /// <summary>How often the free plan could not be drawn and the pace-limited one was run.</summary>
     public static long FollowFallbacks;
 
+    /// <summary>How often the driver chose a side to hold against a challenger behind it.</summary>
+    public static long DefenceCommits;
+
+    /// <summary>How many plans were made while a chosen side was still being held.</summary>
+    public static long DefenceHeld;
+
     public static void ResetJointCounts()
     {
         JointTraffic.Joins = 0;
         JointTraffic.RivalVisits = 0;
         JointTraffic.BodyTests = 0;
         FollowFallbacks = 0;
+        DefenceCommits = 0;
+        DefenceHeld = 0;
     }
     public bool ApproximateJointBraking { get; init; } = true;
     public bool JointProtect { get; init; } = true;
@@ -1984,17 +1992,15 @@ public sealed class LaneDriver : IDriverController
         int? startStation = liveStart ? from : null;
         float now = context.RaceTimeSeconds;
         string? challenger = JointProtect && !traffic.HasClosingLeader ? traffic.Challenger(car.SpeedMetersPerSecond) : null;
-        if (challenger is not null)
+        if (challenger is not null && (challenger != _jointChallenger || now > _jointDefenceUntil))
         {
-            if (challenger != _jointChallenger || now > _jointDefenceUntil)
-            {
-                _jointChallenger = challenger;
-                _jointDefenceOrigin = relative;
-                _jointDefenceSide = 0;
-            }
-            _jointDefenceUntil = now + 1f;
+            _jointChallenger = challenger;
+            _jointDefenceOrigin = relative;
+            _jointDefenceSide = 0;
         }
         bool committed = _jointDefenceSide != 0 && now <= _jointDefenceUntil && !traffic.HasAlongside;
+        if (committed)
+            DefenceHeld++;
         const float defenceLookahead = 0.65f;
         var road = context.Track;
         float startDistance = car.TrackS - from * _lanes.Spacing;
@@ -2102,7 +2108,11 @@ public sealed class LaneDriver : IDriverController
         var (endY, endSlope, endSpeed) = search.StateOf(table, choice.Row, choice.State);
         float firstY = search.StateOf(table, firstChoice.Row, firstChoice.State).Y;
         if (challenger is not null && _jointDefenceSide == 0 && MathF.Abs(firstY - _jointDefenceOrigin) >= 0.8f)
+        {
             _jointDefenceSide = Math.Sign(firstY - _jointDefenceOrigin);
+            _jointDefenceUntil = now + 1f;
+            DefenceCommits++;
+        }
         if (search.Follow(table, choice.Row, endY, endSlope, endSpeed, maxStations: 40) is { } continuation &&
             continuation.Offset.Length > 1)
         {
