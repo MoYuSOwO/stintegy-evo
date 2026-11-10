@@ -433,6 +433,20 @@ public sealed class LaneDriver : IDriverController
     public readonly long[] JointParts = new long[17];
     public long[] JointTicks => _jointSearch?.OnlineTicks ?? [];
     public long[] JointCalls => _jointSearch?.OnlineCalls ?? [];
+
+    /// <summary>Joins, rival visits, body tests and pace-limited fallbacks since the last reset.</summary>
+    public long[] JointCounts => [JointTraffic.Joins, JointTraffic.RivalVisits, JointTraffic.BodyTests, FollowFallbacks];
+
+    /// <summary>How often the free plan could not be drawn and the pace-limited one was run.</summary>
+    public static long FollowFallbacks;
+
+    public static void ResetJointCounts()
+    {
+        JointTraffic.Joins = 0;
+        JointTraffic.RivalVisits = 0;
+        JointTraffic.BodyTests = 0;
+        FollowFallbacks = 0;
+    }
     public bool ApproximateJointBraking { get; init; } = true;
     public bool JointProtect { get; init; } = true;
     /// <summary>Evaluate a second traffic-aware edge during close encounters.</summary>
@@ -1992,8 +2006,9 @@ public sealed class LaneDriver : IDriverController
             startStation: startStation, beam: firstBeam);
         Part(2);
         var following = (Seconds: float.PositiveInfinity, Row: -1, State: -1);
-        if (traffic.HasClosingLeader || expand)
+        if (expand)
         {
+            // The lookahead branches on the pace-limited first move as well.
             following = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
                 cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
                 pace: FollowingPace, startStation: startStation, beam: paceBeam);
@@ -2046,13 +2061,19 @@ public sealed class LaneDriver : IDriverController
         }
         else
         {
-            bool followFirst = following.Seconds < attack.Seconds;
-            choice = followFirst ? following : attack;
-            materialized = MaterializeFirst(choice, followFirst);
+            choice = attack;
+            materialized = MaterializeFirst(attack, false);
             if (materialized is null)
             {
-                choice = followFirst ? attack : following;
-                materialized = MaterializeFirst(choice, !followFirst);
+                // The pace-limited search is a fallback, not a rival: it is the
+                // same search under a speed cap, so it can never come back
+                // quicker. Only pay for it when the free plan cannot be drawn.
+                FollowFallbacks++;
+                following = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
+                    cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
+                    pace: FollowingPace, startStation: startStation);
+                choice = following;
+                materialized = MaterializeFirst(following, true);
             }
             firstChoice = choice;
         }

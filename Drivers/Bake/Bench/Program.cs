@@ -159,6 +159,15 @@ static class Program
             double ms = ticks[p] * 1000.0 / Stopwatch.Frequency;
             Console.WriteLine($"  {Parts[p],-6} {ms,9:F1} ms total   {calls[p],9:N0} calls   {ms / plans:F3} ms/plan");
         }
+
+        long[] counts = drivers[0].JointCounts;
+        Console.WriteLine("  --- inside the join ---");
+        Console.WriteLine($"  joins        {counts[0],12:N0}   {counts[0] / plans,10:F1} per plan");
+        Console.WriteLine($"  rival visits {counts[1],12:N0}   {counts[1] / plans,10:F1} per plan" +
+            $"   {(counts[0] == 0 ? 0 : (double)counts[1] / counts[0]):F2} per join");
+        Console.WriteLine($"  body tests   {counts[2],12:N0}   {counts[2] / plans,10:F1} per plan" +
+            $"   {(counts[1] == 0 ? 0 : (double)counts[2] / counts[1]):F3} per visit");
+        Console.WriteLine($"  follow fallback {counts[3],9:N0}   {counts[3] / plans,10:F1} per plan");
     }
 
     static void Report(string label, List<double> list)

@@ -9,6 +9,11 @@ internal readonly struct JointTraffic
 {
     private const float ForecastSeconds = 1.5f;
     private const float NearbyDistance = 25f;
+
+    /// <summary>Bench counters: how much of the join cost is geometry.</summary>
+    public static long Joins;
+    public static long RivalVisits;
+    public static long BodyTests;
     private readonly Rival[] _rivals;
     private readonly float _ownOffset;
     private readonly DriverTrackView _track;
@@ -261,8 +266,10 @@ internal readonly struct JointTraffic
     public bool OverlapsBetween(float from, float fromOffset, float fromTime, float to, float toOffset, float toTime,
         ref float proximity)
     {
+        Joins++;
         foreach (Rival rival in _rivals)
         {
+            RivalVisits++;
             float low = 0f, high = 1f;
             float alongMargin = rival.HalfLength + 1.25f;
             float lateralMargin = rival.HalfWidth + 0.85f;
@@ -301,6 +308,7 @@ internal readonly struct JointTraffic
     private bool BodiesOverlap(Rival rival, float u, float from, float fromOffset, float fromTime,
         float to, float toOffset, float toTime)
     {
+        BodyTests++;
         float time = fromTime + u * (toTime - fromTime);
         var road = _track.Sample(_own.TrackS + from + u * (to - from));
         var otherRoad = _track.Sample(_own.TrackS + rival.Position(time));
