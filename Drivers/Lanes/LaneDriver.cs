@@ -271,6 +271,10 @@ public sealed class LaneDriver : IDriverController
 
     // A line drawn from outside, and the next drawing waiting for the car.
     private DrawnLine? _drawn;
+    /// <summary>The speed the cars around allow where the car is, m/s; infinite with none in the way.</summary>
+    private float _trafficCap = float.PositiveInfinity;
+
+    /// <summary>The speed the cars around allow where the car is, m/s; infinite with none in the way.</summary>
     private readonly float[] _pendingLine = new float[DrawnLine.PointMeters.Length];
     private float _pendingBrake = 1f;
     private bool _pendingDraw;
@@ -427,7 +431,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// Diagnostics: ticks spent in each part of the online decision, and how
-    /// often it ran them —shape, join, drive, brake, and the rest. Read by the
+    /// often it ran them 鈥攕hape, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
     public readonly long[] JointParts = new long[17];
@@ -596,7 +600,7 @@ public sealed class LaneDriver : IDriverController
     /// make, and every switch ran a metre and more off it. Eased in and out,
     /// as Simplix's Runaround moves its offset, the move is an S the car can
     /// drive: at 0.6 a second of travel it takes the first half second to get
-    /// up to speed, and with lanes eight metres apart asks some 10 m/s² of
+    /// up to speed, and with lanes eight metres apart asks some 10 m/s虏 of
     /// the tyres at its sharpest.
     /// </summary>
     public float RangeAcceleration { get; init; } = 1.2f;
@@ -945,14 +949,23 @@ public sealed class LaneDriver : IDriverController
         float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
         target *= speedScale;
         ahead *= speedScale;
-        // Where the plan is under the corners and the braking into them, it
-        // is only what the motor was reckoned to reach: a tow or a push
-        // carries the car past it, and that is no reason to lift. There the
-        // corners' ceiling is the speed wanted.
+        // Where the plan's speed is only what the motor was reckoned to
+        // reach -- nothing but the motor set it -- the corners' ceiling is
+        // the speed wanted. A tow, a push or a faster line carries the car
+        // past the motor's estimate, and that is no reason to lift. Not
+        // where a car is what the plan is holding to: there the speed is the
+        // one the car ahead allows, and the corner beyond it is not what to
+        // ask for.
         float look = station + MathF.Max(0f, speed) * preview / _lanes.Spacing;
         bool jointSpeed = _jointTable is not null && Drawing &&
             float.IsFinite(_drawn!.SpeedAt((int)MathF.Floor(look)));
-        if (!jointSpeed && FlatOutAt(look))
+        int at = (int)MathF.Round(station);
+        float flatOut = speedScale * LaneSpeedPlanner.FlatOutSpeed(
+            _envelope, speed, here, MathF.Max(0f, speed) * preview, FactorFor(at, Range, Side),
+            RoadAt(at, car.TrackD), _planShares);
+        bool motorOnly = jointSpeed ? target >= flatOut - FlatOutToleranceMps : FlatOutAt(look);
+        bool trafficHolds = target >= _trafficCap - FlatOutToleranceMps;
+        if (motorOnly && !trafficHolds)
         {
             float roof = speedScale * CeilingAt(look);
             if (target < roof - FlatOutToleranceMps)
@@ -992,18 +1005,6 @@ public sealed class LaneDriver : IDriverController
         // track, a plan falling away up a power-limited climb looked like
         // one to slow for, and the car lifted on it. The traction cap below
         // still holds the pedal to what the tyres have.
-        int at = (int)MathF.Round(station);
-        float flatOut = speedScale * LaneSpeedPlanner.FlatOutSpeed(
-            _envelope, speed, here, MathF.Max(0f, speed) * preview, FactorFor(at, Range, Side),
-            RoadAt(at, car.TrackD), _planShares);
-        // Flat out is the pedal on the floor, not the drive the car reported
-        // a step ago: the motor gives what it has this step. Asked for the
-        // last step's figure, the step a push began asked for the power
-        // without it, a tenth less, and the throttle trace dipped.
-        // Held under the plan by a cap (a car in the way, a spin to come back
-        // from), the speed is tracked, not floored: stopped and waiting, the
-        // flat-out speed a step ahead is next to nothing, and every step that
-        // read as the plan being flat out the pedal went to the floor.
         bool capped = target < uncapped - 0.1f;
         if (!jointSpeed && !capped && target >= flatOut - FlatOutToleranceMps)
             accel = MathF.Max(accel, _maxDrive);
@@ -1168,7 +1169,7 @@ public sealed class LaneDriver : IDriverController
 
 
     /// <summary>
-    /// The braking the plan has over the turn-in to come, m/s², not the foot's
+    /// The braking the plan has over the turn-in to come, m/s虏, not the foot's
     /// now: into a slow corner the brakes come off half their pressure in a
     /// tenth of a second as the wheel goes on, and read off the pedal at the
     /// turn-in the hands took the car for one still braking hard, read the
@@ -1324,7 +1325,7 @@ public sealed class LaneDriver : IDriverController
     // A wheel on less than this is off the tarmac.
     private const float OnTarmac = 0.95f;
 
-    // What the tyres give at a crawl on ground of full grip, m/s², and the
+    // What the tyres give at a crawl on ground of full grip, m/s虏, and the
     // share of it a driver coming back off it asks: all of it to turn, half
     // of it on the pedals, since one wheel on grass and one on tarmac pull
     // the car round under power or brakes.
@@ -1525,7 +1526,7 @@ public sealed class LaneDriver : IDriverController
     private float TractionHere(int station) =>
         _familiar is { } familiar ? familiar.Traction[familiar.SegmentOf(station * _lanes.Spacing)] : 1f;
 
-    // How fast a foot presses the pedals down, m/s² a second.
+    // How fast a foot presses the pedals down, m/s虏 a second.
     private const float FootBrakeRate = 600f, FootThrottleRate = 240f;
 
     // Braking harder than this is a braking zone, so the throttle after it is a corner's exit.
@@ -1854,7 +1855,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// How the move under way carries the line sideways at a station, after
-    /// the given seconds: its lateral speed and acceleration in m/s and m/s²,
+    /// the given seconds: its lateral speed and acceleration in m/s and m/s虏,
     /// positive along the track's normal, which is to the right (LaneSet). The blend's lanes are drawn where the blend
     /// stands, so a move's own sideways motion is in none of them: without
     /// it the car was steered to a line that stood still and found it gone,
@@ -1901,6 +1902,7 @@ public sealed class LaneDriver : IDriverController
         ReadGrip(car, roadGrip, dt, start, n + 1, sides);
         PlanTheWake(car, context.Frame, context.CarSnapshotIndex, start, n + 1, sides);
         Part(6);
+        _trafficCap = float.PositiveInfinity;
         if (_jointTable is { } table)
             PlanJointMove(context, table.Data);
         Part(7);
@@ -1961,6 +1963,9 @@ public sealed class LaneDriver : IDriverController
         }
         var traffic = JointTraffic.Capture(context, _lanes);
         Part(0);
+        // What the cars around allow here: the pedal reads it to tell a plan
+        // the motor set from one a car in the way set.
+        _trafficCap = traffic.Pace(0f, car.TrackD, 0f, car.SpeedMetersPerSecond);
         float y = table.Places[row].MinBy(offset => MathF.Abs(offset - relative));
         if (car.SpeedMetersPerSecond < 10f)
             return;
@@ -2738,7 +2743,7 @@ public sealed class LaneDriver : IDriverController
     /// tightens the tyres are asked for that much more than the road under
     /// the car alone would ask. Planned on the road under the car, the plan
     /// had nothing over for it: braking into Zandvoort's Scheivlak on the
-    /// left lane the plan left the tyres 26 m/s² of corner and the hands
+    /// left lane the plan left the tyres 26 m/s虏 of corner and the hands
     /// asked 32, the wheel stood at the axles' limit, and the car ran wide
     /// and off. Out of a corner the road ahead is straighter and nothing
     /// changes; reading the speed a moment ahead instead, as the pedals
