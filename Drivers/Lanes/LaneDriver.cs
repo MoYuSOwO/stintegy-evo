@@ -255,6 +255,8 @@ public sealed class LaneDriver : IDriverController
     private float[] _aheadSpeed = [];
 
     private float[] _windowSpeed = [];
+    private float _windowTerminal;
+    private int _madeStations;
     // The window's corners and the braking into them alone, on a drawn line: what the car may not pass.
     private float[] _windowCeiling = [];
     private float[] _windowCurvature = [];
@@ -390,6 +392,24 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>The baked lane speed at a station, for probes.</summary>
     public float LaneSpeed(int lane, int station) => _speed[lane][station];
+
+    /// <summary>The window's terminal speed and start, for probes.</summary>
+    public float WindowTerminal => _windowTerminal;
+
+    /// <summary>The window's own speed at a station, before the blend's ceiling, for probes.</summary>
+    public float WindowSpeed(int station)
+    {
+        int start = (int)MathF.Floor(station);
+        if (start < _windowStart || start > _windowStart + _windowSpeed.Length - 2)
+            return float.NaN;
+        float local = station - _windowStart;
+        int i0 = Math.Clamp((int)MathF.Floor(local), 0, _windowSpeed.Length - 2);
+        float u = Math.Clamp(local - i0, 0f, 1f);
+        return _windowSpeed[i0] + (_windowSpeed[i0 + 1] - _windowSpeed[i0]) * u;
+    }
+
+    /// <summary>The blend's ceiling at a station, for probes.</summary>
+    public float WindowCeiling(int station) => BlendTargetCeiling(station);
 
     /// <summary>The speed the pedal is given at a station, for probes.</summary>
     public float PlannedSpeed(int station) => SpeedAt(station);
@@ -2165,6 +2185,7 @@ public sealed class LaneDriver : IDriverController
             continuation.Offset.Length > 1)
         {
             int prefix = plan.Offset.Length;
+            _madeStations = prefix;
             Array.Resize(ref plan.Offset, prefix + continuation.Offset.Length - 1);
             Array.Resize(ref plan.Speed, plan.Offset.Length);
             Array.Copy(continuation.Offset, 1, plan.Offset, prefix, continuation.Offset.Length - 1);
@@ -2619,6 +2640,7 @@ public sealed class LaneDriver : IDriverController
         LeadCurvatures(_windowCurvature, _leadGuess, n);
 
         int end = _lanes.Wrap(start + n - 1);
+        _windowTerminal = Drawing ? _speed[0][end] : 0f;
         // Ending on the slowest of the lanes the blend lies between: the
         // free one, the middle one and the side lane it is towards.
         // A drawn line ends back on the racing line, and so does its window.
@@ -2651,9 +2673,12 @@ public sealed class LaneDriver : IDriverController
         _windowStillSpeed = _windowSpeed[0];
         if (Gains.FollowLaneMoves && PlanMoveWindow(start))
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowSpeed);
-        // A made line's own speeds, where it has them, are the plan.
+        // A made line's own speeds, where the joint plan set them, are the
+        // plan. Not the solo continuation's: those are the baked lap's, and
+        // the bake pins the lap closed at a fixed speed at the seam, which is
+        // an artefact of closing it and not a speed the car can be asked for.
         if (Drawing)
-            for (int k = 0; k < n; k++)
+            for (int k = 0; k < n && k < _madeStations; k++)
             {
                 float made = _drawn!.SpeedAt(start + k);
                 if (!float.IsNaN(made))

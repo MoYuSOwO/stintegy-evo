@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -122,7 +122,7 @@ static class Program
         StreamWriter? trail = cars > 1
             ? new StreamWriter(Path.Combine(Path.GetTempPath(), "bench-trail.csv"))
             : null;
-        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,laneV");
+        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,laneV,winV,winC,winEnd");
         bool passed = false;
         for (int step = 0; step < steps; step++)
         {
@@ -160,7 +160,7 @@ static class Program
                     int probe = (int)lanes.StationOf(frame[0].TrackS) + 10;
                     trail.WriteLine($"{step},{frame[0].TrackS:F2},{frame[0].TrackD:F3},{frame[0].SpeedMetersPerSecond:F2}," +
                         $"{frame[1].TrackS:F2},{frame[1].TrackD:F3},{frame[1].SpeedMetersPerSecond:F2}," +
-                        $"{drivers[0].DrawnOffset(probe):F3},{drivers[0].DrawnSpeed(probe):F2},{drivers[0].PlannedSpeed(probe):F2},{drivers[0].LaneSpeed(0, lanes.Wrap(probe)):F2}");
+                        $"{drivers[0].DrawnOffset(probe):F3},{drivers[0].DrawnSpeed(probe):F2},{drivers[0].PlannedSpeed(probe):F2},{drivers[0].LaneSpeed(0, lanes.Wrap(probe)):F2},{drivers[0].WindowSpeed(probe):F2},{drivers[0].WindowCeiling(probe):F2},{drivers[0].WindowTerminal:F2}");
                 }
                 int at1 = (int)lanes.StationOf(frame[1].TrackS);
                 chaseLateral = MathF.Max(chaseLateral,
