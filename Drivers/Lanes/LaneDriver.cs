@@ -397,6 +397,24 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The joint plan's own offset ten stations in, before it is blended, for probes.</summary>
     public float RawPlanOffset => _rawPlanOffset;
 
+    /// <summary>How far the last plan moved the drawn line twenty metres on, and at most over two hundred, for probes.</summary>
+    public (float At, float Most) PlanShift => (_planShift, _planShiftMax);
+
+    private float _planShift, _planShiftMax;
+    private (bool Challenged, int Side, bool NoPlan) _probeDefence;
+    private LineSearch.Rejects _probeRejects;
+
+    /// <summary>Why the last search that found no plan turned its ways down: too fast at the start, unable to brake, blocked, timed, for probes.</summary>
+    public (int TooFast, int CannotBrake, int Blocked, int Timed) RejectProbe =>
+        (_probeRejects.TooFastHere, _probeRejects.CannotBrake, _probeRejects.Blocked, _probeRejects.Timed);
+
+    /// <summary>At the last plan: whether a faster car behind was being defended against, the side committed to, and whether no plan was found, for probes.</summary>
+    public (bool Challenged, int Side, bool NoPlan) DefenceProbe => _probeDefence;
+    private int _planShiftWhere, _planHeld;
+
+    /// <summary>Where the last plan moved the drawn line most, stations on; how long its own joint part was; and whether its first move ended on the place and heading the plan before went through, for probes.</summary>
+    public (int Where, int Made, int Held) PlanShiftDetail => (_planShiftWhere, _madeStations, _planHeld);
+
     /// <summary>The curvature the steering reads at a station, for probes.</summary>
     public float SteeringCurvature(float station) => BlendedCurvature(station);
 
@@ -417,6 +435,7 @@ public sealed class LaneDriver : IDriverController
         int row = Array.BinarySearch(_jointTable.Data.Starts, station);
         return row < 0 ? ~row - 1 : row;
     }
+
 
     /// <summary>The places a joint-table row holds, for probes.</summary>
     public float[] PlacesAt(int row) =>
@@ -493,7 +512,7 @@ public sealed class LaneDriver : IDriverController
     /// whole of the wag; sixty leaves 0.0004, and past sixty it stops
     /// improving, because by then the plan is no longer what moves.
     /// </summary>
-    private const int BlendStations = 60;
+    public int BlendStations { get; init; }
 
     /// <summary>What a metre a second squared of sideways change asks of the tyres, seconds per metre.</summary>
     private const float LineChangeSeconds = 0.0001f;
@@ -643,6 +662,72 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>Whether the driver's ratings shape the drive. Off only for probes of the plan itself.</summary>
     public bool UseAbilities { get; init; } = true;
+
+    /// <summary>
+    /// What the joint search is handed in place of the live inputs, for
+    /// probes: the bake's own, one at a time, to find which of them makes the
+    /// online plan leave the line the table was baked to.
+    /// </summary>
+    [Flags]
+    public enum JointProbes
+    {
+        None = 0,
+        /// <summary>The bake's default shares instead of the rung's.</summary>
+        BakeShares = 1,
+        /// <summary>A factor of one at every station instead of the car's notes and the wake.</summary>
+        BakeFactor = 2,
+        /// <summary>The bake's fresh, warm-tyre envelope instead of the live one.</summary>
+        BakeEnvelope = 4,
+        /// <summary>No charge for changing the line's bend.</summary>
+        NoLineChange = 8,
+    }
+
+    /// <summary>Which of the joint search's live inputs are replaced by the bake's, for probes.</summary>
+    public JointProbes JointProbe { get; init; }
+
+    /// <summary>
+    /// What staying on the line the last plan chose is worth, seconds: a
+    /// hysteresis on the decision, not a charge on the line. From a node of
+    /// the table's own lap, with nobody about, half of the online search's
+    /// choices were a different node from the table's, at the same time to
+    /// the millisecond: many lines round a lap are that close, and which of
+    /// them wins changed with the car's position from one plan to the next.
+    /// Any way better by more than this still wins at once, however far it
+    /// moves the line; only ways it cannot tell apart are settled by what was
+    /// planned before.
+    /// </summary>
+    public float JointHoldSeconds { get; init; } = 0.02f;
+
+    // The place and heading the last joint plan went through on each row.
+    private readonly Dictionary<int, int> _jointPath = [];
+
+    // The rows and states the last plan's rest of the way went through.
+    private List<(int Row, int State)> _jointRest = [];
+
+    /// <summary>How many plans found no way the search allowed and were planned again without the side held, or as if slower.</summary>
+    public int JointRescues { get; private set; }
+
+    /// <summary>How many plans carried the last plan's rest of the way on rather than re-reading it from the table.</summary>
+    public int JointRestsReused { get; private set; }
+
+    private LaneEnvelope? _bakeEnvelope;
+
+    // The envelope the joint table was baked on: fresh tyres in their window,
+    // the default rung, the circuit's asphalt.
+    private LaneEnvelope BakeEnvelope()
+    {
+        if (_bakeEnvelope is { } baked)
+            return baked;
+        var state = new CarState();
+        var tyres = (ICarTires)_model;
+        tyres.InstallFreshTires(state);
+        tyres.WarmTires(state, 95f, 95f);
+        (_model as ICarStores)?.Fill(state, PowertrainState.Filled(0.8f));
+        LaneEnvelope envelope = LaneEnvelope.From(state, _carEnvelope, _feel, CarStrategy.Default)
+            .WithRoadGrip(_trackView?.AsphaltGrip ?? 1f);
+        _bakeEnvelope = envelope;
+        return envelope;
+    }
 
     public LanePerformance? Performance => _performance;
 
@@ -2111,17 +2196,22 @@ public sealed class LaneDriver : IDriverController
         // starts at the measured state is continuous by construction.
         float y = relative;
 
+        LaneShares jointShares = JointProbe.HasFlag(JointProbes.BakeShares) ? new LaneShares() : _planShares;
+        LaneEnvelope jointEnvelope = JointProbe.HasFlag(JointProbes.BakeEnvelope) ? BakeEnvelope() : _envelope;
         if (_jointSearch is null)
         {
             _jointTable?.Geometry?.Validate(_lanes, table);
-            _jointSearch = new LineSearch(_lanes, _envelope, _planShares, k => _corner[0][_lanes.Wrap(k)],
+            Func<int, float> factor = JointProbe.HasFlag(JointProbes.BakeFactor)
+                ? _ => 1f
+                : k => _corner[0][_lanes.Wrap(k)];
+            _jointSearch = new LineSearch(_lanes, jointEnvelope, jointShares, factor,
                 (k, offset) => RoadAt(k, offset))
             {
                 ExactSpeeds = true, ApproximateOnlineBraking = ApproximateJointBraking, Geometry = _jointTable?.Geometry
             };
         }
         LineSearch search = _jointSearch;
-        search.UpdateOnlineEnvelope(_envelope, _planShares);
+        search.UpdateOnlineEnvelope(jointEnvelope, jointShares);
         Part(1);
         int from = station;
         Vector2 tangent = _lanes.Position(from + 1, _lanes.Offset(LaneId.Free, from + 1)) -
@@ -2143,6 +2233,7 @@ public sealed class LaneDriver : IDriverController
         bool committed = _jointDefenceSide != 0 && now <= _jointDefenceUntil && !traffic.HasAlongside;
         if (committed)
             DefenceHeld++;
+        _probeDefence = (challenger is not null, committed ? _jointDefenceSide : 0, false);
         const float defenceLookahead = 0.65f;
         var road = context.Track;
         float startDistance = car.TrackS - from * _lanes.Spacing;
@@ -2160,14 +2251,33 @@ public sealed class LaneDriver : IDriverController
         float drivenPrefixLower = 0f;
         LineSearch.StepCost? overlap = OverlapCost;
         Func<int, int, float, float>? terminal = traffic.HasRivals ? TerminalCost : null;
+        // Committed to a side: no move back across by more than a little.
+        // Read against the car alone, a car already past the last place on
+        // its side -- the places are two to four metres apart, and the free
+        // line they hang from swings across the road -- had no move left at
+        // all, and the plan was none; so the furthest place on that side is
+        // always allowed, being as far to that side as the car can go.
         Func<LineSearch.Move, bool>? allowed = committed
-            ? move => _jointDefenceSide * (move.ToY - relative) >= -0.6f
+            ? move =>
+            {
+                if (_jointDefenceSide * (move.ToY - relative) >= -0.6f)
+                    return true;
+                List<float> places = table.Places[move.ToRow];
+                float furthest = _jointDefenceSide > 0 ? places[^1] : places[0];
+                return move.ToY == furthest;
+            }
             : null;
+        // The places and headings the last plan's rest goes through within a
+        // move of here: the search may end on any of them.
+        var held = new List<(int Row, int Node)>();
+        foreach (var (heldRow, heldState) in _jointRest)
+            if (heldRow > row && heldRow <= row + search.Spans[^1])
+                held.Add((heldRow, heldState / table.Bins));
         var firstBeam = expand ? new (float Seconds, int Row, int State)[2] : null;
         var paceBeam = expand ? new (float Seconds, int Row, int State)[2] : null;
         var attack = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
             cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
-            startStation: startStation, beam: firstBeam, terminal: terminal);
+            startStation: startStation, beam: firstBeam, terminal: terminal, preference: Prefer, alsoEnd: held);
         Part(2);
         var following = (Seconds: float.PositiveInfinity, Row: -1, State: -1);
         if (expand)
@@ -2175,7 +2285,7 @@ public sealed class LaneDriver : IDriverController
             // The lookahead branches on the pace-limited first move as well.
             following = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
                 cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
-                pace: FollowingPace, startStation: startStation, beam: paceBeam);
+                pace: FollowingPace, startStation: startStation, beam: paceBeam, preference: Prefer, alsoEnd: held);
         }
         Part(3);
         var choice = attack;
@@ -2235,15 +2345,39 @@ public sealed class LaneDriver : IDriverController
                 FollowFallbacks++;
                 following = search.DecideOnline(table, row, y, slope, car.SpeedMetersPerSecond,
                     cost: overlap, minimumEndStation: horizon, nonnegativeCost: true, allowedMove: allowed,
-                    pace: FollowingPace, startStation: startStation);
+                    pace: FollowingPace, startStation: startStation, preference: Prefer, alsoEnd: held);
                 choice = following;
                 materialized = MaterializeFirst(following, true);
             }
             firstChoice = choice;
         }
         Part(4);
+        if (materialized is null)
+        {
+            // Nothing the search allows: the side held, or a car faster than
+            // any way on from here. Left with no plan the car drove the old
+            // line on at the old speeds, too fast for it, off the road. Drop
+            // the side first; then plan as if a little slower, so the car is
+            // given a line it can still make and the pedal brakes for it.
+            JointRescues++;
+            foreach (float share in (ReadOnlySpan<float>)[1f, 0.9f, 0.8f, 0.7f, 0.6f])
+            {
+                float slower = car.SpeedMetersPerSecond * share;
+                var rescue = search.DecideOnline(table, row, y, slope, slower,
+                    cost: overlap, minimumEndStation: horizon, nonnegativeCost: true,
+                    startStation: startStation, preference: Prefer, alsoEnd: held);
+                if (MaterializeFirst(rescue, false, startSpeed: slower) is not { } rescued)
+                    continue;
+                (choice, firstChoice, materialized) = (rescue, rescue, rescued);
+                break;
+            }
+        }
         if (materialized is not { } plan)
+        {
+            _probeDefence = _probeDefence with { NoPlan = true };
+            _probeRejects = search.LastRejects;
             return;
+        }
 
         // Draw the solo continuation after the traffic-aware speed plan.
         var (endY, endSlope, endSpeed) = search.StateOf(table, choice.Row, choice.State);
@@ -2254,8 +2388,44 @@ public sealed class LaneDriver : IDriverController
             _jointDefenceUntil = now + 1f;
             DefenceCommits++;
         }
-        if (search.Follow(table, choice.Row, endY, endSlope, endSpeed,
-                maxStations: (int)(WindowMeters / _lanes.Spacing)) is { } continuation &&
+        // The rest of the way. Where this plan's joint part ends on a place
+        // and heading the last plan's rest went through, the rest is the last
+        // plan's own, carried on by the table past its end; elsewhere it is
+        // the table's from where the joint part ends. Re-read from the table
+        // every plan, the rest followed whatever the table leads a car at
+        // that speed bin on, and half a metre a second either way of a bin
+        // led it several metres elsewhere two hundred metres on, every plan:
+        // that was most of what moved the line. Now the line ahead changes
+        // only when the plan itself decides on another place.
+        int bins = table.Bins;
+        int window = (int)(WindowMeters / _lanes.Spacing);
+        int reuse = _jointRest.FindIndex(node => node.Row == choice.Row && node.State / bins == choice.State / bins);
+        _planHeld = _jointRest.Count == 0 ? -1 : reuse >= 0 ? 1 : 0;
+        List<(int Row, int State)>? ahead;
+        if (reuse >= 0)
+        {
+            ahead = _jointRest.GetRange(reuse, _jointRest.Count - reuse);
+            ahead[0] = (choice.Row, choice.State);
+            var (lastRow, lastState) = ahead[^1];
+            int covered = table.Starts[lastRow] - table.Starts[choice.Row];
+            if (covered < window && lastRow < table.LapEnd &&
+                search.FollowPath(table, lastRow, lastState, window - covered) is { Count: > 1 } more)
+                ahead.AddRange(more.GetRange(1, more.Count - 1));
+            JointRestsReused++;
+        }
+        else
+            ahead = choice.Row < table.LapEnd ? search.FollowPath(table, choice.Row, choice.State, window) : null;
+        _jointRest = ahead ?? [];
+        // The places and headings this plan goes through, row by row: the
+        // next plan holds to them unless another way is worth more than the
+        // hold. The speed bin is left out, so a car a little faster or slower
+        // than the plan is still on the same line.
+        _jointPath.Clear();
+        void Mark(int markRow, int markState) => _jointPath[markRow % table.LapEnd] = markState / bins;
+        Mark(firstChoice.Row, firstChoice.State);
+        foreach (var (aheadRow, aheadState) in _jointRest)
+            Mark(aheadRow, aheadState);
+        if (ahead is { Count: > 1 } && search.DrawPath(table, ahead) is { } continuation &&
             continuation.Offset.Length > 1)
         {
             int prefix = plan.Offset.Length;
@@ -2271,6 +2441,23 @@ public sealed class LaneDriver : IDriverController
             Array.Fill(plan.Speed, plan.Speed[prefix - 1], prefix, plan.Speed.Length - prefix);
         }
         _rawPlanOffset = plan.Offset.Length > 10 ? plan.Offset[10] : 0f;
+        // How far this plan moves the line already drawn, before the blend:
+        // twenty metres on, and at most over the next two hundred.
+        _planShift = 0f;
+        _planShiftMax = 0f;
+        _planShiftWhere = -1;
+        if (Drawing)
+            for (int k = 0; k < Math.Min(plan.Offset.Length, 100); k++)
+            {
+                float was = _drawn!.At(from + k);
+                if (!float.IsFinite(was))
+                    continue;
+                float moved = plan.Offset[k] - was;
+                if (k == 10)
+                    _planShift = moved;
+                if (MathF.Abs(moved) > _planShiftMax)
+                    (_planShiftMax, _planShiftWhere) = (MathF.Abs(moved), k);
+            }
         // Steering reads a centred chord. Continue the start tangent behind
         // the car instead of snapping that chord to the free line.
         const int behind = CurvatureChordStations + 1;
@@ -2287,8 +2474,8 @@ public sealed class LaneDriver : IDriverController
         JointPlansApplied++;
 
         (float[] Offset, float[] Speed)? MaterializeFirst((float Seconds, int Row, int State) candidate, bool follow,
-            float[]? nextOffsets = null) =>
-            candidate.Row < 0 ? null : search.MaterializeMove(table, row, y, slope, car.SpeedMetersPerSecond,
+            float[]? nextOffsets = null, float? startSpeed = null) =>
+            candidate.Row < 0 ? null : search.MaterializeMove(table, row, y, slope, startSpeed ?? car.SpeedMetersPerSecond,
                 candidate.Row, candidate.State, overlap, follow ? FollowingPace : null, startStation, nextOffsets);
 
         void Extend((float Seconds, int Row, int State) first, bool follow, float prefixLower,
@@ -2304,7 +2491,8 @@ public sealed class LaneDriver : IDriverController
                 return;
             if (first.Row == table.LapEnd)
             {
-                float terminalScore = arrivalTime + edgeCost + table.Value[first.Row][first.State];
+                float terminalScore = arrivalTime + edgeCost + table.Value[first.Row][first.State] -
+                    Prefer(first.Row, first.State / table.Bins);
                 if (terminalScore < best || terminalScore == best && order < bestOrder)
                     (best, bestOrder, firstChoice, choice, materialized) = (terminalScore, order, first, first, head);
                 return;
@@ -2319,7 +2507,7 @@ public sealed class LaneDriver : IDriverController
             SetEdge(nextFrom, arrivalTime, nextSpeed, nextOffset, nextPosition, nextDistance);
             var next = search.DecideOnline(table, first.Row, nextY, nextSlope, nextSpeed, cost: overlap,
                 minimumEndStation: endAt, nonnegativeCost: true, allowedMove: allowed, pace: follow ? FollowingPace : null,
-                maximumTotal: best, prefixTimeLower: MathF.Max(prefixLower, drivenPrefixLower));
+                maximumTotal: best, prefixTimeLower: MathF.Max(prefixLower, drivenPrefixLower), preference: Prefer);
             if (MaterializeNext(next) is not { } tail)
                 return;
             SetEdge(from, 0f, car.SpeedMetersPerSecond, car.TrackD, car.Position, 0f);
@@ -2329,7 +2517,8 @@ public sealed class LaneDriver : IDriverController
             SetEdge(nextFrom, arrivalTime, nextSpeed, nextOffset, nextPosition, nextDistance);
             if (MaterializeNext(next) is not { } checkedTail)
                 return;
-            float score = arrivalTime + firstCost + edgeCost + table.Value[next.Row][next.State];
+            float score = arrivalTime + firstCost + edgeCost + table.Value[next.Row][next.State] -
+                Prefer(next.Row, next.State / table.Bins);
             if (score > best || score == best && order >= bestOrder)
                 return;
             int prefix = joined.Offset.Length;
@@ -2360,6 +2549,12 @@ public sealed class LaneDriver : IDriverController
         // What the baked rest of the way is worth once the cars around are
         // taken into account: the free line's seconds, plus what being past a
         // rival is worth or still being behind one costs.
+        // What ending on a place and heading the last plan went through is
+        // favoured by: the hold, so two ways the same time apart do not trade
+        // places every plan.
+        float Prefer(int atRow, int node) =>
+            _jointPath.TryGetValue(atRow % table.LapEnd, out int held) && held == node ? JointHoldSeconds : 0f;
+
         float TerminalCost(int atRow, int atState, float seconds)
         {
             var (endY, _, _) = search.StateOf(table, atRow, atState);
@@ -2405,7 +2600,7 @@ public sealed class LaneDriver : IDriverController
                 // and the search is free to find a better one.
                 {
                     float line = search.OffsetOn(move, k);
-                    if (Drawing)
+                    if (Drawing && !JointProbe.HasFlag(JointProbes.NoLineChange))
                     {
                         float previous = _drawn!.At(edgeFrom + k);
                         if (float.IsFinite(previous))

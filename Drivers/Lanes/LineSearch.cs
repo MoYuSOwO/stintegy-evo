@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace StintegyEVO.Drivers.Lanes;
@@ -92,6 +92,16 @@ internal sealed partial class LineSearch
 
     /// <summary>Told each row's number as the bake finishes it, from the end back.</summary>
     public Action<int>? Baked { get; init; }
+
+
+    /// <summary>Why the last <see cref="DecideOnline"/> turned its ways down, for probes.</summary>
+    public struct Rejects
+    {
+        public int TooFastHere, CannotBrake, Blocked, Timed;
+    }
+
+    /// <summary>Why the last <see cref="DecideOnline"/> turned its ways down, for probes.</summary>
+    public Rejects LastRejects;
 
     /// <summary>The tail of a state no way runs on from (<see cref="Table.Tail"/>).</summary>
     public const ushort NoTail = ushort.MaxValue;
@@ -1015,7 +1025,31 @@ internal sealed partial class LineSearch
     }
 
     /// <summary>The way the baked table leads from a place, heading and speed on a row to the end.</summary>
-    public Way? Follow(Table table, int row, float y, float slope, float speed, int maxStations = int.MaxValue)
+    public Way? Follow(Table table, int row, float y, float slope, float speed, int maxStations = int.MaxValue) =>
+        FollowPath(table, row, y, slope, speed, maxStations) is { } path
+            ? Draw(table, path, table.Value[path[0].Row][path[0].State])
+            : null;
+
+    /// <summary>The rows and states the baked table leads through from a place, heading and speed on a row.</summary>
+    public List<(int Row, int State)>? FollowPath(Table table, int row, int state, int maxStations = int.MaxValue)
+    {
+        if (table.Value[row][state] == float.PositiveInfinity)
+            return null;
+        var path = new List<(int Row, int State)> { (row, state) };
+        while (path[^1].Row < table.LapEnd && table.Starts[path[^1].Row] - table.Starts[row] < maxStations)
+        {
+            (int r, int s0) = path[^1];
+            path.Add((table.NextRow[r][s0], table.Next[r][s0]));
+        }
+        return path;
+    }
+
+    /// <summary>The way along rows and states already chosen, drawn as <see cref="Follow"/> draws the table's own.</summary>
+    public Way DrawPath(Table table, List<(int Row, int State)> path) =>
+        Draw(table, path, table.Value[path[0].Row][path[0].State]);
+
+    /// <summary>The rows and states the baked table leads through from a place, heading and speed on a row.</summary>
+    public List<(int Row, int State)>? FollowPath(Table table, int row, float y, float slope, float speed, int maxStations = int.MaxValue)
     {
         int slopes = Slopes.Length;
         int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
@@ -1032,7 +1066,7 @@ internal sealed partial class LineSearch
             (int r, int s0) = path[^1];
             path.Add((table.NextRow[r][s0], table.Next[r][s0]));
         }
-        return Draw(table, path, total);
+        return path;
     }
 
     private Way Draw(Table table, List<(int Row, int State)> path, float total)
@@ -1151,10 +1185,12 @@ internal sealed partial class LineSearch
         int minimumEndStation = 0, bool nonnegativeCost = false, Func<Move, bool>? allowedMove = null,
         PaceLimit? pace = null, int? startStation = null, (float Seconds, int Row, int State)[]? beam = null,
         Func<int, int, float, float>? terminal = null,
-        float maximumTotal = float.PositiveInfinity, float prefixTimeLower = 0f)
+        float maximumTotal = float.PositiveInfinity, float prefixTimeLower = 0f,
+        Func<int, int, float>? preference = null, IReadOnlyList<(int Row, int Node)>? alsoEnd = null)
     {
         long mark = System.Diagnostics.Stopwatch.GetTimestamp();
         DecideCalls++;
+        LastRejects = default;
         void Lap(int part)
         {
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1183,9 +1219,26 @@ internal sealed partial class LineSearch
         var liveLimits = new Dictionary<(int Station, float Corner), float>();
         bool bounded = float.IsFinite(maximumTotal);
         Vector2 startPosition = bounded ? _lanes.Position(st0, _lanes.Offset(LaneId.Free, st0) + y) : default;
-        for (int sp = 0; sp < Spans.Length; sp++)
+        // The spans, and then any place and heading asked for by row whatever
+        // its distance: the way a plan already chose runs through rows a span
+        // from here rarely lands on, so without them the search could not end
+        // on it and had to choose afresh every time.
+        int extraEnds = alsoEnd?.Count ?? 0;
+        for (int e = 0; e < Spans.Length + extraEnds; e++)
         {
-            int r1 = row + Spans[sp];
+            int sp, r1, only = -1;
+            if (e < Spans.Length)
+                (sp, r1) = (e, row + Spans[e]);
+            else
+            {
+                (r1, only) = alsoEnd![e - Spans.Length];
+                int reach = r1 - row;
+                if (reach <= 0 || reach > Spans[^1] || Array.IndexOf(Spans, reach) >= 0)
+                    continue;
+                sp = 0;
+                while (Spans[sp] < reach)
+                    sp++;
+            }
             if (r1 > table.Rows || table.Starts[r1] < minimumEndStation)
                 continue;
             int stations = table.Starts[r1] - st0;
@@ -1198,7 +1251,7 @@ internal sealed partial class LineSearch
             ushort[] tailThere = table.Tail[r1];
             for (int j = 0; j < there.Count; j++)
             {
-                if (MathF.Abs(there[j] - y) > MaxLateralJumps[sp] + 1e-3f)
+                if (MathF.Abs(there[j] - y) > MaxLateralJumps[sp] + 1e-3f || only >= 0 && j != only / slopes)
                     continue;
                 float chordTime = 0f;
                 if (bounded)
@@ -1209,12 +1262,18 @@ internal sealed partial class LineSearch
                 }
                 for (int hj = 0; hj < slopes; hj++)
                 {
+                    if (only >= 0 && hj != only % slopes)
+                        continue;
                     LoopIterations++;
                     var move = new Move(row, r1, stations, y, slope, there[j], Slopes[hj]);
                     if (allowedMove is not null && !allowedMove(move))
                         continue;
                     int node = j * slopes + hj;
                     int target = node * bins;
+                    // What ending on this place and heading is favoured by,
+                    // seconds: taken off the rest of the way, so every bound
+                    // below that reads the rest reads it favoured too.
+                    float favour = preference?.Invoke(r1, node) ?? 0f;
                     Table.ArrivalGroup[]? groups = table.OnlineArrivals?[r1][node];
                     if (groups is null)
                     {
@@ -1228,10 +1287,10 @@ internal sealed partial class LineSearch
                     if (groupCount == 0)
                         continue;
                     if (bounded && groups is not null &&
-                        AllAboveBound(groups, chordTime, prefixTimeLower, maximumTotal))
+                        AllAboveBound(groups, chordTime, prefixTimeLower, maximumTotal + favour))
                         continue;
                     mark = System.Diagnostics.Stopwatch.GetTimestamp();
-                    bool shaped = Geometry is not null && fixedStart
+                    bool shaped = Geometry is not null && fixedStart && only < 0
                         ? ReadFixedShape(edge, st0, row, place, heading, sp, j, hj, y, slope, there[j], Slopes[hj])
                         : Shape(edge, st0, row, y, slope, there[j], Slopes[hj], null);
                     Lap(0);
@@ -1257,9 +1316,9 @@ internal sealed partial class LineSearch
                     for (int group = 0; group < groupCount; group++)
                     {
                         if (bounded && groups is not null && CannotImprove(prefixTimeLower, lengthTime,
-                            groups[group].MinimumRest, maximumTotal))
+                            groups[group].MinimumRest - favour, maximumTotal))
                             continue;
-                        if (canPruneJoins && prefixBound + groups![group].MinimumRest >= Bound())
+                        if (canPruneJoins && prefixBound + groups![group].MinimumRest - favour >= Bound())
                             continue;
                         ushort way = groups is null ? ways[group] : groups[group].Tail;
                         int[]? arrivals = groups?[group].Bins;
@@ -1274,7 +1333,10 @@ internal sealed partial class LineSearch
                             Join(edge, st0, way == NoTail ? null : table.Tails[r1][way], split, liveLimits);
                         Lap(1);
                         if (speed > edge.Limit[0] + 1e-3f)
+                        {
+                            LastRejects.TooFastHere++;
                             continue;
+                        }
                         int n = edge.N;
                         if (ExactSpeeds)
                         {
@@ -1310,7 +1372,7 @@ internal sealed partial class LineSearch
                                 float v1 = MinSpeed + b1 * SpeedStep;
                                 if (v1 > driven[n] || v1 > edge.Limit[n])
                                     break;
-                                float rest = later[target + b1];
+                                float rest = later[target + b1] - favour;
                                 if (rest == float.PositiveInfinity || tailThere[target + b1] != way)
                                     continue;
                                 if (bounded && CannotImprove(prefixTimeLower, lengthTime, rest, maximumTotal))
@@ -1336,7 +1398,11 @@ internal sealed partial class LineSearch
                                     BrakeBack(edge, v1, back);
                                 Lap(3);
                                 if (back[0] < speed)
+                                {
+                                    LastRejects.CannotBrake++;
                                     continue;
+                                }
+                                LastRejects.Timed++;
                                 float seconds = bent;
                                 for (int k = 0; k < n; k++)
                                     seconds += edge.Step[k] / MathF.Max(1f, 0.5f * (MathF.Min(driven[k], back[k]) + MathF.Min(driven[k + 1], back[k + 1])));
@@ -1350,6 +1416,8 @@ internal sealed partial class LineSearch
                                 if (cost is not null)
                                 {
                                     seconds += cost(move, v1, driven, back);
+                                    if (float.IsPositiveInfinity(seconds))
+                                        LastRejects.Blocked++;
                                     Lap(5);
                                 }
                                 if (seconds + rest < bestSeconds)
@@ -1364,7 +1432,7 @@ internal sealed partial class LineSearch
                         int bHigh = Math.Min(bins - 1, (int)MathF.Floor((vHigh - MinSpeed) / SpeedStep));
                         for (int b1 = bLow; b1 <= bHigh; b1++)
                         {
-                            float rest = later[target + b1];
+                            float rest = later[target + b1] - favour;
                             if (rest == float.PositiveInfinity || tailThere[target + b1] != way)
                                 continue;
                             float v1 = MinSpeed + b1 * SpeedStep;
@@ -1732,11 +1800,17 @@ internal sealed partial class LineSearch
     private bool ShapeGeometry(Edge edge, int st0, int row, float y0, float h0, float y1, float h1, Func<int, float, bool>? allowed)
     {
         int n = edge.N;
+        // A step may start nearer the edge than the margin -- the car is
+        // where it is -- but may not go any nearer than it starts. Held to
+        // the margin from its first station, a car a metre from the kerb had
+        // no step at all, and no plan, every time it ran out to an exit.
+        (float lo0, float hi0) = Room(st0);
+        float leeway = MathF.Max(0f, MathF.Max(lo0 - y0, y0 - hi0));
         for (int k = 0; k <= n; k++)
         {
             float y = Hermite(y0, h0, y1, h1, n, k);
             (float lo, float hi) = Room(st0 + k);
-            if (y < lo - 1e-3f || y > hi + 1e-3f)
+            if (y < lo - leeway - 1e-3f || y > hi + leeway + 1e-3f)
                 return false;
             // A row crossed between the ends still holds the line to what it allows.
             if (allowed is not null && k > 0 && k < n && k % RowStations == 0 && !allowed(row + k / RowStations, y))

@@ -35,7 +35,7 @@ static class Program
         string circuitId = args.Length > 0 ? args[0] : "official:silverstone";
         string tablePath = args.Length > 1 ? args[1] : throw new ArgumentException("Give the joint table to plan on.");
         string? geometryPath = args.Length > 2 && args[2] != "-" ? args[2] : null;
-        int cars = args.Length > 3 ? int.Parse(args[3]) : 1;
+        int cars = args.Length > 3 && args[3] != "consistency" ? int.Parse(args[3]) : 1;
         bool lookahead = args.Length > 4 && args[4] == "look";
         int steps = args.Length > 5 ? int.Parse(args[5]) : 600;
         bool exactBraking = args.Length > 6 && args[6].Contains("exact");
@@ -49,6 +49,13 @@ static class Program
 
         LaneTrackFile file = LaneTrackFile.ForCircuit(circuitId, track);
         LaneSet lanes = file.LanesFor(track);
+        if (args.Length > 3 && args[3] == "consistency")
+        {
+            ICar probeCar = StockCar.Build(DevelopmentTyres.SuperId);
+            foreach (var (exactSpeeds, approximate) in new[] { (false, false), (true, false), (true, true) })
+                Console.Write(JointLineBake.Consistency(circuitId, track, lanes, probeCar, tablePath, exactSpeeds, approximate));
+            return;
+        }
         Console.WriteLine($"lanes      {lanes.Count} stations, {lanes.Spacing:F3} m apart, current={file.IsCurrent}");
         float widest = 0f;
         for (int i = 0; i < lanes.Count; i++)
@@ -79,6 +86,13 @@ static class Program
                 AttackBonus = attackBonus,
                 BlockedSeconds = blockedSeconds,
                 DefenceSeconds = defenceSeconds,
+                UseAbilities = !Has(args, "noabil"),
+                JointHoldSeconds = Flag(args, "hold", 0.02f),
+                BlendStations = (int)Flag(args, "blend", 0f),
+                JointProbe = (Has(args, "bshares") ? LaneDriver.JointProbes.BakeShares : 0) |
+                             (Has(args, "bfactor") ? LaneDriver.JointProbes.BakeFactor : 0) |
+                             (Has(args, "benv") ? LaneDriver.JointProbes.BakeEnvelope : 0) |
+                             (Has(args, "noline") ? LaneDriver.JointProbes.NoLineChange : 0),
             };
             driver.UseJointTable(table);
             drivers[i] = driver;
@@ -122,9 +136,9 @@ static class Program
         StreamWriter? trail = true
             ? new StreamWriter(Path.Combine(Path.GetTempPath(), "bench-trail.csv"))
             : null;
-        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,curv,rawD,roadK,err,applied");
+        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,curv,rawD,roadK,err,applied,shift,shiftMax,where,made,held,chal1,side1,noplan1,app1,steer1,accel1,speed1,curv1,drawn1,fast1,brake1,block1,timed1");
         bool passed = false;
-        bool applied0 = false;
+        bool applied0 = false, applied1 = false;
         for (int step = 0; step < steps; step++)
         {
             for (int i = 0; i < cars; i++)
@@ -140,6 +154,8 @@ static class Program
                 bool applied = drivers[i].JointPlansApplied > before;
                 if (i == 0)
                     applied0 = applied;
+                if (i == 1)
+                    applied1 = applied;
                 (applied ? planning : between).Add(ms);
                 proxies[i].Next = input;
             }
@@ -171,7 +187,12 @@ static class Program
                 trail.WriteLine($"{step},{frame[0].TrackS:F2},{frame[0].TrackD:F3},{frame[0].SpeedMetersPerSecond:F2}," +
                     $"{s1:F2},{d1:F3},{v1:F2}," +
                     $"{drivers[0].DrawnOffset(probe):F3},{drivers[0].DrawnSpeed(probe):F2},{drivers[0].PlannedSpeed(probe):F2},{drivers[0].SteeringCurvature(probe):F6},{drivers[0].RawPlanOffset:F3},{drivers[0].RoadCurvature(at):F6}," +
-                    $"{frame[0].TrackD - lanes.Offset(LaneId.Free, at):F3},{(applied0 ? 1 : 0)}");
+                    $"{frame[0].TrackD - lanes.Offset(LaneId.Free, at):F3},{(applied0 ? 1 : 0)},{drivers[0].PlanShift.At:F3},{drivers[0].PlanShift.Most:F3},{drivers[0].PlanShiftDetail.Where},{drivers[0].PlanShiftDetail.Made},{drivers[0].PlanShiftDetail.Held}," +
+                    (cars > 1
+                        ? $"{(drivers[1].DefenceProbe.Challenged ? 1 : 0)},{drivers[1].DefenceProbe.Side},{(drivers[1].DefenceProbe.NoPlan ? 1 : 0)},{(applied1 ? 1 : 0)}," +
+                          $"{proxies[1].Next.SteerAngleRadians:F3},{proxies[1].Next.DesiredAccel:F2},{frame[1].SpeedMetersPerSecond:F2},{drivers[1].SteeringCurvature((int)lanes.StationOf(frame[1].TrackS)):F5},{drivers[1].DrawnOffset((int)lanes.StationOf(frame[1].TrackS) + 10):F2}," +
+                          $"{drivers[1].RejectProbe.TooFast},{drivers[1].RejectProbe.CannotBrake},{drivers[1].RejectProbe.Blocked},{drivers[1].RejectProbe.Timed}"
+                        : "0,0,0,0,0,0,0,0,0,0,0,0,0"));
             }
         }
 
@@ -218,6 +239,7 @@ static class Program
                 Console.Write($"  y {places[p],6:F2} -> {(float.IsFinite(profile[p]) ? profile[p].ToString("F3") : "  inf"),8}");
             Console.WriteLine();
         }
+
 
         Console.WriteLine("  --- PlanAhead and the joint plan ---");
         long[] sectionTicks = drivers[0].JointParts;
@@ -268,6 +290,9 @@ static class Program
         Console.WriteLine($"  terms        {terms[0],12:N0}   {terms[0] / plans,10:F1} per plan" +
             $"   {terms[1]:N0} found a rival ({(terms[0] == 0 ? 0 : 100.0 * terms[1] / terms[0]):F1}%)");
     }
+
+    static bool Has(string[] args, string name) =>
+        args.Length > 6 && Array.IndexOf(args[6].Split(','), name) >= 0;
 
     static float Flag(string[] args, string name, float fallback)
     {

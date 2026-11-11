@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 
@@ -283,7 +283,15 @@ internal readonly struct JointTraffic
             float side = rival.Side(toTime) - toOffset;
             float fromAlong = rival.Position(fromTime) - from;
             float fromSide = rival.Side(fromTime) - fromOffset;
-            if (Intersects(fromAlong, along, alongMargin + 2f, ref low, ref high) &&
+            // A car wholly behind is the one that has to keep off: it is
+            // forecast at its own pace, which does not brake for the bend the
+            // car ahead brakes for, so as a hard limit it ran through every
+            // way the car ahead had and left it none -- no plan, an old line
+            // and a car too fast for it, off the road. It is still charged
+            // for how close it comes.
+            bool behind = rival.Gap < -rival.HalfLength;
+            if (!behind &&
+                Intersects(fromAlong, along, alongMargin + 2f, ref low, ref high) &&
                 Intersects(fromSide, side, lateralMargin + 2f, ref low, ref high) &&
                 (BodiesOverlap(rival, low, from, fromOffset, fromTime, to, toOffset, toTime) ||
                  BodiesOverlap(rival, 0.5f * (low + high), from, fromOffset, fromTime, to, toOffset, toTime) ||
@@ -303,7 +311,7 @@ internal readonly struct JointTraffic
             float dirty = Math.Clamp(1f - gap / 2f, 0f, 1f);
             float tow = Math.Clamp(1f - gap / 30f, 0f, 1f);
             float across = Math.Clamp(1f - sideClearance / 2.5f, 0f, 1f);
-            proximity = MathF.Max(proximity, (dirty - TowShare * tow) * across);
+            proximity = MathF.Max(proximity, (dirty - (behind ? 0f : TowShare * tow)) * across);
         }
         return false;
 
