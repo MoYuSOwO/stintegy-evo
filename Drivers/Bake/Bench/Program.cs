@@ -44,6 +44,14 @@ static class Program
         float blockedSeconds = Flag(args, "blocked", 1f);
         float defenceSeconds = Flag(args, "defence", 1f);
         var watch = Stopwatch.StartNew();
+        // What was actually loaded: Debug and Release write the driver to the
+        // same folder, so the build configuration asked for is not proof.
+        foreach (var assembly in new[] { typeof(LaneDriver).Assembly, typeof(TrackData).Assembly, typeof(Program).Assembly })
+        {
+            var debuggable = (DebuggableAttribute?)Attribute.GetCustomAttribute(assembly, typeof(DebuggableAttribute));
+            bool optimised = debuggable is null || !debuggable.IsJITOptimizerDisabled;
+            Console.WriteLine($"assembly   {assembly.GetName().Name,-20} {(optimised ? "optimised (Release)" : "NOT OPTIMISED (Debug)")}  {assembly.Location}");
+        }
         TrackData track = GameMods.Registry.Circuits.Get(circuitId).Track;
         Console.WriteLine($"track      {circuitId}  {track.LengthMeters:F0} m   ({watch.ElapsedMilliseconds} ms)");
 

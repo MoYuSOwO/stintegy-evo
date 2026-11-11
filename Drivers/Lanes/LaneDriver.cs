@@ -2234,7 +2234,8 @@ public sealed class LaneDriver : IDriverController
         search.UpdateOnlineEnvelope(jointEnvelope, jointShares);
         if (JointProbe.HasFlag(JointProbes.FrozenLine))
         {
-            if (!_frozenDrawn && search.Follow(table, 0, 0f, 0f, 71f) is { } lap)
+            if (!_frozenDrawn && search.ClosedLap(table, 71f) is var (lapY, lapSlope, lapSpeed) &&
+                search.Follow(table, 0, lapY, lapSlope, lapSpeed) is { } lap)
             {
                 int count = _lanes.Count;
                 _drawn!.Set(0, lap.Offset.AsSpan(0, count).ToArray(), lap.Speed.AsSpan(0, count).ToArray(), 1f);

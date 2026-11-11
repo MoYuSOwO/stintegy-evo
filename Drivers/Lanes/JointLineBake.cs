@@ -45,7 +45,8 @@ public static class JointLineBake
         }) { ExactSpeeds = exactSpeeds, ApproximateOnlineBraking = approximateBraking };
 
         // The lap the table drives from the seam at the speed it closes at.
-        var seed = search.FollowPath(table, 0, 0f, 0f, 71f) ?? throw new InvalidOperationException("No lap from the seam.");
+        var (lapY, lapSlope, lapSpeed) = search.ClosedLap(table, 71f) ?? throw new InvalidOperationException("No closed lap.");
+        var seed = search.FollowPath(table, 0, lapY, lapSlope, lapSpeed) ?? throw new InvalidOperationException("No lap from the seam.");
         var path = new List<(int Row, int State)>();
         foreach (var node in seed)
             if (node.Row < table.LapEnd)
@@ -102,6 +103,102 @@ public static class JointLineBake
         }
         foreach (var list in bySpeed.Values)
             list.Sort();
+
+        // Where the five places sit across the road: how far the outermost
+        // one on each side stops short of the edge the car may use, and how
+        // far apart neighbours are.
+        {
+            var shortInside = new List<float>();
+            var shortLeft = new List<float>();
+            var shortRight = new List<float>();
+            var gaps = new List<float>();
+            var widest = new List<float>();
+            int uneven = 0, rowsSeen = 0;
+            for (int r = 0; r < table.LapEnd; r++)
+            {
+                int st = table.Starts[r];
+                List<float> places = table.Places[r];
+                if (places.Count < 2)
+                    continue;
+                rowsSeen++;
+                float free = lanes.Offset(LaneId.Free, st);
+                float edge = lanes.HalfWidth(st) - LaneSet.EdgeMarginMeters;
+                // Offsets are from the free line; the road's usable span from it is [-(edge + free), edge - free].
+                float lo = -(edge + free), hi = edge - free;
+                float left = places[0] - lo, right = hi - places[^1];
+                shortLeft.Add(left);
+                shortRight.Add(right);
+                // The inside of the bend here, by the free line's own curvature.
+                float k = LaneSet.Curvature(
+                    lanes.Position(st - 3, lanes.Offset(LaneId.Free, st - 3)),
+                    lanes.Position(st, free),
+                    lanes.Position(st + 3, lanes.Offset(LaneId.Free, st + 3)));
+                if (MathF.Abs(k) > 0.008f)
+                    shortInside.Add(k > 0f ? left : right);
+                float most = 0f, least = float.PositiveInfinity;
+                for (int p = 1; p < places.Count; p++)
+                {
+                    float g = places[p] - places[p - 1];
+                    gaps.Add(g);
+                    most = MathF.Max(most, g);
+                    least = MathF.Min(least, g);
+                }
+                widest.Add(hi - lo);
+                if (most > 1.6f * least)
+                    uneven++;
+            }
+            foreach (var v in new[] { shortInside, shortLeft, shortRight, gaps, widest })
+                v.Sort();
+            report.AppendLine($"    places: {rowsSeen} rows; usable width p50 {P(widest, .5):F1} m");
+            report.AppendLine($"      outermost place short of the usable edge: left p50 {P(shortLeft, .5):F2} max {P(shortLeft, 1):F2} m, " +
+                $"right p50 {P(shortRight, .5):F2} max {P(shortRight, 1):F2} m");
+            report.AppendLine($"      at the inside of a bend (R < 125 m, {shortInside.Count} rows): p50 {P(shortInside, .5):F2}  p90 {P(shortInside, .9):F2}  max {P(shortInside, 1):F2} m");
+            report.AppendLine($"      neighbour spacing p05 {P(gaps, .05):F1}  p50 {P(gaps, .5):F1}  p95 {P(gaps, .95):F1} m; " +
+                $"{100.0 * uneven / Math.Max(1, rowsSeen):F0} % of rows have one gap over 1.6x another");
+        }
+
+        // The table's lap and the free line, timed by the speed plan the car
+        // drives on (PlanAhead), corner by corner: if the free line is the
+        // quicker anywhere, the table is not finding the quickest line there.
+        if (search.Follow(table, 0, lapY, lapSlope, lapSpeed) is { } lapWay)
+        {
+            int count = lanes.Count;
+            // Two laps, timed on the second: the speed plan reads the line
+            // past either end as the free line, and a lap that starts off it
+            // -- the seam is wherever the table's lap closes -- would be read
+            // as a step there and charged for a corner that is not on it.
+            float[] tableLine = new float[2 * count + 1];
+            float[] freeLine = new float[2 * count + 1];
+            for (int k = 0; k < tableLine.Length; k++)
+                tableLine[k] = lapWay.Offset[k % count];
+            var (_, _, tableSpeed) = search.Plan(0, tableLine, lapSpeed, lapSpeed);
+            var (_, _, freeSpeed) = search.Plan(0, freeLine, lapSpeed, lapSpeed);
+            float Seconds(float[] line, float[] speed, int a, int b)
+            {
+                float s = 0f;
+                for (int k = a; k < b; k++)
+                    s += (lanes.Position(k + 1, lanes.Offset(LaneId.Free, k + 1) + line[k + 1]) -
+                          lanes.Position(k, lanes.Offset(LaneId.Free, k) + line[k])).Length() /
+                         MathF.Max(1f, 0.5f * (speed[k] + speed[k + 1]));
+                return s;
+            }
+            float tableSeconds = Seconds(tableLine, tableSpeed, count, 2 * count);
+            float freeSeconds = Seconds(freeLine, freeSpeed, count, 2 * count);
+            report.AppendLine($"    lap by the driver's speed plan (second of two): table's line {tableSeconds:F3} s, free line {freeSeconds:F3} s");
+            const int stretch = 50;
+            var worse = new List<(int Station, float Lost, float Most)>();
+            for (int from = 0; from + stretch <= count; from += stretch)
+            {
+                int a = count + from, b = count + from + stretch;
+                float lost = Seconds(tableLine, tableSpeed, a, b) - Seconds(freeLine, freeSpeed, a, b);
+                float most = 0f;
+                for (int k = a; k < b; k++)
+                    most = MathF.Max(most, MathF.Abs(tableLine[k]));
+                worse.Add((from, lost, most));
+            }
+            foreach (var (station, lost, most) in worse.OrderByDescending(w => w.Lost).Take(8))
+                report.AppendLine($"      stations {station,4}-{station + stretch,4}: table's line {lost * 1000f,6:F0} ms slower than the free line, up to {most:F1} m off it");
+        }
         report.AppendLine($"  exact={exactSpeeds} approximateBraking={approximateBraking}: {tried} nodes on the table's lap");
         report.AppendLine($"    online picks the table's next node   {100.0 * same / Math.Max(1, tried):F1} %   same row {100.0 * sameEnd / Math.Max(1, tried):F1} %");
         report.AppendLine($"    |online end place - table's|  p50 {P(placeMiss, .5):F2}  p95 {P(placeMiss, .95):F2}  max {P(placeMiss, 1):F2} m");
@@ -138,17 +235,19 @@ public static class JointLineBake
         LineSearch.Table table = search.BakeLap(0, null, seamSpeed: seamSpeed);
         for (int pass = 0; pass < 2; pass++)
             table = search.BakeLap(0, table);
-        LineSearch.Way way = search.Follow(table, 0, 0f, 0f, seamSpeed, maxStations: lanes.Count)
-            ?? throw new InvalidOperationException($"No closed lap at seam speed {seamSpeed} m/s.");
-        // The line has to close; the speed it closes at is the value function's
-        // to say once the bake is periodic, and it need not be the one the
-        // first pass pinned.
-        if (way.Offset[0] != way.Offset[^1])
-            throw new InvalidOperationException("The exported lap does not close at the seam.");
-        Console.WriteLine($"five: seam {way.Speed[0]:F2} -> {way.Speed[^1]:F2} m/s");
-
         Directory.CreateDirectory(folder);
         string stem = Path.Combine(folder, "five");
+        // Kept before the lap is drawn: a lap that will not close is a
+        // question about the table, and the table is what answers it.
+        table.Save(stem + ".table", TableKey(circuitId));
+        var (startY, startSlope, startSpeed) = search.ClosedLap(table, seamSpeed)
+            ?? throw new InvalidOperationException("The table's lap does not come back to where it starts.");
+        LineSearch.Way way = search.Follow(table, 0, startY, startSlope, startSpeed, maxStations: lanes.Count)
+            ?? throw new InvalidOperationException($"No closed lap at seam speed {seamSpeed} m/s.");
+        if (way.Offset[0] != way.Offset[^1])
+            throw new InvalidOperationException("The exported lap does not close at the seam.");
+        Console.WriteLine($"five: seam {startY:F2} m, {way.Speed[0]:F2} -> {way.Speed[^1]:F2} m/s");
+
         float seconds = 0f;
         using (var writer = new StreamWriter(stem + ".csv"))
         {
@@ -165,7 +264,6 @@ public static class JointLineBake
                 previous = point;
             }
         }
-        table.Save(stem + ".table", TableKey(circuitId));
         return seconds;
     }
 }

@@ -744,7 +744,8 @@ internal sealed partial class LineSearch
         {
             int seamBin = (int)MathF.Round((seam - MinSpeed) / SpeedStep);
             int straight = Array.IndexOf(Slopes, 0f);
-            terminal = (y, h, v) => y == 0f && h == straight &&
+            float seamY = SeamPlace(EvenPlaces(starts[rows]));
+            terminal = (y, h, v) => MathF.Abs(y - seamY) < 1e-3f && h == straight &&
                 (int)MathF.Round((v - MinSpeed) / SpeedStep) == seamBin ? 0f : float.PositiveInfinity;
         }
         else if (next is not null)
@@ -775,10 +776,15 @@ internal sealed partial class LineSearch
         var places = new List<float>[rows + 1];
         for (int r = 0; r <= rows; r++)
         {
+            if (lap)
+            {
+                places[r] = EvenPlaces(starts[r]);
+                continue;
+            }
             (float lo, float hi) = Room(starts[r]);
             var ys = new List<float>();
             for (float y = MathF.Ceiling(lo / LateralStep) * LateralStep; y <= hi + 1e-3f; y += LateralStep)
-                if (r < rows || lap || MathF.Abs(y) < 1e-3f)
+                if (r < rows || MathF.Abs(y) < 1e-3f)
                     ys.Add(y);
             places[r] = LateralPlaces(ys);
         }
@@ -1747,6 +1753,59 @@ internal sealed partial class LineSearch
             selected[nearest] = 0f;
         }
         return selected;
+    }
+
+    /// <summary>How many places a lap's row has across the road.</summary>
+    public const int LapPlaces = 5;
+
+    /// <summary>
+    /// A lap's places on the row at a station: the road the car may use,
+    /// edge to edge, in equal parts. Snapped to a metre and made to include
+    /// the free line, the outermost place stopped up to a metre short of the
+    /// edge -- at a hairpin's apex, two metres from the kerb -- and one row
+    /// in four had one gap half as wide again as another.
+    /// </summary>
+    public List<float> EvenPlaces(int station)
+    {
+        (float lo, float hi) = Room(station);
+        var places = new List<float>(LapPlaces);
+        for (int i = 0; i < LapPlaces; i++)
+            places.Add(lo + (hi - lo) * i / (LapPlaces - 1));
+        return places;
+    }
+
+    /// <summary>The place a lap starts and ends on: the one nearest the free line.</summary>
+    public static float SeamPlace(List<float> places) => places.MinBy(MathF.Abs);
+
+    /// <summary>
+    /// The lap the table drives that ends where it starts: from the seam
+    /// place, straight, at <paramref name="speed"/>, the table's way round is
+    /// followed and started again from where it ends, until a lap comes back
+    /// to the place and heading it began on. With the free line one of the
+    /// places the table's lap came back to it on its own; with the places
+    /// spread edge to edge there is no such place to start on, and the lap
+    /// has to be found. Null if none closes within a few laps.
+    /// </summary>
+    public (float Y, float Slope, float Speed)? ClosedLap(Table table, float speed)
+    {
+        int slopes = Slopes.Length, bins = table.Bins;
+        int place = table.Places[0].IndexOf(SeamPlace(table.Places[0]));
+        int heading = Array.IndexOf(Slopes, 0f);
+        int state = (place * slopes + heading) * bins + Math.Clamp((int)MathF.Round((speed - MinSpeed) / SpeedStep), 0, bins - 1);
+        for (int lap = 0; lap < 16; lap++)
+        {
+            if (table.Value[0][state] == float.PositiveInfinity)
+                return null;
+            int row = 0, at = state;
+            while (row < table.LapEnd)
+                (row, at) = (table.NextRow[row][at], table.Next[row][at]);
+            if (row != table.LapEnd)
+                return null;
+            if (at / bins == state / bins)
+                return StateOf(table, 0, state);
+            state = at;
+        }
+        return null;
     }
 
     // Where across the road a car may be, as metres from the racing line.
