@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace StintegyEVO.Drivers.Lanes;
@@ -86,7 +86,7 @@ internal sealed partial class LineSearch
     /// braking back from the speed it ends at, full drive on from the one it
     /// starts at, station by station on the corner the lead plans each on,
     /// and the seconds summed station by station; not as a steady change of
-    /// v². A table baked so is for drawing a way, not for deciding on.
+    /// v虏. A table baked so is for drawing a way, not for deciding on.
     /// </summary>
     public bool ExactSpeeds { get; init; }
 
@@ -340,6 +340,12 @@ internal sealed partial class LineSearch
     {
         public required int From { get; init; }
         public required int Rows { get; init; }
+
+        /// <summary>Where the lap ends: the row whose station is the start of the next lap. <see cref="Rows"/> carries on past it, repeating the first rows, so a search that runs off the end comes round to the start.</summary>
+        public int LapRows { get; init; } = -1;
+
+        /// <summary>The row the lap ends at: <see cref="LapRows"/> where the table carries on past it, else the last row.</summary>
+        public int LapEnd => LapRows > 0 ? LapRows : Rows;
         /// <summary>The station each row is at, unwrapped; a lap's last row is its first.</summary>
         public required int[] Starts { get; init; }
         public required List<float>[] Places { get; init; }
@@ -360,6 +366,66 @@ internal sealed partial class LineSearch
 
         /// <summary>Every step out of every place and heading on a row, as the bake charged it.</summary>
         public required Steps[] Steps { get; init; }
+
+        /// <summary>
+        /// The same table with its first rows repeated past the end, their
+        /// stations carried on by a lap. A search that runs off the last row
+        /// then comes round to the start instead of stopping there, which is
+        /// what it did at the lap's seam: near the finish every step but the
+        /// shortest was skipped and the plan covered six stations where it
+        /// covers eighty anywhere else, so the speed wanted fell away and the
+        /// car braked for a corner that was not there.
+        /// </summary>
+        public Table Wrapped(int extra, int lapStations)
+        {
+            if (extra <= 0 || Rows <= extra)
+                return this;
+            int rows = Rows, grown = rows + extra;
+            var starts = new int[grown + 1];
+            Array.Copy(Starts, starts, rows + 1);
+            for (int k = 1; k <= extra; k++)
+                starts[rows + k] = Starts[k] + lapStations;
+            var places = new List<float>[grown + 1];
+            var value = new float[grown + 1][];
+            var nextRow = new int[grown + 1][];
+            var next = new int[grown + 1][];
+            var tail = new ushort[grown + 1][];
+            var tails = new List<float[]>[grown + 1];
+            var steps = new Steps[grown + 1];
+            Array.Copy(Places, places, rows + 1);
+            Array.Copy(Value, value, rows + 1);
+            Array.Copy(NextRow, nextRow, rows + 1);
+            Array.Copy(Next, next, rows + 1);
+            Array.Copy(Tail, tail, rows + 1);
+            Array.Copy(Tails, tails, rows + 1);
+            Array.Copy(Steps, steps, Math.Min(rows, Steps.Length));
+            // The lap's last row is its first, so the way on from it is the
+            // way on from row one, carried round by a lap: the stations keep
+            // rising and a walk down the table still ends.
+            if (NextRow[0].Length > 0)
+            {
+                var onward = new int[NextRow[0].Length];
+                for (int s = 0; s < onward.Length; s++)
+                    onward[s] = Math.Min(NextRow[0][s] + rows, grown);
+                nextRow[rows] = onward;
+                next[rows] = Next[0];
+            }
+            for (int k = 1; k <= extra; k++)
+            {
+                places[rows + k] = Places[k];
+                value[rows + k] = Value[k];
+                nextRow[rows + k] = NextRow[k];
+                next[rows + k] = Next[k];
+                tail[rows + k] = Tail[k];
+                tails[rows + k] = Tails[k];
+                steps[rows + k] = Steps[k];
+            }
+            return new Table
+            {
+                From = From, Rows = grown, LapRows = rows, Starts = starts, Places = places, Bins = Bins,
+                Value = value, NextRow = nextRow, Next = next, Tail = tail, Tails = tails, Steps = steps
+            };
+        }
 
         internal readonly record struct ArrivalGroup(ushort Tail, int[] Bins, float MinimumRest);
         internal ArrivalGroup[][][]? OnlineArrivals { get; private set; }
@@ -415,6 +481,7 @@ internal sealed partial class LineSearch
                 w.Write(key);
                 w.Write(From);
                 w.Write(Rows);
+                w.Write(LapRows);
                 w.Write(Bins);
                 Ints(w, Starts);
                 foreach (List<float> places in Places)
@@ -470,7 +537,7 @@ internal sealed partial class LineSearch
             using var r = new BinaryReader(stream);
             if (r.ReadInt32() != FileVersion || r.ReadString() != key)
                 return null;
-            int from = r.ReadInt32(), rows = r.ReadInt32(), bins = r.ReadInt32();
+            int from = r.ReadInt32(), rows = r.ReadInt32(), lapRows = r.ReadInt32(), bins = r.ReadInt32();
             int[] starts = ReadInts(r);
             var places = new List<float>[rows + 1];
             for (int i = 0; i <= rows; i++)
@@ -520,7 +587,7 @@ internal sealed partial class LineSearch
             }
             return new Table
             {
-                From = from, Rows = rows, Starts = starts, Places = places, Bins = bins,
+                From = from, Rows = rows, LapRows = lapRows, Starts = starts, Places = places, Bins = bins,
                 Value = value, NextRow = nextRow, Next = next, Tail = tail, Tails = tails, Steps = steps
             };
         }
@@ -679,7 +746,7 @@ internal sealed partial class LineSearch
                 return place < 0 ? float.PositiveInfinity : next.Value[0][(place * slopes + h) * next.Bins + bin];
             };
         }
-        return Bake(from, starts, lap: true, terminal, slowest, next);
+        return Bake(from, starts, lap: true, terminal, slowest, next).Wrapped(Spans[^1], _lanes.Count);
     }
 
     // The way on past the lap's end is the next lap's: the ways its first
@@ -906,7 +973,7 @@ internal sealed partial class LineSearch
         }
         return new Table
         {
-            From = from, Rows = rows, Starts = starts, Places = places, Bins = bins,
+            From = from, Rows = rows, LapRows = -1, Starts = starts, Places = places, Bins = bins,
             Value = value, NextRow = nextRow, Next = nextState, Tail = tail, Tails = tails, Steps = steps
         };
     }
@@ -960,7 +1027,7 @@ internal sealed partial class LineSearch
         if (total == float.PositiveInfinity)
             return null;
         var path = new List<(int Row, int State)> { (row, state) };
-        while (path[^1].Row < table.Rows && table.Starts[path[^1].Row] - table.Starts[row] < maxStations)
+        while (path[^1].Row < table.LapEnd && table.Starts[path[^1].Row] - table.Starts[row] < maxStations)
         {
             (int r, int s0) = path[^1];
             path.Add((table.NextRow[r][s0], table.Next[r][s0]));
@@ -1103,7 +1170,7 @@ internal sealed partial class LineSearch
         float Bound() => beam is { Length: > 0 } ? beam[^1].Seconds : bestSeconds;
         int place = table.Places[row].FindIndex(p => MathF.Abs(p - y) < 1e-3f);
         int heading = Array.IndexOf(Slopes, slope);
-        if (row >= table.Rows || (startStation is null && (place < 0 || heading < 0)))
+        if (row >= table.LapEnd || (startStation is null && (place < 0 || heading < 0)))
             return (bestSeconds, bestRow, bestState);
         int st0 = startStation ?? table.Starts[row];
         bool fixedStart = st0 == table.Starts[row] && place >= 0 && heading >= 0 && y == table.Places[row][place];
@@ -1774,7 +1841,7 @@ internal sealed partial class LineSearch
 
     // The slowest and the fastest the car can be at the far end of a step
     // from v0: braking all the way, or full drive held under each corner;
-    // and no faster than a steady change of v² from v0 keeps every station
+    // and no faster than a steady change of v虏 from v0 keeps every station
     // on the way inside the corner its tyres hold.
     private (float Low, float High) Reach(Edge edge, float v0)
     {
@@ -1791,7 +1858,7 @@ internal sealed partial class LineSearch
         return (low, high);
     }
 
-    // No faster than a steady change of v² from v0 keeps every station on
+    // No faster than a steady change of v虏 from v0 keeps every station on
     // the way inside the corner its tyres hold; negative if none does.
     private static float Held(Edge edge, float v0, float high)
     {
@@ -1874,7 +1941,7 @@ internal sealed partial class LineSearch
     }
 
     // The forward sweep supplies a reference speed for the live tyre and road
-    // model. The resulting changes in v² are shared across all end speeds.
+    // model. The resulting changes in v虏 are shared across all end speeds.
     private void PrepareBrakeBudget(Edge edge, float[] driven, float[] budget, int from, int to)
     {
         for (int k = from; k < to; k++)
@@ -2075,7 +2142,7 @@ internal sealed partial class LineSearch
     private float SampleSpeed(int bottom, int top, int sample) =>
         MinSpeed + Math.Min(bottom + sample * ChainStride, top) * SpeedStep;
 
-    // The step taken at a steady change of v² from v0 to v1, which is a
+    // The step taken at a steady change of v虏 from v0 to v1, which is a
     // steady acceleration: its length over the mean of its ends.
     // What a step's bending is charged: its curvature squared over its length.
     private float Bend(Edge edge)
@@ -2091,7 +2158,7 @@ internal sealed partial class LineSearch
 
     private static float Along(float v0, float v1, Edge edge, int k) => SpeedOn(v0, v1, edge.N, k);
 
-    /// <summary>The speed a step from <paramref name="v0"/> to <paramref name="v1"/> over so many stations is timed at, a station into it: v² changing steadily.</summary>
+    /// <summary>The speed a step from <paramref name="v0"/> to <paramref name="v1"/> over so many stations is timed at, a station into it: v虏 changing steadily.</summary>
     public static float SpeedOn(float v0, float v1, int stations, int station)
     {
         float t = station / (float)stations;

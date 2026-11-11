@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Track;
 
@@ -35,7 +35,7 @@ public static class JointLineBake
 
         // A fixed seam state makes the exported lap repeatable.
         LineSearch.Table table = search.BakeLap(0, null, seamSpeed: seamSpeed);
-        LineSearch.Way way = search.Follow(table, 0, 0f, 0f, seamSpeed)
+        LineSearch.Way way = search.Follow(table, 0, 0f, 0f, seamSpeed, maxStations: lanes.Count)
             ?? throw new InvalidOperationException($"No closed lap at seam speed {seamSpeed} m/s.");
         if (way.Offset[0] != way.Offset[^1] || MathF.Abs(way.Speed[0] - way.Speed[^1]) > 0.01f)
             throw new InvalidOperationException("The exported lap does not close at the seam.");

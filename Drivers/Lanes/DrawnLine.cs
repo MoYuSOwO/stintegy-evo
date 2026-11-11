@@ -102,8 +102,22 @@ public sealed class DrawnLine
         if (!Active)
             return 0f;
         int rel = _lanes.Wrap(station - _from);
-        return rel <= _span ? _delta[_lanes.Wrap(station)] : 0f;
+        if (rel <= _span)
+            return _delta[_lanes.Wrap(station)];
+        // Past the drawing the line is the free one again, and the two have
+        // to meet without a kink. A step at the end of the plan read as a
+        // corner where there was none, and the speed planned over it dipped
+        // wherever the step happened to land -- which moved every time the
+        // plan did, so the speed wanted jumped and the car braked for a
+        // corner that was not there.
+        int past = rel - _span;
+        if (past > FadeStations)
+            return 0f;
+        return _delta[_lanes.Wrap(_from + _span)] * (1f - (float)past / FadeStations);
     }
+
+    /// <summary>How far past the end of a drawing its line is faded back onto the free one, stations.</summary>
+    private const int FadeStations = 10;
 
     /// <summary>
     /// A new drawing, from the car at <paramref name="station"/> going at

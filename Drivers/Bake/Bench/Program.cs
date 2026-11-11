@@ -119,6 +119,10 @@ static class Program
         var between = new List<double>();
         float firstGap = 0f, lastGap = 0f, bestGap = float.PositiveInfinity, maxLateral = 0f, chaseLateral = 0f;
         double ran0 = 0, ran1 = 0;
+        StreamWriter? trail = cars > 1
+            ? new StreamWriter(Path.Combine(Path.GetTempPath(), "bench-trail.csv"))
+            : null;
+        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,laneV");
         bool passed = false;
         for (int step = 0; step < steps; step++)
         {
@@ -151,14 +155,21 @@ static class Program
                 maxLateral = MathF.Max(maxLateral, MathF.Abs(off));
                 ran0 += frame[0].SpeedMetersPerSecond * dt;
                 ran1 += frame[1].SpeedMetersPerSecond * dt;
+                if (trail is not null)
+                {
+                    int probe = (int)lanes.StationOf(frame[0].TrackS) + 10;
+                    trail.WriteLine($"{step},{frame[0].TrackS:F2},{frame[0].TrackD:F3},{frame[0].SpeedMetersPerSecond:F2}," +
+                        $"{frame[1].TrackS:F2},{frame[1].TrackD:F3},{frame[1].SpeedMetersPerSecond:F2}," +
+                        $"{drivers[0].DrawnOffset(probe):F3},{drivers[0].DrawnSpeed(probe):F2},{drivers[0].PlannedSpeed(probe):F2},{drivers[0].LaneSpeed(0, lanes.Wrap(probe)):F2}");
+                }
                 int at1 = (int)lanes.StationOf(frame[1].TrackS);
                 chaseLateral = MathF.Max(chaseLateral,
                     MathF.Abs(frame[1].TrackD - lanes.Offset(LaneId.Free, at1)));
             }
         }
 
-        Array.Sort(samples);
-        double sum = 0;
+        trail?.Dispose();
+        Array.Sort(samples);        double sum = 0;
         foreach (double s in samples) sum += s;
         int plans = Math.Max(1, drivers[0].JointPlansApplied);
         Console.WriteLine();

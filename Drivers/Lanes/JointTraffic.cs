@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
 
@@ -9,6 +9,9 @@ internal readonly struct JointTraffic
 {
     private const float ForecastSeconds = 1.5f;
     private const float NearbyDistance = 60f;
+
+    /// <summary>How much of the dirty air's charge the tow behind it pays back.</summary>
+    private const float TowShare = 0.5f;
 
     /// <summary>Bench counters: how much of the join cost is geometry.</summary>
     public static long Joins;
@@ -287,12 +290,20 @@ internal readonly struct JointTraffic
                  BodiesOverlap(rival, high, from, fromOffset, fromTime, to, toOffset, toTime)))
                 return true;
             // Charge the closest approach along the plan without making
-            // the preferred clearance a second hard constraint.
+            // the preferred clearance a second hard constraint. Signed: a car
+            // close behind is in its dirty air and costs, one a little
+            // further back is in its tow and pays. The tow reaches further
+            // than the turbulence does -- the drag relief keeps a long tail,
+            // the downforce comes back within a couple of car lengths -- so
+            // the charge turns into a credit as the gap opens, and a car that
+            // simply follows is better off than one that drops away.
             float alongClearance = MathF.Abs(along) - rival.HalfLength;
             float sideClearance = MathF.Abs(side) - rival.HalfWidth;
-            float near = Math.Clamp(1f - alongClearance / 7f, 0f, 1f) *
-                Math.Clamp(1f - sideClearance / 2.5f, 0f, 1f);
-            proximity = MathF.Max(proximity, near);
+            float gap = MathF.Max(0f, alongClearance);
+            float dirty = Math.Clamp(1f - gap / 2f, 0f, 1f);
+            float tow = Math.Clamp(1f - gap / 30f, 0f, 1f);
+            float across = Math.Clamp(1f - sideClearance / 2.5f, 0f, 1f);
+            proximity = MathF.Max(proximity, (dirty - TowShare * tow) * across);
         }
         return false;
 

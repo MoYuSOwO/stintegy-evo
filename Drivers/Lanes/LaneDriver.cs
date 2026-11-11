@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -385,6 +385,49 @@ public sealed class LaneDriver : IDriverController
 
     private bool Drawing => _drawn is { Active: true };
 
+    /// <summary>The drawn line's offset at a station, for probes; NaN with no line.</summary>
+    public float DrawnOffset(int station) => Drawing ? _drawn!.At(station) : float.NaN;
+
+    /// <summary>The baked lane speed at a station, for probes.</summary>
+    public float LaneSpeed(int lane, int station) => _speed[lane][station];
+
+    /// <summary>The speed the pedal is given at a station, for probes.</summary>
+    public float PlannedSpeed(int station) => SpeedAt(station);
+
+    /// <summary>The drawn line's speed at a station, for probes; NaN with no line.</summary>
+    public float DrawnSpeed(int station) => Drawing ? _drawn!.SpeedAt(station) : float.NaN;
+
+    /// <summary>How far ahead a new line is eased onto the one already drawn, stations.</summary>
+    private const int BlendStations = 15;
+
+    /// <summary>What a metre a second squared of sideways change asks of the tyres, seconds per metre.</summary>
+    private const float LineChangeSeconds = 0.0001f;
+
+    /// <summary>What the closest approach to a car in the way costs, seconds at its closest.</summary>
+    private const float ProximitySeconds = 0.15f;
+
+    /// <summary>
+    /// Eases a new line onto the one already drawn over the first few metres.
+    /// A plan that moves the line a metre or two twenty metres out asks the
+    /// car for a lateral speed it does not have, and the steering chases it:
+    /// the car is asked to change line in the middle of a corner. The line
+    /// the car is on now is the one it can still be on next tenth of a
+    /// second, so the new one is taken up from it rather than over it.
+    /// </summary>
+    private void BlendIntoDrawn(float[] offsets, int from)
+    {
+        if (!Drawing)
+            return;
+        int reach = Math.Min(BlendStations, offsets.Length);
+        for (int k = 0; k < reach; k++)
+        {
+            float previous = _drawn!.At(from + k);
+            if (!float.IsFinite(previous))
+                continue;
+            offsets[k] = previous + (offsets[k] - previous) * (k / (float)BlendStations);
+        }
+    }
+
     /// <summary>What the driver cannot drive a car without, and what it uses when the car has it.</summary>
     public static readonly CarNeeds CarNeeds = new(
         [typeof(ICarEnvelope), typeof(ICarTires), typeof(ICarGripFeel), typeof(ICarMotion)],
@@ -431,7 +474,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// Diagnostics: ticks spent in each part of the online decision, and how
-    /// often it ran them 鈥攕hape, join, drive, brake, and the rest. Read by the
+    /// often it ran them 闂備胶鍋ㄩ崕鏌ュ极閸嶇寴pe, join, drive, brake, and the rest. Read by the
     /// benchmark, which is the only thing that asks.
     /// </summary>
     public readonly long[] JointParts = new long[17];
@@ -600,7 +643,7 @@ public sealed class LaneDriver : IDriverController
     /// make, and every switch ran a metre and more off it. Eased in and out,
     /// as Simplix's Runaround moves its offset, the move is an S the car can
     /// drive: at 0.6 a second of travel it takes the first half second to get
-    /// up to speed, and with lanes eight metres apart asks some 10 m/s虏 of
+    /// up to speed, and with lanes eight metres apart asks some 10 m/s闂?of
     /// the tyres at its sharpest.
     /// </summary>
     public float RangeAcceleration { get; init; } = 1.2f;
@@ -1169,7 +1212,7 @@ public sealed class LaneDriver : IDriverController
 
 
     /// <summary>
-    /// The braking the plan has over the turn-in to come, m/s虏, not the foot's
+    /// The braking the plan has over the turn-in to come, m/s闂? not the foot's
     /// now: into a slow corner the brakes come off half their pressure in a
     /// tenth of a second as the wheel goes on, and read off the pedal at the
     /// turn-in the hands took the car for one still braking hard, read the
@@ -1325,7 +1368,7 @@ public sealed class LaneDriver : IDriverController
     // A wheel on less than this is off the tarmac.
     private const float OnTarmac = 0.95f;
 
-    // What the tyres give at a crawl on ground of full grip, m/s虏, and the
+    // What the tyres give at a crawl on ground of full grip, m/s闂? and the
     // share of it a driver coming back off it asks: all of it to turn, half
     // of it on the pedals, since one wheel on grass and one on tarmac pull
     // the car round under power or brakes.
@@ -1526,7 +1569,7 @@ public sealed class LaneDriver : IDriverController
     private float TractionHere(int station) =>
         _familiar is { } familiar ? familiar.Traction[familiar.SegmentOf(station * _lanes.Spacing)] : 1f;
 
-    // How fast a foot presses the pedals down, m/s虏 a second.
+    // How fast a foot presses the pedals down, m/s闂?a second.
     private const float FootBrakeRate = 600f, FootThrottleRate = 240f;
 
     // Braking harder than this is a braking zone, so the throttle after it is a corner's exit.
@@ -1855,7 +1898,7 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>
     /// How the move under way carries the line sideways at a station, after
-    /// the given seconds: its lateral speed and acceleration in m/s and m/s虏,
+    /// the given seconds: its lateral speed and acceleration in m/s and m/s闂?
     /// positive along the track's normal, which is to the right (LaneSet). The blend's lanes are drawn where the blend
     /// stands, so a move's own sideways motion is in none of them: without
     /// it the car was steered to a line that stood still and found it gone,
@@ -1946,7 +1989,7 @@ public sealed class LaneDriver : IDriverController
 
     private void PlanJointMove(in DriverContext context, LineSearch.Table table)
     {
-        if (table.Starts[0] != 0 || table.Starts[^1] != _lanes.Count)
+        if (table.Starts[0] != 0 || table.Starts[table.LapEnd] != _lanes.Count)
             throw new InvalidDataException("The joint table does not cover these lanes.");
         RaceCarSnapshot car = context.Car;
         int station = _lanes.Wrap((int)MathF.Floor(_lanes.StationOf(car.TrackS)));
@@ -2009,12 +2052,11 @@ public sealed class LaneDriver : IDriverController
         const float defenceLookahead = 0.65f;
         var road = context.Track;
         float startDistance = car.TrackS - from * _lanes.Spacing;
-        bool expand = JointLookahead && traffic.HasNearbyRival && row + 1 < table.Rows;
+        bool expand = JointLookahead && traffic.HasNearbyRival && row + 1 < table.LapEnd;
         float lookahead = expand ? 0.3f : challenger is not null || traffic.HasNearbyRival
             ? MathF.Max(PlanIntervalSeconds, defenceLookahead)
             : PlanIntervalSeconds;
-        int horizon = Math.Min(_lanes.Count,
-            station + (int)MathF.Ceiling(car.SpeedMetersPerSecond * lookahead / _lanes.Spacing) + 3);
+        int horizon = station + (int)MathF.Ceiling(car.SpeedMetersPerSecond * lookahead / _lanes.Spacing) + 3;
         int edgeFrom = from;
         float edgeTime = 0f, edgeSpeed = car.SpeedMetersPerSecond;
         float edgeDistance = 0f, edgeOffset = car.TrackD;
@@ -2022,7 +2064,7 @@ public sealed class LaneDriver : IDriverController
         float arrivalTime = 0f, edgeCost = 0f;
         bool measurePrefixLower = false;
         float drivenPrefixLower = 0f;
-        LineSearch.StepCost? overlap = traffic.HasRivals ? OverlapCost : null;
+        LineSearch.StepCost? overlap = OverlapCost;
         Func<int, int, float, float>? terminal = traffic.HasRivals ? TerminalCost : null;
         Func<LineSearch.Move, bool>? allowed = committed
             ? move => _jointDefenceSide * (move.ToY - relative) >= -0.6f
@@ -2070,12 +2112,12 @@ public sealed class LaneDriver : IDriverController
                 int at = table.Starts[first.Row];
                 Vector2 junction = _lanes.Position(at, _lanes.Offset(LaneId.Free, at) + endOffset);
                 float prefix = LineSearch.TimeLowerBound(Vector2.Distance(car.Position, junction));
-                float remaining = first.Row == table.Rows ? table.Value[first.Row][first.State] : float.PositiveInfinity;
+                float remaining = first.Row == table.LapEnd ? table.Value[first.Row][first.State] : float.PositiveInfinity;
                 int earliestEnd = Math.Min(_lanes.Count, at + (int)MathF.Ceiling(0.25f * endSpeed / _lanes.Spacing));
                 foreach (int span in search.Spans)
                 {
                     int endRow = first.Row + span;
-                    if (endRow > table.Rows || table.Starts[endRow] < earliestEnd)
+                    if (endRow > table.LapEnd || table.Starts[endRow] < earliestEnd)
                         continue;
                     int end = table.Starts[endRow];
                     float free = _lanes.Offset(LaneId.Free, end);
@@ -2118,20 +2160,22 @@ public sealed class LaneDriver : IDriverController
             _jointDefenceUntil = now + 1f;
             DefenceCommits++;
         }
-        if (search.Follow(table, choice.Row, endY, endSlope, endSpeed, maxStations: 40) is { } continuation &&
+        if (search.Follow(table, choice.Row, endY, endSlope, endSpeed,
+                maxStations: (int)(WindowMeters / _lanes.Spacing)) is { } continuation &&
             continuation.Offset.Length > 1)
         {
             int prefix = plan.Offset.Length;
             Array.Resize(ref plan.Offset, prefix + continuation.Offset.Length - 1);
             Array.Resize(ref plan.Speed, plan.Offset.Length);
             Array.Copy(continuation.Offset, 1, plan.Offset, prefix, continuation.Offset.Length - 1);
-            Array.Fill(plan.Speed, float.NaN, prefix, plan.Speed.Length - prefix);
+            Array.Copy(continuation.Speed, 1, plan.Speed, prefix, continuation.Speed.Length - 1);
         }
         if (liveStart)
         {
             // Steering reads a centred chord. Continue the start tangent
             // behind the car instead of snapping that chord to the free line.
             const int behind = CurvatureChordStations + 1;
+            BlendIntoDrawn(plan.Offset, from);
             var offsets = new float[behind + plan.Offset.Length];
             var speeds = new float[offsets.Length];
             for (int k = 0; k < behind; k++)
@@ -2142,7 +2186,10 @@ public sealed class LaneDriver : IDriverController
             _drawn!.Set(from - behind, offsets, speeds, 1f);
         }
         else
+        {
+            BlendIntoDrawn(plan.Offset, from);
             _drawn!.Set(from, plan.Offset, plan.Speed, 1f);
+        }
         Part(5);
         JointPlansApplied++;
 
@@ -2157,12 +2204,12 @@ public sealed class LaneDriver : IDriverController
             if (first.Row < 0)
                 return;
             SetEdge(from, 0f, car.SpeedMetersPerSecond, car.TrackD, car.Position, 0f);
-            measurePrefixLower = float.IsFinite(best) && first.Row < table.Rows;
+            measurePrefixLower = float.IsFinite(best) && first.Row < table.LapEnd;
             var initial = MaterializeFirst(first, follow);
             measurePrefixLower = false;
             if (initial is not { } head)
                 return;
-            if (first.Row == table.Rows)
+            if (first.Row == table.LapEnd)
             {
                 float terminalScore = arrivalTime + edgeCost + table.Value[first.Row][first.State];
                 if (terminalScore < best || terminalScore == best && order < bestOrder)
@@ -2245,6 +2292,28 @@ public sealed class LaneDriver : IDriverController
                 float nextDistance = (edgeFrom - from + k) * _lanes.Spacing - startDistance;
                 float nextSpeed = MathF.Min(drive[k], brake[k]);
                 float nextOffset = OffsetAt(move, k);
+                // What changing line here asks of the tyres: the sideways
+                // acceleration the line has to add or give up, which is what
+                // the nose has to move for. A metre of line change on a
+                // straight asks for almost none of it; the same metre in a
+                // corner, where the tyres are already carrying their share,
+                // asks for a great deal, and that is the difference the plan
+                // was not paying for.
+                if (Drawing)
+                {
+                    float previous = _drawn!.At(edgeFrom + k);
+                    float before = _drawn.At(edgeFrom + k - 1);
+                    float after = _drawn.At(edgeFrom + k + 1);
+                    if (float.IsFinite(previous) && float.IsFinite(before) && float.IsFinite(after))
+                    {
+                        float line = search.OffsetOn(move, k);
+                        float bend = 0.25f * (search.OffsetOn(move, k + 1) - 2f * line +
+                            search.OffsetOn(move, k - 1));
+                        float was = 0.25f * (after - 2f * previous + before);
+                        penalty += LineChangeSeconds * nextSpeed * nextSpeed *
+                            MathF.Abs(bend - was) * _lanes.Spacing;
+                    }
+                }
                 Vector2 nextPosition = _lanes.Position(edgeFrom + k, nextOffset);
                 float stepLength = Vector2.Distance(position, nextPosition);
                 float nextTime = time + stepLength /
@@ -2273,7 +2342,7 @@ public sealed class LaneDriver : IDriverController
             arrivalTime = time;
             if (measurePrefixLower)
                 drivenPrefixLower = optimistic;
-            edgeCost = 0.35f * proximity +
+            edgeCost = ProximitySeconds * proximity +
                 (challenger is not null && time < defenceLookahead && !expand ? DefenceSeconds : penalty);
             return edgeCost;
         }
@@ -2743,7 +2812,7 @@ public sealed class LaneDriver : IDriverController
     /// tightens the tyres are asked for that much more than the road under
     /// the car alone would ask. Planned on the road under the car, the plan
     /// had nothing over for it: braking into Zandvoort's Scheivlak on the
-    /// left lane the plan left the tyres 26 m/s虏 of corner and the hands
+    /// left lane the plan left the tyres 26 m/s闂?of corner and the hands
     /// asked 32, the wheel stood at the axles' limit, and the car ran wide
     /// and off. Out of a corner the road ahead is straighter and nothing
     /// changes; reading the speed a moment ahead instead, as the pedals
