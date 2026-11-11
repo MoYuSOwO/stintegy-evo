@@ -1,4 +1,4 @@
-namespace StintegyEVO.Drivers.Lanes;
+﻿namespace StintegyEVO.Drivers.Lanes;
 
 /// <summary>
 /// A line drawn over the road ahead by someone other than the driver: an
@@ -84,7 +84,11 @@ public sealed class DrawnLine
         if (!Active)
             return float.NaN;
         int rel = _lanes.Wrap(station - _from);
-        return rel <= _span ? _speed[_lanes.Wrap(station)] : float.NaN;
+        // Past the drawing the speed is the one it ended on. A plan that has
+        // run out is not a reason for the pedal to lose the speed it was
+        // given, and a value that is not a speed is no reason either.
+        float speed = _speed[_lanes.Wrap(rel <= _span ? station : _from + _span)];
+        return float.IsFinite(speed) ? speed : _speed[_lanes.Wrap(_from + _span - 1)];
     }
 
     /// <summary>Whether a line is drawn at all.</summary>

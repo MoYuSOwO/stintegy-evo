@@ -2180,7 +2180,7 @@ public sealed class LaneDriver : IDriverController
             var speeds = new float[offsets.Length];
             for (int k = 0; k < behind; k++)
                 offsets[k] = y + (k - behind) * _lanes.Spacing * slope;
-            Array.Fill(speeds, float.NaN, 0, behind);
+            Array.Fill(speeds, plan.Speed[0], 0, behind);
             plan.Offset.CopyTo(offsets, behind);
             plan.Speed.CopyTo(speeds, behind);
             _drawn!.Set(from - behind, offsets, speeds, 1f);
