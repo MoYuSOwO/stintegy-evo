@@ -195,6 +195,30 @@ static class Program
         Report("planning steps", planning);
         Report("other steps   ", between);
 
+        // What the bake thinks the rest of the lap costs from each lateral
+        // position, at the sharpest corner: it must be lowest where the line is.
+        int sharpest = 0;
+        float most = 0f;
+        for (int st = 0; st < lanes.Count; st++)
+        {
+            float k = MathF.Abs(drivers[0].RoadCurvature(st));
+            if (k > most)
+                (most, sharpest) = (k, st);
+        }
+        int cornerRow = drivers[0].RowAt(sharpest);
+        float[] places = drivers[0].PlacesAt(cornerRow);
+        Console.WriteLine();
+        Console.WriteLine($"  --- the bake's value across the road at station {sharpest} " +
+            $"(curvature {most:F4}, radius {1f / MathF.Max(1e-6f, most):F0} m), zero heading ---");
+        foreach (float at in new[] { 15f, 20f, 25f, 30f })
+        {
+            float[] profile = drivers[0].ValueProfile(cornerRow, at);
+            Console.Write($"  {at,4:F0} m/s ");
+            for (int p = 0; p < places.Length; p++)
+                Console.Write($"  y {places[p],6:F2} -> {(float.IsFinite(profile[p]) ? profile[p].ToString("F3") : "  inf"),8}");
+            Console.WriteLine();
+        }
+
         Console.WriteLine("  --- PlanAhead and the joint plan ---");
         long[] sectionTicks = drivers[0].JointParts;
         for (int p = 0; p < sectionTicks.Length; p++)
