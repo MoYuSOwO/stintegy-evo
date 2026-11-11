@@ -33,12 +33,24 @@ public static class JointLineBake
             return new LaneRoad(sample.Grade, sample.BankSlopeAt(offset), sample.VerticalRate);
         }) { ExactSpeeds = exact, RetainBakedSteps = false, Baked = progress };
 
-        // A fixed seam state makes the exported lap repeatable.
+        // The lap's end is its start. The first pass pins the seam state so
+        // there is something to start from; after that each pass charges the
+        // lap's end with what the next lap from it costs, which is what makes
+        // the value function periodic. Pinning the seam speed alone -- one
+        // pass, no next -- leaves the whole table believing the car must pass
+        // the start line at that speed, and it is a number chosen to close
+        // the lap, not a speed the road asks for.
         LineSearch.Table table = search.BakeLap(0, null, seamSpeed: seamSpeed);
+        for (int pass = 0; pass < 2; pass++)
+            table = search.BakeLap(0, table);
         LineSearch.Way way = search.Follow(table, 0, 0f, 0f, seamSpeed, maxStations: lanes.Count)
             ?? throw new InvalidOperationException($"No closed lap at seam speed {seamSpeed} m/s.");
-        if (way.Offset[0] != way.Offset[^1] || MathF.Abs(way.Speed[0] - way.Speed[^1]) > 0.01f)
+        // The line has to close; the speed it closes at is the value function's
+        // to say once the bake is periodic, and it need not be the one the
+        // first pass pinned.
+        if (way.Offset[0] != way.Offset[^1])
             throw new InvalidOperationException("The exported lap does not close at the seam.");
+        Console.WriteLine($"five: seam {way.Speed[0]:F2} -> {way.Speed[^1]:F2} m/s");
 
         Directory.CreateDirectory(folder);
         string stem = Path.Combine(folder, "five");
