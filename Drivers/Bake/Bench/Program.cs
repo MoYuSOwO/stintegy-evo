@@ -87,12 +87,14 @@ static class Program
                 BlockedSeconds = blockedSeconds,
                 DefenceSeconds = defenceSeconds,
                 UseAbilities = !Has(args, "noabil"),
+                JointStartOnLine = !Has(args, "measured"),
                 JointHoldSeconds = Flag(args, "hold", 0.02f),
                 BlendStations = (int)Flag(args, "blend", 0f),
                 JointProbe = (Has(args, "bshares") ? LaneDriver.JointProbes.BakeShares : 0) |
                              (Has(args, "bfactor") ? LaneDriver.JointProbes.BakeFactor : 0) |
                              (Has(args, "benv") ? LaneDriver.JointProbes.BakeEnvelope : 0) |
-                             (Has(args, "noline") ? LaneDriver.JointProbes.NoLineChange : 0),
+                             (Has(args, "noline") ? LaneDriver.JointProbes.NoLineChange : 0) |
+                             (Has(args, "frozen") ? LaneDriver.JointProbes.FrozenLine : 0),
             };
             driver.UseJointTable(table);
             drivers[i] = driver;
@@ -136,7 +138,7 @@ static class Program
         StreamWriter? trail = true
             ? new StreamWriter(Path.Combine(Path.GetTempPath(), "bench-trail.csv"))
             : null;
-        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,curv,rawD,roadK,err,applied,shift,shiftMax,where,made,held,chal1,side1,noplan1,app1,steer1,accel1,speed1,curv1,drawn1,fast1,brake1,block1,timed1");
+        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,curv,rawD,roadK,err,applied,shift,shiftMax,where,made,held,chal1,side1,noplan1,app1,steer1,accel1,speed1,curv1,drawn1,fast1,brake1,block1,timed1,steer0,lat0,over0,want0,up0,low0,ff0,slide0");
         bool passed = false;
         bool applied0 = false, applied1 = false;
         for (int step = 0; step < steps; step++)
@@ -192,7 +194,8 @@ static class Program
                         ? $"{(drivers[1].DefenceProbe.Challenged ? 1 : 0)},{drivers[1].DefenceProbe.Side},{(drivers[1].DefenceProbe.NoPlan ? 1 : 0)},{(applied1 ? 1 : 0)}," +
                           $"{proxies[1].Next.SteerAngleRadians:F3},{proxies[1].Next.DesiredAccel:F2},{frame[1].SpeedMetersPerSecond:F2},{drivers[1].SteeringCurvature((int)lanes.StationOf(frame[1].TrackS)):F5},{drivers[1].DrawnOffset((int)lanes.StationOf(frame[1].TrackS) + 10):F2}," +
                           $"{drivers[1].RejectProbe.TooFast},{drivers[1].RejectProbe.CannotBrake},{drivers[1].RejectProbe.Blocked},{drivers[1].RejectProbe.Timed}"
-                        : "0,0,0,0,0,0,0,0,0,0,0,0,0"));
+                        : "0,0,0,0,0,0,0,0,0,0,0,0,0") +
+                    $",{proxies[0].Next.SteerAngleRadians:F4},{frame[0].Motion?.LateralAccel ?? 0f:F3},{frame[0].Motion?.OverLimit ?? 0f:F3},{drivers[0].SteerProbe.Wanted:F5},{drivers[0].SteerProbe.Upper:F5},{drivers[0].SteerProbe.Lower:F5},{drivers[0].SteerProbe.Feedforward:F5},{drivers[0].SteerProbe.Slide:F3}");
             }
         }
 

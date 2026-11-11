@@ -680,6 +680,8 @@ public sealed class LaneDriver : IDriverController
         BakeEnvelope = 4,
         /// <summary>No charge for changing the line's bend.</summary>
         NoLineChange = 8,
+        /// <summary>The table's own lap drawn once and never planned again: the line held still, to tell what the planning moves from what the line and the hands do.</summary>
+        FrozenLine = 16,
     }
 
     /// <summary>Which of the joint search's live inputs are replaced by the bake's, for probes.</summary>
@@ -700,6 +702,22 @@ public sealed class LaneDriver : IDriverController
 
     // The place and heading the last joint plan went through on each row.
     private readonly Dictionary<int, int> _jointPath = [];
+    private bool _frozenDrawn;
+
+    /// <summary>Whether a plan starts from the line already drawn where the car is on it, rather than from the car as measured.</summary>
+    public bool JointStartOnLine { get; init; } = true;
+
+    /// <summary>How far off the drawn line the car may be and still be planned from the line, metres.</summary>
+    private const float StartOnLineMeters = 1f;
+
+    private bool _plannedFromLine;
+
+    /// <summary>Whether the last plan started from the line already drawn, for probes.</summary>
+    public bool PlannedFromLine => _plannedFromLine;
+    private (float Wanted, float Upper, float Lower, float Feedforward, float Slide) _probeSteer;
+
+    /// <summary>At the last step: the curvature the line asked for, the grip's cap either way, the line's own curvature ahead, and the slide being caught, for probes.</summary>
+    public (float Wanted, float Upper, float Lower, float Feedforward, float Slide) SteerProbe => _probeSteer;
 
     // The rows and states the last plan's rest of the way went through.
     private List<(int Row, int State)> _jointRest = [];
@@ -1108,6 +1126,7 @@ public sealed class LaneDriver : IDriverController
         float lower = MathF.Max(-maxRequest, MathF.Min((-available - lean) / scale, -1e-4f));
         float wanted = curvature;
         curvature = Math.Clamp(curvature, lower, upper);
+        _probeSteer = (wanted, upper, lower, feedforward, 0f);
         Part(14);
         _moveBound = (wanted > upper && _moveCurvature > 0f) || (wanted < lower && _moveCurvature < 0f);
 
@@ -1128,6 +1147,7 @@ public sealed class LaneDriver : IDriverController
         {
             (slide, frontGone) = Recover(car, ref curvature, dt);
         }
+        _probeSteer = _probeSteer with { Slide = slide };
         // Facing well off the road after a spin: round on full lock at a
         // walk, whichever way is shorter; the line's own steering reads the
         // way the car moves, and a car crawling backwards reads it wrong.
@@ -2212,6 +2232,17 @@ public sealed class LaneDriver : IDriverController
         }
         LineSearch search = _jointSearch;
         search.UpdateOnlineEnvelope(jointEnvelope, jointShares);
+        if (JointProbe.HasFlag(JointProbes.FrozenLine))
+        {
+            if (!_frozenDrawn && search.Follow(table, 0, 0f, 0f, 71f) is { } lap)
+            {
+                int count = _lanes.Count;
+                _drawn!.Set(0, lap.Offset.AsSpan(0, count).ToArray(), lap.Speed.AsSpan(0, count).ToArray(), 1f);
+                _frozenDrawn = true;
+            }
+            JointPlansApplied++;
+            return;
+        }
         Part(1);
         int from = station;
         Vector2 tangent = _lanes.Position(from + 1, _lanes.Offset(LaneId.Free, from + 1)) -
@@ -2221,6 +2252,28 @@ public sealed class LaneDriver : IDriverController
         float slope = MathF.Tan(Math.Clamp(delta, -0.5f, 0.5f));
         if (Vector2.Dot(new Vector2(-tangent.Y, tangent.X), _lanes.Normal(from)) < 0f)
             slope = -slope;
+        // Where the plan starts from: the line already drawn, where the car
+        // is on it. Started from the car as measured, every plan carried the
+        // car's few centimetres of tracking error into the line ahead, and a
+        // few centimetres over the steering's six-metre chord is a corner:
+        // the curvature ahead reversed ten times a second through the slow
+        // bends, against under one a second with the line held still, and
+        // the steering chased it. The tracking error is the steering's to
+        // take out, not the plan's to copy (Werling et al., ICRA 2010: the
+        // reference state of the last plan, not the measured one). Only a car
+        // well off the line -- a slide, a shove -- is planned from where it is.
+        _plannedFromLine = false;
+        if (JointStartOnLine && Drawing)
+        {
+            float lineY = _drawn!.At(from);
+            float lineSlope = (_drawn.At(from + 1) - _drawn.At(from - 1)) / (2f * _lanes.Spacing);
+            if (float.IsFinite(lineY) && float.IsFinite(lineSlope) &&
+                MathF.Abs(lineY - y) < StartOnLineMeters && MathF.Abs(lineSlope - slope) < 0.1f)
+            {
+                (y, slope) = (lineY, lineSlope);
+                _plannedFromLine = true;
+            }
+        }
         int? startStation = from;
         float now = context.RaceTimeSeconds;
         string? challenger = JointProtect && !traffic.HasClosingLeader ? traffic.Challenger(car.SpeedMetersPerSecond) : null;
