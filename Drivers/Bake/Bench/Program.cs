@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -119,11 +119,12 @@ static class Program
         var between = new List<double>();
         float firstGap = 0f, lastGap = 0f, bestGap = float.PositiveInfinity, maxLateral = 0f, chaseLateral = 0f;
         double ran0 = 0, ran1 = 0;
-        StreamWriter? trail = cars > 1
+        StreamWriter? trail = true
             ? new StreamWriter(Path.Combine(Path.GetTempPath(), "bench-trail.csv"))
             : null;
-        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,laneV,winV,winC,winEnd");
+        trail?.WriteLine("step,s0,d0,v0,s1,d1,v1,probeD,probeV,planTarget,curv,rawD,roadK,err,applied");
         bool passed = false;
+        bool applied0 = false;
         for (int step = 0; step < steps; step++)
         {
             for (int i = 0; i < cars; i++)
@@ -136,13 +137,19 @@ static class Program
                 watch.Stop();
                 double ms = watch.Elapsed.TotalMilliseconds;
                 samples[step] = Math.Max(samples[step], ms);
-                (drivers[i].JointPlansApplied > before ? planning : between).Add(ms);
+                bool applied = drivers[i].JointPlansApplied > before;
+                if (i == 0)
+                    applied0 = applied;
+                (applied ? planning : between).Add(ms);
                 proxies[i].Next = input;
             }
             simulation.Step(dt);
+            var frame = simulation.CaptureFrame();
+            int at = (int)lanes.StationOf(frame[0].TrackS);
+            maxLateral = MathF.Max(maxLateral, MathF.Abs(frame[0].TrackD - lanes.Offset(LaneId.Free, at)));
+            ran0 += frame[0].SpeedMetersPerSecond * dt;
             if (cars > 1)
             {
-                var frame = simulation.CaptureFrame();
                 float gap = MathF.IEEERemainder(frame[0].TrackS - frame[1].TrackS, track.LengthMeters);
                 if (step == 0)
                     firstGap = gap;
@@ -150,21 +157,21 @@ static class Program
                 bestGap = MathF.Min(bestGap, gap);
                 if (gap > 0f)
                     passed = true;
-                int at = (int)lanes.StationOf(frame[0].TrackS);
-                float off = frame[0].TrackD - lanes.Offset(LaneId.Free, at);
-                maxLateral = MathF.Max(maxLateral, MathF.Abs(off));
-                ran0 += frame[0].SpeedMetersPerSecond * dt;
                 ran1 += frame[1].SpeedMetersPerSecond * dt;
-                if (trail is not null)
-                {
-                    int probe = (int)lanes.StationOf(frame[0].TrackS) + 10;
-                    trail.WriteLine($"{step},{frame[0].TrackS:F2},{frame[0].TrackD:F3},{frame[0].SpeedMetersPerSecond:F2}," +
-                        $"{frame[1].TrackS:F2},{frame[1].TrackD:F3},{frame[1].SpeedMetersPerSecond:F2}," +
-                        $"{drivers[0].DrawnOffset(probe):F3},{drivers[0].DrawnSpeed(probe):F2},{drivers[0].PlannedSpeed(probe):F2},{drivers[0].LaneSpeed(0, lanes.Wrap(probe)):F2},{drivers[0].WindowSpeed(probe):F2},{drivers[0].WindowCeiling(probe):F2},{drivers[0].WindowTerminal:F2}");
-                }
                 int at1 = (int)lanes.StationOf(frame[1].TrackS);
                 chaseLateral = MathF.Max(chaseLateral,
                     MathF.Abs(frame[1].TrackD - lanes.Offset(LaneId.Free, at1)));
+            }
+            if (trail is not null)
+            {
+                int probe = at + 10;
+                float s1 = cars > 1 ? frame[1].TrackS : 0f;
+                float d1 = cars > 1 ? frame[1].TrackD : 0f;
+                float v1 = cars > 1 ? frame[1].SpeedMetersPerSecond : 0f;
+                trail.WriteLine($"{step},{frame[0].TrackS:F2},{frame[0].TrackD:F3},{frame[0].SpeedMetersPerSecond:F2}," +
+                    $"{s1:F2},{d1:F3},{v1:F2}," +
+                    $"{drivers[0].DrawnOffset(probe):F3},{drivers[0].DrawnSpeed(probe):F2},{drivers[0].PlannedSpeed(probe):F2},{drivers[0].SteeringCurvature(probe):F6},{drivers[0].RawPlanOffset:F3},{drivers[0].RoadCurvature(at):F6}," +
+                    $"{frame[0].TrackD - lanes.Offset(LaneId.Free, at):F3},{(applied0 ? 1 : 0)}");
             }
         }
 

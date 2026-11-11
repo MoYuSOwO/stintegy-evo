@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Drivers;
 using StintegyEVO.Core.Racing;
@@ -257,6 +257,7 @@ public sealed class LaneDriver : IDriverController
     private float[] _windowSpeed = [];
     private float _windowTerminal;
     private int _madeStations;
+    private float _rawPlanOffset;
     // The window's corners and the braking into them alone, on a drawn line: what the car may not pass.
     private float[] _windowCeiling = [];
     private float[] _windowCurvature = [];
@@ -393,6 +394,30 @@ public sealed class LaneDriver : IDriverController
     /// <summary>The baked lane speed at a station, for probes.</summary>
     public float LaneSpeed(int lane, int station) => _speed[lane][station];
 
+    /// <summary>The joint plan's own offset ten stations in, before it is blended, for probes.</summary>
+    public float RawPlanOffset => _rawPlanOffset;
+
+    /// <summary>The curvature the steering reads at a station, for probes.</summary>
+    public float SteeringCurvature(float station) => BlendedCurvature(station);
+
+    /// <summary>The free line's own curvature at a station, for probes: nought on a straight.</summary>
+    public float RoadCurvature(float station)
+    {
+        int i0 = (int)MathF.Floor(station);
+        float u = station - i0;
+        float a = CurvatureAt(LaneId.Free, i0);
+        return a + (CurvatureAt(LaneId.Free, i0 + 1) - a) * u;
+    }
+
+    /// <summary>The corner limit the window planned on at a station, for probes.</summary>
+    public float WindowLimit(int station)
+    {
+        float local = station - _windowStart;
+        int i0 = Math.Clamp((int)MathF.Floor(local), 0, _windowLimits.Length - 2);
+        float u = Math.Clamp(local - i0, 0f, 1f);
+        return _windowLimits[i0] + (_windowLimits[i0 + 1] - _windowLimits[i0]) * u;
+    }
+
     /// <summary>The window's terminal speed and start, for probes.</summary>
     public float WindowTerminal => _windowTerminal;
 
@@ -422,6 +447,22 @@ public sealed class LaneDriver : IDriverController
 
     /// <summary>What a metre a second squared of sideways change asks of the tyres, seconds per metre.</summary>
     private const float LineChangeSeconds = 0.0001f;
+
+    /// <summary>
+    /// What being a metre off the free line is worth, seconds: the search's
+    /// own cost is a time, and on a straight every lateral line is the same
+    /// time to within the float noise of summing four hundred metres of it,
+    /// so nothing in that cost says which line to be on. Squared, so the pull
+    /// is gentle a metre out and a wall ten metres out.
+    /// </summary>
+    private const float DeviationSeconds = 0.02f;
+
+    /// <summary>
+    /// What moving the line a metre away from the one already drawn is worth,
+    /// seconds: the plan-consistency bonus the lattice literature pairs with
+    /// the offset cost, which charges the change rather than the position.
+    /// </summary>
+    private const float ConsistencySeconds = 0.02f;
 
     /// <summary>What the closest approach to a car in the way costs, seconds at its closest.</summary>
     private const float ProximitySeconds = 0.15f;
@@ -2032,9 +2073,14 @@ public sealed class LaneDriver : IDriverController
         float y = table.Places[row].MinBy(offset => MathF.Abs(offset - relative));
         if (car.SpeedMetersPerSecond < 10f)
             return;
-        bool liveStart = traffic.HasRivals || MathF.Abs(y - relative) > 1.5f;
-        if (liveStart)
-            y = relative;
+        // The plan starts where the car is, always. Snapped to the nearest
+        // lattice node it started up to half a place sideways, a whole place
+        // of heading and up to four stations behind, and the node it snapped
+        // to changed as the car moved: the plan then moved with the node, a
+        // metre at a time, and the steering chased it. A trajectory that
+        // starts at the measured state is continuous by construction.
+        const bool liveStart = true;
+        y = relative;
 
         if (_jointSearch is null)
         {
@@ -2189,8 +2235,14 @@ public sealed class LaneDriver : IDriverController
             Array.Resize(ref plan.Offset, prefix + continuation.Offset.Length - 1);
             Array.Resize(ref plan.Speed, plan.Offset.Length);
             Array.Copy(continuation.Offset, 1, plan.Offset, prefix, continuation.Offset.Length - 1);
-            Array.Copy(continuation.Speed, 1, plan.Speed, prefix, continuation.Speed.Length - 1);
+            // The continuation is a line, not a plan: its speeds are the baked
+            // lap's, and the bake pins the lap closed at a fixed speed at the
+            // seam, which reads as a corner where there is none. The window
+            // plans the speeds for this line itself, so the line carries the
+            // speed it was planned to here and no more.
+            Array.Fill(plan.Speed, plan.Speed[prefix - 1], prefix, plan.Speed.Length - prefix);
         }
+        _rawPlanOffset = plan.Offset.Length > 10 ? plan.Offset[10] : 0f;
         if (liveStart)
         {
             // Steering reads a centred chord. Continue the start tangent
@@ -2305,6 +2357,8 @@ public sealed class LaneDriver : IDriverController
             (float time, float speed, float offset, Vector2 position, float distance) =
                 (edgeTime, edgeSpeed, edgeOffset, edgePosition, edgeDistance);
             float penalty = 0f;
+            float lineCost = 0f;
+            int counted = 0;
             float proximity = 0f;
             int unchanged = measurePrefixLower ? search.UnchangedDriveStations(move.Stations, edgeFrom) : 0;
             float optimistic = 0f, previousUpper = edgeSpeed;
@@ -2320,20 +2374,36 @@ public sealed class LaneDriver : IDriverController
                 // corner, where the tyres are already carrying their share,
                 // asks for a great deal, and that is the difference the plan
                 // was not paying for.
-                if (Drawing)
+                // Of two lines the same time apart, the one the car is
+                // already on. Without it the search picks between them on
+                // rounding, and the line moves a metre every plan -- which
+                // the steering chases as a corner.
+                // What the line is worth over and above the time it takes:
+                // how far off the free line it is, how far from the line the
+                // car is already on, and what its bending asks of the tyres.
                 {
-                    float previous = _drawn!.At(edgeFrom + k);
-                    float before = _drawn.At(edgeFrom + k - 1);
-                    float after = _drawn.At(edgeFrom + k + 1);
-                    if (float.IsFinite(previous) && float.IsFinite(before) && float.IsFinite(after))
+                    float line = search.OffsetOn(move, k);
+                    lineCost += DeviationSeconds * line * line;
+                    if (Drawing)
                     {
-                        float line = search.OffsetOn(move, k);
-                        float bend = 0.25f * (search.OffsetOn(move, k + 1) - 2f * line +
-                            search.OffsetOn(move, k - 1));
-                        float was = 0.25f * (after - 2f * previous + before);
-                        penalty += LineChangeSeconds * nextSpeed * nextSpeed *
-                            MathF.Abs(bend - was) * _lanes.Spacing;
+                        float previous = _drawn!.At(edgeFrom + k);
+                        if (float.IsFinite(previous))
+                        {
+                            float moved = line - previous;
+                            lineCost += ConsistencySeconds * moved * moved;
+                            float before = _drawn.At(edgeFrom + k - 1);
+                            float after = _drawn.At(edgeFrom + k + 1);
+                            if (float.IsFinite(before) && float.IsFinite(after))
+                            {
+                                float bend = 0.25f * (search.OffsetOn(move, k + 1) - 2f * line +
+                                    search.OffsetOn(move, k - 1));
+                                float was = 0.25f * (after - 2f * previous + before);
+                                lineCost += LineChangeSeconds * nextSpeed * nextSpeed *
+                                    MathF.Abs(bend - was) * _lanes.Spacing;
+                            }
+                        }
                     }
+                    counted++;
                 }
                 Vector2 nextPosition = _lanes.Position(edgeFrom + k, nextOffset);
                 float stepLength = Vector2.Distance(position, nextPosition);
@@ -2363,7 +2433,11 @@ public sealed class LaneDriver : IDriverController
             arrivalTime = time;
             if (measurePrefixLower)
                 drivenPrefixLower = optimistic;
-            edgeCost = ProximitySeconds * proximity +
+            // The line's own cost is always charged: the defence penalty used
+            // to overwrite the same accumulator, and the whole of it was then
+            // dropped on the steps the car was defending, which is most of a
+            // duel.
+            edgeCost = ProximitySeconds * proximity + lineCost / MathF.Max(1, counted) +
                 (challenger is not null && time < defenceLookahead && !expand ? DefenceSeconds : penalty);
             return edgeCost;
         }

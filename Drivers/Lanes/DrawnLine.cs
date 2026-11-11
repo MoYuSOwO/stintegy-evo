@@ -115,9 +115,17 @@ public sealed class DrawnLine
         // plan did, so the speed wanted jumped and the car braked for a
         // corner that was not there.
         int past = rel - _span;
-        if (past > FadeStations)
-            return 0f;
-        return _delta[_lanes.Wrap(_from + _span)] * (1f - (float)past / FadeStations);
+        if (past <= FadeStations)
+            return _delta[_lanes.Wrap(_from + _span)] * (1f - (float)past / FadeStations);
+        // Before the start it fades in the same way. Left at nothing, the
+        // line stepped from the free one to the plan's first point, and the
+        // steering's chord -- three stations either side of the car -- read
+        // that step as a corner as soon as the plan began behind it, which
+        // moved every time the plan did.
+        int back = _lanes.Count - rel;
+        if (back <= FadeStations)
+            return _delta[_lanes.Wrap(_from)] * (1f - (float)back / FadeStations);
+        return 0f;
     }
 
     /// <summary>How far past the end of a drawing its line is faded back onto the free one, stations.</summary>
