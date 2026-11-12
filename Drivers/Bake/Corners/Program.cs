@@ -377,13 +377,19 @@ if (args.Length >= 2 && args[0] == "battle")
     // FIA's driving standards guidelines give it, on where the two will be
     // at the apex: the car without it takes a line that leaves the other
     // room, or tucks in behind.
+    //
+    // The decisions are the cars': the leader reads the chaser's best attack
+    // against its outside line, from the gap and the straight's gain table,
+    // and covers the inside when that would earn the apex within the margin
+    // its nerve allows. The chaser reads the leader's rears a tier off the
+    // truth and attacks on its best line when that earns the apex by the
+    // margin its nerve asks for. Both read tables baked offline.
     string id = args[1];
     var track = GameMods.Registry.Circuits.Get(id).Track;
     LaneTrackFile file = LaneTrackFile.ForCircuit(id, track);
     LaneSet lanes = file.LanesFor(track);
     float[] k = CornerMap.FreeCurvature(lanes);
     List<CornerMap.Bend> bends = CornerMap.Bends(lanes, k);
-    float rear = args.FirstOrDefault(a => a.StartsWith("rear=")) is { } rearArg ? float.Parse(rearArg[5..]) : 0.9f;
     LaneLapResult solo = LaneLapRunner.Run(track, file);
     CornerLines.Pins loop = CornerLines.PinsOf(lanes, k, bends, 3);
     CornerLines.Pins bk = CornerLines.PinsOf(lanes, k, bends, 4);
@@ -395,6 +401,7 @@ if (args.Length >= 2 && args[0] == "battle")
     int windowEnd = lanes.Wrap(bk.Exit + CornerLines.AfterStations);
     int luffield = bends[5].Apex;
     int decide = lanes.Wrap(bk.Entry - 5);
+    int pullAt = lanes.Wrap(bk.Entry - (int)MathF.Round(Battle.PullSeconds * 85f / lanes.Spacing));
     float[] free = Enumerable.Range(0, lanes.Count).Select(i => lanes.Offset(LaneId.Free, i)).ToArray();
     var car = StockCar.Build(DevelopmentTyres.SuperId);
     int span = lanes.Wrap(windowEnd - claim);
@@ -418,71 +425,109 @@ if (args.Length >= 2 && args[0] == "battle")
             line[lanes.Wrap(claim + j)] = way.Value.Offset[j];
         lines[CornerLines.Code(e, a, x)] = line;
     });
-    Console.WriteLine($"Brooklands {bk.Entry}/{bk.Apex}/{bk.Exit}; braking {braking}; apex given at {decide}; {lines.Count} lines in {clock.Elapsed.TotalSeconds:F1}s; leader rears {rear:P0}");
+    Console.WriteLine($"Brooklands {bk.Entry}/{bk.Apex}/{bk.Exit}; braking {braking}; apex given at {decide}; {lines.Count} lines in {clock.Elapsed.TotalSeconds:F1}s");
 
-    // Each line driven alone, by each car, timed at every station to Luffield's apex.
-    ICar LeaderModel() => rear == 1f ? StockCar.Build(DevelopmentTyres.SuperId) : Duel.CarWithRear(rear);
-    float[] markS = Enumerable.Range(0, lanes.Wrap(luffield - claim) + 1).Select(j => lanes.Wrap(claim + j) * lanes.Spacing).ToArray();
-    var leaderTables = new System.Collections.Concurrent.ConcurrentDictionary<string, CornerLines.Run>();
+    // Each line driven alone, by the chaser and by the leader at every tier
+    // of its rears, timed at every station from the straight's start to Luffield's apex.
+    int tableFrom = loop.Exit;
+    float[] markS = Enumerable.Range(0, lanes.Wrap(luffield - tableFrom) + 1).Select(j => lanes.Wrap(tableFrom + j) * lanes.Spacing).ToArray();
+    var leaderTables = Enumerable.Range(0, Battle.RearTiers.Length)
+        .Select(_ => new System.Collections.Concurrent.ConcurrentDictionary<string, CornerLines.Run>()).ToArray();
     var chaserTables = new System.Collections.Concurrent.ConcurrentDictionary<string, CornerLines.Run>();
-    Parallel.ForEach(lines.Keys.SelectMany(code => new[] { (code, true), (code, false) }).ToList(), job =>
+    var jobs = lines.Keys.SelectMany(code => new (string code, int tier)[] { (code, -1) }.Concat(Enumerable.Range(0, Battle.RearTiers.Length).Select(tier => (code, tier)))).ToList();
+    Parallel.ForEach(jobs, job =>
     {
-        var run = CornerLines.Drive(track, file, lanes, lines[job.code], 1f, markS, job.Item2 ? LeaderModel() : StockCar.Build(DevelopmentTyres.SuperId));
-        (job.Item2 ? leaderTables : chaserTables)[job.code] = run;
+        ICar model = job.tier < 0 || job.tier == 0 ? StockCar.Build(DevelopmentTyres.SuperId) : Duel.CarWithRear(Battle.RearTiers[job.tier]);
+        var run = CornerLines.Drive(track, file, lanes, lines[job.code], 1f, markS, model);
+        if (job.tier < 0)
+            chaserTables[job.code] = run;
+        else
+            leaderTables[job.tier][job.code] = run;
     });
+
+    // The leader's one move on the straight: out of the Loop it holds the
+    // outside place, or covers the inside early, joining an inside line
+    // before the turn-in. One such path per line that turns in from there,
+    // so it can cover onto whichever of them its rears can drive.
+    float[] holdPath = lines[Battle.Hold];
+    var coverPaths = new Dictionary<string, float[]>();
+    foreach (string code in lines.Keys.Where(c => c[0] == '内'))
+    {
+        var cover = (float[])lines[code].Clone();
+        int c0 = lanes.Wrap(loop.Exit + 40), join = lanes.Wrap(bk.Entry - 10);
+        for (int i = c0; i != join; i = lanes.Wrap(i + 1))
+        {
+            float place = CornerLines.PlaceOffset(lanes, bk.Sign, i, 0);
+            cover[i] = free[i] + (place - free[i]) * Battle.Ease(lanes.Wrap(i - c0) / 75f);
+        }
+        for (int i = join; i != bk.Entry; i = lanes.Wrap(i + 1))
+        {
+            float place = CornerLines.PlaceOffset(lanes, bk.Sign, i, 0);
+            cover[i] = place + (lines[code][i] - place) * Battle.Ease(lanes.Wrap(i - join) / 10f);
+        }
+        coverPaths[code] = cover;
+    }
 
     var ctx = new Battle.Context
     {
         Track = track, File = file, Lanes = lanes, Solo = solo, Lines = lines, Free = free,
-        LeaderTables = leaderTables, ChaserTables = chaserTables, Claim = claim,
-        Start = lanes.Wrap(bends[2].First - 60), Release = loop.Apex, PushFrom = loop.Exit, Braking = braking,
-        Decide = decide, Entry = bk.Entry, Apex = bk.Apex, Exit = bk.Exit, Luffield = luffield, WindowEnd = windowEnd,
-        InsideDirection = -bk.Sign, LeaderModel = LeaderModel,
+        HoldPath = holdPath, CoverPaths = coverPaths, LeaderTables = leaderTables, ChaserTables = chaserTables, TableFrom = tableFrom, Claim = claim,
+        Start = lanes.Wrap(bends[2].First - 60), Release = loop.Apex, PushFrom = loop.Exit, PullAt = pullAt, Braking = braking,
+        DefendAt = lanes.Wrap(loop.Exit + 40), Decide = decide, Entry = bk.Entry, Apex = bk.Apex, Exit = bk.Exit, Luffield = luffield, WindowEnd = windowEnd,
+        InsideDirection = -bk.Sign,
     };
 
-    // Who gives whom room: the closest two lines come across the road from
-    // the turn-in to past the exit, as if side by side all the way.
-    Console.WriteLine($"lines alone, seconds from the braking point to Luffield's apex (leader on its rears / chaser):");
+    // What the straight is worth, baked once: the chaser held 0.3 s behind
+    // through Village and the Loop, then its own pace in the tow, with and
+    // without a push, behind a leader at each tier of its rears. The gap in
+    // seconds at the straight's start and at the pull-out point.
+    Console.WriteLine($"straight, chaser's gap in seconds at its start (station {loop.Exit}) and at the pull-out point (station {pullAt}):");
+    foreach (int tier in new[] { 0, 2, 3 })
+    {
+        foreach (bool push in new[] { false, true })
+        {
+            Battle.Result d = Battle.Run(ctx, new Battle.Policy { Tier = tier, Push = push });
+            ctx.Gain[tier, push ? 1 : 0] = d.TimeGap[4] - d.TimeGap[5];
+            Console.WriteLine($"  rears {Battle.RearTiers[tier]:P0}, push {push,-5}  {d.TimeGap[4]:F2}s -> {d.TimeGap[5]:F2}s  (closes {ctx.Gain[tier, push ? 1 : 0]:F2}s)");
+        }
+    }
+    ctx.Gain[1, 0] = (ctx.Gain[0, 0] + ctx.Gain[2, 0]) / 2f;
+    ctx.Gain[1, 1] = (ctx.Gain[0, 1] + ctx.Gain[2, 1]) / 2f;
+
+    Console.WriteLine($"lines alone, seconds from the braking point to Luffield's apex (leader at each tier / chaser):");
     foreach (string code in lines.Keys.OrderBy(c => c))
-        Console.WriteLine($"  {code}  {ctx.LeaderSeconds(code, decide, luffield):F3} / {ctx.ChaserSeconds(code, decide, luffield):F3}");
+        Console.WriteLine($"  {code}  {string.Join(" ", Enumerable.Range(0, Battle.RearTiers.Length).Select(t => ctx.LeaderSeconds(t, code, decide, luffield).ToString("F3")))} / {ctx.ChaserSeconds(code, decide, luffield):F3}");
 
-    // The leader holds its outside place, or covers the inside once, early.
-    var plans = new List<(string Name, float[] Path, string Line)> { ("leader holds outside", lines["外内外"], "外内外") };
+    // The sweep: the leader's rears, the chaser's push, how much margin each
+    // asks for before it moves, and how far off the truth the chaser reads
+    // the leader's rears. The leader reads the chaser's push the wrong way
+    // round in half of them.
+    var cases = new List<Battle.Policy>();
+    foreach (int tier in new[] { 0, 2, 3 })
+        foreach (bool push in new[] { false, true })
+            foreach (float nerve in new[] { 0f, 2f })
+                foreach (float cover in new[] { 0f, 3f })
+                    foreach (int error in new[] { 0, -1 })
+                        foreach (bool misread in new[] { false, true })
+                            cases.Add(new Battle.Policy { Tier = tier, Push = push, AttackMargin = nerve, DefendWithin = cover, ReadError = error, MisreadsPush = misread, AutoAttack = true, AutoDefend = true });
+
+    var results = new Battle.Result[cases.Count];
+    Parallel.For(0, cases.Count, r => results[r] = Battle.Run(ctx, cases[r]));
+    Console.WriteLine("\nrears  push  nerve  cover  reads   leader reads  threat   leader        attack  apex given        gap m at Luffield  closest  result");
+    int contacts = 0, spins = 0, passes = 0;
+    for (int r = 0; r < cases.Count; r++)
     {
-        float[] cover = (float[])lines["内内外"].Clone();
-        int c0 = lanes.Wrap(loop.Exit + 40), join = lanes.Wrap(bk.Entry - 10);
-        for (int i = c0; i != join; i = lanes.Wrap(i + 1))
-        {
-            float hold = CornerLines.PlaceOffset(lanes, bk.Sign, i, 0);
-            cover[i] = free[i] + (hold - free[i]) * Battle.Ease(lanes.Wrap(i - c0) / 75f);
-        }
-        for (int i = join; i != bk.Entry; i = lanes.Wrap(i + 1))
-        {
-            float hold = CornerLines.PlaceOffset(lanes, bk.Sign, i, 0);
-            cover[i] = hold + (lines["内内外"][i] - hold) * Battle.Ease(lanes.Wrap(i - join) / 10f);
-        }
-        plans.Add(("leader covers inside", cover, "内内外"));
+        Battle.Policy p = cases[r];
+        Battle.Result d = results[r];
+        if (d.Contact) contacts++;
+        if (d.Spins > 0) spins++;
+        if (d.Gap[3] < 0f) passes++;
+        Console.WriteLine($"  {Battle.RearTiers[p.Tier],5:P0}  {p.Push,-5}  {p.AttackMargin,4:F0}m  {p.DefendWithin,4:F0}m  {(p.ReadError == 0 ? "true" : "a tier off"),-11}  {(p.MisreadsPush ? "wrong" : "right"),-5}  " +
+            $"{(float.IsNegativeInfinity(d.Threat) ? "    none" : $"{d.Threat,7:F1}m"),7}  {(d.Covered ? "covers" : "holds"),-6}  {d.LeaderLine,-7}  {(d.Attack ?? "follows"),-7}  {d.Decision,-16}  " +
+            $"{d.Gap[3],8:F1}   {(float.IsInfinity(d.Closest) ? "   -" : d.Closest.ToString("F2")),6}   " +
+            $"{(d.Contact ? "CONTACT " : "")}{(d.Spins > 0 ? $"spins {d.Spins} " : "")}{(d.Gap[3] < 0f ? "PASSED" : "behind")}");
     }
-
-    foreach (var plan in plans)
-    {
-        char entry = plan.Line[0];
-        var attacks = new List<string?> { null };
-        attacks.AddRange(lines.Keys.Where(c => c[0] != entry && ctx.ChaserCan(c)).OrderBy(c => c));
-        Console.WriteLine($"\n{plan.Name} ({plan.Line}); it may change to {string.Join(" ", ctx.LeaderOptions(plan.Line))}");
-
-        var results = new Battle.Result[attacks.Count];
-        Parallel.For(0, attacks.Count, r => results[r] = Battle.Run(ctx, plan.Path, plan.Line, attacks[r]));
-        Console.WriteLine("  chaser       pulled  apex predicted      given   leader on   gap m at: braking    apex    exit  Luffield   closest beside  result");
-        for (int r = 0; r < attacks.Count; r++)
-        {
-            Battle.Result d = results[r];
-            string given = d.Decision;
-            Console.WriteLine($"  {(attacks[r] ?? "stays in tow"),-12} {(d.PulledAt >= 0 ? d.PulledAt.ToString() : "-"),6}  {(float.IsNaN(d.Along) ? "" : $"{d.Along,6:F1} m"),-12}  {given,-18} {d.LeaderLine,-7}  " +
-                $"{d.Gap[0],8:F1} {d.Gap[1],7:F1} {d.Gap[2],7:F1} {d.Gap[3],9:F1}   {(float.IsInfinity(d.Closest) ? "   -" : d.Closest.ToString("F2")),6}   " +
-                $"{(d.Contact ? "CONTACT " : "")}{(d.Spins > 0 ? $"spins {d.Spins} " : "")}{(d.Gap[3] < 0f ? "PASSED" : "behind")}");
-        }
-    }
+    Console.WriteLine($"{cases.Count} races: {passes} passes, {contacts} with contact, {spins} with a spin");
     return 0;
 }
 
@@ -1301,10 +1346,41 @@ static class Battle
     /// <summary>How long a pull-out takes: one quick move across, about two seconds.</summary>
     public const float PullSeconds = 2f;
 
+    /// <summary>The leader's rear grip in each tier a rival may read it in, as a share of new: tier 0 is new.</summary>
+    public static readonly float[] RearTiers = [1f, 0.95f, 0.9f, 0.85f];
+
+    public const string Hold = "外内外", Cover = "内内外";
+
     public static float Ease(float x)
     {
         x = Math.Clamp(x, 0f, 1f);
         return x * x * (3f - 2f * x);
+    }
+
+    /// <summary>
+    /// What each car will do. The leader holds its place outside, covers the
+    /// inside once at <see cref="Context.DefendAt"/>, or decides there: it
+    /// covers when the chaser's best attack, as it reads it, would come
+    /// within <see cref="DefendWithin"/> metres of earning the apex. The
+    /// chaser attacks on a given line, or decides two seconds before the
+    /// turn-in: it goes on its best line when that would earn the apex by
+    /// <see cref="AttackMargin"/> metres or more, as it reads the leader. It
+    /// reads the leader's rears <see cref="ReadError"/> tiers off the truth.
+    /// </summary>
+    public sealed record Policy
+    {
+        public string? Attack { get; init; }
+        public bool AutoAttack { get; init; }
+        public float AttackMargin { get; init; }
+        public bool CoverAlways { get; init; }
+        public bool AutoDefend { get; init; }
+        public float DefendWithin { get; init; }
+        public bool Push { get; init; } = true;
+        public int Tier { get; init; }
+        public int ReadError { get; init; }
+        /// <summary>The leader reads the chaser's push the wrong way round.</summary>
+        public bool MisreadsPush { get; init; }
+        public int ReadTier => Math.Clamp(Tier + ReadError, 0, RearTiers.Length - 1);
     }
 
     public sealed class Context
@@ -1314,29 +1390,73 @@ static class Battle
         public required LaneSet Lanes;
         public required LaneLapResult Solo;
         public required System.Collections.Concurrent.ConcurrentDictionary<string, float[]> Lines;
-        public required float[] Free;
-        public required System.Collections.Concurrent.ConcurrentDictionary<string, CornerLines.Run> LeaderTables, ChaserTables;
-        public required int Claim, Start, Release, PushFrom, Braking, Decide, Entry, Apex, Exit, Luffield, WindowEnd, InsideDirection;
-        public required Func<ICar> LeaderModel;
+        public required float[] Free, HoldPath;
+        /// <summary>The leader's path covering the inside onto each line that turns in from there.</summary>
+        public required Dictionary<string, float[]> CoverPaths;
+
+        /// <summary>The leader's fastest line turning in from the inside that it can drive on its rears, or none.</summary>
+        public string? CoverLine(int tier) => CoverPaths.Keys.Where(code => LeaderCan(tier, code))
+            .OrderBy(code => LeaderSeconds(tier, code, Decide, Luffield)).FirstOrDefault();
+        /// <summary>The leader's timetables on each line, one set per tier of its rears.</summary>
+        public required System.Collections.Concurrent.ConcurrentDictionary<string, CornerLines.Run>[] LeaderTables;
+        public required System.Collections.Concurrent.ConcurrentDictionary<string, CornerLines.Run> ChaserTables;
+        public required int TableFrom, Claim, Start, Release, PushFrom, Braking, Decide, Entry, Apex, Exit, Luffield, WindowEnd, InsideDirection, DefendAt, PullAt;
+        /// <summary>Seconds the chaser closes in the tow from the exit before the straight to the pull-out point: by leader tier, without and with a push.</summary>
+        public float[,] Gain = new float[RearTiers.Length, 2];
 
         /// <summary>Time on a line alone at a station, interpolated, from its timetable.</summary>
         private float At(CornerLines.Run run, float station)
         {
-            float j = Lanes.Wrap((int)MathF.Floor(station) - Claim) + (station - MathF.Floor(station));
+            float j = Lanes.Wrap((int)MathF.Floor(station) - TableFrom) + (station - MathF.Floor(station));
             int a = Math.Clamp((int)j, 0, run.Times.Length - 1), b = Math.Min(a + 1, run.Times.Length - 1);
             return run.Times[a] + (run.Times[b] - run.Times[a]) * (j - a);
         }
 
-        public float LeaderSeconds(string code, float from, float to) => At(LeaderTables[code], to) - At(LeaderTables[code], from);
+        public float LeaderSeconds(int tier, string code, float from, float to) => At(LeaderTables[tier][code], to) - At(LeaderTables[tier][code], from);
         public float ChaserSeconds(string code, float from, float to) => At(ChaserTables[code], to) - At(ChaserTables[code], from);
-        public float ChaserSpeed(string code, int station) => ChaserTables[code].Speeds[Lanes.Wrap(station - Claim)];
+        public float ChaserSpeed(string code, int station) => ChaserTables[code].Speeds[Math.Clamp(Lanes.Wrap(station - TableFrom), 0, ChaserTables[code].Speeds.Length - 1)];
+        public float LeaderSpeed(int tier, string code, int station) => LeaderTables[tier][code].Speeds[Math.Clamp(Lanes.Wrap(station - TableFrom), 0, LeaderTables[tier][code].Speeds.Length - 1)];
+
+        public bool LeaderCan(int tier, string code) => Drives(LeaderTables[tier][code]);
+        public bool ChaserCan(string code) => Drives(ChaserTables[code]);
+        /// <summary>Driven alone without a spin, and timed in order at every station.</summary>
+        private static bool Drives(CornerLines.Run run)
+        {
+            if (run.Lap.Spins != 0 || float.IsNaN(run.Times[0]))
+                return false;
+            for (int i = 1; i < run.Times.Length; i++)
+                if (!(run.Times[i] > run.Times[i - 1]))
+                    return false;
+            return true;
+        }
 
         /// <summary>The leader's lines that turn in from where it already is.</summary>
-        public IEnumerable<string> LeaderOptions(string line) => Lines.Keys.Where(c => c[0] == line[0] && Drives(LeaderTables[c])).OrderBy(c => c);
+        public IEnumerable<string> LeaderOptions(int tier, string line) => Lines.Keys.Where(c => c[0] == line[0] && LeaderCan(tier, c)).OrderBy(c => c);
 
-        public bool ChaserCan(string code) => Drives(ChaserTables[code]);
+        /// <summary>The chaser's lines that turn in from somewhere else than the leader does.</summary>
+        public IEnumerable<string> Attacks(string leaderLine) => Lines.Keys.Where(c => c[0] != leaderLine[0] && ChaserCan(c)).OrderBy(c => c);
 
-        private static bool Drives(CornerLines.Run run) => run.Lap.Spins == 0 && !float.IsNaN(run.Times[0]);
+        /// <summary>Whether a line takes its apex inside of the leader's.</summary>
+        public bool Inside(string attack, float[] leaderPath) => (Lines[attack][Apex] - leaderPath[Apex]) * InsideDirection > 0f;
+
+        /// <summary>
+        /// How far behind the leader's centre the chaser's will be at the
+        /// apex, each on its line from where it is, driven as alone; less
+        /// whatever either is carrying above its alone speed now, held to the
+        /// braking point.
+        /// </summary>
+        public float Along(int tier, string leaderLine, float leaderAt, float leaderSpeed, string attack, float chaserAt, float chaserSpeed)
+        {
+            float late = ChaserSeconds(attack, chaserAt, Apex) - LeaderSeconds(tier, leaderLine, leaderAt, Apex);
+            float toBraking = Lanes.Wrap(Braking - (int)chaserAt) * Lanes.Spacing;
+            float carried = toBraking < Lanes.LengthMeters / 2f
+                ? ((chaserSpeed - ChaserSpeed(attack, (int)chaserAt)) - (leaderSpeed - LeaderSpeed(tier, leaderLine, (int)leaderAt))) * toBraking / MathF.Max(chaserSpeed, 1f)
+                : 0f;
+            return late * ChaserSpeed(attack, Apex) - carried;
+        }
+
+        /// <summary>By how many metres an attack would earn the apex: positive earns it.</summary>
+        public float Margin(string attack, float[] leaderPath, float along) => (Inside(attack, leaderPath) ? AxleToMirror : 0f) - along;
 
         /// <summary>
         /// How close across the road the two come where they are alongside:
@@ -1345,79 +1465,89 @@ static class Battle
         /// of each other in time at the speed there. Infinite where they are
         /// never alongside.
         /// </summary>
-        public float Room(string leaderLine, float leaderAt, string chaserLine, float chaserAt, float body)
+        public float Room(int tier, string leaderLine, float leaderAt, string chaserLine, float chaserAt, float body)
         {
             float closest = float.PositiveInfinity;
             for (int i = Lanes.Wrap(Entry - 10); i != Lanes.Wrap(Exit + 20); i = Lanes.Wrap(i + 1))
             {
-                float apart = (ChaserSeconds(chaserLine, chaserAt, i) - LeaderSeconds(leaderLine, leaderAt, i)) * ChaserSpeed(chaserLine, i);
+                float apart = (ChaserSeconds(chaserLine, chaserAt, i) - LeaderSeconds(tier, leaderLine, leaderAt, i)) * ChaserSpeed(chaserLine, i);
                 if (MathF.Abs(apart) < body)
                     closest = MathF.Min(closest, MathF.Abs(Lines[leaderLine][i] - Lines[chaserLine][i]));
             }
             return closest;
         }
 
-        public float Separation(float[] a, float[] b)
-        {
-            float closest = float.PositiveInfinity;
-            for (int i = Lanes.Wrap(Entry - 10); i != Lanes.Wrap(Exit + 20); i = Lanes.Wrap(i + 1))
-                closest = MathF.Min(closest, MathF.Abs(a[i] - b[i]));
-            return closest;
-        }
+        /// <summary>The leader's fastest line from where it is that leaves an attack room, or none.</summary>
+        public string? LeavesRoom(int tier, string line, float mine, string attack, float theirs, float body) =>
+            LeaderOptions(tier, line)
+                .Select(o => (Code: o, Room: Room(tier, o, mine, attack, theirs, body), Seconds: LeaderSeconds(tier, o, mine, Luffield)))
+                .Where(o => o.Room >= Battle.Room)
+                .OrderBy(o => o.Seconds)
+                .Select(o => o.Code)
+                .FirstOrDefault();
     }
 
     public sealed class Referee
     {
-        public bool Decided, Earned, PulledOut, Considered, AttackerTucks;
-        public string? AttackerLine;
+        public bool Decided, Earned, PulledOut, Considered, AttackerTucks, Covered;
+        public string? AttackerLine, Attack;
         public int PulledAt = -1;
-        public float Along = float.NaN;
-        public string LeaderLine = "";
+        public float Along = float.NaN, Threat = float.NaN, Read = float.NaN;
+        public string LeaderLine = Hold;
         public float[]? LeaderTarget;
     }
 
-    public sealed record Result(string Decision, string LeaderLine, int PulledAt, float Along, float[] Gap, float Closest, bool Contact, int Spins);
+    public sealed record Result(string Decision, string LeaderLine, string? Attack, bool Covered, float Threat, float Read, int PulledAt, float Along,
+        float[] Gap, float[] TimeGap, float Closest, bool Contact, int Spins);
 
-    public static Result Run(Context c, float[] leaderPath, string leaderLine, string? attack)
+    public static Result Run(Context c, Policy p)
     {
         LaneSet lanes = c.Lanes;
         var simulation = new RaceSimulation(c.Track);
-        LaneTrackFile pathFile = c.File.WithLanes(lanes.WithOffsets(LaneId.Free, leaderPath));
-        var referee = new Referee { LeaderLine = leaderLine, LeaderTarget = leaderPath };
+        LaneTrackFile pathFile = c.File.WithLanes(lanes.WithOffsets(LaneId.Free, c.HoldPath));
+        var referee = new Referee { LeaderLine = Hold, LeaderTarget = c.HoldPath, Attack = p.Attack };
 
-        ICar leaderModel = c.LeaderModel();
-        var defender = new Defender(new LaneDriver(pathFile, leaderModel) { LearnsAsItDrives = false }, c, referee, leaderPath, leaderLine, attack);
-        RaceCar leader = Seat(simulation, "leader", leaderModel, defender, lanes, leaderPath, c.Start, c.Solo.StationSpeed[c.Start]);
+        ICar leaderModel = p.Tier == 0 ? StockCar.Build(DevelopmentTyres.SuperId) : Duel.CarWithRear(RearTiers[p.Tier]);
+        var defender = new Defender(new LaneDriver(pathFile, leaderModel) { LearnsAsItDrives = false }, c, referee, p);
+        RaceCar leader = Seat(simulation, "leader", leaderModel, defender, lanes, c.HoldPath, c.Start, c.Solo.StationSpeed[c.Start]);
         float body = leader.Car.Spec.Body?.LengthMeters ?? 4.8f;
         int behind = lanes.Wrap(c.Start - (int)MathF.Round((body + 25f) / lanes.Spacing));
         ICar chaserModel = StockCar.Build(DevelopmentTyres.SuperId);
-        var attacker = new Attacker(new LaneDriver(pathFile, chaserModel) { LearnsAsItDrives = false }, c, referee, leaderPath, attack, body);
-        RaceCar chaser = Seat(simulation, "chaser", chaserModel, attacker, lanes, leaderPath, behind, c.Solo.StationSpeed[behind]);
+        var attacker = new Attacker(new LaneDriver(pathFile, chaserModel) { LearnsAsItDrives = false }, c, referee, p, body);
+        RaceCar chaser = Seat(simulation, "chaser", chaserModel, attacker, lanes, c.HoldPath, behind, c.Solo.StationSpeed[behind]);
 
         float length = c.Track.LengthMeters, spacing = lanes.Spacing;
         float origin = c.Start * spacing;
-        int[] marks = [c.Braking, c.Apex, c.Exit, c.Luffield];
+        // Metres apart at the braking point, apex, exit and Luffield; seconds at those and at the straight's start and the pull-out point.
+        int[] marks = [c.Braking, c.Apex, c.Exit, c.Luffield, c.PushFrom, c.PullAt];
         float[] markU = marks.Select(m => origin + lanes.Wrap(m - c.Start) * spacing).ToArray();
         var cars = new[] { leader, chaser };
         var u = new[] { origin, origin - lanes.Wrap(c.Start - behind) * spacing };
         var last = cars.Select(x => x.Progress.CurrentS).ToArray();
         var gap = Enumerable.Repeat(float.NaN, marks.Length).ToArray();
-        var passed = new bool[2, marks.Length];
+        var at = new float[2, marks.Length];
+        for (int m = 0; m < marks.Length; m++)
+            at[0, m] = at[1, m] = float.NaN;
         float closest = float.PositiveInfinity;
         bool contact = false;
         const float dt = 1f / 60f;
-        for (int step = 0; step < 60 * 60 && float.IsNaN(gap[^1]); step++)
+        for (int step = 0; step < 60 * 60 && float.IsNaN(gap[3]); step++)
         {
-            int at = lanes.Wrap((int)lanes.StationOf(chaser.Progress.CurrentS));
-            chaser.Strategy = chaser.Strategy.WithButton(0, lanes.Wrap(at - c.PushFrom) < lanes.Wrap(c.Braking - c.PushFrom));
+            int here = lanes.Wrap((int)lanes.StationOf(chaser.Progress.CurrentS));
+            chaser.Strategy = chaser.Strategy.WithButton(0, p.Push && lanes.Wrap(here - c.PushFrom) < lanes.Wrap(c.Braking - c.PushFrom));
             simulation.Step(dt);
+            float t = (step + 1) * dt;
             for (int x = 0; x < 2; x++)
             {
                 float s = cars[x].Progress.CurrentS;
-                u[x] += MathF.IEEERemainder(s - last[x], length);
+                float moved = MathF.IEEERemainder(s - last[x], length);
+                float u0 = u[x];
+                u[x] += moved;
                 last[x] = s;
+                for (int m = 0; m < marks.Length; m++)
+                    if (float.IsNaN(at[x, m]) && u0 < markU[m] && u[x] >= markU[m])
+                        at[x, m] = t - dt * (u[x] - markU[m]) / MathF.Max(moved, 1e-4f);
             }
-            // The gap at a mark: when the later of the two has reached it, nose to tail, as the leader is then.
             for (int m = 0; m < marks.Length; m++)
                 if (float.IsNaN(gap[m]) && u[0] >= markU[m] && u[1] >= markU[m])
                     gap[m] = u[0] - u[1] - body;
@@ -1430,10 +1560,14 @@ static class Battle
                     contact = true;
             }
         }
+        var timeGap = new float[marks.Length];
+        for (int m = 0; m < marks.Length; m++)
+            timeGap[m] = at[1, m] - at[0, m];
         int spins = ((ICarMotion)leader.Car).Motion(leader.State).Spins + ((ICarMotion)chaserModel).Motion(chaser.State).Spins;
         string decision = !referee.PulledOut ? "-" : !referee.Decided ? "?" : (referee.Earned ? "chaser" : "leader") +
-            (referee.AttackerTucks ? ", tucks" : referee.AttackerLine is { } beside && beside != attack ? $", to {beside}" : "");
-        return new Result(decision, referee.LeaderLine, referee.PulledAt, referee.Along, gap, closest, contact, spins);
+            (referee.AttackerTucks ? ", tucks" : referee.AttackerLine is { } beside && beside != referee.Attack ? $", to {beside}" : "");
+        return new Result(decision, referee.LeaderLine, referee.PulledOut ? referee.Attack : null, referee.Covered, referee.Threat, referee.Read,
+            referee.PulledAt, referee.Along, gap, timeGap, closest, contact, spins);
     }
 
     private static RaceCar Seat(RaceSimulation simulation, string name, ICar model, IDriverController controller, LaneSet lanes, float[] path, int station, float speed)
@@ -1476,28 +1610,27 @@ static class Battle
 
     /// <summary>
     /// Off the back of a car ahead that is in the way across the road: the
-    /// pedal held to what closes to three metres no faster than it can
-    /// stop, and while <paramref name="tuckMetres"/> is set, held in behind
-    /// whatever the road across, short of being beside it already.
+    /// pedal held to what closes to three metres no faster than it can stop;
+    /// when <paramref name="tucked"/>, held in behind whatever the road
+    /// across, short of being beside it already.
     /// </summary>
-    private static DriverInput KeepOff(DriverInput input, float gap, RaceCarSnapshot me, RaceCarSnapshot ahead, float tuckMetres)
+    private static DriverInput KeepOff(DriverInput input, float gap, RaceCarSnapshot me, RaceCarSnapshot ahead, bool tucked)
     {
         float across = MathF.Abs(ahead.TrackD - me.TrackD);
-        float v = me.SpeedMetersPerSecond, closing = v - ahead.SpeedMetersPerSecond;
-        bool inTheWay = across < 2.2f || tuckMetres > 0f && gap > -2f;
+        float closing = me.SpeedMetersPerSecond - ahead.SpeedMetersPerSecond;
+        bool inTheWay = across < 2.2f || tucked && gap > -2f;
         if (!inTheWay || gap < -2f || gap > 80f)
             return input;
-        float safe = 3f + MathF.Max(0f, closing) * 0.8f + tuckMetres * 0f;
+        float safe = 3f + MathF.Max(0f, closing) * 0.8f;
         float cap = 1.5f * (gap - safe) - 2f * closing;
         return cap < input.DesiredAccel ? input with { DesiredAccel = cap } : input;
     }
 
-    private sealed class Defender(LaneDriver inner, Context c, Referee referee, float[] path, string line, string? attack) : IDriverController
+    private sealed class Defender(LaneDriver inner, Context c, Referee referee, Policy p) : IDriverController
     {
+        private bool _defended;
         public CarNeeds Needs => ((IDriverController)inner).Needs;
         public void Initialize(in DriverContext context) => inner.Initialize(in context);
-
-        private bool _tucked;
 
         public DriverInput GetControl(in DriverContext context, float dt)
         {
@@ -1505,69 +1638,102 @@ static class Battle
             LaneSet lanes = c.Lanes;
             RaceCarSnapshot me = context.Car, other = context.Frame[1];
             int station = lanes.Wrap((int)lanes.StationOf(me.TrackS));
+            const float body = 4.8f;
             // Never into the back of the other once it is ahead and in the way.
-            float ahead = MathF.IEEERemainder(other.TrackS - me.TrackS, lanes.LengthMeters) - 4.8f;
-            input = KeepOff(input, ahead, me, other, _tucked ? 15f : 0f);
+            float ahead = MathF.IEEERemainder(other.TrackS - me.TrackS, lanes.LengthMeters) - body;
+            input = KeepOff(input, ahead, me, other, false);
+
+            // Its one move on the straight, early, before the chaser could pull out.
+            if (!_defended && lanes.Wrap(station - c.DefendAt) < 5)
+            {
+                _defended = true;
+                bool cover = p.CoverAlways;
+                if (!cover && p.AutoDefend)
+                {
+                    referee.Threat = Threat(me, other, -ahead - body);
+                    cover = referee.Threat >= -p.DefendWithin;
+                }
+                if (cover && c.CoverLine(p.Tier) is { } onto)
+                {
+                    referee.Covered = true;
+                    referee.LeaderLine = onto;
+                    referee.LeaderTarget = c.CoverPaths[onto];
+                    inner.DriveLine(station, Move(lanes, c.HoldPath, station, me.TrackD, 10, c.CoverPaths[onto], c.WindowEnd));
+                }
+            }
+
             if (referee.Decided || lanes.Wrap(station - c.Decide) >= 5)
                 return input;
             referee.Decided = true;
-            if (!referee.PulledOut || attack is null)
+            if (!referee.PulledOut || referee.Attack is not { } attack)
                 return input;
-            // Where the two will be at the apex, each on its line as alone, from where each is now.
+            // The apex as the guidelines give it, from where the two will be
+            // at it: the referee reads the leader as it truly is.
+            string line = referee.LeaderLine;
+            float[] path = referee.LeaderTarget!;
             float mine = lanes.StationOf(me.TrackS), theirs = lanes.StationOf(other.TrackS);
-            float late = c.ChaserSeconds(attack, theirs, c.Apex) - c.LeaderSeconds(line, mine, c.Apex);
-            float along = late * c.ChaserSpeed(attack, c.Apex);
-            bool inside = (c.Lines[attack][c.Apex] - path[c.Apex]) * c.InsideDirection > 0f;
+            float along = c.Along(p.Tier, line, mine, me.SpeedMetersPerSecond, attack, theirs, other.SpeedMetersPerSecond);
             referee.Along = along;
-            // Inside: the attacker's front axle at the defender's mirrors. Outside: level or ahead.
-            referee.Earned = inside ? along <= AxleToMirror : along <= 0f;
-            float body = 4.8f;
-            // The attacker's lines from where it already is that keep a
-            // car's width from the leader's line wherever the two are
-            // alongside: the fastest of them, or none.
+            referee.Earned = c.Margin(attack, path, along) >= 0f;
+            // The attacker's lines from where it already is that keep a car's
+            // width from the leader's wherever the two are alongside.
             string? Alongside(string leaderLine) => c.Lines.Keys
                 .Where(a => a[0] == attack[0] && c.ChaserCan(a))
-                .Select(a => (Code: a, Room: c.Room(leaderLine, mine, a, theirs, body), Seconds: c.ChaserSeconds(a, theirs, c.Luffield)))
+                .Select(a => (Code: a, Room: c.Room(p.Tier, leaderLine, mine, a, theirs, body), Seconds: c.ChaserSeconds(a, theirs, c.Luffield)))
                 .Where(a => a.Room >= Room)
                 .OrderBy(a => a.Seconds)
                 .Select(a => a.Code)
                 .FirstOrDefault();
-            if (!referee.Earned)
+            string? pick = referee.Earned ? c.LeavesRoom(p.Tier, line, mine, attack, theirs, body) : null;
+            if (pick is not null)
             {
-                // The apex is the leader's: the attacker keeps beside it on a
-                // line that leaves it its line, or tucks in behind.
-                referee.AttackerLine = Alongside(line);
-                referee.AttackerTucks = referee.AttackerLine is null;
-                return input;
-            }
-            var options = c.LeaderOptions(line)
-                .Select(o => (Code: o, Room: c.Room(o, mine, attack, theirs, body), Seconds: c.LeaderSeconds(o, mine, c.Luffield)))
-                .ToList();
-            var leaves = options.Where(o => o.Room >= Room).OrderBy(o => o.Seconds).ToList();
-            if (leaves.Count > 0)
-            {
-                string pick = leaves[0].Code;
                 referee.LeaderLine = pick;
                 referee.LeaderTarget = c.Lines[pick];
                 if (pick != line)
-                    inner.DriveLine(station, Move(lanes, path, station, me.TrackD, 15, c.Lines[pick], c.WindowEnd));
+                    inner.DriveLine(station, Move(lanes, c.HoldPath, station, me.TrackD, 15, c.Lines[pick], c.WindowEnd));
             }
             else
             {
-                // No line of the leader's leaves room for that one: the
-                // attacker's move cuts across it, and is not a move it may
-                // make. It takes a line beside the leader's if it has one,
-                // else tucks in behind.
+                // The apex is the leader's, or the attack cuts across every
+                // line it has: the attacker keeps beside it on a line that
+                // leaves it its own, or tucks in behind.
                 referee.AttackerLine = Alongside(line);
                 referee.AttackerTucks = referee.AttackerLine is null;
             }
             return input;
         }
+
+        /// <summary>
+        /// The chaser's best attack against holding the outside, as the
+        /// leader reads it from the defence point: the chaser where it is
+        /// now less what the tow and a push close on the straight to the
+        /// pull-out point, then each attack line against its own outside
+        /// line. Metres by which it would earn the apex.
+        /// </summary>
+        private float Threat(RaceCarSnapshot me, RaceCarSnapshot other, float metresBehind)
+        {
+            LaneSet lanes = c.Lanes;
+            float seconds = metresBehind / MathF.Max(me.SpeedMetersPerSecond, 1f);
+            float atPull = MathF.Max(0f, seconds - c.Gain[p.Tier, p.Push != p.MisreadsPush ? 1 : 0]);
+            float leaderAt = c.PullAt;
+            float metres = atPull * c.LeaderSpeed(p.Tier, Hold, c.PullAt);
+            float chaserAt = lanes.Wrap((int)MathF.Round(c.PullAt - metres / lanes.Spacing));
+            float best = float.NegativeInfinity;
+            foreach (string a in c.Attacks(Hold))
+            {
+                float along = c.Along(p.Tier, Hold, leaderAt, c.LeaderSpeed(p.Tier, Hold, c.PullAt), a, chaserAt, c.ChaserSpeed(a, (int)chaserAt));
+                // An attack the leader could not leave room for is no attack it must give way to.
+                if (c.Margin(a, c.HoldPath, along) >= 0f && c.LeavesRoom(p.Tier, Hold, leaderAt, a, chaserAt, 4.8f) is null)
+                    continue;
+                best = MathF.Max(best, c.Margin(a, c.HoldPath, along));
+            }
+            return best;
+        }
     }
 
-    private sealed class Attacker(LaneDriver inner, Context c, Referee referee, float[] path, string? attack, float body) : IDriverController
+    private sealed class Attacker(LaneDriver inner, Context c, Referee referee, Policy p, float body) : IDriverController
     {
-        private bool _released, _yielded;
+        private bool _released, _yielded, _followed;
         public CarNeeds Needs => ((IDriverController)inner).Needs;
         public void Initialize(in DriverContext context) => inner.Initialize(in context);
 
@@ -1579,7 +1745,6 @@ static class Battle
             int station = lanes.Wrap((int)lanes.StationOf(me.TrackS));
             float gap = MathF.IEEERemainder(ahead.TrackS - me.TrackS, lanes.LengthMeters) - body;
             float v = me.SpeedMetersPerSecond, vAhead = ahead.SpeedMetersPerSecond;
-            float across = MathF.Abs(ahead.TrackD - me.TrackD);
             if (!_released && lanes.Wrap(station - c.Release) < 50)
                 _released = true;
 
@@ -1594,40 +1759,77 @@ static class Battle
                     input = input with { DesiredAccel = cap };
             }
             else
-                input = KeepOff(input, gap, me, ahead, yields ? 15f : 0f);
+                input = KeepOff(input, gap, me, ahead, yields);
+
+            // In the tow: where the leader moves across, it follows, once.
+            if (referee.Covered && !_followed && !referee.PulledOut)
+            {
+                _followed = true;
+                inner.DriveLine(station, Move(lanes, c.HoldPath, station, me.TrackD, 40, referee.LeaderTarget!, c.WindowEnd));
+            }
 
             // Without the apex: beside the leader on a line that leaves it
             // room, or in behind it, onto the line it takes.
             if (referee.AttackerLine is { } alongside && !_yielded)
             {
                 _yielded = true;
-                if (alongside != attack)
-                    inner.DriveLine(station, Move(lanes, path, station, me.TrackD, 15, c.Lines[alongside], c.WindowEnd));
+                if (alongside != referee.Attack)
+                    inner.DriveLine(station, Move(lanes, c.HoldPath, station, me.TrackD, 15, c.Lines[alongside], c.WindowEnd));
             }
             if (yields && !_yielded)
             {
                 _yielded = true;
-                inner.DriveLine(station, Move(lanes, path, station, me.TrackD, 20, referee.LeaderTarget!, c.WindowEnd));
+                inner.DriveLine(station, Move(lanes, c.HoldPath, station, me.TrackD, 20, referee.LeaderTarget!, c.WindowEnd));
             }
 
             // Out of the tow once, quickly, onto its line for the bend: the
             // move starts two seconds of road before the turn-in and is done
             // at it. Only from close enough behind to have a chance.
-            if (attack is not null && _released && !referee.Considered)
+            if (_released && !referee.Considered)
             {
                 float toEntry = lanes.Wrap(c.Entry - station) * lanes.Spacing;
                 if (toEntry < lanes.LengthMeters / 2f && toEntry <= PullSeconds * v)
                 {
                     referee.Considered = true;
-                    if (gap < 20f)
+                    string? attack = p.AutoAttack ? Choose(me, ahead) : p.Attack;
+                    if (attack is not null && gap < 20f)
                     {
+                        referee.Attack = attack;
                         referee.PulledOut = true;
                         referee.PulledAt = station;
-                        inner.DriveLine(station, Move(lanes, path, station, me.TrackD, lanes.Wrap(c.Entry - station), c.Lines[attack], c.WindowEnd));
+                        inner.DriveLine(station, Move(lanes, c.HoldPath, station, me.TrackD, lanes.Wrap(c.Entry - station), c.Lines[attack], c.WindowEnd));
                     }
                 }
             }
             return input;
+        }
+
+        /// <summary>
+        /// Its best attack as it reads the leader: the line that would earn
+        /// the apex by the most, against the line the leader is on, the
+        /// leader's rears read in the tier it reads them in; taken when it
+        /// earns by the margin its nerve asks for and the leader could leave
+        /// it room, else none.
+        /// </summary>
+        private string? Choose(RaceCarSnapshot me, RaceCarSnapshot ahead)
+        {
+            LaneSet lanes = c.Lanes;
+            string line = referee.LeaderLine;
+            float[] path = referee.LeaderTarget!;
+            float mine = lanes.StationOf(me.TrackS), theirs = lanes.StationOf(ahead.TrackS);
+            string? best = null;
+            float bestMargin = float.NegativeInfinity;
+            foreach (string a in c.Attacks(line))
+            {
+                float along = c.Along(p.ReadTier, line, theirs, ahead.SpeedMetersPerSecond, a, mine, me.SpeedMetersPerSecond);
+                float margin = c.Margin(a, path, along);
+                if (c.LeavesRoom(p.ReadTier, line, theirs, a, mine, body) is null)
+                    continue;
+                if (margin > bestMargin)
+                    (best, bestMargin) = (a, margin);
+            }
+            referee.Read = bestMargin;
+            return bestMargin >= p.AttackMargin ? best : null;
         }
     }
 }
