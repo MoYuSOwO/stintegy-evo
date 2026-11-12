@@ -9,6 +9,51 @@ public static class JointLineBake
 {
     public static string TableKey(string circuitId) => $"joint-five-v1:{circuitId}";
 
+    /// <summary>
+    /// The lattice's fastest way through a stretch, held to given places at
+    /// given stations: from <paramref name="from"/> on the free line at
+    /// <paramref name="startSpeed"/>, over <paramref name="rows"/> rows, back
+    /// on the free line at the end, through each pin's offset (metres from
+    /// the centreline) within <paramref name="toleranceMeters"/>. Offsets
+    /// come back from the centreline, one per station. Null where no way
+    /// passes every pin.
+    /// </summary>
+    public static (float[] Offset, float[] Speed, float Seconds)? PinnedLine(TrackData track, LaneSet lanes, ICar car,
+        int from, int rows, float startSpeed, IReadOnlyList<(int Station, float Offset)> pins, float toleranceMeters = 1f,
+        float beyondMeters = 200f)
+    {
+        var state = new CarState();
+        var tyres = (ICarTires)car;
+        tyres.InstallFreshTires(state);
+        tyres.WarmTires(state, 95f, 95f);
+        (car as ICarStores)?.Fill(state, PowertrainState.Filled(0.8f));
+        var envelope = LaneEnvelope.From(state, (ICarEnvelope)car, (ICarGripFeel)car, CarStrategy.Default)
+            .WithRoadGrip(track.AsphaltGrip);
+        var search = new LineSearch(lanes, envelope, new(), _ => 1f, (station, offset) =>
+        {
+            TrackSample sample = track.Sample(lanes.Wrap(station) * lanes.Spacing);
+            return new LaneRoad(sample.Grade, sample.BankSlopeAt(offset), sample.VerticalRate);
+        });
+        // Each pin on the row nearest it, as metres from the free line there.
+        var held = new Dictionary<int, float>();
+        foreach (var (station, offset) in pins)
+        {
+            int row = (int)MathF.Round(lanes.Wrap(station - from) / (float)search.RowStations);
+            if (row <= 0 || row >= rows)
+                throw new ArgumentOutOfRangeException(nameof(pins), $"Station {station} is not inside the stretch.");
+            int at = from + row * search.RowStations;
+            held[row] = offset - lanes.Offset(LaneId.Free, at);
+        }
+        LineSearch.Way? way = search.Search(from, rows, startSpeed, v => beyondMeters / MathF.Max(v, 1f),
+            (row, y) => !held.TryGetValue(row, out float want) || MathF.Abs(y - want) <= toleranceMeters + 1e-3f);
+        if (way is null)
+            return null;
+        var offsets = new float[way.Offset.Length];
+        for (int k = 0; k < offsets.Length; k++)
+            offsets[k] = lanes.Offset(LaneId.Free, from + k) + way.Offset[k];
+        return (offsets, way.Speed, way.Seconds);
+    }
+
     public static long ExportGeometry(string circuitId, LaneSet lanes, string tablePath, string path,
         Action<int, long>? progress = null)
     {
