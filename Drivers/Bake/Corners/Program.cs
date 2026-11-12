@@ -14,6 +14,33 @@ using StintegyEVO.Core.Track;
 CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
+if (args is ["lap", var lapCircuit, ..])
+{
+    // The driver's own table of where it races at this circuit, read from
+    // its notes for the stock car there. Nothing is detected: with no table
+    // there is nowhere it races.
+    var track = GameMods.Registry.Circuits.Get(lapCircuit).Track;
+    LaneTrackFile file = LaneTrackFile.ForCircuit(lapCircuit, track);
+    LaneSet lanes = file.LanesFor(track);
+    float[] k = CornerMap.FreeCurvature(lanes);
+    List<CornerMap.Bend> bends = CornerMap.Bends(lanes, k);
+    var corners = new List<Lap.Corner>();
+    for (int i = 0; i < bends.Count; i++)
+        corners.Add(new Lap.Corner(i, bends[i], CornerLines.PinsOf(lanes, k, bends, i), 0));
+    string? table = file.NotesText?.Invoke("corners.txt");
+    Console.WriteLine($"{lapCircuit}: {corners.Count} corners, the driver's table {(table is null ? "is not there" : "is there")}");
+    foreach (Lap.Corner c in corners)
+        Console.WriteLine($"  {c.Index,2}  stations {c.Pins.Entry,5}/{c.Pins.Apex,5}/{c.Pins.Exit,5}  s {c.Pins.Entry * lanes.Spacing,6:F0}  " +
+            $"R {1f / MathF.Abs(k[c.Pins.Apex]),6:F0} m  {(k[c.Pins.Apex] > 0f ? "left " : "right")}");
+    Console.WriteLine("where it races:");
+    foreach (Lap.Complex place in Lap.Read(table))
+    {
+        float from = corners[place.First].Pins.Entry * lanes.Spacing, to = corners[place.Last].Pins.Exit * lanes.Spacing;
+        Console.WriteLine($"  corners {place.First}-{place.Last}  s {from,6:F0}-{to,6:F0}  {(place.NoOvertake ? "no overtake" : "overtake"),-12}  abreast {place.MaxAbreast}");
+    }
+    return 0;
+}
+
 if (args is ["map", var circuit])
 {
     var track = GameMods.Registry.Circuits.Get(circuit).Track;
@@ -732,8 +759,48 @@ if (args.Length >= 2 && args[0] == "duel")
 }
 
 Console.Error.WriteLine("Usage: Corners map <official:circuit>");
+Console.Error.WriteLine("       Corners lap <official:circuit>");
 Console.Error.WriteLine("       Corners lines <official:circuit> <bend> [grip,grip,...] [serial] [grid]");
 return 2;
+
+static class Lap
+{
+    /// <summary>One corner of the lap: the bend the free line takes, and where its lines are pinned.</summary>
+    public sealed record Corner(int Index, CornerMap.Bend Bend, CornerLines.Pins Pins, int Braking);
+
+    /// <summary>Corners raced as one: one move covers them, and a pass is judged at the last of them.</summary>
+    public sealed record Complex(int First, int Last, bool NoOvertake, int MaxAbreast);
+
+    /// <summary>
+    /// The driver's own table of where it races at a circuit, as it wrote it.
+    /// One line a place: the corners it covers, numbered as the map prints
+    /// them, then whether a pass may be made there and how many cars may run
+    /// abreast: <c>first-last [no] [abreast=N]</c>. Nothing is detected and
+    /// nothing is filled in: no text is nowhere it races.
+    /// </summary>
+    public static List<Complex> Read(string? text)
+    {
+        var places = new List<Complex>();
+        if (text is null)
+            return places;
+        foreach (string raw in text.Split('\n'))
+        {
+            string line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
+                continue;
+            string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string[] range = parts[0].Split('-');
+            int a = int.Parse(range[0]), b = range.Length == 2 ? int.Parse(range[1]) : a;
+            bool no = parts.Contains("no");
+            int abreast = parts.FirstOrDefault(p => p.StartsWith("abreast=")) is { } ab ? int.Parse(ab[8..]) : 2;
+            places.Add(new Complex(a, b, no, abreast));
+        }
+        return places.OrderBy(p => p.First).ToList();
+    }
+
+    /// <summary>The complex a corner belongs to.</summary>
+    public static Complex Of(IReadOnlyList<Complex> complexes, int corner) => complexes.First(c => corner >= c.First && corner <= c.Last);
+}
 
 static class CornerLines
 {

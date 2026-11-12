@@ -17,11 +17,18 @@ public sealed class LaneTrackFile
     private LaneSet? _lanes;
     private readonly LaneBakeOptions _bake;
 
-    private LaneTrackFile(LaneSet? lanes, LaneBakeOptions? bake)
+    private LaneTrackFile(LaneSet? lanes, LaneBakeOptions? bake, Func<string, string?>? notesText = null)
     {
         _lanes = lanes;
         _bake = bake ?? new LaneBakeOptions();
+        NotesText = notesText;
     }
+
+    /// <summary>
+    /// One of the driver's own files in the notes these lanes came from, or
+    /// none when it is not there. Null for a file that did not come from notes.
+    /// </summary>
+    public Func<string, string?>? NotesText { get; }
 
     /// <summary>A file with no lanes yet; they are baked against the first track it meets.</summary>
     public static LaneTrackFile Fresh(LaneBakeOptions? bake = null) => new(null, bake);
@@ -43,7 +50,7 @@ public sealed class LaneTrackFile
         return _lanes;
     }
 
-    public LaneTrackFile Clone() => new(_lanes, _bake) { Stamp = Stamp };
+    public LaneTrackFile Clone() => new(_lanes, _bake, NotesText) { Stamp = Stamp };
 
     /// <summary>The same stamp on lanes drawn differently over the same road.</summary>
     public LaneTrackFile WithLanes(LaneSet lanes)
@@ -111,9 +118,12 @@ public sealed class LaneTrackFile
         if (notes.ReadText(manifest.Lanes) is null)
             throw new FileNotFoundException($"{notes.Folder}/{LaneCircuitManifest.FileName} names {manifest.Lanes}, which is not there.");
         LaneTrackFile file = WithManifest(Load(Path.Combine(notes.Folder, manifest.Lanes), track), manifest);
-        file.Stamp = notes.Stamp;
+        file = new LaneTrackFile(file.LanesNow(), null, notes.ReadText) { Stamp = notes.Stamp };
         return file;
     }
+
+    /// <summary>The lanes already read, or none while they are still to be baked.</summary>
+    private LaneSet? LanesNow() => _lanes;
 
     /// <summary>Reads a circuit folder from disk: its <c>lanes.json</c>, what it names, and its stamp.</summary>
     public static LaneTrackFile LoadCircuit(string folder, TrackData track)
