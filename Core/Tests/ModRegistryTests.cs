@@ -266,6 +266,33 @@ public sealed class ModRegistryTests : IDisposable
     }
 
     [Fact]
+    public void APackedModsFileMayGoWhileTheGameStillHoldsIt()
+    {
+        string game = Folder("game");
+        string packed = WriteMod(game, Manifest("trackside", extra: new()
+        {
+            ["circuits"] = new[] { "data/circuits/ring", "data/circuits/later" },
+        }), new()
+        {
+            ["data/circuits/ring/circuit.json"] = Text(Ring("ring", 200).ToJson()),
+            ["data/circuits/ring/track.csv"] = Text(RingTrack(200)),
+            ["data/circuits/later/circuit.json"] = Text(Ring("later", 300).ToJson()),
+            ["data/circuits/later/track.csv"] = Text(RingTrack(300)),
+        }, packed: true);
+
+        ModRegistry registry = ModLoader.Load([new ModRoot(game, ModOrigin.Game)]);
+        Assert.Equal(200f, registry.Circuits.Get("trackside:ring").Track.LengthMeters, 0.5);
+
+        // A player replaces or removes a packed mod while the game runs: what
+        // the game holds of it must not stop the file from going.
+        File.Delete(packed);
+        Assert.False(File.Exists(packed));
+
+        // And what the game has not read of it yet is still there to read.
+        Assert.Equal(300f, registry.Circuits.Get("trackside:later").Track.LengthMeters, 0.5);
+    }
+
+    [Fact]
     public void AModThatIsNotWhatItsNameSaysIsRefused()
     {
         string game = Folder("game");

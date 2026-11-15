@@ -118,7 +118,12 @@ internal sealed class ZipModResources : IModResources
     {
         Location = file;
         // Held open for the game's life: a mod is loaded once and never unloaded.
-        _zip = ZipFile.OpenRead(file);
+        // Opened sharing deletion as well, so that the file may still be
+        // replaced or removed while the game runs: Windows refuses to delete a
+        // file a handle holds without it, and the archive keeps reading from
+        // the handle it already has.
+        var held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        _zip = new ZipArchive(held, ZipArchiveMode.Read);
         foreach (ZipArchiveEntry entry in _zip.Entries)
         {
             if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
