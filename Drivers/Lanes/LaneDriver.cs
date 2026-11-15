@@ -852,6 +852,8 @@ public sealed class LaneDriver : IDriverController
         // more than it has, so this is a cliff, not a slope, and the only
         // number accurate enough to stand at the edge of it is its own.
         GripUse axles = _axles;
+        // A mistake is a misreading of the grip, so the hands and the brakes believe it too.
+        float misread = _performance?.CornerOverstep ?? 0f;
         if (Gains.CapFromAxles && axles.FrontGripAccel > 0.5f && axles.RearGripAccel > 0.5f && speed > 8f)
         {
             // Each axle's whole circle, not what the brakes or the motor leave
@@ -864,8 +866,6 @@ public sealed class LaneDriver : IDriverController
             float front = axles.FrontGripAccel / frontShare;
             float rear = axles.RearGripAccel / (1f - frontShare);
             // A driver with less feel leaves the tyre nearer its peak.
-            // A mistake is a misreading of the grip, so the hands believe it too.
-            float misread = _performance?.CornerOverstep ?? 0f;
             float capShare = _style is { } capStyle
                 ? (_feel.SustainablePeakShare * capStyle.Cap + (_performance?.LimitOveruse ?? 0f)) * (1f + 2f * misread)
                 : ((_feel.SustainablePeakShare) + (_performance?.LimitOveruse ?? 0f)) * _tyreAuthority * (1f + 2f * misread);
@@ -1061,7 +1061,16 @@ public sealed class LaneDriver : IDriverController
         // The command is what the axles are asked to push; drag comes off
         // after the tyre, so it does not widen the tyre's circle.
         driveLimit = MathF.Min(driveLimit, tractionRoom);
-        accel = Math.Clamp(accel, -_maxBrake, MathF.Max(0f, driveLimit));
+        float biasOffset = BrakeBias(tyres, accel);
+        float overuse = _performance?.LimitOveruse ?? 0f;
+        float brakeCircle = BrakeCircle(
+            _feel.SustainablePeakShare, _style?.Brake, Gains.BrakeFeelUse, _tyreAuthority, overuse, misread);
+        float hereCorner = MathF.Abs(
+            att.CurvatureDemandScale * speed * speed * here
+            + att.LateralGravityDemand(StandardGravity, speed));
+        float brakeRoom = DistributedBrakeRoom(
+            tyres, hereCorner, _layout.FrontWeightShare, brakeCircle, ActualFrontShare(tyres, biasOffset), _maxBrake);
+        accel = Math.Clamp(accel, -brakeRoom, MathF.Max(0f, driveLimit));
         // Coming back, the pedals ask no more than the ground under the
         // driven wheels will take: on grass a fraction of the tarmac's.
         if (_phase == SlidePhase.Rejoin && Ground(car) < OnTarmac)
@@ -1111,7 +1120,7 @@ public sealed class LaneDriver : IDriverController
         float steer = LockFor(car, curvature) * (1f + (_performance?.SteeringRead ?? 0f));
         return new DriverInput(steer, accel)
         {
-            Axles = new AxleBias(BrakeBias(tyres, accel), 0f),
+            Axles = new AxleBias(biasOffset, 0f),
             TyreWearExcess = _performance?.TyreWearExcess ?? 0f
         };
     }
@@ -1676,6 +1685,46 @@ public sealed class LaneDriver : IDriverController
         if (accel < 0f && front + rear > 1f)
             _brakeDial = front / (front + rear) + error;
         return Math.Clamp(_brakeDial - fixedShare, -0.25f, 0.25f);
+    }
+
+    internal static float BrakeCircle(
+        float sustainablePeakShare, float? styleBrake, float brakeFeelUse,
+        float tyreAuthority, float overuse, float misread)
+    {
+        float baseShare = styleBrake is { } brake
+            ? sustainablePeakShare * brake + overuse
+            : (brakeFeelUse + overuse) * tyreAuthority;
+        return baseShare * (1f + 2f * misread);
+    }
+
+    internal static float DistributedBrakeRoom(
+        GripUse tyres, float hereCornerAccel, float frontWeightShare,
+        float brakeCircle, float actualFrontShare, float maxBrake)
+    {
+        if (tyres.FrontGripAccel <= 0.5f || tyres.RearGripAccel <= 0.5f)
+            return maxBrake;
+        float frontW = Math.Clamp(frontWeightShare, 0.05f, 0.95f);
+        float frontUse = Math.Clamp(MathF.Max(tyres.FrontLateral, frontW * hereCornerAccel / tyres.FrontGripAccel), 0f, 1.5f);
+        float rearUse = Math.Clamp(MathF.Max(tyres.RearLateral, (1f - frontW) * hereCornerAccel / tyres.RearGripAccel), 0f, 1.5f);
+        float frontRoom = tyres.FrontGripAccel * MathF.Sqrt(MathF.Max(0f, brakeCircle * brakeCircle - frontUse * frontUse));
+        float rearRoom = tyres.RearGripAccel * MathF.Sqrt(MathF.Max(0f, brakeCircle * brakeCircle - rearUse * rearUse));
+        float share = Math.Clamp(actualFrontShare, 0f, 1f);
+        float limit = float.PositiveInfinity;
+        if (share > 1e-3f)
+            limit = MathF.Min(limit, frontRoom / share);
+        if (1f - share > 1e-3f)
+            limit = MathF.Min(limit, rearRoom / (1f - share));
+        return float.IsFinite(limit) ? MathF.Min(maxBrake, MathF.Max(0f, limit)) : maxBrake;
+    }
+
+    private float ActualFrontShare(GripUse tyres, float biasOffset)
+    {
+        if (_layout.FixedFrontBrakeShare is { } fixedShare)
+            return Math.Clamp(fixedShare + biasOffset, 0f, 1f);
+        float front = tyres.FrontGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.FrontLateral * tyres.FrontLateral));
+        float rear = tyres.RearGripAccel * MathF.Sqrt(MathF.Max(0f, 1f - tyres.RearLateral * tyres.RearLateral));
+        float optimal = front + rear > 1f ? front / (front + rear) : 0.5f;
+        return Math.Clamp(optimal + biasOffset, 0f, 1f);
     }
 
     /// <summary>A rung between two of a table's, by the fraction past the lower one; clamped to its ends.</summary>
