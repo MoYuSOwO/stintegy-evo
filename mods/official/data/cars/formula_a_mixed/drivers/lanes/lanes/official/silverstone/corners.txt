@@ -7,14 +7,17 @@
 # many cars may run abreast.
 #   first-last [no] [abreast=N]
 #
-# Silverstone. A pass is judged at the last corner of a place.
+# Silverstone. A pass is judged at the last corner of a place. Abbey and
+# Farm are one corner: the free line leaves the edge at the start of it and
+# does not come back until the end, so there is no straight between them to
+# race on. A pass is made at the braking points, which are Village,
+# Brooklands, Stowe and Vale.
 
-0-0
-1-1
-2-3 no
-4-5 no
-6-6
-7-7
+0-1 no
+2-3
+4-5
+6-6 no
+7-7 no
 8-11 no
 12-12
-13-14 no
+13-14

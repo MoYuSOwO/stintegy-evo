@@ -383,6 +383,28 @@ public sealed class LaneDriver : IDriverController
         _pendingClear = true;
     }
 
+    /// <summary>
+    /// Drive a line made this same step, not the next one. A decision taken
+    /// while the control is being worked out -- a pull-out, a cover, a tuck
+    /// -- has to move the line before the steering for this step is read off
+    /// it, or the move lands a step late and the car steers at a line it has
+    /// already left.
+    /// </summary>
+    public void DriveLineNow(int fromStation, ReadOnlySpan<float> offsetsFromRacingLine, float brakeFactor = 1f)
+    {
+        DriveLine(fromStation, offsetsFromRacingLine, brakeFactor);
+        ApplyPendingLine();
+    }
+
+    private void ApplyPendingLine()
+    {
+        if (!_pendingSet)
+            return;
+        _drawn?.Set(_pendingMadeFrom, _pendingMade.AsSpan(0, _pendingMadeCount),
+            _pendingMadeSpeeds ? _pendingMadeSpeed.AsSpan(0, _pendingMadeCount) : [], _pendingBrake);
+        _pendingSet = false;
+    }
+
     /// <summary>Whether a drawn line is being driven.</summary>
     public bool DrivesDrawnLine => Drawing;
 
@@ -624,6 +646,15 @@ public sealed class LaneDriver : IDriverController
     public bool JointProtect { get; init; } = true;
     /// <summary>Evaluate a second traffic-aware edge during close encounters.</summary>
     public bool JointLookahead { get; init; } = true;
+
+    /// <summary>
+    /// Drive the corner lines from the driver's own table instead of the
+    /// joint search. Off, the joint table plans every tenth of a second.
+    /// On, the driver holds the line it chose for the place it is in, and
+    /// only re-chooses at the next place. A probe of whether the corner
+    /// lines alone, without the joint search, are enough to race on.
+    /// </summary>
+    public bool CornerLines { get; init; }
 
     /// <summary>What being past a rival is worth, in seconds of lap time.</summary>
     public float AttackBonus { get; init; }
@@ -1019,12 +1050,7 @@ public sealed class LaneDriver : IDriverController
             _drawn?.Draw(drawnAt, car.SpeedMetersPerSecond, carOffset, _speed[0], _pendingLine, _pendingBrake);
             _pendingDraw = false;
         }
-        if (_pendingSet)
-        {
-            _drawn?.Set(_pendingMadeFrom, _pendingMade.AsSpan(0, _pendingMadeCount),
-                _pendingMadeSpeeds ? _pendingMadeSpeed.AsSpan(0, _pendingMadeCount) : [], _pendingBrake);
-            _pendingSet = false;
-        }
+        ApplyPendingLine();
         Part(10);
         _sincePlan += dt;
         if (_sincePlan >= PlanIntervalSeconds || Enumerable.Range(0, LaneSet.LaneCount).Any(lane => Reads(lane) && !_planned[lane]))
@@ -2143,7 +2169,10 @@ public sealed class LaneDriver : IDriverController
         PlanTheWake(car, context.Frame, context.CarSnapshotIndex, start, n + 1, sides);
         Part(6);
         _trafficCap = float.PositiveInfinity;
-        if (_jointTable is { } table)
+        // Corner-line mode holds the line set from outside and does not plan
+        // again over it. The joint search is what moves the line every tenth
+        // of a second; with it off, a line handed in stays the line driven.
+        if (!CornerLines && _jointTable is { } table)
             PlanJointMove(context, table.Data);
         Part(7);
         for (int lane = 0; lane < LaneSet.LaneCount; lane++)

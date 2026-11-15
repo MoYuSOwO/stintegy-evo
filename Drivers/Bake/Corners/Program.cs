@@ -35,8 +35,35 @@ if (args is ["lap", var lapCircuit, ..])
     Console.WriteLine("where it races:");
     foreach (Lap.Complex place in Lap.Read(table))
     {
-        float from = corners[place.First].Pins.Entry * lanes.Spacing, to = corners[place.Last].Pins.Exit * lanes.Spacing;
-        Console.WriteLine($"  corners {place.First}-{place.Last}  s {from,6:F0}-{to,6:F0}  {(place.NoOvertake ? "no overtake" : "overtake"),-12}  abreast {place.MaxAbreast}");
+        var first = corners[place.First].Pins;
+        var last = corners[place.Last].Pins;
+        int claim = lanes.Wrap(first.Entry - CornerLines.BeforeStations);
+        int nextEntry = corners[(place.Last + 1) % corners.Count].Pins.Entry;
+        int rejoins = lanes.Wrap(last.Exit + CornerLines.AfterStations);
+        int windowEnd = lanes.Wrap(rejoins - nextEntry) < lanes.Wrap(nextEntry - rejoins) ? nextEntry : rejoins;
+        int cut = lanes.Wrap(rejoins - windowEnd);
+        Console.WriteLine($"  corners {place.First}-{place.Last}  window s {claim * lanes.Spacing,6:F0}-{windowEnd * lanes.Spacing,6:F0}" +
+            $"{(cut == 0 ? "" : $", cut {cut * lanes.Spacing:F0} m")}  {(place.NoOvertake ? "no overtake" : "overtake"),-12}  abreast {place.MaxAbreast}");
+    }
+    return 0;
+}
+
+if (args is ["line", var lineCircuit, var fromText, var toText])
+{
+    // The free line between two stations, every fifth: where it is across
+    // the road as a share of the usable half width (+ is the left), and how
+    // the road bends there. For checking pins by eye.
+    var track = GameMods.Registry.Circuits.Get(lineCircuit).Track;
+    LaneSet lanes = LaneTrackFile.ForCircuit(lineCircuit, track).LanesFor(track);
+    float[] k = CornerMap.FreeCurvature(lanes);
+    for (int i = int.Parse(fromText); i <= int.Parse(toText); i += 5)
+    {
+        int s = lanes.Wrap(i);
+        float edge = lanes.HalfWidth(s) - LaneSet.EdgeMarginMeters;
+        float share = lanes.Offset(LaneId.Free, s) / edge;
+        int bar = (int)MathF.Round((share + 1f) * 20f);
+        string row = new string(' ', Math.Clamp(bar, 0, 40)) + "*";
+        Console.WriteLine($"{s,5}  {share,6:F2}  k {k[s] * 1000f,6:F1}  |{row,-41}|");
     }
     return 0;
 }
@@ -758,9 +785,13 @@ if (args.Length >= 2 && args[0] == "duel")
     return 0;
 }
 
+if (args.Length >= 2 && args[0] == "lapbattle")
+    return LapBattle.Run(args);
+
 Console.Error.WriteLine("Usage: Corners map <official:circuit>");
 Console.Error.WriteLine("       Corners lap <official:circuit>");
 Console.Error.WriteLine("       Corners lines <official:circuit> <bend> [grip,grip,...] [serial] [grid]");
+Console.Error.WriteLine("       Corners lapbattle <official:circuit>");
 return 2;
 
 static class Lap
@@ -838,13 +869,28 @@ static class CornerLines
         int before = lanes.Wrap(bend.Apex - bends[(index - 1 + bends.Count) % bends.Count].Apex);
         int after = lanes.Wrap(bends[(index + 1) % bends.Count].Apex - bend.Apex);
         float Out(int i) => sign * lanes.Offset(LaneId.Free, i) / Edge(lanes, i);
+        // The outermost point on each side, but only the first one: once the
+        // line has come back in by a tenth of the road it is on its way to
+        // the next bend, and a point further on is that bend's, not this
+        // one's. Where two bends turn opposite ways back to back, the next
+        // one's apex is on this one's outside, and without the stop it is
+        // taken for this one's track-out.
+        const float Back = 0.1f;
         int entry = bend.Apex - 5, exit = bend.Apex + 5;
         for (int j = 5; j < Math.Min(90, before); j++)
+        {
             if (Out(bend.Apex - j) > Out(entry) + 1e-3f)
                 entry = bend.Apex - j;
+            else if (Out(bend.Apex - j) < Out(entry) - Back)
+                break;
+        }
         for (int j = 5; j < Math.Min(125, after); j++)
+        {
             if (Out(bend.Apex + j) > Out(exit) + 1e-3f)
                 exit = bend.Apex + j;
+            else if (Out(bend.Apex + j) < Out(exit) - Back)
+                break;
+        }
         return new Pins(lanes.Wrap(entry), bend.Apex, lanes.Wrap(exit), sign);
     }
 

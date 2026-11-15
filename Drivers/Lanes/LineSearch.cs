@@ -183,19 +183,28 @@ internal sealed partial class LineSearch
     /// speed (infinite where that speed cannot be carried on). A row may
     /// hold only the places <paramref name="allowed"/> lets it.
     /// </summary>
-    public Way? Search(int from, int rows, float startSpeed, Func<float, float> terminal, Func<int, float, bool>? allowed = null)
+    /// <param name="startY">Where across the road the way starts, metres from the racing line; the racing line unless said.</param>
+    /// <param name="endY">Where across the road the way ends, metres from the racing line; the racing line unless said.</param>
+    public Way? Search(int from, int rows, float startSpeed, Func<float, float> terminal, Func<int, float, bool>? allowed = null,
+        float startY = 0f, float endY = 0f)
     {
         float topSpeed = LaneSpeedPlanner.TopSpeed;
         int bins = (int)MathF.Ceiling((topSpeed - MinSpeed) / SpeedStep) + 1;
         var places = new List<float>[rows + 1];
         for (int r = 0; r <= rows; r++)
         {
+            // The first and last rows hold the one place the way starts and
+            // ends on; the rows between are the road across, as allowed.
+            if (r == 0 || r == rows)
+            {
+                places[r] = [r == 0 ? startY : endY];
+                continue;
+            }
             int st = from + r * RowStations;
             (float lo, float hi) = Room(st);
             var ys = new List<float>();
-            bool edge = r == 0 || r == rows;
             for (float y = MathF.Ceiling(lo / LateralStep) * LateralStep; y <= hi + 1e-3f; y += LateralStep)
-                if ((!edge || MathF.Abs(y) < 1e-3f) && (allowed is null || allowed(r, y) || MathF.Abs(y) < 1e-3f && edge))
+                if (allowed is null || allowed(r, y))
                     ys.Add(y);
             places[r] = LateralPlaces(ys);
         }
