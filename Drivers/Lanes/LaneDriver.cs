@@ -272,6 +272,7 @@ public sealed class LaneDriver : IDriverController
     private float _carSpeed;
 
     private TrafficCorridor? _corridor;
+    private RacecraftTactics? _tactics;
     private bool _externalLine;
     private float _sinceCorridor;
     private const float CorridorIntervalSeconds = 1f / 12f;
@@ -601,6 +602,8 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     public float FollowGapSeconds { get; set; }
 
+    internal RacecraftPhase TacticPhase => _tactics?.Phase ?? RacecraftPhase.Behind;
+
     // A car ahead is looked for this far up the road, and counts as on the
     // line when it overlaps it by more than this margin between the two.
     private const float FollowLookMeters = 150f;
@@ -676,6 +679,7 @@ public sealed class LaneDriver : IDriverController
         _trackView = context.Track;
         _drawn = new DrawnLine(_lanes);
         _corridor = new TrafficCorridor(_lanes, WindowMeters + 60f);
+        _tactics = new RacecraftTactics(_lanes);
         _externalLine = false;
         _sinceCorridor = CorridorIntervalSeconds;
         _pendingDraw = _pendingClear = false;
@@ -811,6 +815,16 @@ public sealed class LaneDriver : IDriverController
             (_sinceCorridor >= CorridorIntervalSeconds || (context.Frame.Count > 1 && !_corridor.Active && _sinceCorridor >= 0.02f)))
         {
             _sinceCorridor = 0f;
+            _tactics?.Update(
+                in context,
+                _speed[0],
+                in _envelope,
+                _planShares,
+                station => _corner[0][_lanes.Wrap(station)],
+                station => _brake[0][_lanes.Wrap(station)],
+                station => _road[0][_lanes.Wrap(station)],
+                _turnLag.Seconds,
+                FollowGapSeconds);
             _corridor.Update(
                 in context,
                 _speed[0],
@@ -820,10 +834,9 @@ public sealed class LaneDriver : IDriverController
                 station => _brake[0][_lanes.Wrap(station)],
                 station => _road[0][_lanes.Wrap(station)],
                 _turnLag.Seconds,
-                FollowGapSeconds,
                 _drawn!,
                 ReferenceOffset,
-                RacecraftIntent.None);
+                _tactics?.Intent ?? RacecraftIntent.None);
         }
         ScaleMove(car, dt);
         MoveBlend(dt);
@@ -831,7 +844,7 @@ public sealed class LaneDriver : IDriverController
         _axles = AxlesOf(car);
         float speed = car.SpeedMetersPerSecond;
         _carSpeed = speed;
-        _followCap = (TrafficAvoidance && !_externalLine && _corridor is not null)
+        _followCap = (TrafficAvoidance && !_externalLine && _corridor is not null && FollowGapSeconds <= 0.05f)
             ? null
             : FollowCap(context, car, speed);
         float station = _lanes.StationOf(car.TrackS);

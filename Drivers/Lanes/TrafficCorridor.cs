@@ -73,8 +73,6 @@ internal sealed class TrafficCorridor
     private const float SafeEdgeMarginMeters = 1.48f;
     private const float SideMarginMeters = 0.90f;
     private const float StackSlotMarginMeters = 0.82f;
-    private const float MinPassRoomMeters = 2.75f;
-    private const float AbortRoomMeters = 2.30f;
 
     // Near-field freeze and gentle lateral acceleration guarantee no un-brakable kinks!
     private const float FreezeTimeSeconds = 0.18f;
@@ -83,7 +81,6 @@ internal sealed class TrafficCorridor
     private const float StraightMoveAccel = 4.6f;
     private const float LoadedMoveAccel = 2.8f;
     private const float EmergencyMoveAccel = 7.2f;
-    private const float AbortCooldownSeconds = 2.8f;
     private const int GateStations = 120;
     private static readonly float[] MoveScales = [1.0f, 0.6f, 0.35f, 0.15f, 0.0f];
 
@@ -121,13 +118,8 @@ internal sealed class TrafficCorridor
     private float _launchColumnD;
 
     private string? _committedPassId;
-    private Slot _committedPassSide;
-    private float _abortCooldownUntil = -10f;
     private float _postPassHoldDelta;
     private float _postPassHoldUntil = -10f;
-
-    private float _squeezeTargetD = float.NaN;
-    private float _squeezeUntilTime = -10f;
 
     private int _limitsAnchorStation;
 
@@ -178,7 +170,6 @@ internal sealed class TrafficCorridor
         Func<int, float> brakeFactorAt,
         Func<int, LaneRoad> roadAt,
         Func<float, float> turnLagSeconds,
-        float followGapSeconds,
         DrawnLine drawn,
         Func<int, float> currentReferenceOffset,
         in RacecraftIntent intent)
@@ -223,11 +214,10 @@ internal sealed class TrafficCorridor
         bool inLoadedCorner = inBrakingZone || roadCurvNow * egoSpeed * egoSpeed > 13f;
 
         DriverAbilities abilities = context.Profile.Abilities;
-        float overtaking = Math.Clamp(abilities.Overtaking * 0.01f, 0f, 1f);
-        float defending = Math.Clamp(abilities.Defending * 0.01f, 0f, 1f);
         float awareness = Math.Clamp(abilities.Awareness * 0.01f, 0f, 1f);
         float boldness = Math.Clamp(abilities.Boldness * 0.01f, 0f, 1f);
         float reactionsScore = Math.Clamp(abilities.Reactions * 0.01f, 0f, 1f);
+        bool holdColumn = intent.Phase == RacecraftPhase.StandingStart;
 
         BuildEgoTimeline(anchor, egoSpeed, freeSpeedPlan, envelope, shares, cornerFactorAt, roadAt);
         CaptureRivals(in context, me, now, egoSpeed, inLaunchHold, length, freeSpeedPlan, envelope, shares, cornerFactorAt, brakeFactorAt, roadAt, awareness);
@@ -250,7 +240,7 @@ internal sealed class TrafficCorridor
                     LimitsVersion++;
                     return;
                 }
-                BuildOpenCorridor(anchor, inLaunchHold, me.TotalDistanceMeters - _launchStartS);
+                BuildOpenCorridor(anchor, holdColumn, inLaunchHold, me.TotalDistanceMeters - _launchStartS);
                 ApplyIntentLine(anchor, me, intent);
                 AppendYield(intent, egoSpeed);
                 SolveSmoothLine(anchor, me, inLaunchHold, inLoadedCorner, intent.EmergencyAvoid, freeSpeedPlan, drawn, currentReferenceOffset,
@@ -260,10 +250,9 @@ internal sealed class TrafficCorridor
             return;
         }
 
-        UpdateTacticalCommitments(me, anchor, now, egoSpeed, inLaunchHold, inLoadedCorner, followGapSeconds > 0.05f, overtaking, boldness, freeSpeedPlan);
-        UpdateOneMoveDefence(anchor, now, egoSpeed, inLaunchHold, inLoadedCorner, defending);
+        ApplyRacecraftSlots(me, anchor, now, egoSpeed, inLoadedCorner, intent);
         bool emergency = BuildSpatialCorridorAndLimits(
-            me, anchor, now, egoSpeed, inLaunchHold, me.TotalDistanceMeters - _launchStartS);
+            me, anchor, now, egoSpeed, inLaunchHold, holdColumn, me.TotalDistanceMeters - _launchStartS);
         ApplyIntentLine(anchor, me, intent);
         AppendYield(intent, egoSpeed);
         SolveSmoothLine(anchor, me, inLaunchHold, inLoadedCorner, emergency || intent.EmergencyAvoid, freeSpeedPlan, drawn, currentReferenceOffset,
@@ -278,23 +267,28 @@ internal sealed class TrafficCorridor
 
     private void ApplyIntentLine(int anchor, RaceCarSnapshot me, in RacecraftIntent intent)
     {
-        if (float.IsFinite(intent.TargetDeltaMeters))
+        if (intent.Phase == RacecraftPhase.StandingStart)
+            return;
+        if (intent.SpatialDeltaProfile is { Length: > 0 } spatial)
         {
-            for (int idx = 0; idx < _totalStations; idx++)
+            int limit = Math.Min(spatial.Length - 1, _aheadStations);
+            for (int k = 0; k <= limit; k++)
             {
-                int st = _lanes.Wrap(anchor - BehindStations + idx);
-                float free = _lanes.Offset(LaneId.Free, st);
-                (float roadLo, float roadHi, _) = SafeRoadAt(st);
-                _prefD[idx] = Math.Clamp(free + intent.TargetDeltaMeters, roadLo, roadHi);
+                int idx = BehindStations + k;
+                int st = _lanes.Wrap(anchor + k);
+                float abs = _lanes.Offset(LaneId.Free, st) + spatial[k];
+                _prefD[idx] = Math.Clamp(abs, _lowD[idx], _highD[idx]);
             }
         }
-        if (intent.FreezeLateral)
+        else if (float.IsFinite(intent.TargetDeltaMeters) || intent.FreezeLateral)
         {
-            for (int idx = 0; idx < _totalStations; idx++)
+            for (int k = 0; k <= _aheadStations; k++)
             {
-                int st = _lanes.Wrap(anchor - BehindStations + idx);
-                (float roadLo, float roadHi, _) = SafeRoadAt(st);
-                _prefD[idx] = Math.Clamp(me.TrackD, roadLo, roadHi);
+                int idx = BehindStations + k;
+                int st = _lanes.Wrap(anchor + k);
+                float free = _lanes.Offset(LaneId.Free, st);
+                float abs = intent.FreezeLateral ? me.TrackD : free + intent.TargetDeltaMeters;
+                _prefD[idx] = Math.Clamp(abs, _lowD[idx], _highD[idx]);
             }
         }
     }
@@ -311,12 +305,19 @@ internal sealed class TrafficCorridor
         return v > 1f ? v : 85f;
     }
 
-    private (float RoadLow, float RoadHigh, float Free) SafeRoadAt(int station)
+    private (float RoadLow, float RoadHigh, float Free) SafeRoadAt(int station, bool keepColumn = false)
     {
         int st = _lanes.Wrap(station);
         float free = _lanes.Offset(LaneId.Free, st);
         float safeEdge = MathF.Max(0.2f, _lanes.HalfWidth(st) - SafeEdgeMarginMeters);
-        return (MathF.Min(-safeEdge, free), MathF.Max(safeEdge, free), free);
+        float low = MathF.Min(-safeEdge, free);
+        float high = MathF.Max(safeEdge, free);
+        if (keepColumn)
+        {
+            low = MathF.Min(low, _launchColumnD);
+            high = MathF.Max(high, _launchColumnD);
+        }
+        return (low, high, free);
     }
 
     private void BuildEgoTimeline(
@@ -532,192 +533,83 @@ internal sealed class TrafficCorridor
         }
     }
 
-    private void UpdateTacticalCommitments(
-        RaceCarSnapshot me,
-        int anchor,
-        float now,
-        float egoSpeed,
-        bool inLaunchHold,
-        bool inLoadedCorner,
-        bool ordersHoldGap,
-        float overtaking,
-        float boldness,
-        ReadOnlySpan<float> freeSpeedPlan)
+    private void ApplyRacecraftSlots(
+        RaceCarSnapshot me, int anchor, float now, float egoSpeed, bool inLoadedCorner, in RacecraftIntent intent)
     {
-        // 1. Update alongside locks and check completion / door-shut abort on existing commitments.
+        bool finishedInCorner = false;
         foreach (RivalForecast rival in _forecasts)
         {
             RivalState state = _states[rival.Id];
+            if (state.Slot == Slot.Behind)
+                continue;
             float halfLen = 0.5f * (me.LengthMeters + rival.Length);
-
-            // Not clear until the diffuser is behind their nose, and a faster car on
-            // corner exit is not already driving back into that overhang.
             bool passCleared = rival.GapS < -(halfLen + 2.6f)
                 && (egoSpeed >= rival.Speed - 0.3f || rival.GapS < -(halfLen + 4.5f));
-            if (passCleared)
-            {
-                if (state.Slot != Slot.Behind)
-                {
-                    if (inLoadedCorner)
-                    {
-                        _postPassHoldDelta = me.TrackD - _lanes.Offset(LaneId.Free, anchor);
-                        _postPassHoldUntil = now + 1.4f;
-                    }
-                    state.Slot = Slot.Behind;
-                }
-                if (_committedPassId == rival.Id)
-                    _committedPassId = null;
+            if (!passCleared)
                 continue;
-            }
+            if (inLoadedCorner)
+                finishedInCorner = true;
+            state.Slot = Slot.Behind;
+        }
+        if (finishedInCorner)
+        {
+            _postPassHoldDelta = me.TrackD - _lanes.Offset(LaneId.Free, anchor);
+            _postPassHoldUntil = now + 1.4f;
+        }
 
-            if (rival.AlongsideNow || (rival.PhysicallyBeside && rival.GapS <= 0f))
-            {
-                if (state.Slot == Slot.Behind)
-                    state.Slot = me.TrackD >= rival.TrackD ? Slot.Left : Slot.Right;
+        Slot open = intent.SideSign > 0 ? Slot.Left : Slot.Right;
+        foreach (RivalForecast rival in _forecasts)
+        {
+            RivalState state = _states[rival.Id];
+            if (state.Slot == Slot.Behind)
                 continue;
-            }
-
-            // Rear overhang with the lateral gap already closed: still their front wing.
-            // Aborting here chops back across the nose.
-            if (state.Slot != Slot.Behind && rival.GapS <= 0f)
+            bool renewed = intent.SideSign != 0 && (rival.Id == intent.FocusRivalId
+                || (rival.Hazard && rival.GapS > 0f && rival.GapS <= LookAheadMeters));
+            if (renewed)
                 continue;
+            float halfLen = 0.5f * (me.LengthMeters + rival.Length);
+            bool overhang = rival.GapS >= -(halfLen + 2.6f) && rival.GapS <= 0f;
+            bool reoverlap = rival.GapS > -(halfLen + 4.5f) && rival.GapS < -(halfLen + 2.6f)
+                && egoSpeed < rival.Speed - 0.3f;
+            if (overhang || reoverlap)
+                continue;
+            state.Slot = Slot.Behind;
+        }
 
-            // Pre-rear-axle zone: hold committed side unless door shuts (< AbortRoomMeters) or dropped far back.
-            if (state.Slot != Slot.Behind)
+        if (intent.SideSign != 0 && intent.Phase != RacecraftPhase.OneMoveDefend)
+        {
+            foreach (RivalForecast rival in _forecasts)
             {
-                float room = RoomOnSide(rival, state.Slot, anchor);
-                if (room < AbortRoomMeters || (rival.GapS > 34f && egoSpeed < rival.Speed))
-                {
-                    state.Slot = Slot.Behind;
-                    if (_committedPassId == rival.Id)
-                    {
-                        _committedPassId = null;
-                        // Cooldown prevents re-pulling out into the same corner (no weaving!).
-                        _abortCooldownUntil = now + AbortCooldownSeconds;
-                    }
-                }
+                RivalState state = _states[rival.Id];
+                if (rival.Id == intent.FocusRivalId)
+                    state.Slot = open;
+                else if (rival.Hazard && rival.GapS > 0f && rival.GapS <= LookAheadMeters && state.Slot == Slot.Behind)
+                    state.Slot = open;
             }
+            _committedPassId = intent.FocusRivalId;
         }
-
-        if (_committedPassId is not null && !_forecasts.Any(f => f.Id == _committedPassId))
-            _committedPassId = null;
-
-        // 2. Initiate at most ONE latched pass attempt on a straight/exit when free to attack.
-        if (ordersHoldGap || inLaunchHold || _committedPassId is not null || now < _abortCooldownUntil)
-            return;
-
-        // Find the closest car ahead within striking range.
-        RivalForecast? leader = null;
-        foreach (RivalForecast f in _forecasts)
+        else if (_committedPassId is not null)
         {
-            if (f.GapS > 0f && (leader is null || f.GapS < leader.Value.GapS))
-                leader = f;
-        }
-        if (leader is null)
-            return;
-
-        RivalForecast target = leader.Value;
-        RivalState targetState = _states[target.Id];
-        if (targetState.Slot != Slot.Behind)
-            return;
-
-        // Do not start a brand-new tactical dive mid-corner/braking (unless dodging a hazard!).
-        if (inLoadedCorner && !target.Hazard)
-            return;
-
-        float closing = egoSpeed - target.Speed;
-        float freePotential = PlanSpeedAt(freeSpeedPlan, anchor + 22);
-        bool approachingBrakingZone = PlanSpeedAt(freeSpeedPlan, anchor + 55) < PlanSpeedAt(freeSpeedPlan, anchor + 5) - 10f;
-
-        // Enable real equal-machinery overtakes:
-        // (a) closing in slipstream/corner-exit (> 0.30 m/s), OR
-        // (b) higher free-line pace ahead, OR
-        // (c) tucked right under rear wing (< 14 m) approaching a heavy braking zone where a skilled braker out-brakes a slower driver!
-        bool canStrike = target.Hazard ||
-                         (closing > 0.32f && target.GapS < 26f) ||
-                         (target.GapS < 22f && closing > -0.3f && freePotential > target.Speed + 1.2f) ||
-                         (approachingBrakingZone && target.GapS < 12f + 6f * boldness && overtaking > 0.65f && closing > -0.25f);
-        float maxStrikeGap = target.Hazard ? 65f : (15f + 12f * overtaking + MathF.Max(0f, closing) * 1.6f);
-        if (!canStrike || target.GapS > maxStrikeGap)
-            return;
-
-        float leftRoom = RoomOnSide(target, Slot.Left, anchor);
-        float rightRoom = RoomOnSide(target, Slot.Right, anchor);
-        bool canLeft = leftRoom >= MinPassRoomMeters;
-        bool canRight = rightRoom >= MinPassRoomMeters;
-        if (!canLeft && !canRight)
-            return;
-
-        float insideSign = InsideOffsetSign(anchor);
-        float clearSide = 0.5f * (me.WidthMeters + target.Width) + SideMarginMeters;
-        Slot chosen;
-        if (target.Hazard)
-        {
-            if (canLeft && canRight)
-                chosen = target.LateralSpeed > 0.4f ? Slot.Right : target.LateralSpeed < -0.4f ? Slot.Left : (leftRoom >= rightRoom ? Slot.Left : Slot.Right);
-            else
-                chosen = canLeft ? Slot.Left : Slot.Right;
-        }
-        else if (canLeft && canRight)
-        {
-            float leftScore = leftRoom * 0.30f - MathF.Abs(me.TrackD - (target.TrackD + clearSide)) * 0.25f + (insideSign > 0f ? 1.25f : -0.2f);
-            float rightScore = rightRoom * 0.30f - MathF.Abs(me.TrackD - (target.TrackD - clearSide)) * 0.25f + (insideSign < 0f ? 1.25f : -0.2f);
-            chosen = leftScore >= rightScore ? Slot.Left : Slot.Right;
-        }
-        else
-        {
-            chosen = canLeft ? Slot.Left : Slot.Right;
-        }
-
-        targetState.Slot = chosen;
-        _committedPassId = target.Id;
-        _committedPassSide = chosen;
-    }
-
-    private void UpdateOneMoveDefence(
-        int anchor,
-        float now,
-        float egoSpeed,
-        bool inLaunchHold,
-        bool inLoadedCorner,
-        float defending)
-    {
-        if (now > _squeezeUntilTime || inLoadedCorner || HasAlongsideRival)
-            _squeezeTargetD = float.NaN;
-
-        if (inLaunchHold || inLoadedCorner || HasAlongsideRival || !float.IsNaN(_squeezeTargetD))
-            return;
-        if (defending < 0.30f || egoSpeed < 30f)
-            return;
-
-        float insideSign = InsideOffsetSign(anchor);
-        if (MathF.Abs(insideSign) < 0.5f)
-            return;
-
-        foreach (RivalForecast f in _forecasts)
-        {
-            if (f.GapS < -4.2f && f.GapS > -(12f + 14f * defending) && f.Speed > egoSpeed + 0.4f)
+            bool still = false;
+            foreach (RivalForecast rival in _forecasts)
             {
-                (float roadLo, float roadHi, _) = SafeRoadAt(anchor + 18);
-                float squeezeGap = 1.75f + 0.35f * (1f - defending);
-                _squeezeTargetD = insideSign > 0f
-                    ? MathF.Max(roadLo, roadHi - squeezeGap)
-                    : MathF.Min(roadHi, roadLo + squeezeGap);
-                _squeezeUntilTime = now + 1.5f;
-                break;
+                if (rival.Id == _committedPassId && _states[rival.Id].Slot != Slot.Behind)
+                    still = true;
             }
+            if (!still)
+                _committedPassId = null;
         }
     }
 
-    private void BuildOpenCorridor(int anchor, bool inLaunchHold, float launchRunMeters)
+    private void BuildOpenCorridor(int anchor, bool holdColumn, bool keepColumn, float launchRunMeters)
     {
         for (int idx = 0; idx < _totalStations; idx++)
         {
             int st = _lanes.Wrap(anchor - BehindStations + idx);
-            (float roadLo, float roadHi, float free) = SafeRoadAt(st);
+            (float roadLo, float roadHi, float free) = SafeRoadAt(st, keepColumn);
             _lowD[idx] = roadLo;
             _highD[idx] = roadHi;
-            if (inLaunchHold)
+            if (holdColumn)
             {
                 float sAhead = launchRunMeters + (idx - BehindStations) * _lanes.Spacing;
                 float blendToFree = SmoothStep((sAhead - 75f) / 75f);
@@ -736,10 +628,19 @@ internal sealed class TrafficCorridor
         float now,
         float egoSpeed,
         bool inLaunchHold,
+        bool holdColumn,
         float launchRunMeters)
     {
-        BuildOpenCorridor(anchor, inLaunchHold, launchRunMeters);
+        BuildOpenCorridor(anchor, holdColumn, inLaunchHold, launchRunMeters);
         bool emergency = false;
+        foreach (RivalForecast rival in _forecasts)
+        {
+            if (rival.Hazard && rival.GapS is > 0f and < LookAheadMeters)
+            {
+                emergency = true;
+                break;
+            }
+        }
 
         if (!inLaunchHold && now < _postPassHoldUntil)
         {
@@ -751,15 +652,6 @@ internal sealed class TrafficCorridor
                 _prefD[idx] = Math.Clamp(free + _postPassHoldDelta * w, _lowD[idx], _highD[idx]);
             }
         }
-        else if (!inLaunchHold && !float.IsNaN(_squeezeTargetD) && !HasAlongsideRival)
-        {
-            for (int k = 8; k <= Math.Min(42, _aheadStations); k++)
-            {
-                int idx = BehindStations + k;
-                float w = k < 26 ? SmoothStep((k - 8) / 18f) : 1f - SmoothStep((k - 26) / 16f);
-                _prefD[idx] = Math.Clamp(_prefD[idx] + (_squeezeTargetD - _prefD[idx]) * w, _lowD[idx], _highD[idx]);
-            }
-        }
 
         var overlapping = new List<(float D, bool IsMe, float GapS, float Speed)>(8);
         int pinchStation = -1;
@@ -769,7 +661,7 @@ internal sealed class TrafficCorridor
         {
             int idx = BehindStations + k;
             int st = _lanes.Wrap(anchor + k);
-            (float roadLo, float roadHi, _) = SafeRoadAt(st);
+            (float roadLo, float roadHi, _) = SafeRoadAt(st, inLaunchHold);
             float lowAbs = roadLo;
             float highAbs = roadHi;
             float prefAbs = _prefD[idx];
@@ -839,7 +731,7 @@ internal sealed class TrafficCorridor
                                 highAbs = MathF.Min(highAbs, rampD);
                         }
 
-                        if (distToOverlap < rampMeters + 12f)
+                        if (distToOverlap < rampMeters + 36f || rival.Hazard)
                             prefAbs = wallD;
                     }
                 }
@@ -954,7 +846,7 @@ internal sealed class TrafficCorridor
         for (int idx = 0; idx <= BehindStations; idx++)
         {
             int st = _lanes.Wrap(anchor - BehindStations + idx);
-            (float rLo, float rHi, float f) = SafeRoadAt(st);
+            (float rLo, float rHi, float f) = SafeRoadAt(st, inLaunchHold);
             _delta[idx] = Math.Clamp(startY + (idx - BehindStations) * spacing * startSlope, rLo - f, rHi - f);
         }
 
@@ -986,7 +878,7 @@ internal sealed class TrafficCorridor
             slope += Math.Clamp(wantSlope - slope, -maxBend * spacing, maxBend * spacing);
             y += slope * spacing;
 
-            (float rLo, float rHi, float f) = SafeRoadAt(st);
+            (float rLo, float rHi, float f) = SafeRoadAt(st, inLaunchHold);
             y = Math.Clamp(y, rLo - f, rHi - f);
             _delta[idx] = y;
         }
@@ -997,7 +889,7 @@ internal sealed class TrafficCorridor
             for (int idx = BehindStations + 2; idx < _totalStations - 1; idx++)
             {
                 int st = _lanes.Wrap(anchor - BehindStations + idx);
-                (float rLo, float rHi, float f) = SafeRoadAt(st);
+                (float rLo, float rHi, float f) = SafeRoadAt(st, inLaunchHold);
                 float avg = 0.5f * (_delta[idx - 1] + _delta[idx + 1]);
                 float smoothed = _delta[idx] + (avg - _delta[idx]) * 0.42f;
                 _delta[idx] = Math.Clamp(smoothed, rLo - f, rHi - f);
@@ -1015,6 +907,8 @@ internal sealed class TrafficCorridor
     {
         float halfLen = 0.5f * (me.LengthMeters + rival.Length);
         if (rival.GapS <= -halfLen || rival.AlongsideNow)
+            return;
+        if (rival.Hazard && _states[rival.Id].Slot != Slot.Behind && rival.GapS > 20f)
             return;
 
         float dTail = 3.8f - 1.3f * boldness;
@@ -1103,6 +997,12 @@ internal sealed class TrafficCorridor
         Func<float, float> turnLagSeconds, Func<int, float> currentReferenceOffset,
         DrawnLine drawn, bool inLaunchHold)
     {
+        if (inLaunchHold)
+        {
+            _active = true;
+            drawn.Set(_lanes.Wrap(anchor - BehindStations), _delta, 1f);
+            return;
+        }
         int n = Math.Min(_aheadStations + 1, GateStations);
         float carDeltaHere = me.TrackD - _lanes.Offset(LaneId.Free, anchor);
         bool holdCarLine = !drawn.Active && MathF.Abs(carDeltaHere) > 0.5f;
@@ -1117,7 +1017,7 @@ internal sealed class TrafficCorridor
             _gateTarget[k] = _delta[BehindStations + k];
         }
         float stillCeiling = Ceiling0(anchor, _gateStill.AsSpan(0, n), freeSpeedPlan, envelope, shares, cornerFactorAt, brakeFactorAt, roadAt, turnLagSeconds);
-        float chosen = 0f;
+        float chosen = -1f;
         float escape = -1f;
         foreach (float scale in MoveScales)
         {
@@ -1125,8 +1025,8 @@ internal sealed class TrafficCorridor
                 _gateCandidate[k] = _gateStill[k] + scale * (_gateTarget[k] - _gateStill[k]);
             ReadOnlySpan<float> candidate = _gateCandidate.AsSpan(0, n);
             float ceiling = Ceiling0(anchor, candidate, freeSpeedPlan, envelope, shares, cornerFactorAt, brakeFactorAt, roadAt, turnLagSeconds);
-            bool pass = scale == 0f || PassesDrivableGate(ceiling, egoSpeed, stillCeiling);
             bool overlaps = emergency && LineOverlaps(anchor, me, candidate, n);
+            bool pass = (scale == 0f && !overlaps) || PassesDrivableGate(ceiling, egoSpeed, stillCeiling);
             if (emergency && !overlaps)
                 escape = scale;
             if (pass && !overlaps)
@@ -1135,10 +1035,19 @@ internal sealed class TrafficCorridor
                 break;
             }
         }
-        if (chosen == 0f && escape >= 0f)
-            chosen = escape;
+        if (chosen < 0f)
+            chosen = escape >= 0f ? escape : (emergency ? 1.0f : 0f);
         for (int k = 0; k < n; k++)
             _delta[BehindStations + k] = _gateStill[k] + chosen * (_gateTarget[k] - _gateStill[k]);
+        if (n < _aheadStations + 1 && chosen < 1f)
+        {
+            float tailShift = (_gateStill[n - 1] + chosen * (_gateTarget[n - 1] - _gateStill[n - 1])) - _gateTarget[n - 1];
+            for (int k = n; k <= _aheadStations; k++)
+            {
+                float fade = Math.Clamp(1f - (k - (n - 1)) / 25f, 0f, 1f);
+                _delta[BehindStations + k] += tailShift * fade;
+            }
+        }
         float maxDelta = 0f;
         for (int k = 0; k < n; k++)
             maxDelta = MathF.Max(maxDelta, MathF.Abs(_delta[BehindStations + k]));
@@ -1213,49 +1122,6 @@ internal sealed class TrafficCorridor
         return false;
     }
 
-    private float RoomOnSide(RivalForecast rival, Slot side, int anchor)
-    {
-        float minRoom = float.PositiveInfinity;
-        for (int step = 0; step <= 20; step += 2)
-        {
-            float relS = rival.S[step];
-            if (relS < -2f || relS > 85f)
-                continue;
-            int st = _lanes.Wrap(anchor + (int)MathF.Round(relS / _lanes.Spacing));
-            (float roadLo, float roadHi, _) = SafeRoadAt(st);
-            float room = side == Slot.Left ? roadHi - rival.D[step] : rival.D[step] - roadLo;
-            minRoom = MathF.Min(minRoom, room);
-        }
-        return float.IsPositiveInfinity(minRoom) ? 0f : minRoom;
-    }
-
-    private float InsideOffsetSign(int anchor)
-    {
-        float peakK = 0f;
-        int apexSt = -1;
-        for (int k = 4; k <= 75; k += 2)
-        {
-            int st = _lanes.Wrap(anchor + k);
-            float curv = LaneSet.Curvature(
-                _lanes.Position(st - 3, _lanes.Offset(LaneId.Free, st - 3)),
-                _lanes.Position(st, _lanes.Offset(LaneId.Free, st)),
-                _lanes.Position(st + 3, _lanes.Offset(LaneId.Free, st + 3)));
-            if (MathF.Abs(curv) > MathF.Abs(peakK))
-            {
-                peakK = curv;
-                apexSt = st;
-            }
-        }
-        if (apexSt < 0 || MathF.Abs(peakK) < 0.0025f)
-            return 0f;
-
-        Vector2 pPrev = _lanes.Centre(apexSt - 3);
-        Vector2 pHere = _lanes.Centre(apexSt);
-        Vector2 pNext = _lanes.Centre(apexSt + 3);
-        float towardCenterOfTurn = Vector2.Dot((pPrev - pHere) + (pNext - pHere), _lanes.Normal(apexSt));
-        return MathF.Abs(towardCenterOfTurn) < 1e-4f ? 0f : MathF.Sign(towardCenterOfTurn);
-    }
-
     private static float SmoothStep(float x)
     {
         x = Math.Clamp(x, 0f, 1f);
@@ -1278,31 +1144,4 @@ internal sealed class TrafficCorridor
         float r = s % length;
         return r < 0f ? r + length : r;
     }
-}
-
-internal enum RacecraftPhase : byte
-{
-    Behind = 0,
-    StandingStart = 1,
-    DraftTow = 2,
-    PullOutAttack = 3,
-    OneMoveDefend = 4,
-    SideBySide = 5,
-    Switchback = 6,
-    BlueFlagYield = 7,
-}
-
-internal readonly record struct RacecraftIntent
-{
-    public RacecraftPhase Phase { get; init; }
-    public int SideSign { get; init; }
-    public float TargetDeltaMeters { get; init; }
-    public float[]? SpatialDeltaProfile { get; init; }
-    public bool FreezeLateral { get; init; }
-    public bool EmergencyAvoid { get; init; }
-    public float YieldSpeedScale { get; init; }
-    public bool FullThrottleTow { get; init; }
-    public string? FocusRivalId { get; init; }
-
-    public static RacecraftIntent None => new() { TargetDeltaMeters = float.NaN };
 }
