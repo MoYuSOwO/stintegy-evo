@@ -213,6 +213,9 @@ public sealed class LaneDriver : IDriverController
     private readonly float _maxDrive;
     private readonly float _maxBrake;
     private readonly TurnLag _turnLag;
+    // The turn-in decided at the top of this frame so steering and any
+    // downstream preview read the same value.
+    private float _turnInSeconds;
     private readonly CarState _plan = new();
     private readonly float[][] _curvature = new float[LaneSet.LaneCount][];
     private readonly LaneRoad[][] _road = new LaneRoad[LaneSet.LaneCount][];
@@ -586,6 +589,22 @@ public sealed class LaneDriver : IDriverController
     /// </summary>
     public float FollowGapSeconds { get; set; }
 
+    public int DebugTrajectoryVersion => _drawn?.Version ?? 0;
+    public float? DebugFollowCap => _followCap;
+    public float DebugReferenceD(float s) =>
+        _lanes is null ? float.NaN : ReferenceOffset((int)MathF.Round(_lanes.StationOf(s)));
+    /// <summary>The racing line's own offset at <paramref name="s"/>, in road metres.</summary>
+    public float DebugFreeD(float s) =>
+        _lanes is null ? float.NaN : _lanes.Offset(LaneId.Free, (int)MathF.Round(_lanes.StationOf(s)));
+    /// <summary>How far the line the car is driving sits from the racing line at <paramref name="s"/>.</summary>
+    public float DebugLineOffset(float s)
+    {
+        if (_lanes is null)
+            return float.NaN;
+        int station = (int)MathF.Round(_lanes.StationOf(s));
+        return ReferenceOffset(station) - _lanes.Offset(LaneId.Free, station);
+    }
+
     // A car ahead is looked for this far up the road, and counts as on the
     // line when it overlaps it by more than this margin between the two.
     private const float FollowLookMeters = 150f;
@@ -814,9 +833,8 @@ public sealed class LaneDriver : IDriverController
         // be crawling or facing across it, and the way it moves says little.
         float facing = MathHelper.NormalizeAngle(pathHeading - car.HeadingRadians);
         UpdateRejoin(context, car, leftError, facing);
-        float turnIn = _turnLag.Seconds(speed);
-        if (WindsOn(station, speed))
-            turnIn = MathF.Max(turnIn, _turnLag.Seconds(speed, PlannedBraking(station, speed) / MathF.Max(_envelope.Brake(speed), 1f)));
+        _turnInSeconds = TurnInSeconds(station, speed);
+        float turnIn = _turnInSeconds;
         float previewStation = station + MathF.Max(0f, speed) * turnIn / _lanes.Spacing;
         float moveCurvature = _moveCurvature = -MoveAt((int)MathF.Round(previewStation), turnIn).Acceleration /
                               MathF.Max(speed * speed, 25f);
@@ -911,8 +929,7 @@ public sealed class LaneDriver : IDriverController
             wanted = curvature;
         }
 
-        // Longitudinal: follow the table with its own slope as feedforward,
-        // and pay the drag the axles will be charged for.
+        // Follow the speed table and pay the drag the axles will be charged for.
         // Consistency: the brake marker, read a few metres early or late,
         // and the speed this segment, a little over or under.
         float marker = (_performance?.BrakeMarkerMeters ?? 0f) / _lanes.Spacing;
@@ -922,22 +939,18 @@ public sealed class LaneDriver : IDriverController
         // as speed: the grip a corner asks goes with its square.
         float speedScale = (1f + (_performance?.SpeedError ?? 0f) + (_performance?.CornerOverstep ?? 0f)) *
                            MathF.Sqrt(MathF.Max(0.5f, 1f + (_performance?.LimitOveruse ?? 0f)));
-        station += marker;
         AnchorBlendWindow(station);
+        // Apply the driver's brake marker and extra preview on falling speed plans.
+        if (SpeedAt(station + 5f / _lanes.Spacing) < SpeedAt(station))
+            station += marker;
         float hereSpeed = SpeedAt(station);
-        // The speed wanted is the plan's where the car is, as Simplix reads
-        // it: the pedals take hold within the step (CarPhysics applies the
-        // command as it is given), so there is no lag to read ahead for, and
-        // read 0.3 s ahead the car drove the plan a third of a second early:
-        // braked twenty or thirty metres before every marker. The margin a
-        // corner needs is the plan's and what the learner finds, not a
-        // look ahead that moves every braking point at once.
         float slowing = SpeedAt(station + 5f / _lanes.Spacing) < hereSpeed ? 1f : 0f;
-        // The foot's beat onto the brakes is started half of it early.
         float footLead = _performance is null ? 0f : 0.5f * _maxBrake / FootBrakeRate;
         float preview = MathF.Max(dt, 0f) + slowing * ((_performance?.ExtraBrakePreviewSeconds ?? 0f) + footLead);
+        float responseTime = 1f / MathF.Max(Gains.SpeedGain, 0.01f);
+        float controlDistance = MathF.Max(5f, speed * responseTime);
         float target = SpeedAt(station + MathF.Max(0f, speed) * preview / _lanes.Spacing);
-        float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + 5f) / _lanes.Spacing);
+        float ahead = SpeedAt(station + (MathF.Max(0f, speed) * preview + controlDistance) / _lanes.Spacing);
         target *= speedScale;
         ahead *= speedScale;
         // Where the plan's speed is only what the motor was reckoned to
@@ -951,7 +964,7 @@ public sealed class LaneDriver : IDriverController
             if (target < roof - FlatOutToleranceMps)
             {
                 target = roof;
-                ahead = MathF.Max(ahead, speedScale * CeilingAt(look + 5f / _lanes.Spacing));
+                ahead = MathF.Max(ahead, speedScale * CeilingAt(look + controlDistance / _lanes.Spacing));
             }
         }
         float uncapped = target;
@@ -966,19 +979,12 @@ public sealed class LaneDriver : IDriverController
             target = MathF.Min(target, creep);
             ahead = MathF.Min(ahead, creep);
         }
-        float slope = (ahead - target) / 5f;
-        // The road's part, the planner's way round (LaneSpeedPlanner.DriveFrom):
-        // the axles are scaled onto the slope and gravity comes on top. Left
-        // out, the pedals asked a climb for what the air took and no more,
-        // and up Raidillon, power-limited and losing speed, the car ran on
-        // eight tenths of a throttle it had to give.
-        float speedChange = target * slope + Gains.SpeedGain * (target - speed);
+        // Change kinetic energy from the measured speed to the speed allowed
+        // a response distance ahead. A falling profile may still need brake
+        // when the car is slightly below its local target.
+        float speedChange = (ahead - speed) * (ahead + speed) / (2f * controlDistance);
         float accel = (speedChange - att.AlongTrackGravity(StandardGravity, speed)) / att.LongitudinalDemandScale +
                       _envelope.Loss(speed);
-        // And brakes only over it, as Simplix does: under the plan the car
-        // has the braking curve still to reach.
-        if (accel < 0f && speed < target)
-            accel = 0f;
         // Flat out where the plan is. Where the speed wanted a moment ahead
         // is no less than full drive would bring, the plan is the motor's
         // own curve and the throttle is on the floor; read as a speed to
@@ -989,10 +995,14 @@ public sealed class LaneDriver : IDriverController
         float flatOut = speedScale * LaneSpeedPlanner.FlatOutSpeed(
             _envelope, speed, here, MathF.Max(0f, speed) * preview, FactorFor(at, Range, Side),
             RoadAt(at, car.TrackD), _planShares);
-        bool capped = target < uncapped - 0.1f;
-        if (!capped && target >= flatOut - FlatOutToleranceMps)
-            accel = MathF.Max(accel, _maxDrive);
-
+        // Give the motor its full travel on a power-limited profile, but
+        // fade the assistance in from positive demand and speed headroom.
+        // It must not replace a braking request when a falling profile just
+        // happens to intersect the motor's estimate.
+        float headroom = Math.Clamp((target - flatOut + FlatOutToleranceMps) / FlatOutToleranceMps, 0f, 1f);
+        float uncappedShare = 1f - Math.Clamp((uncapped - target) / 0.1f, 0f, 1f);
+        float driveShare = Math.Clamp(accel / MathF.Max(0.01f, _maxDrive), 0f, 1f);
+        accel += MathF.Max(0f, _maxDrive - accel) * driveShare * headroom * uncappedShare;
 
         // Lift and coast: off the throttle this long before a braking zone.
         // The speed given up would have gone into the brakes a moment later,
@@ -1000,8 +1010,14 @@ public sealed class LaneDriver : IDriverController
         if (CoastSeconds > 0f && accel > 0f)
         {
             float lookahead = MathF.Max(0f, speed) * CoastSeconds / _lanes.Spacing;
-            if (SpeedAt(station + lookahead) < hereSpeed - 1f)
-                accel = 0f;
+            // Compare what the car is carrying against what it is allowed to
+            // carry where it will be, not against the ceiling it is already under.
+            float drop = speed - SpeedAt(station + lookahead);
+            // Spread the lift over the speed drop of a normal braking entry,
+            // keeping the planned transition longer than one station sample.
+            const float FullLiftDrop = 4f;
+            float lift = Math.Clamp(drop / FullLiftDrop, 0f, 1f);
+            accel *= 1f - lift * lift * (3f - 2f * lift);
         }
         // Pedals against the grip the tyres actually have this instant, as
         // the physics reports it, not against what the envelope expects.
@@ -1167,6 +1183,20 @@ public sealed class LaneDriver : IDriverController
     /// turn-in the hands took the car for one still braking hard, read the
     /// corner too early and ran wide out of it.
     /// </summary>
+    /// <summary>
+    /// The delay the hands steer ahead by this frame: the car's own measured
+    /// turn-in lag, and the longer one it takes under the brakes when the wheel
+    /// is being wound on towards a corner.
+    /// </summary>
+    private float TurnInSeconds(float station, float speed)
+    {
+        float turnIn = _turnLag.Seconds(speed);
+        if (WindsOn(station, speed))
+            turnIn = MathF.Max(turnIn, _turnLag.Seconds(speed,
+                PlannedBraking(station, speed) / MathF.Max(_envelope.Brake(speed), 1f)));
+        return turnIn;
+    }
+
     private float PlannedBraking(float station, float speed)
     {
         float reach = MathF.Max(1f, MathF.Max(0f, speed) * _turnLag.Seconds(speed, 1f));
@@ -2296,15 +2326,11 @@ public sealed class LaneDriver : IDriverController
         if (Drawing)
         {
             ScaleNextBraking(start, _drawn!.BrakeFactor);
-            // Driven on from the car's own speed as well as braked back from
-            // the corners: planned on the corners alone, the speed under the
-            // car read as whatever the road allowed, every braking zone in
-            // the window looked slower than it, and the car lifted and
-            // coasted out of corners it should have been driving out of,
-            // four seconds a lap at Silverstone.
-            LaneSpeedPlanner.PlanAhead(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares,
-                startSpeed: _carSpeed, terminalSpeed: terminal, _windowLimits, _windowSpeed);
-            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowLimits, _windowCeiling);
+            // Publish the road's safety ceiling (corner limits swept back through
+            // braking) rather than a forward reachability plan, so a drawn line
+            // never caps full throttle on an open straight.
+            LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowLimits, _windowSpeed);
+            Array.Copy(_windowSpeed, _windowCeiling, n);
         }
         else
             LaneSpeedPlanner.PlanWindow(_envelope, _windowCurvature, _windowStep, _windowFactor, _windowBrake, _windowRoad, _planShares, terminal, _windowLimits, _windowSpeed);
