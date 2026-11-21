@@ -15,6 +15,7 @@
          driver itself knows the car only by its features. -->
     <ProjectReference Include="../../mods/official/official.csproj" />
     <Compile Include="../../Core/Tests/TestTracks.cs" Link="Shared/TestTracks.cs" />
+    <Compile Include="../../GodotApp/Race/RaceCsvTelemetryRecorder.cs" Link="Shared/RaceCsvTelemetryRecorder.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

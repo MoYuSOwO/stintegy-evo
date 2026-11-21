@@ -6,6 +6,7 @@ using System.IO;
 using StintegyEVO.Core.Cars;
 using StintegyEVO.Core.Racing;
 using StintegyEVO.Core.Track;
+using StintegyEVO.Drivers.Lanes;
 
 namespace StintegyEVO.GodotApp.Race;
 
@@ -18,14 +19,44 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
 {
     private readonly StreamWriter _writer;
 
-    public RaceCsvTelemetryRecorder(string path)
+    public RaceCsvTelemetryRecorder(string path, long? firstTick = null)
     {
+        _clip = firstTick.HasValue;
         string? directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
 
         _writer = new StreamWriter(path, false);
     }
+
+    private readonly bool _clip;
+
+    private RaceCsvTelemetryRecorder(Stream stream)
+    {
+        _clip = true;
+        _writer = new StreamWriter(stream);
+    }
+
+    public static RaceCsvTelemetryRecorder OpenClip(long firstTick)
+    {
+        _ = firstTick;
+        const string directory = "/tmp/stintegy-telemetry";
+        Directory.CreateDirectory(directory);
+        string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+        for (int sequence = 1; ; sequence++)
+        {
+            string path = Path.Combine(directory, $"{stamp}-{sequence:D3}.csv");
+            try { return new RaceCsvTelemetryRecorder(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read)); }
+            catch (IOException) when (File.Exists(path)) { }
+        }
+    }
+
+    private const string ClipColumns =
+        "physics_tick,trajectory_version,drawn_active,target_speed_mps,follow_cap_mps," +
+        "reference_d_m,free_d_m,line_offset_m,lateral_error_m,heading_error_rad," +
+        "wanted_curvature,command_curvature,feedforward_curvature,actual_wheel_angle_rad," +
+        "actual_long_accel_mps2,actual_lat_accel_mps2,brake_request_mps2,spinning," +
+        "spin_count,track_region,push_button_held";
 
     private const string CommonColumns =
         "time_s,car_id,controller_status,lap,total_distance_m,s_m,d_m,x_m,y_m,heading_rad," +
@@ -46,14 +77,15 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
         float raceTimeSeconds,
         RaceCar car,
         TrackData track,
-        RaceEnvironment environment
+        RaceEnvironment environment,
+        long tick = 0
     )
     {
         ICar model = car.Car;
         if (_channelIds is null)
         {
             _channelIds = model.TelemetryChannels.Select(c => c.Id).ToArray();
-            _writer.WriteLine(CommonColumns + string.Concat(_channelIds.Select(id => "," + id)));
+            _writer.WriteLine(CommonColumns + (_clip ? "," + ClipColumns : "") + string.Concat(_channelIds.Select(id => "," + id)));
         }
         IReadOnlyList<TelemetryChannel> channels = model.TelemetryChannels;
         if (_readings.Length < channels.Count)
@@ -115,6 +147,36 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
             car.LastBoundaryContact.HasValue ? 1 : 0,
             car.HitCarThisStep ? 1 : 0
         );
+        if (_clip)
+        {
+            var lane = car.Driver?.Controller as LaneDriver;
+            var control = lane?.LastTelemetry;
+            CarMotion? motion = (model as ICarMotion)?.Motion(state);
+            _writer.Write(',');
+            WriteValues(
+                tick,
+                lane?.DebugTrajectoryVersion,
+                lane?.DrivesDrawnLine,
+                control?.TargetSpeed,
+                lane?.DebugFollowCap,
+                lane?.DebugReferenceD(pose.S),
+                lane?.DebugFreeD(pose.S),
+                lane?.DebugLineOffset(pose.S),
+                control?.LateralErrorMeters,
+                control?.HeadingErrorRadians,
+                control?.WantedCurvature,
+                control?.CommandCurvature,
+                control?.FeedforwardCurvature,
+                motion?.WheelAngleRadians,
+                motion?.StepLongitudinalAccel,
+                motion?.LateralAccel,
+                Math.Max(0f, -input.DesiredAccel),
+                motion?.Spinning,
+                motion?.Spins,
+                car.Progress.Region,
+                car.Strategy.Holding(0)
+            );
+        }
         WriteOwn(own);
     }
 
@@ -129,9 +191,9 @@ internal sealed class RaceCsvTelemetryRecorder : IDisposable
         WriteRow(values, endLine: true);
     }
 
-    private void WriteValues(params object[] values) => WriteRow(values, endLine: false);
+    private void WriteValues(params object?[] values) => WriteRow(values, endLine: false);
 
-    private void WriteRow(object[] values, bool endLine)
+    private void WriteRow(object?[] values, bool endLine)
     {
         for (int i = 0; i < values.Length; i++)
         {

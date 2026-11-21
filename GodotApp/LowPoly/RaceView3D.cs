@@ -75,6 +75,8 @@ public partial class RaceView3D : Node3D
     private readonly Queue<(int Car, int Tire, int Power)> _commands = [];
     private readonly Queue<(int Car, DriverInput Input)> _externalInputs = [];
     private RaceCsvTelemetryRecorder? _csvTelemetry;
+    private RaceCsvTelemetryRecorder? _manualClip;
+    private int _pendingClipToggles;
     private bool _simulationStarted;
     private bool _hudDirty;
     private bool _leaving;
@@ -238,6 +240,8 @@ public partial class RaceView3D : Node3D
         try { _step?.GetAwaiter().GetResult(); }
         catch (Exception error) { GD.PushError(error.ToString()); }
         _step = null;
+        _manualClip?.Dispose();
+        _manualClip = null;
         _csvTelemetry?.Dispose();
         _csvTelemetry = null;
     }
@@ -285,6 +289,19 @@ public partial class RaceView3D : Node3D
 
         if (_step == null)
         {
+            // Change recorder ownership only between worker batches, never mid-row.
+            while (_pendingClipToggles > 0)
+            {
+                _pendingClipToggles--;
+                try
+                {
+                    if (_manualClip is null) _manualClip = RaceCsvTelemetryRecorder.OpenClip(_completedTicks + 1);
+                    else { _manualClip.Dispose(); _manualClip = null; }
+                    GD.Print(_manualClip != null ? "F8 telemetry: recording" : "F8 telemetry: saved");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { GD.PushError($"Telemetry capture: {ex.Message}"); }
+            }
             while (_externalInputs.TryDequeue(out var input))
                 Simulation.Cars[input.Car].ExternalInput = input.Input;
             while (_commands.TryDequeue(out var command))
@@ -322,6 +339,8 @@ public partial class RaceView3D : Node3D
             if (steps > 0)
             {
                 var simulation = Simulation;
+                var clip = _manualClip;
+                long firstTick = _completedTicks + 1;
                 _step = Task.Run(() =>
                 {
                     long started = Stopwatch.GetTimestamp();
@@ -333,6 +352,7 @@ public partial class RaceView3D : Node3D
                         for (int i = 0; i < frame.Length; i++)
                         {
                             var car = simulation.Cars[i];
+                            clip?.Write(simulation.RaceTimeSeconds, car, simulation.Track, simulation.Environment, firstTick + tick);
                             CarMotion motion = (car.Car as ICarMotion)?.Motion(car.State) ?? default;
                             frame[i] = new CarPose(
                                 car.State.Position, car.State.Heading, motion.WheelAngleRadians,
@@ -410,6 +430,7 @@ public partial class RaceView3D : Node3D
         {
             switch (key.Keycode)
             {
+                case Key.F8: _pendingClipToggles++; break;
                 case Key.Key1: SetCameraMode(1); break;
                 case Key.Key2: SetCameraMode(2); break;
                 case Key.Key3: SetCameraMode(3); break;
