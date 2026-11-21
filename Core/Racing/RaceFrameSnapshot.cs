@@ -86,6 +86,8 @@ public readonly record struct RaceCarSnapshot(
     public float TrackLengthMeters { get; init; }
     public float TrackWidthMeters { get; init; }
     public float WheelBaseMeters { get; init; }
+    public float FrontAxleOffsetMeters { get; init; }
+    public float? MirrorOffsetMeters { get; init; }
 
     public float VelocityHeadingRadians => MathHelper.NormalizeAngle(
         HeadingRadians + SideslipAngleRadians
@@ -165,6 +167,8 @@ public readonly record struct RaceCarSnapshot(
             TrackLengthMeters = MathF.Max(0f, trackLengthMeters),
             TrackWidthMeters = pose.Sample.Width,
             WheelBaseMeters = model.Spec.WheelBaseMeters,
+            FrontAxleOffsetMeters = model.Spec.FrontAxleOffsetMeters,
+            MirrorOffsetMeters = model.Spec.MirrorOffsetMeters,
             Wake = model.Spec.Wake,
             DirtyAirSensitivity = model.Spec.DirtyAirSensitivity
         };

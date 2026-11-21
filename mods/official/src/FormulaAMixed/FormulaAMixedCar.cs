@@ -34,6 +34,7 @@ public sealed class FormulaAMixedCar : ICarDefinition
             FrontDownforceShare = null,
         },
         WheelBaseMeters = 3.1f,
+        MirrorOffsetMeters = 0.35f, // Modelled mirror mounts just forward of the cockpit.
         TrackWidthMeters = 1.65f,
         Body = new CarBody
         {

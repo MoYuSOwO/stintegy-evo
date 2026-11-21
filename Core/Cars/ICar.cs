@@ -70,6 +70,9 @@ public sealed record CarSpec
     /// <summary>Front axle ahead of the centre of mass, m: where the front wheels meet the road.</summary>
     public required float FrontAxleOffsetMeters { get; init; }
 
+    /// <summary>Signed station of the mirrors from the centre of mass, when supplied by the car model.</summary>
+    public float? MirrorOffsetMeters { get; init; }
+
     /// <summary>Rear axle behind the centre of mass, m.</summary>
     public required float RearAxleOffsetMeters { get; init; }
 
@@ -129,6 +132,8 @@ public sealed record CarSpec
                  })
             if (!(value >= 0f && value <= 1f))
                 yield return $"{name} is {value}; a restitution is from zero to one";
+        if (MirrorOffsetMeters is { } mirror && (!float.IsFinite(mirror) || Body is { } body && MathF.Abs(mirror) > body.LengthMeters / 2f))
+            yield return "Mirror station must lie on the car body";
         if (Body is null)
             yield return $"{nameof(Body)} is not declared";
         if (Wake is null)

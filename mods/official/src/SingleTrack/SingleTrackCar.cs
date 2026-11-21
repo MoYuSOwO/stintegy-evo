@@ -46,6 +46,7 @@ public class SingleTrackCar : ICar, ICarTires, ICarStores, ICarButtons, ICarEnve
         {
             WheelBaseMeters = config.WheelBaseMeters,
             FrontAxleOffsetMeters = config.FrontAxleOffsetMeters,
+            MirrorOffsetMeters = config.MirrorOffsetMeters,
             RearAxleOffsetMeters = config.RearAxleOffsetMeters,
             TrackWidthMeters = config.TrackWidthMeters,
             YawInertiaKgM2 = config.YawInertiaKgM2,

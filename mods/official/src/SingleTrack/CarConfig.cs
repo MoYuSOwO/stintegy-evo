@@ -39,6 +39,7 @@ public sealed class CarConfig
     /// </summary>
     public IAero Aero { get; init; } = new StandardAero();
     public float WheelBaseMeters { get; init; } = 3.1f;
+    public float? MirrorOffsetMeters { get; init; }
     public float TrackWidthMeters { get; init; } = 1.65f;
 
     /// <summary>

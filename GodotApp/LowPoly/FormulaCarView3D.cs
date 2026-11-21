@@ -75,6 +75,11 @@ public partial class FormulaCarView3D : Node3D
         mesh.Box(new(0.75f, 0.559f, 0), new(1.2f, 0.025f, 0.075f), LowPolyMesh.Ivory);
         foreach (int side in new[] { -1, 1 })
         {
+            if (Car.Car.Spec.MirrorOffsetMeters is { } mirror)
+            {
+                mesh.Box(new(mirror, 0.64f, side * 0.46f), new(0.035f, 0.035f, 0.28f), dark);
+                mesh.Box(new(mirror, 0.67f, side * 0.62f), new(0.10f, 0.085f, 0.16f), color);
+            }
             mesh.Box(new(-0.55f, 0.35f, side * 0.52f), new(1.65f, 0.35f, 0.35f), color.Darkened(0.08f));
             mesh.Box(new(-0.55f, 0.54f, side * 0.55f), new(1.35f, 0.025f, 0.1f), LowPolyMesh.Ivory);
             foreach (float x in new[] { rear, front }) mesh.Box(new(x, 0.3f, side * 0.5f), new(0.1f, 0.08f, 0.75f), dark);
